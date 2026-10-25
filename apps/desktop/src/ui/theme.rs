@@ -1,0 +1,333 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 tawan475
+
+//! The look: the tracker's design system tokens, mapped once into egui's
+//! visuals and a [`Palette`] the widgets read. Widgets never use raw colours.
+//!
+//! Values are the design spec's (§1), the tracker's tokens at the desktop's 16 px root.
+
+use egui::epaint::Shadow;
+use egui::{
+    Color32, Context, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Margin, Stroke,
+    TextStyle, Theme, Visuals,
+};
+
+/// Every colour role the design uses, for one theme.
+#[derive(Clone, Copy, Debug)]
+pub struct Palette {
+    pub bg: Color32,
+    pub bar: Color32,
+    pub card: Color32,
+    pub over: Color32,
+    pub line: Color32,
+    pub line2: Color32,
+    pub tx: Color32,
+    pub tx2: Color32,
+    pub tx3: Color32,
+    pub fill: Color32,
+    pub ac_tx: Color32,
+    pub ac_con: Color32,
+    pub ac_on: Color32,
+    pub ok: Color32,
+    pub ok_con: Color32,
+    pub ok_line: Color32,
+    pub ok_ink: Color32,
+    pub warn_con: Color32,
+    pub warn_on: Color32,
+    pub bad: Color32,
+    pub bad_con: Color32,
+    pub bad_line: Color32,
+    pub bad_ink: Color32,
+    pub amber: Color32,
+    pub amber_glow: Color32,
+    pub snack_bg: Color32,
+    pub snack_tx: Color32,
+    pub snack_ac: Color32,
+    pub scrim: Color32,
+    pub close_hover: Color32,
+    pub card_shadow: Color32,
+    pub overlay_shadow: Color32,
+}
+
+const fn hex(rgb: u32) -> Color32 {
+    Color32::from_rgb((rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8)
+}
+
+/// An unmultiplied colour (the CSS `rgba()` the tokens are written in), as
+/// egui's premultiplied one.
+const fn rgba(r: u8, g: u8, b: u8, a: f32) -> Color32 {
+    let alpha = (a * 255.0) as u16;
+    Color32::from_rgba_premultiplied(
+        premultiply(r, alpha),
+        premultiply(g, alpha),
+        premultiply(b, alpha),
+        alpha as u8,
+    )
+}
+
+const fn premultiply(channel: u8, alpha: u16) -> u8 {
+    (channel as u16 * alpha / 255) as u8
+}
+
+pub const LIGHT: Palette = Palette {
+    bg: hex(0xF8FAFC),
+    bar: hex(0xFFFFFF),
+    card: hex(0xFFFFFF),
+    over: hex(0xF1F5F9),
+    line: hex(0xE2E8F0),
+    line2: hex(0xCBD5E1),
+    tx: hex(0x0F172A),
+    tx2: hex(0x475569),
+    tx3: hex(0x64748B),
+    fill: hex(0x4F46E5),
+    ac_tx: hex(0x4F46E5),
+    ac_con: hex(0xE0E7FF),
+    ac_on: hex(0x3730A3),
+    ok: hex(0x047857),
+    ok_con: hex(0xECFDF5),
+    ok_line: hex(0xA7F3D0),
+    ok_ink: hex(0xFFFFFF),
+    warn_con: hex(0xFEF3C7),
+    warn_on: hex(0x92400E),
+    bad: hex(0xB91C1C),
+    bad_con: hex(0xFEF2F2),
+    bad_line: hex(0xFECACA),
+    bad_ink: hex(0xFFFFFF),
+    amber: hex(0xF59E0B),
+    amber_glow: rgba(245, 158, 11, 0.40),
+    snack_bg: hex(0x1E293B),
+    snack_tx: hex(0xF1F5F9),
+    snack_ac: hex(0xA5B4FC),
+    scrim: rgba(15, 23, 42, 0.45),
+    close_hover: hex(0xDC2626),
+    card_shadow: rgba(15, 23, 42, 0.06),
+    overlay_shadow: rgba(15, 23, 42, 0.18),
+};
+
+pub const DARK: Palette = Palette {
+    bg: hex(0x0F172A),
+    bar: hex(0x1E293B),
+    card: hex(0x1E293B),
+    over: hex(0x334155),
+    line: hex(0x334155),
+    line2: hex(0x475569),
+    tx: hex(0xF1F5F9),
+    tx2: hex(0xCBD5E1),
+    tx3: hex(0x94A3B8),
+    fill: hex(0x4F46E5),
+    ac_tx: hex(0xA5B4FC),
+    ac_con: hex(0x312E81),
+    ac_on: hex(0xE0E7FF),
+    ok: hex(0x6EE7B7),
+    ok_con: rgba(6, 95, 70, 0.35),
+    ok_line: rgba(16, 185, 129, 0.35),
+    ok_ink: hex(0x064E3B),
+    warn_con: rgba(120, 53, 15, 0.45),
+    warn_on: hex(0xFCD34D),
+    bad: hex(0xFCA5A5),
+    bad_con: rgba(127, 29, 29, 0.30),
+    bad_line: rgba(185, 28, 28, 0.60),
+    bad_ink: hex(0x450A0A),
+    amber: hex(0xF59E0B),
+    amber_glow: rgba(245, 158, 11, 0.40),
+    snack_bg: hex(0xE2E8F0),
+    snack_tx: hex(0x0F172A),
+    snack_ac: hex(0x4338CA),
+    scrim: rgba(2, 6, 23, 0.60),
+    close_hover: hex(0xDC2626),
+    card_shadow: rgba(0, 0, 0, 0.30),
+    overlay_shadow: rgba(0, 0, 0, 0.45),
+};
+
+/// The palette of the theme egui is drawing in.
+pub fn palette(ctx: &Context) -> Palette {
+    if ctx.style().visuals.dark_mode {
+        DARK
+    } else {
+        LIGHT
+    }
+}
+
+/// The type styles of spec §1.2 that egui has no built-in name for.
+pub mod style {
+    use egui::TextStyle;
+
+    pub fn display() -> TextStyle {
+        TextStyle::Name("display".into())
+    }
+    pub fn about() -> TextStyle {
+        TextStyle::Name("about".into())
+    }
+    pub fn hero() -> TextStyle {
+        TextStyle::Heading
+    }
+    pub fn tile() -> TextStyle {
+        TextStyle::Name("tile".into())
+    }
+    pub fn dialog() -> TextStyle {
+        TextStyle::Name("dialog".into())
+    }
+    pub fn brand() -> TextStyle {
+        TextStyle::Name("brand".into())
+    }
+    pub fn secondary() -> TextStyle {
+        TextStyle::Name("secondary".into())
+    }
+    pub fn small() -> TextStyle {
+        TextStyle::Small
+    }
+}
+
+/// Outfit's weights, as egui font families (egui has no weight axis).
+pub mod weight {
+    use egui::FontFamily;
+
+    pub fn medium() -> FontFamily {
+        FontFamily::Name("medium".into())
+    }
+    pub fn semibold() -> FontFamily {
+        FontFamily::Name("semibold".into())
+    }
+}
+
+/// Radii of spec §1.3.
+pub mod radius {
+    pub const HERO: u8 = 14;
+    pub const CARD: u8 = 12;
+    pub const DIALOG: u8 = 14;
+    pub const MENU: u8 = 10;
+    pub const BUTTON: u8 = 8;
+}
+
+/// Install the fonts, text styles and both themes' visuals. Called once.
+pub fn install(ctx: &Context) {
+    ctx.set_fonts(fonts());
+    for theme in [Theme::Light, Theme::Dark] {
+        let palette = match theme {
+            Theme::Light => LIGHT,
+            Theme::Dark => DARK,
+        };
+        ctx.set_visuals_of(theme, visuals(theme, &palette));
+        ctx.style_mut_of(theme, |style| {
+            style.text_styles = text_styles();
+            style.spacing.item_spacing = egui::vec2(8.0, 8.0);
+            style.spacing.button_padding = egui::vec2(12.0, 6.0);
+            style.spacing.interact_size.y = 32.0;
+            style.spacing.menu_margin = Margin::same(6);
+            style.spacing.window_margin = Margin::same(20);
+            style.interaction.selectable_labels = false;
+            style.interaction.tooltip_delay = 0.25;
+            style.animation_time = 0.15;
+        });
+    }
+}
+
+fn fonts() -> FontDefinitions {
+    let mut fonts = FontDefinitions::default();
+    for (name, bytes) in [
+        (
+            "Outfit-Regular",
+            &include_bytes!("../../assets/fonts/Outfit-Regular.ttf")[..],
+        ),
+        (
+            "Outfit-Medium",
+            &include_bytes!("../../assets/fonts/Outfit-Medium.ttf")[..],
+        ),
+        (
+            "Outfit-SemiBold",
+            &include_bytes!("../../assets/fonts/Outfit-SemiBold.ttf")[..],
+        ),
+    ] {
+        fonts
+            .font_data
+            .insert(name.to_owned(), FontData::from_static(bytes).into());
+    }
+    // egui's own fonts stay behind Outfit, for the glyphs it lacks (✦, CJK
+    // names, symbols).
+    let fallbacks = fonts
+        .families
+        .get(&FontFamily::Proportional)
+        .cloned()
+        .unwrap_or_default();
+    let family = |first: &str| {
+        let mut list = vec![first.to_owned()];
+        list.extend(fallbacks.iter().cloned());
+        list
+    };
+    fonts
+        .families
+        .insert(FontFamily::Proportional, family("Outfit-Regular"));
+    fonts
+        .families
+        .insert(weight::medium(), family("Outfit-Medium"));
+    fonts
+        .families
+        .insert(weight::semibold(), family("Outfit-SemiBold"));
+    fonts
+}
+
+fn text_styles() -> std::collections::BTreeMap<TextStyle, FontId> {
+    use FontFamily::{Monospace, Proportional};
+    [
+        (TextStyle::Heading, FontId::new(20.0, weight::semibold())),
+        (TextStyle::Body, FontId::new(14.0, Proportional)),
+        (TextStyle::Button, FontId::new(13.0, weight::semibold())),
+        (TextStyle::Small, FontId::new(12.0, Proportional)),
+        (TextStyle::Monospace, FontId::new(12.5, Monospace)),
+        (style::display(), FontId::new(28.0, weight::semibold())),
+        (style::about(), FontId::new(22.0, weight::semibold())),
+        (style::tile(), FontId::new(18.0, weight::semibold())),
+        (style::dialog(), FontId::new(17.0, weight::semibold())),
+        (style::brand(), FontId::new(15.0, weight::semibold())),
+        (style::secondary(), FontId::new(13.0, Proportional)),
+    ]
+    .into()
+}
+
+fn visuals(theme: Theme, p: &Palette) -> Visuals {
+    let mut v = match theme {
+        Theme::Light => Visuals::light(),
+        Theme::Dark => Visuals::dark(),
+    };
+    v.override_text_color = Some(p.tx);
+    v.panel_fill = p.bg;
+    v.window_fill = p.card;
+    v.extreme_bg_color = p.bg;
+    v.faint_bg_color = p.over;
+    v.code_bg_color = p.over;
+    v.hyperlink_color = p.ac_tx;
+    v.warn_fg_color = p.warn_on;
+    v.error_fg_color = p.bad;
+    v.window_corner_radius = CornerRadius::same(radius::DIALOG);
+    v.menu_corner_radius = CornerRadius::same(radius::MENU);
+    v.window_stroke = Stroke::new(1.0_f32, p.line);
+    v.window_shadow = Shadow {
+        offset: [0, 8],
+        blur: 24,
+        spread: 0,
+        color: p.overlay_shadow,
+    };
+    v.popup_shadow = v.window_shadow;
+    v.selection.bg_fill = p.fill;
+    v.selection.stroke = Stroke::new(1.0_f32, Color32::WHITE);
+    v.text_cursor.stroke = Stroke::new(2.0_f32, p.ac_tx);
+
+    let w = &mut v.widgets;
+    for (state, fill, stroke) in [
+        (&mut w.noninteractive, p.card, p.line),
+        (&mut w.inactive, p.card, p.line2),
+        (&mut w.hovered, p.over, p.line2),
+        (&mut w.active, p.over, p.ac_tx),
+        (&mut w.open, p.over, p.line2),
+    ] {
+        state.bg_fill = fill;
+        state.weak_bg_fill = fill;
+        state.bg_stroke = Stroke::new(1.0_f32, stroke);
+        state.corner_radius = CornerRadius::same(radius::BUTTON);
+        state.fg_stroke = Stroke::new(1.5_f32, p.tx);
+        state.expansion = 0.0;
+    }
+    w.noninteractive.fg_stroke = Stroke::new(1.0_f32, p.tx2);
+    w.noninteractive.bg_stroke = Stroke::new(1.0_f32, p.line);
+    v
+}

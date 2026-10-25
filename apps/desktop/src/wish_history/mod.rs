@@ -75,15 +75,14 @@ pub(crate) fn banner_for_gacha_type(gacha_type: u32) -> Option<Banner> {
 
 /// The API base and credential a sync uses, or `None` when it must not run.
 ///
-/// The same gate and the same choice as automated snapshot uploads: uploads
-/// on ([`crate::app::want_tracker_upload`]), then the sign-in while signed
-/// in, else a saved and verified import key
-/// ([`crate::app::upload_credential`]).
+/// The wish card's switch ([`crate::app::want_wish_sync`]), then the same
+/// choice as snapshot uploads: the sign-in while signed in, else a saved and
+/// verified import key ([`crate::app::upload_credential`]).
 fn credential_for(
     state: &SavedAppState,
     auth: &TrackerAuth,
 ) -> Option<(String, TrackerCredential)> {
-    if !crate::app::want_tracker_upload(state) {
+    if !crate::app::want_wish_sync(state) {
         return None;
     }
     Some(match crate::app::upload_credential(state)? {
@@ -103,7 +102,7 @@ fn credential_for(
 
 /// Whether a captured key would be synced to the tracker.
 pub(crate) fn sync_enabled(state: &SavedAppState) -> bool {
-    crate::app::want_tracker_upload(state)
+    crate::app::want_wish_sync(state)
 }
 
 /// What the monitor saw that concerns wish history.
@@ -413,6 +412,14 @@ impl WishView {
             .cloned()
     }
 
+    /// A key of this login is held but no longer believed to work.
+    pub(crate) fn key_expired(&self, now: Instant) -> bool {
+        self.key_rx
+            .borrow()
+            .as_ref()
+            .is_some_and(|key| !key.is_fresh(now))
+    }
+
     /// The URL to copy: the game's link for this login's key.
     pub(crate) fn wish_url(&self, now: Instant) -> Option<String> {
         self.key(now).map(|key| key.wish_url())
@@ -487,9 +494,15 @@ pub(crate) fn status_line(key: Option<&WishKey>, now: Instant, game: GameStatus)
     }
 }
 
+/// The marks in the "seen this session" list.
+mod marks {
+    pub(crate) const ICON_CHECK: &str = "✓";
+    pub(crate) const ICON_CLOSE: &str = "✗";
+}
+
 /// The "seen this session" list for the tooltip.
 pub(crate) fn seen_summary(seen: &Seen, uid_known: bool) -> String {
-    use egui_material_icons::icons::{ICON_CHECK, ICON_CLOSE};
+    use crate::wish_history::marks::{ICON_CHECK, ICON_CLOSE};
     let mark = |yes: bool| if yes { ICON_CHECK } else { ICON_CLOSE };
     let mut lines = vec![
         "Seen this session:".to_owned(),
@@ -518,7 +531,7 @@ pub(crate) struct WishChannels {
 /// Build the hub, the view and the sync task (not yet running).
 pub(crate) fn channels(
     saved_state_rx: watch::Receiver<SavedAppState>,
-    toast_tx: mpsc::UnboundedSender<(String, bool)>,
+    toast_tx: crate::activity::Sender,
     ctx: egui::Context,
     auth: TrackerAuth,
 ) -> WishChannels {
@@ -696,7 +709,7 @@ mod tests {
 
     #[test]
     fn the_seen_list_marks_each_part() {
-        use egui_material_icons::icons::{ICON_CHECK, ICON_CLOSE};
+        use crate::wish_history::marks::{ICON_CHECK, ICON_CLOSE};
 
         let seen = Seen {
             banner_list: true,
@@ -997,11 +1010,15 @@ mod tests {
             ))
         );
 
-        // Uploads off, or the sign-in not read yet: nothing syncs.
-        state.auto_export_to_tracker = false;
+        // The wish switch off, or the sign-in not read yet: nothing syncs.
+        // Snapshot uploads are not the gate any more: the wish card has its
+        // own switch.
+        state.send_wishes = false;
         assert!(!sync_enabled(&state));
         assert_eq!(credential(&state), None);
-        state.auto_export_to_tracker = true;
+        state.send_wishes = true;
+        state.auto_export_to_tracker = false;
+        assert!(sync_enabled(&state));
         state.tracker_sign_in = TrackerSignIn::Unknown;
         assert_eq!(credential(&state), None);
     }

@@ -175,7 +175,7 @@ pub(crate) struct WishSync {
     key_tx: Arc<watch::Sender<Option<WishKey>>>,
     status_tx: watch::Sender<SyncStatus>,
     saved_state_rx: watch::Receiver<SavedAppState>,
-    toast_tx: mpsc::UnboundedSender<(String, bool)>,
+    toast_tx: crate::activity::Sender,
     ctx: egui::Context,
     /// The tracker sign-in, for runs while signed in.
     auth: TrackerAuth,
@@ -196,7 +196,7 @@ impl WishSync {
         key_tx: Arc<watch::Sender<Option<WishKey>>>,
         status_tx: watch::Sender<SyncStatus>,
         saved_state_rx: watch::Receiver<SavedAppState>,
-        toast_tx: mpsc::UnboundedSender<(String, bool)>,
+        toast_tx: crate::activity::Sender,
         ctx: egui::Context,
         auth: TrackerAuth,
     ) -> Self {
@@ -298,11 +298,11 @@ impl WishSync {
     /// automated uploads, never overridden.
     fn blocked(&self) -> Option<&'static str> {
         let state = self.saved_state_rx.borrow();
-        if !state.auto_export_to_tracker {
-            return Some("uploads to the Tracker are off");
+        if !state.send_wishes {
+            return Some("sending wishes is off");
         }
         if !super::sync_enabled(&state) || credential_for(&state, &self.auth).is_none() {
-            return Some("no Tracker sign-in or verified import key");
+            return Some("no tracker sign-in or verified import key");
         }
         None
     }
@@ -425,9 +425,10 @@ impl WishSync {
             None => Outcome::UpToDate,
         };
         if report.imported.added > 0 {
-            let _ = self.toast_tx.send((
-                format!("{} new wishes sent to the Tracker", report.imported.added),
-                false,
+            // Routine: the activity line, not a toast.
+            let _ = self.toast_tx.send(crate::activity::Event::ok(
+                crate::activity::Topic::Wishes,
+                format!("{} new wishes sent to the tracker", report.imported.added),
             ));
         }
         self.status_tx.send_replace(SyncStatus {
@@ -779,22 +780,22 @@ mod tests {
             .forward(vec![key_event("NNNN")], Some(LOGIN_UID));
         let now = Instant::now();
 
-        state_tx.send_modify(|state| state.auto_export_to_tracker = false);
+        state_tx.send_modify(|state| state.send_wishes = false);
         channels.sync.on_trigger(Trigger::NewKey, now);
         assert_eq!(
             channels.view.sync_line(now).as_deref(),
-            Some("Not synced: uploads to the Tracker are off")
+            Some("Not synced: sending wishes is off")
         );
         assert_eq!(channels.sync.schedule.next_due(), None);
 
         state_tx.send_modify(|state| {
-            state.auto_export_to_tracker = true;
+            state.send_wishes = true;
             state.tracker_verified = false;
         });
         channels.sync.on_trigger(Trigger::NewKey, now);
         assert_eq!(
             channels.view.sync_line(now).as_deref(),
-            Some("Not synced: no Tracker sign-in or verified import key")
+            Some("Not synced: no tracker sign-in or verified import key")
         );
 
         state_tx.send_modify(|state| state.tracker_verified = true);

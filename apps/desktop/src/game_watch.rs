@@ -93,7 +93,9 @@ pub enum MissedLaunch {
     CaptureStopped,
 }
 
-/// How loudly the UI should say it.
+/// How loudly the UI should say it. The status hero picks its own variant per
+/// state now; the tests still pin this classification.
+#[cfg_attr(not(test), allow(dead_code))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Severity {
     /// Nothing to report.
@@ -198,6 +200,7 @@ impl GameStatus {
         }
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn severity(self) -> Severity {
         match self {
             GameStatus::NotRunning | GameStatus::CaptureOff | GameStatus::AwaitingLogin => {

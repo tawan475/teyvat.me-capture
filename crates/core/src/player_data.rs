@@ -1210,6 +1210,34 @@ impl PlayerData {
         self.items.len()
     }
 
+    /// How much of each class is held, for the apps' captured-account tiles:
+    /// read from what is held rather than built from an export, so it is
+    /// cheap enough to refresh after every change. An export can come out a
+    /// few lower (it skips what the game data has no key for).
+    pub fn held_counts(&self) -> ExportCounts {
+        let mut counts = ExportCounts {
+            characters: self.characters.len(),
+            achievements: self
+                .achievements
+                .values()
+                .filter(|achievement| achievement_completed(achievement))
+                .count(),
+            ..ExportCounts::default()
+        };
+        for item in self.items.values() {
+            if item.has_material() {
+                if item.material().count > 0 {
+                    counts.materials += 1;
+                }
+            } else if item.has_equip() && item.equip().has_weapon() {
+                counts.weapons += 1;
+            } else if item.has_equip() && item.equip().has_reliquary() {
+                counts.artifacts += 1;
+            }
+        }
+        counts
+    }
+
     /// The tracker export at `now_ms`, what it left out, and its keyed form,
     /// for live sync (`live.rs`): every item with its guid.
     pub fn live_export(&self, now_ms: u64) -> (good::Good, ExportReport, crate::delta::Keyed) {
