@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use tokio::sync::{mpsc, watch};
 
-use super::gacha_log::{LogClient, Pacing, TokioSleeper, WishKey};
+use super::gacha_log::{LogClient, Pacing, ReqwestGet, TokioSleeper, WishKey};
 use super::run::{PAGES_PER_RUN, Partial, Run, RunError, RunReport};
 use super::tracker::Tracker;
 use super::{BANNERS, Banner, Trigger, credential_for};
@@ -339,7 +339,7 @@ impl WishSync {
             credential,
         };
         let mut log = LogClient::new(
-            self.log_http.clone(),
+            ReqwestGet(self.log_http.clone()),
             self.log_endpoint
                 .clone()
                 .unwrap_or_else(|| key.endpoint().to_owned()),

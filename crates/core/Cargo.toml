@@ -30,8 +30,12 @@ indexmap = "2.11.1"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = { version = "1.0.143", features = ["alloc"] }
 tracing = { version = "0.1.41" }
+# The wish history link (wish::link): parsing, redacting.
+url = "2.5.4"
 # The decode layer's event channel (decode.rs); the runtime is the caller's.
 tokio = { version = "1.47.1", default-features = false, features = ["sync"] }
 
 [dev-dependencies]
 tempfile = "3.21.0"
+# A runtime for the wish history reader's tests.
+tokio = { version = "1.47.1", default-features = false, features = ["rt"] }

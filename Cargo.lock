@@ -5792,6 +5792,7 @@ dependencies = [
  "teyvatme-protocol",
  "tokio",
  "tracing",
+ "url",
 ]
 
 [[package]]

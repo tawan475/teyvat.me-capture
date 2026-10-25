@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 use serde_json::{Value, json};
 
 use super::Banner;
-use super::gacha_log::{LogClient, Pacing, Sleeper, WishKey};
+use super::gacha_log::{LogClient, Pacing, ReqwestGet, Sleeper, WishKey};
 use super::run::{Partial, Run, RunError, RunReport};
 use super::test_server::{Reply, Request, TestServer};
 use super::tracker::{Tracker, TrackerCredential};
@@ -309,7 +309,7 @@ impl Fixture {
         capture_logs();
         let http = crate::http_client_builder().build().unwrap();
         let mut log = LogClient::new(
-            http.clone(),
+            ReqwestGet(http.clone()),
             format!("{}{LOG_PATH}", self.server.base),
             WishKey::new(AUTHKEY, "hk4e_global", Instant::now()),
             self.sleeper.clone(),
