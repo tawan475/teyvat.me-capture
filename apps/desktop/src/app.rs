@@ -13,13 +13,7 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context as _, Result, anyhow};
-use chrono::Local;
-use egui::{
-    Button, Color32, Context, DragValue, Id, Key, KeyboardShortcut, Modal, Modifiers, OpenUrl,
-    PointerButton, RichText, Sense, ViewportCommand,
-};
-use egui_file_dialog::FileDialog;
-use egui_notify::Toasts;
+use egui::{Context, OpenUrl};
 use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio_util::sync::CancellationToken;
@@ -30,13 +24,14 @@ use crate::monitor::TrackerAccount;
 use crate::signin::{
     self, AuthStatus, TrackerAuth, TrackerRequest, UploadCredential, UploadScope, Whoami,
 };
+use crate::ui::toast::Toasts;
 
 type AsyncRuntimeHandles = (
     mpsc::UnboundedSender<Message>,
     mpsc::UnboundedSender<UpdateAnswer>,
     watch::Receiver<AppState>,
     crate::wish_history::WishView,
-    mpsc::UnboundedReceiver<(String, bool)>,
+    crate::activity::Receiver,
     JoinHandle<()>,
 );
 use tray_icon::menu::{Menu, MenuEvent, MenuItem};
@@ -44,14 +39,11 @@ use tray_icon::menu::{Menu, MenuEvent, MenuItem};
 use tray_icon::{MouseButton, MouseButtonState, TrayIconEvent};
 use tray_icon::{TrayIcon, TrayIconBuilder};
 
-use crate::game_watch::{GameStatus, MissedLaunch, Severity};
+use crate::game_watch::{GameStatus, MissedLaunch};
 use crate::monitor::Monitor;
 use crate::player_data::{ExportCounts, ExportSettings};
 use crate::update::{InstallLock, UpdateAnswer, check_for_app_update};
-use crate::{
-    AppState, ConfirmationType, DataUpdated, Message, ReloadHandle, State, TracingLevel,
-    open_log_dir,
-};
+use crate::{AppState, DataUpdated, Message, ReloadHandle, TracingLevel};
 
 /// How long a capture backend may take to release its device or ETW session.
 ///
@@ -73,10 +65,6 @@ const CAPTURE_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 /// the next launch then silently loses the race for.
 const MONITOR_SHUTDOWN_TIMEOUT: Duration =
     Duration::from_secs(CAPTURE_SHUTDOWN_TIMEOUT.as_secs() + 3);
-
-/// How long "Status: Capture success" counts down before the status line goes
-/// back to reporting the time of the last capture.
-const CAPTURE_SUCCESS_DISPLAY: Duration = Duration::from_secs(5);
 
 /// How often whoami is re-read while signed in, so an upload target changed
 /// on the tracker's website shows up without a restart.
@@ -167,6 +155,49 @@ pub struct SavedAppState {
     pub tracker_sign_in: TrackerSignIn,
     #[serde(default)]
     pub minimize_to_tray: Option<bool>,
+    /// The first-run screens were done. A fresh install starts at `false`;
+    /// settings saved by an older build load as `true`, since that user is
+    /// past first run.
+    #[serde(default = "default_true")]
+    pub onboarded: bool,
+    #[serde(default)]
+    pub theme: ThemeChoice,
+    /// Send the wish history to the linked tracker account (the wish card's
+    /// switch). On by default; needs a sign-in or a verified import key.
+    #[serde(default = "default_true")]
+    pub send_wishes: bool,
+}
+
+/// The theme setting (Settings › App).
+#[derive(Deserialize, Serialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ThemeChoice {
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
+impl ThemeChoice {
+    fn preference(self) -> egui::ThemePreference {
+        match self {
+            ThemeChoice::System => egui::ThemePreference::System,
+            ThemeChoice::Light => egui::ThemePreference::Light,
+            ThemeChoice::Dark => egui::ThemePreference::Dark,
+        }
+    }
+
+    /// The same, for the native title bar.
+    fn system_theme(self) -> egui::SystemTheme {
+        match self {
+            ThemeChoice::System => egui::SystemTheme::SystemDefault,
+            ThemeChoice::Light => egui::SystemTheme::Light,
+            ThemeChoice::Dark => egui::SystemTheme::Dark,
+        }
+    }
+}
+
+fn default_true() -> bool {
+    true
 }
 
 fn default_live_sync() -> bool {
@@ -174,15 +205,21 @@ fn default_live_sync() -> bool {
 }
 
 /// Where the tracker lives when the build bakes in no `TRACKER_API_URL`: the
-/// hosted Genshin Data Tracker. Its Worker mounts the API under `/api`, so the
+/// hosted Teyvat.me tracker. Its Worker mounts the API under `/api`, so the
 /// endpoint paths are appended after that; without it the request reaches the
 /// single-page app, which answers every unknown path with HTML.
-const FALLBACK_TRACKER_URL: &str = "https://genshin-tracker.475.dev/api";
+const FALLBACK_TRACKER_URL: &str = "https://teyvat.me/api";
 
 /// The default before the hosted tracker existed: the self-hosted NestJS
 /// backend on its default port. `app.ron` files written by those builds hold
 /// it, and [`migrated_tracker_url`] moves them to the current default.
 const LEGACY_TRACKER_URL: &str = "http://localhost:49000";
+
+/// The hosted tracker's address before it moved to teyvat.me (irminsul's
+/// default). The same Worker still answers there, but saved copies of it
+/// move to the current default too; the sign-in moves with them
+/// (`signin::MOVED_ORIGINS`).
+const OLD_HOSTED_TRACKER_URL: &str = "https://genshin-tracker.475.dev/api";
 
 /// Resolve the compile-time `TRACKER_API_URL` against the hosted default.
 ///
@@ -204,27 +241,33 @@ fn default_tracker_url() -> String {
     resolve_tracker_url(option_env!("TRACKER_API_URL"))
 }
 
-/// Whether `url` is [`LEGACY_TRACKER_URL`], give or take surrounding
-/// whitespace and trailing slashes.
-fn is_legacy_tracker_url(url: &str) -> bool {
-    url.trim().trim_end_matches('/') == LEGACY_TRACKER_URL
+/// `url` without surrounding whitespace and trailing slashes.
+fn bare_url(url: &str) -> &str {
+    url.trim().trim_end_matches('/')
+}
+
+/// Whether `url` is one of the old defaults ([`LEGACY_TRACKER_URL`],
+/// [`OLD_HOSTED_TRACKER_URL`]), give or take surrounding whitespace and
+/// trailing slashes.
+fn is_old_default_tracker_url(url: &str) -> bool {
+    [LEGACY_TRACKER_URL, OLD_HOSTED_TRACKER_URL].contains(&bare_url(url))
 }
 
 /// The URL a saved `tracker_api_url` should be replaced with on load, if any.
 ///
 /// The saved value is persisted, so an install that never touched the field
-/// would otherwise keep the old local default forever. An empty value is
-/// repaired too: it makes every request a relative URL that reqwest refuses
-/// to send. Anything else was typed by the user and is kept.
+/// would otherwise keep an old default forever. An empty value is repaired
+/// too: it makes every request a relative URL that reqwest refuses to send.
+/// Anything else was typed by the user and is kept.
 ///
-/// There is no "already migrated" marker, so the legacy URL is moved on every
-/// load; pointing a hosted-default build at a local backend on that port means
-/// spelling it differently (`http://127.0.0.1:49000`). A build whose own
-/// default *is* the legacy URL (`TRACKER_API_URL=http://localhost:49000`)
-/// leaves it alone rather than "migrating" it to itself.
+/// There is no "already migrated" marker, so an old default is moved on every
+/// load; pointing a build at a local backend on that port means spelling it
+/// differently (`http://127.0.0.1:49000`). A build whose own default *is* that
+/// URL (`TRACKER_API_URL=http://localhost:49000`) leaves it alone rather than
+/// "migrating" it to itself.
 fn migrated_tracker_url(saved: &str, default: &str) -> Option<String> {
     let stale = saved.trim().is_empty()
-        || (is_legacy_tracker_url(saved) && !is_legacy_tracker_url(default));
+        || (is_old_default_tracker_url(saved) && bare_url(saved) != bare_url(default));
     (stale && saved != default).then(|| default.to_string())
 }
 
@@ -257,6 +300,9 @@ impl Default for SavedAppState {
             tracker_verified: false,
             tracker_sign_in: TrackerSignIn::Unknown,
             minimize_to_tray: None,
+            onboarded: false,
+            theme: ThemeChoice::System,
+            send_wishes: true,
         }
     }
 }
@@ -420,6 +466,13 @@ fn whoami_account(whoami: &Whoami) -> Option<TrackerAccount> {
 /// rather than keeping their own copy of the condition, which is how the copy
 /// came to omit `tracker_verified` -- a key the dashboard had revoked still got
 /// a POST on every login.
+/// Whether the wish history goes to the tracker: the wish card's switch and
+/// a linked account (sign-in or verified key). Independent of snapshot
+/// uploads, so the switch means what it says.
+pub(crate) fn want_wish_sync(state: &SavedAppState) -> bool {
+    state.send_wishes && can_upload_to_tracker(state)
+}
+
 pub(crate) fn want_tracker_upload(state: &SavedAppState) -> bool {
     state.auto_export_to_tracker && can_upload_to_tracker(state)
 }
@@ -526,7 +579,7 @@ pub struct TeyvatmeApp {
     log_packets_tx: watch::Sender<bool>,
     saved_state_tx: watch::Sender<SavedAppState>,
     tracing_reload_handle: ReloadHandle,
-    toast_rx: mpsc::UnboundedReceiver<(String, bool)>,
+    toast_rx: crate::activity::Receiver,
 
     monitor_handle: Option<JoinHandle<()>>,
     monitor_cancel_token: CancellationToken,
@@ -536,18 +589,12 @@ pub struct TeyvatmeApp {
 
     toasts: Toasts,
 
-    power_tools_open: bool,
-    bug_report_open: bool,
+    /// A Save or Choose folder dialog to open once this frame is drawn.
+    file_request: Option<FileRequest>,
 
-    automation_settings_open: bool,
-    automation_folder_dialog: Option<FileDialog>,
-
-    optimizer_settings_open: bool,
     optimizer_export_rx: Option<oneshot::Receiver<Result<(String, ExportCounts)>>>,
     achievements_export_rx: Option<oneshot::Receiver<Result<Vec<u32>>>>,
-    wish_link_failed_for: Option<String>,
     pending_open_url: Option<String>,
-    optimizer_save_dialog: Option<FileDialog>,
     optimizer_save_path: Option<PathBuf>,
     optimizer_export_target: OptimizerExportTarget,
 
@@ -558,7 +605,6 @@ pub struct TeyvatmeApp {
 
     saved_state: SavedAppState,
 
-    tracker_key_modal_open: bool,
     tracker_account: Option<TrackerAccount>,
     tracker_verify_rx: Option<oneshot::Receiver<Result<TrackerAccount>>>,
     tracker_upload_rx: Option<oneshot::Receiver<Result<(), String>>>,
@@ -613,17 +659,13 @@ pub struct TeyvatmeApp {
     /// thread once its menu is up, hence the atomic.
     tray_menu_ready: Arc<AtomicBool>,
 
-    minimize_modal_open: bool,
-    minimize_modal_remember: bool,
-
-    app_settings_open: bool,
+    /// The window was minimized last frame, to see the title bar's minimize
+    /// button pressed.
+    was_minimized: bool,
 
     /// "Start Teyvat.me on startup": the scheduled task's state, read in the
     /// background, and the warning when it starts another copy.
     startup: Startup,
-
-    /// The window background, uploaded once; see [`load_background`].
-    background: Option<egui::TextureHandle>,
 
     /// Said once at startup when the previous run did not exit cleanly (see
     /// `crash.rs`), until dismissed.
@@ -631,7 +673,80 @@ pub struct TeyvatmeApp {
 
     /// What the first frame does with the window, then [`StartWindow::AsIs`].
     start_window: StartWindow,
+
+    /// Which screen the window shows.
+    view: View,
+    /// What the app did, for the footer and its popover.
+    activity: crate::activity::Log,
+    activity_open: bool,
+    /// The view drawn last frame and when it came up, for its fade-in.
+    shown_view: View,
+    view_shown_at: Instant,
+    /// Where this frame drew the History button, for the list under it.
+    activity_anchor: Option<egui::Rect>,
+    /// Background toasts that arrived while the window was out of sight:
+    /// the newest success and the newest problem, for the return.
+    held_notice: Option<crate::activity::Event>,
+    held_problem: Option<crate::activity::Event>,
+    /// When this session started decrypting ("Session key found · HH:mm").
+    decoding_since: Option<chrono::DateTime<chrono::Local>>,
+    last_game_status: GameStatus,
+    /// Whether this process can capture (Windows: elevated).
+    is_admin: bool,
+    applied_theme: Option<ThemeChoice>,
+    /// An update the user put off at start, for the main screen's banner and About.
+    update_put_off: Option<String>,
+    /// The folder of the last manual save, for "Open export folder".
+    last_save_folder: Option<PathBuf>,
+    started_at: Instant,
 }
+
+/// A native file dialog the UI asked for.
+#[derive(Debug)]
+pub(crate) enum FileRequest {
+    /// Where to save a GOOD export: a suggested name, in this folder.
+    SaveGood {
+        name: String,
+        folder: Option<PathBuf>,
+    },
+    /// The auto-export folder.
+    ExportFolder,
+    /// Where to save the wish history (UIGF): a suggested name.
+    SaveWishes { name: String },
+}
+
+/// The screen the window shows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum View {
+    Main,
+    Settings(Page),
+    FirstRun(Onboarding),
+}
+
+/// A settings page.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Page {
+    App,
+    Export,
+    Destinations,
+    Teyvatme,
+    Diagnostics,
+    About,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Onboarding {
+    Welcome,
+    SetUp,
+}
+
+mod frame;
+mod home;
+#[cfg(debug_assertions)]
+mod preview;
+mod run;
+mod screens;
+mod settings;
 
 /// How the window starts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -652,11 +767,6 @@ pub enum StartWindow {
 /// Set while the window is hidden to the tray: from [`TeyvatmeApp::minimize`]
 /// until [`restore_window`], which runs on the tray's thread.
 static HIDDEN_TO_TRAY: AtomicBool = AtomicBool::new(false);
-
-/// The toast stack, empty.
-fn new_toasts() -> Toasts {
-    Toasts::default().with_anchor(egui_notify::Anchor::BottomLeft)
-}
 
 trait ToastError<T> {
     fn toast_error(self, app: &mut TeyvatmeApp) -> Option<T>;
@@ -684,25 +794,6 @@ fn load_tray_icon() -> Option<tray_icon::Icon> {
     let rgba = icon_data.into_rgba8();
     let (width, height) = rgba.dimensions();
     tray_icon::Icon::from_rgba(rgba.into_raw(), width, height).ok()
-}
-
-const BACKGROUND_WEBP: &[u8] = include_bytes!("../assets/background.webp");
-
-/// Upload the window background as a texture, once.
-///
-/// It used to go through `egui::include_image!` and the installed image
-/// loaders, which keep the decoded 1600x1000 image (6 MB) in their cache for
-/// the life of the process, next to the texture made from it. A texture
-/// keeps no copy on the CPU side. The decode is the loaders' own, so the
-/// pixels are the same.
-fn load_background(ctx: &Context) -> Option<egui::TextureHandle> {
-    match egui_extras::image::load_image_bytes(BACKGROUND_WEBP) {
-        Ok(image) => Some(ctx.load_texture("background", image, egui::TextureOptions::LINEAR)),
-        Err(e) => {
-            tracing::warn!("could not decode the background image: {e}");
-            None
-        }
-    }
 }
 
 /// How long after the window is hidden or minimized its memory is handed back:
@@ -836,6 +927,8 @@ fn window_out_of_sight() -> bool {
 fn restore_window(ctx: &Context) {
     HIDDEN_TO_TRAY.store(false, Ordering::Relaxed);
     ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+    // Hidden from the title bar's minimize button, it was minimized too.
+    ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
     ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
     ctx.request_repaint();
     #[cfg(windows)]
@@ -865,7 +958,7 @@ fn start_async_runtime(
     tracing::info!("starting tokio async");
     let (ui_message_tx, ui_message_rx) = mpsc::unbounded_channel::<Message>();
     let (update_answer_tx, mut update_answer_rx) = mpsc::unbounded_channel::<UpdateAnswer>();
-    let (toast_tx, toast_rx) = mpsc::unbounded_channel::<(String, bool)>();
+    let (toast_tx, toast_rx) = mpsc::unbounded_channel::<crate::activity::Event>();
 
     let (state_tx, state_rx) = watch::channel(AppState::new());
     let crate::wish_history::WishChannels {
@@ -960,7 +1053,7 @@ impl TeyvatmeApp {
         start_window: StartWindow,
     ) -> Self {
         egui_extras::install_image_loaders(&cc.egui_ctx);
-        egui_material_icons::initialize(&cc.egui_ctx);
+        crate::ui::theme::install(&cc.egui_ctx);
 
         let mut saved_state: SavedAppState = if let Some(storage) = cc.storage {
             eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
@@ -985,7 +1078,7 @@ impl TeyvatmeApp {
         let notify_ctx = cc.egui_ctx.clone();
         let tracker_auth = TrackerAuth::new(
             &saved_state.tracker_api_url,
-            Arc::new(signin::KeyringStore),
+            Arc::new(signin::KeyringStore::taking_over_irminsul()),
             signin::device_name(),
             Arc::new(move |url| {
                 let _ = browser_tx.send(url);
@@ -1012,7 +1105,7 @@ impl TeyvatmeApp {
         }
         let _ = ui_message_tx.send(Message::Tracker(TrackerRequest::Load));
 
-        let toasts = new_toasts();
+        let toasts = Toasts::default();
 
         // Moves a Run entry left by an older version to a scheduled task, then
         // reads what Windows will start at sign-in.
@@ -1159,20 +1252,13 @@ impl TeyvatmeApp {
             tracing_reload_handle,
             toast_rx,
             toasts,
-            power_tools_open: false,
-            bug_report_open: false,
-            automation_settings_open: false,
-            automation_folder_dialog: None,
-            optimizer_settings_open: false,
+            file_request: None,
             optimizer_export_rx: None,
             achievements_export_rx: None,
-            wish_link_failed_for: None,
             pending_open_url: None,
-            optimizer_save_dialog: None,
             optimizer_save_path: None,
             optimizer_export_target: OptimizerExportTarget::None,
             restarting: false,
-            tracker_key_modal_open: false,
             tracker_account: None,
             tracker_verify_rx,
             tracker_upload_rx: None,
@@ -1188,13 +1274,25 @@ impl TeyvatmeApp {
             tray_icon,
             state_rx,
             wishes,
-            minimize_modal_open: false,
-            minimize_modal_remember: true,
-            app_settings_open: false,
+            was_minimized: false,
             startup,
-            background: load_background(&cc.egui_ctx),
             previous_run_notice,
             start_window,
+            view: View::Main,
+            activity: crate::activity::Log::default(),
+            activity_open: false,
+            activity_anchor: None,
+            shown_view: View::Main,
+            view_shown_at: Instant::now(),
+            held_notice: None,
+            held_problem: None,
+            decoding_since: None,
+            last_game_status: GameStatus::default(),
+            is_admin: is_admin(),
+            applied_theme: None,
+            update_put_off: None,
+            last_save_folder: None,
+            started_at: Instant::now(),
             monitor_cancel_token: cancel_token,
             monitor_handle: Some(monitor_handle),
             install_lock,
@@ -1254,308 +1352,15 @@ impl eframe::App for TeyvatmeApp {
         eframe::set_value(storage, eframe::APP_KEY, &self.saved_state);
     }
 
-    /// Called each time the UI needs repainting, which may be many times per second.
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Every reply from the background thread is collected here, without
-        // blocking: these used to be `blocking_recv()` calls made from inside
-        // the widget code, which froze the whole window for the length of an
-        // export or an HTTPS round trip.
-        self.poll_background_results(ctx);
-        #[cfg(windows)]
-        self.release_settled_memory();
-
-        // Read before the start-up minimize below, so the first frame is
-        // still drawn.
-        let out_of_sight = HIDDEN_TO_TRAY.load(Ordering::Relaxed)
-            || ctx.input(|i| i.viewport().minimized) == Some(true);
-
-        // eframe shows the window after painting the first frame and applies
-        // this frame's commands after that, so it is on screen for one frame.
-        match std::mem::replace(&mut self.start_window, StartWindow::AsIs) {
-            StartWindow::AsIs => {}
-            // To the tray only when that was the user's choice for the
-            // minimize button; otherwise the taskbar, where it can be found.
-            StartWindow::Minimized => {
-                let to_tray = self.saved_state.minimize_to_tray == Some(true);
-                tracing::info!(to_tray, "starting minimized");
-                self.minimize(ctx, to_tray);
-            }
-            StartWindow::Front => {
-                tracing::info!("relaunched after an update: bringing the window to the front");
-                ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
-                ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
-            }
+    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        self.run_frame(ctx);
+        if let Some(request) = self.file_request.take() {
+            self.run_file_dialog(ctx, frame, request);
         }
-
-        // Nothing is drawn while the window is out of sight. Anything that
-        // animates (a toast counting down, a spinner) asks for the next frame
-        // at once, and eframe keeps running frames for a minimized window,
-        // only napping 10 ms between them: a toast kept a minimized Teyvat.me
-        // at a full UI frame every 10 ms until it timed out, and a spinner
-        // (a sign-in left waiting) would forever. Measured: 181 frames a
-        // second on screen with a toast up, 3 in 30 s minimized once this
-        // returns early. The background's replies still wake this function
-        // and are read above. Toasts made meanwhile are dropped, as they would
-        // have timed out unseen; `toast_rx` keeps its latest ones for when the
-        // window is back.
-        if out_of_sight {
-            if !self.toasts.is_empty() {
-                self.toasts = new_toasts();
-            }
-            let _ = self.saved_state_tx.send(self.saved_state.clone());
-            return;
-        }
-
-        let minimize_modal_open = self.minimize_modal_open;
-        if minimize_modal_open {
-            Modal::new(Id::new("minimize_modal")).show(ctx, |ui| {
-                ui.heading("Minimize Behavior");
-                ui.label("Would you like to minimize to the system tray or the taskbar?");
-                ui.checkbox(&mut self.minimize_modal_remember, "Remember my choice");
-
-                ui.horizontal(|ui| {
-                    if ui.button("System Tray").clicked() {
-                        if self.minimize_modal_remember {
-                            self.saved_state.minimize_to_tray = Some(true);
-                        }
-                        self.minimize_modal_open = false;
-                        self.minimize(ui.ctx(), true);
-                    }
-                    if ui.button("Taskbar").clicked() {
-                        if self.minimize_modal_remember {
-                            self.saved_state.minimize_to_tray = Some(false);
-                        }
-                        self.minimize_modal_open = false;
-                        self.minimize(ui.ctx(), false);
-                    }
-                    if ui.button("Cancel").clicked() {
-                        self.minimize_modal_open = false;
-                    }
-                });
-            });
-        }
-
-        let app_settings_open = self.app_settings_open;
-        if app_settings_open {
-            let modal = Modal::new(Id::new("app_settings_modal")).show(ctx, |ui| {
-                ui.heading("App Settings");
-                ui.horizontal(|ui| {
-                    ui.label("Minimize Behavior:");
-                    egui::ComboBox::from_id_salt("minimize_behavior_global")
-                        .selected_text(match self.saved_state.minimize_to_tray {
-                            Some(true) => "Minimize to System Tray",
-                            Some(false) => "Minimize to Taskbar",
-                            None => "Ask Me",
-                        })
-                        .show_ui(ui, |ui| {
-                            ui.selectable_value(
-                                &mut self.saved_state.minimize_to_tray,
-                                Some(true),
-                                "Minimize to System Tray",
-                            );
-                            ui.selectable_value(
-                                &mut self.saved_state.minimize_to_tray,
-                                Some(false),
-                                "Minimize to Taskbar",
-                            );
-                            ui.selectable_value(
-                                &mut self.saved_state.minimize_to_tray,
-                                None,
-                                "Ask Me",
-                            );
-                        });
-                });
-            });
-            if modal.should_close() {
-                self.app_settings_open = false;
-            }
-        }
-
-        ctx.style_mut(|style| {
-            style.interaction.selectable_labels = false;
-            style.interaction.tooltip_delay = 0.25;
-        });
-
-        if let Some(optimizer_save_dialog) = &mut self.optimizer_save_dialog {
-            optimizer_save_dialog.update(ctx);
-        }
-        if let Some(automation_folder_dialog) = &mut self.automation_folder_dialog {
-            automation_folder_dialog.update(ctx);
-        }
-        if let Some(automation_folder_dialog) = &mut self.automation_folder_dialog
-            && let Some(path) = automation_folder_dialog.take_picked()
-        {
-            self.saved_state.save_result_folder = Some(path);
-        }
-
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.with_layout(egui::Layout::top_down(egui::Align::LEFT), |ui| {
-                if let Some(background) = &self.background {
-                    egui::Image::from_texture(background).paint_at(ui, ui.ctx().screen_rect());
-                }
-            });
-
-            ui.vertical(|ui| {
-                self.title_bar(ui);
-
-                // Handle power tools here instead of main UI to allow it to be opened
-                // in other app states.
-                let power_tools_shortcut = KeyboardShortcut {
-                    modifiers: Modifiers {
-                        command: true,
-                        shift: true,
-                        ..Default::default()
-                    },
-                    logical_key: Key::P,
-                };
-                ui.ctx().input_mut(|i| {
-                    if i.consume_shortcut(&power_tools_shortcut) {
-                        self.power_tools_open = true;
-                    }
-                });
-
-                if self.power_tools_open {
-                    let modal = Modal::new(Id::new("Power Tools")).show(ui.ctx(), |ui| {
-                        self.power_tools_modal(ui);
-                    });
-                    if modal.should_close() {
-                        self.power_tools_open = false;
-                    }
-                }
-
-                if self.bug_report_open {
-                    let modal = Modal::new(Id::new("Bug Report")).show(ui.ctx(), |ui| {
-                        self.bug_report_modal(ui);
-                    });
-                    if modal.should_close() {
-                        self.bug_report_open = false;
-                    }
-                }
-
-                ui.horizontal(|ui| {
-                    ui.add_space(525.);
-                    let state = self.state_rx.borrow_and_update().clone();
-                    ui.vertical(|ui| match state.state {
-                        State::Starting => (),
-                        State::CheckingForUpdate => self.checking_for_update_ui(ui),
-                        State::WaitingForUpdateConfirmation(status) => {
-                            self.waiting_for_update_confirmation_ui(ui, status)
-                        }
-                        State::Updating => self.updating_ui(ui),
-                        State::Updated => self.updated_ui(ui),
-                        State::CheckingForData => self.checking_for_data_ui(ui),
-                        State::WaitingForDownloadConfirmation(confirmation_type) => {
-                            self.waiting_for_download_confirmation_ui(ui, confirmation_type)
-                        }
-                        State::Downloading => self.load_data_ui(ui),
-                        State::Main => self.main_ui(ui, &state),
-                    });
-                });
-            });
-
-            ui.with_layout(egui::Layout::bottom_up(egui::Align::RIGHT), |ui| {
-                ui.horizontal(|ui| {
-                    use egui::special_emojis::GITHUB;
-                    if ui
-                        .add(Button::new(RichText::new(GITHUB).size(16.)).frame(false))
-                        .clicked()
-                    {
-                        ui.ctx()
-                            .open_url(OpenUrl::new_tab("https://github.com/tawan475/teyvat.me-capture"));
-                    }
-
-                    let button = ui.add(
-                        Button::new(
-                            RichText::new(egui_material_icons::icons::ICON_BUG_REPORT).size(16.),
-                        )
-                        .frame(false),
-                    );
-                    if button.clicked() {
-                        self.bug_report_open = true;
-                    }
-                    let settings_button = ui.add(
-                        Button::new(
-                            RichText::new(egui_material_icons::icons::ICON_SETTINGS).size(16.),
-                        )
-                        .frame(false),
-                    );
-                    if settings_button.clicked() {
-                        self.app_settings_open = true;
-                    }
-                    ui.label(env!("CARGO_PKG_VERSION").to_string())
-                        .on_hover_text(format!(
-                            "Game data: Dimbreath dump {}, embedded when this build was made",
-                            crate::monitor::embedded_game_data_sha().unwrap_or("unknown")
-                        ));
-                    egui::warn_if_debug_build(ui);
-                });
-            });
-        });
-
-        // Drain toast_rx but only keep the most recent success/error to avoid spam when waking up from tray
-        let mut latest_error = None;
-        let mut latest_success = None;
-        while let Ok((msg, is_error)) = self.toast_rx.try_recv() {
-            if is_error {
-                latest_error = Some(msg);
-            } else {
-                latest_success = Some(msg);
-            }
-        }
-        if let Some(msg) = latest_error {
-            self.toasts.error(msg);
-        }
-        if let Some(msg) = latest_success {
-            self.toasts.success(msg);
-        }
-
-        self.toasts.show(ctx);
-        self.previous_run_notice_ui(ctx);
-
-        // Push the latest saved state to the background thread
-        let _ = self.saved_state_tx.send(self.saved_state.clone());
     }
 }
 
 impl TeyvatmeApp {
-    /// The notice that the previous run did not exit cleanly.
-    ///
-    /// A toast of its own rather than an `egui_notify` one, which cannot hold a
-    /// button, and one that stays until dismissed: Teyvat.me often starts at
-    /// sign-in, long before anyone looks at it. Top left, over the background
-    /// picture, where it covers nothing and no other toast goes.
-    fn previous_run_notice_ui(&mut self, ctx: &Context) {
-        let Some(notice) = &self.previous_run_notice else {
-            return;
-        };
-        let mut open_logs = false;
-        let mut dismiss = false;
-        egui::Area::new(Id::new("previous_run_notice"))
-            .anchor(egui::Align2::LEFT_TOP, [12.0, 44.0])
-            .order(egui::Order::Foreground)
-            .show(ctx, |ui| {
-                egui::Frame::popup(ui.style()).show(ui, |ui| {
-                    ui.set_max_width(320.0);
-                    ui.label(format!(
-                        "{} {notice}",
-                        egui_material_icons::icons::ICON_WARNING
-                    ));
-                    ui.horizontal(|ui| {
-                        open_logs = ui.button("Open log folder").clicked();
-                        dismiss = ui.button("Dismiss").clicked();
-                    });
-                });
-            });
-        if open_logs {
-            thread::spawn(|| {
-                let _ = open_log_dir();
-            });
-        }
-        if open_logs || dismiss {
-            self.previous_run_notice = None;
-        }
-    }
-
     /// Collect everything the background thread has answered since the last
     /// frame. Called once at the top of `update`.
     fn poll_background_results(&mut self, ctx: &Context) {
@@ -1582,8 +1387,8 @@ impl TeyvatmeApp {
 
         match result {
             Ok(()) => {
-                self.toasts
-                    .success("Successfully synced capture to Tracker!");
+                let host = self.tracker_host();
+                self.toasts.success(format!("Uploaded to {host}"));
             }
             Err(e) => {
                 // A refused key is re-verified; a refused sign-in is the
@@ -1595,7 +1400,10 @@ impl TeyvatmeApp {
                     self.tracker_account = None;
                     self.request_tracker_verify();
                 }
-                self.toasts.error(format!("Tracker sync failed: {e}"));
+                let host = self.tracker_host();
+                self.toasts
+                    .error(format!("{host} upload failed · {e}"))
+                    .action(crate::ui::toast::Action::RetryUpload);
             }
         }
     }
@@ -1613,13 +1421,6 @@ impl TeyvatmeApp {
         self.apply_tracker_verify_result(result);
     }
 
-    /// Hide to the tray, or fall back to the taskbar when there is no tray menu
-    /// to come back through.
-    ///
-    /// On Linux `TrayIconEvent` is never delivered, so a tray without a working
-    /// menu is a one-way trip: the window disappears with no restore and no
-    /// quit, and "Remember my choice" puts the next launch one click from the
-    /// same trap.
     /// Schedule the start-up and game-session memory releases (see
     /// [`release_memory_after`]); cheap to call every frame.
     #[cfg(windows)]
@@ -1640,6 +1441,12 @@ impl TeyvatmeApp {
         self.memory_release_status = now;
     }
 
+    /// Hide to the tray, or fall back to the taskbar when there is no tray menu
+    /// to come back through.
+    ///
+    /// On Linux `TrayIconEvent` is never delivered, so a tray without a working
+    /// menu is a one-way trip: the window would disappear with no restore and
+    /// no quit.
     fn minimize(&self, ctx: &Context, to_tray: bool) {
         #[cfg(windows)]
         release_memory_once_hidden();
@@ -1656,470 +1463,6 @@ impl TeyvatmeApp {
         ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
     }
 
-    fn title_bar(&mut self, ui: &mut egui::Ui) {
-        let (_, button_width) = egui::Sides::new().show(
-            ui,
-            |_ui| {},
-            |ui| {
-                let mut width = 0.0;
-
-                let close_button = ui.add(
-                    Button::new(RichText::new(egui_material_icons::icons::ICON_CLOSE).size(24.))
-                        .frame(false),
-                );
-                if close_button.clicked() {
-                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
-                }
-                width += close_button.rect.width();
-
-                let min_button = ui.add(
-                    Button::new(RichText::new(egui_material_icons::icons::ICON_MINIMIZE).size(24.))
-                        .frame(false),
-                );
-                if min_button.clicked() {
-                    match self.saved_state.minimize_to_tray {
-                        Some(to_tray) => self.minimize(ui.ctx(), to_tray),
-                        None => {
-                            self.minimize_modal_open = true;
-                        }
-                    }
-                }
-                width += min_button.rect.width();
-
-                width
-            },
-        );
-
-        let app_rect = ui.max_rect();
-
-        let title_bar_height = 32.0;
-        let title_bar_rect = {
-            let mut rect = app_rect;
-            rect.max.y = rect.min.y + title_bar_height;
-            rect.max.x -= button_width;
-            rect
-        };
-
-        let response = ui.interact(
-            title_bar_rect,
-            Id::new("title_bar"),
-            Sense::click_and_drag(),
-        );
-
-        if response.drag_started_by(PointerButton::Primary) {
-            ui.ctx().send_viewport_cmd(ViewportCommand::StartDrag);
-        }
-    }
-
-    fn checking_for_update_ui(&self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            ui.label("Checking for Teyvat.me updates".to_string());
-        });
-    }
-
-    fn waiting_for_update_confirmation_ui(&self, ui: &mut egui::Ui, version: String) {
-        ui.label(format!(
-            "Update {} available.  Download and install?",
-            version
-        ));
-
-        ui.horizontal(|ui| {
-            // These go on their own channel: the update check used to read the
-            // answer straight off the shared UI channel, which meant it also
-            // consumed and discarded the startup StartCapture and
-            // VerifyTrackerKey messages queued behind it.
-            if ui.add(egui::Button::new("Yes")).clicked()
-                && let Err(e) = self.update_answer_tx.send(UpdateAnswer::Accepted)
-            {
-                tracing::error!("Unable to send UI message: {e}");
-            }
-            if ui.add(egui::Button::new("No")).clicked()
-                && let Err(e) = self.update_answer_tx.send(UpdateAnswer::Declined)
-            {
-                tracing::error!("Unable to send UI message: {e}");
-            }
-        });
-    }
-
-    fn updating_ui(&self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            ui.label("Downloading and updating...".to_string());
-            ui.spinner();
-        });
-    }
-
-    fn updated_ui(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            ui.label("Updated. Restarting...".to_string());
-        });
-        if !self.restarting {
-            self.restarting = true;
-            // Only ask to close. The replacement is launched by `main` once
-            // `run_native` has returned and the single-instance mutex has been
-            // released — spawning it from here meant the child immediately hit
-            // the mutex this process still held and exited with "Another
-            // instance is already running", leaving the user with a frozen
-            // window and no visible replacement.
-            self.restart_requested.store(true, Ordering::SeqCst);
-            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
-        }
-    }
-
-    fn checking_for_data_ui(&self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            ui.label("Checking for game data updates".to_string());
-        });
-    }
-
-    fn waiting_for_download_confirmation_ui(
-        &self,
-        ui: &mut egui::Ui,
-        confirmation_type: ConfirmationType,
-    ) {
-        let label = match confirmation_type {
-            ConfirmationType::Initial => "Teyvat.me needs to download initial data",
-            ConfirmationType::Update => "New data available",
-        };
-        ui.label(label.to_string());
-        if ui.add(egui::Button::new("Download")).clicked()
-            && let Err(e) = self.ui_message_tx.send(Message::DownloadAcknowledged)
-        {
-            tracing::error!("Unable to send UI message: {e}");
-        }
-    }
-
-    fn load_data_ui(&self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            ui.label("Downloading Data".to_string());
-            ui.spinner();
-        });
-    }
-
-    fn main_ui(&mut self, ui: &mut egui::Ui, app_state: &AppState) {
-        if self.optimizer_settings_open {
-            let modal = Modal::new(Id::new("Optimizer Settings")).show(ui.ctx(), |ui| {
-                self.optimizer_settings_modal(ui);
-            });
-            if modal.should_close() {
-                self.optimizer_settings_open = false;
-            }
-        }
-        self.capture_ui(ui, app_state);
-        ui.separator();
-        // The wish URL is built from the key the game sends when its wish
-        // history is opened, so the section works wherever capture does.
-        self.wish_ui(ui, app_state);
-        ui.separator();
-        self.achievement_ui(ui, app_state);
-        ui.separator();
-        self.automation_ui(ui);
-        ui.separator();
-        self.tracker_ui(ui, app_state);
-    }
-
-    fn capture_ui(&mut self, ui: &mut egui::Ui, app_state: &AppState) {
-        // Raise the modal on entering the problem state, not on every poll.
-        // Keyed on the cause so that a *different* cause -- capture stopped
-        // after an already-running session -- speaks up again rather than being
-        // swallowed by the first one.
-        // Only `AlreadyRunning` interrupts. `CaptureStopped` is reached by
-        // pressing Stop -- telling someone they stopped capture, in a modal,
-        // immediately after they chose to stop capture, is nagging. That state
-        // still turns the status line red and carries its own tooltip, and a
-        // backend that died on its own already raises its own error toast.
-        match app_state.game_status {
-            GameStatus::LaunchMissed(cause @ MissedLaunch::AlreadyRunning) => {
-                if self.game_missed_modal_shown_for != Some(cause) {
-                    self.game_missed_modal_shown_for = Some(cause);
-                    self.game_missed_modal_open = true;
-                }
-            }
-            // Re-arm once the game is gone or a watched session starts, so a
-            // later already-running session speaks up again.
-            GameStatus::LaunchMissed(MissedLaunch::CaptureStopped) => {}
-            _ => self.game_missed_modal_shown_for = None,
-        }
-
-        if let Some(rx) = &mut self.game_kill_rx {
-            match rx.try_recv() {
-                Ok(0) => {
-                    self.game_kill_rx = None;
-                    // Not an error: the process may have exited on its own
-                    // between the click and the kill.
-                    self.toasts.info("No running Genshin process to close.");
-                }
-                Ok(killed) => {
-                    self.game_kill_rx = None;
-                    self.toasts.success(if killed == 1 {
-                        "Genshin closed. Start it again to capture this session.".to_string()
-                    } else {
-                        format!(
-                            "Closed {killed} Genshin processes. Start the game again to capture."
-                        )
-                    });
-                }
-                Err(oneshot::error::TryRecvError::Closed) => {
-                    // The monitor thread is gone; without this arm the button
-                    // would sit disabled for the rest of the session.
-                    self.game_kill_rx = None;
-                    self.toasts.error("Unable to reach the capture backend.");
-                }
-                Err(oneshot::error::TryRecvError::Empty) => {}
-            }
-        }
-
-        if self.game_missed_modal_open {
-            let cause = self.game_missed_modal_shown_for;
-            let modal = Modal::new(Id::new("Game Already Running")).show(ui.ctx(), |ui| {
-                self.game_missed_modal(ui, cause);
-            });
-            if modal.should_close() {
-                self.game_missed_modal_open = false;
-            }
-        }
-
-        ui.vertical(|ui| {
-            egui::Sides::new().show(
-                ui,
-                |ui| {
-                    Self::section_header(ui, "Packet Capture");
-                },
-                |ui| {
-                    // No capture on/off control by design: capture is meant to
-                    // be running for as long as Teyvat.me is, and a backend that
-                    // dies is brought back by the supervisor in `monitor.rs`
-                    // rather than by the user noticing a stopped indicator. The
-                    // game status line below reports whether it is actually
-                    // reading anything, which is the question a button could
-                    // never answer.
-                    if ui
-                        .button(egui_material_icons::icons::ICON_SETTINGS)
-                        .clicked()
-                    {
-                        self.optimizer_settings_open = true;
-                    }
-
-                    ui.add_enabled_ui(self.optimizer_export_rx.is_none(), |ui| {
-                        // Only what this export writes. Requiring achievements
-                        // here meant an account whose achievement packet was
-                        // never seen could not export its artifacts either.
-                        let missing = missing_export_data(
-                            &self.saved_state.export_settings,
-                            &app_state.updated,
-                        );
-
-                        if ui
-                            .button(egui_material_icons::icons::ICON_DOWNLOAD)
-                            .clicked()
-                        {
-                            if missing.is_empty() {
-                                let now = Local::now();
-                                let mut optimizer_save_dialog = FileDialog::new()
-                                    .add_file_filter_extensions("JSON files", vec!["json"])
-                                    .default_file_name(&format!(
-                                        "genshin_export_{}.json",
-                                        now.format("%Y-%m-%d_%H-%M")
-                                    ));
-                                optimizer_save_dialog.save_file();
-                                self.optimizer_save_dialog = Some(optimizer_save_dialog);
-                            } else {
-                                self.toasts.error(missing_export_data_toast(&missing));
-                            }
-                        }
-
-                        if let Some(optimizer_save_dialog) = &mut self.optimizer_save_dialog
-                            && let Some(path) = optimizer_save_dialog.take_picked()
-                        {
-                            self.optimizer_save_path = Some(path);
-                            self.genshin_optimizer_request_export(OptimizerExportTarget::File);
-                        }
-
-                        if ui
-                            .button(egui_material_icons::icons::ICON_CONTENT_PASTE_GO)
-                            .clicked()
-                        {
-                            if missing.is_empty() {
-                                self.genshin_optimizer_request_export(
-                                    OptimizerExportTarget::Clipboard,
-                                );
-                            } else {
-                                self.toasts.error(missing_export_data_toast(&missing));
-                            }
-                        }
-                    });
-                },
-            );
-        });
-        egui::Grid::new("capture_stats")
-            .striped(false)
-            .num_columns(2)
-            .min_col_width(0.)
-            .show(ui, |ui| {
-                Self::data_state(ui, "Items", app_state.updated.items_updated);
-                Self::data_state(ui, "Characters", app_state.updated.characters_updated);
-                Self::data_state(ui, "Achievements", app_state.updated.achievements_updated);
-            });
-
-        ui.add_space(4.0);
-
-        let status_text = match app_state.updated.achievements_updated_time {
-            None => RichText::new("Status: Ready to capture").strong(),
-            Some(updated_time) => {
-                // The countdown runs for CAPTURE_SUCCESS_DISPLAY and then hands
-                // over to the "Last capture at" line. Keying the two branches
-                // off `achievements_updated.is_some()` instead made the second
-                // one dead code — that field is only ever cleared by
-                // Message::ClearData — and left the app asking for a repaint
-                // every frame, forever, from the first achievement packet on.
-                let remaining = app_state
-                    .updated
-                    .achievements_updated
-                    .and_then(|updated| CAPTURE_SUCCESS_DISPLAY.checked_sub(updated.elapsed()));
-
-                match remaining {
-                    Some(remaining) => {
-                        // Bounded: this stops on its own once the countdown
-                        // reaches zero, instead of pinning the UI at vsync.
-                        ui.ctx().request_repaint_after(Duration::from_millis(250));
-                        RichText::new(format!(
-                            "Status: Capture success [{}s]",
-                            remaining.as_secs()
-                        ))
-                        .color(Color32::from_hex("#00ab3f").unwrap())
-                        .strong()
-                    }
-                    None => RichText::new(format!(
-                        "Status: Ready to capture, Last capture at {}",
-                        updated_time.format("%H:%M:%S")
-                    ))
-                    .strong(),
-                }
-            }
-        };
-        ui.label(status_text);
-
-        // Under "Status", as asked. The two lines above report Teyvat.me's own
-        // health -- the backend is up, this much data has arrived -- and both
-        // used to read perfectly green while the session could never be
-        // decrypted at all, because the game had been started first. This line
-        // reports that, and it is the only one of the three that can tell the
-        // user to do something.
-        let game_status = app_state.game_status;
-        let mut line = match game_status.severity() {
-            Severity::Problem => RichText::new(format!(
-                "{} {}",
-                egui_material_icons::icons::ICON_WARNING,
-                game_status.label()
-            ))
-            .color(Color32::RED),
-            Severity::Good => {
-                RichText::new(game_status.label()).color(Color32::from_hex("#00ab3f").unwrap())
-            }
-            Severity::Neutral => RichText::new(game_status.label()),
-        };
-        line = line.strong();
-        ui.label(line).on_hover_text(game_status.tooltip());
-    }
-
-    /// The modal raised when the game is running but its launch was missed, so
-    /// nothing from this session can ever be decrypted.
-    ///
-    /// Three ways out, because there are genuinely three reasonable answers:
-    /// give up on this session, restart the game, or carry on and deal with it
-    /// later. Dismissing leaves the red status line in place, so the state is
-    /// never hidden -- only the interruption is.
-    fn game_missed_modal(&mut self, ui: &mut egui::Ui, cause: Option<MissedLaunch>) {
-        ui.set_width(420.0);
-        ui.heading(match cause {
-            Some(MissedLaunch::CaptureStopped) => "Genshin ran while capture was off",
-            _ => "Genshin was already in the world",
-        });
-        ui.separator();
-        ui.label(match cause {
-            Some(MissedLaunch::CaptureStopped) => "Capture was off when you logged in.",
-            _ => "Teyvat.me started after you entered the world.",
-        });
-        ui.add_space(6.0);
-        ui.label(
-            RichText::new("Return to the title screen and enter again, or restart Genshin.")
-                .strong(),
-        );
-        ui.separator();
-
-        // `egui::Sides` hands a `&mut Ui` to two closures at once, so neither
-        // may borrow `self`. Decide here, act after.
-        enum Choice {
-            KillGame,
-            Dismiss,
-        }
-        // A `Cell` rather than a plain local: `Sides` takes both closures at
-        // once, so the borrow checker cannot see that they never run together.
-        let choice: std::cell::Cell<Option<Choice>> = std::cell::Cell::new(None);
-        let kill_pending = self.game_kill_rx.is_some();
-
-        egui::Sides::new().show(
-            ui,
-            |ui| {
-                // No "quit Teyvat.me" here: next to a dismiss button it was
-                // clicked by mistake, and quitting doesn't fix a missed
-                // login anyway (entering the world again does).
-                ui.add_enabled_ui(!kill_pending, |ui| {
-                    if ui
-                        .button("Close Genshin")
-                        .on_hover_text(
-                            "Force-quits the game. Progress is safe; a domain run or fight in progress is lost.",
-                        )
-                        .clicked()
-                    {
-                        choice.set(Some(Choice::KillGame));
-                    }
-                });
-            },
-            |ui| {
-                if ui
-                    .button(RichText::new("OK").strong())
-                    .on_hover_text(
-                        "Dismiss this. The game status line stays red until a session Teyvat.me watched start.",
-                    )
-                    .clicked()
-                {
-                    choice.set(Some(Choice::Dismiss));
-                }
-            },
-        );
-
-        let Some(choice) = choice.take() else {
-            return;
-        };
-        self.game_missed_modal_open = false;
-
-        match choice {
-            Choice::KillGame => {
-                let (tx, rx) = oneshot::channel();
-                if let Err(e) = self.ui_message_tx.send(Message::KillGame(tx)) {
-                    tracing::error!("Unable to send kill game message: {e}");
-                    self.toasts.error("Unable to reach the capture backend.");
-                } else {
-                    self.game_kill_rx = Some(rx);
-                    self.toasts.info("Closing Genshin...");
-                }
-            }
-            Choice::Dismiss => {}
-        }
-        ui.close();
-    }
-
-    fn data_state(ui: &mut egui::Ui, source: &str, last_updated: Option<Instant>) {
-        let updated_icon = match last_updated {
-            Some(_) => RichText::new(egui_material_icons::icons::ICON_CHECK_CIRCLE)
-                .color(Color32::from_hex("#00ab3f").unwrap()),
-            None => RichText::new(egui_material_icons::icons::ICON_CHECK_INDETERMINATE_SMALL),
-        };
-        ui.label(updated_icon);
-        ui.label(source);
-        ui.end_row();
-    }
-
     fn genshin_optimizer_request_export(&mut self, target: OptimizerExportTarget) {
         let (tx, rx) = oneshot::channel();
         let _ = self.ui_message_tx.send(Message::ExportGenshinOptimizer(
@@ -2128,121 +1471,6 @@ impl TeyvatmeApp {
         ));
         self.optimizer_export_target = target;
         self.optimizer_export_rx = Some(rx);
-    }
-
-    /// The wish section, kept compact: the header with Copy, one line only
-    /// when there is something to say (no key, or the sync), and the two
-    /// links. Everything else is in tooltips.
-    ///
-    /// Copy and the links need this login's key: without one they are
-    /// disabled.
-    fn wish_ui(&mut self, ui: &mut egui::Ui, app_state: &AppState) {
-        const NO_KEY: &str = "No wish key yet: open the wish history in game";
-        let now = Instant::now();
-        let wish_url = self.wishes.wish_url(now);
-        let uid_known = app_state
-            .player
-            .as_ref()
-            .is_some_and(|player| player.uid.is_some());
-        let status = self.wishes.status(now, app_state.game_status, uid_known);
-        ui.vertical(|ui| {
-            egui::Sides::new().show(
-                ui,
-                |ui| {
-                    Self::section_header(ui, "Wish History");
-                    ui.label(egui_material_icons::icons::ICON_HELP)
-                        .on_hover_text(
-                            "Teyvat.me takes your wish key from the game when its wish history \
-                             page opens; each login starts fresh. Click the Copy icon to copy \
-                             the wish URL, then paste it into paimon.moe (Manual import) or \
-                             StarDB. With the Tracker set up and uploads on, new wishes are \
-                             sent to it as well.",
-                        );
-                },
-                |ui| {
-                    ui.add_enabled_ui(wish_url.is_some(), |ui| {
-                        let copy = ui
-                            .button(egui_material_icons::icons::ICON_CONTENT_PASTE_GO)
-                            .on_hover_text(format!("Copy wish URL\n{}", status.text))
-                            .on_disabled_hover_text(NO_KEY);
-                        if copy.clicked()
-                            && let Some(url) = &wish_url
-                        {
-                            ui.ctx().copy_text(url.clone());
-                            self.toasts.info("Wish URL copied to clipboard");
-                        }
-                    });
-                },
-            );
-            if wish_url.is_none() {
-                ui.label(RichText::new(&status.text).weak())
-                    .on_hover_text(&status.tooltip);
-            }
-            if let Some(line) = self.wishes.sync_line(now) {
-                ui.label(RichText::new(line).weak())
-                    .on_hover_text(&status.tooltip);
-            }
-            ui.horizontal(|ui| {
-                for (label, target) in [
-                    ("Open Paimon.moe", "https://paimon.moe/wish/import"),
-                    ("Open StarDB", "https://stardb.gg/en/genshin/wish-import"),
-                ] {
-                    let link = ui
-                        .add_enabled(wish_url.is_some(), egui::Link::new(label))
-                        .on_hover_text("Copies the wish URL and opens the page")
-                        .on_disabled_hover_text(NO_KEY);
-                    if link.clicked()
-                        && let Some(url) = &wish_url
-                    {
-                        ui.ctx().copy_text(url.clone());
-                        self.toasts.info("Wish URL copied to clipboard");
-                        ui.ctx().open_url(egui::OpenUrl::new_tab(target));
-                    }
-                }
-            });
-        });
-    }
-
-    fn automation_ui(&mut self, ui: &mut egui::Ui) {
-        if self.automation_settings_open {
-            let modal = Modal::new(Id::new("Automation Settings")).show(ui.ctx(), |ui| {
-                self.automation_settings_modal(ui);
-            });
-            if modal.should_close() {
-                self.automation_settings_open = false;
-            }
-        }
-        self.startup
-            .modal_ui(ui.ctx(), self.saved_state.start_on_startup);
-
-        ui.vertical(|ui| {
-            egui::Sides::new().show(
-                ui,
-                |ui| {
-                    Self::section_header(ui, "Automation");
-                },
-                |_ui| {},
-            );
-
-            ui.add_enabled_ui(true, |ui| {
-                self.startup
-                    .checkbox_ui(ui, &mut self.saved_state.start_on_startup);
-                ui.horizontal(|ui| {
-                    ui.checkbox(
-                        &mut self.saved_state.save_result_to_file,
-                        "Save result to file",
-                    );
-                    ui.add_enabled_ui(self.saved_state.save_result_to_file, |ui| {
-                        if ui
-                            .button(egui_material_icons::icons::ICON_SETTINGS)
-                            .clicked()
-                        {
-                            self.automation_settings_open = true;
-                        }
-                    });
-                });
-            });
-        });
     }
 
     fn apply_tracker_verify_result(&mut self, result: Result<TrackerAccount>) {
@@ -2254,8 +1482,8 @@ impl TeyvatmeApp {
             Err(e) => {
                 self.tracker_account = None;
                 self.saved_state.tracker_verified = false;
-                self.toasts
-                    .error(format!("Failed to verify tracker key: {}", e));
+                tracing::warn!("could not verify the import key: {e}");
+                self.toasts.error("Couldn't verify the import key");
             }
         }
     }
@@ -2400,238 +1628,6 @@ impl TeyvatmeApp {
         }
     }
 
-    /// The "Sign in" button, with the reason the last sign-in ended or
-    /// failed behind a warning icon.
-    fn sign_in_button(&mut self, ui: &mut egui::Ui, notice: Option<&String>) {
-        let host = signin::host_of(&self.saved_state.tracker_api_url)
-            .unwrap_or_else(|| "the tracker".to_string());
-        if ui
-            .button(format!(
-                "{} Sign in",
-                egui_material_icons::icons::ICON_LOGIN
-            ))
-            .on_hover_text(format!("Sign in to {host} in your browser"))
-            .clicked()
-        {
-            self.send_tracker(TrackerRequest::SignIn);
-        }
-        if let Some(notice) = notice {
-            ui.label(RichText::new(egui_material_icons::icons::ICON_WARNING).color(Color32::RED))
-                .on_hover_text(notice);
-        }
-    }
-
-    /// The sign-in's state while it is not plain "signed out": waiting on
-    /// the browser, or who is signed in and where uploads go. Shared by the
-    /// panel and the settings window.
-    /// The sign-in's state; with `show_target`, also where uploads go and
-    /// Configure (the Tracker settings dialog only: the section stays short).
-    fn sign_in_status_ui(&mut self, ui: &mut egui::Ui, status: &AuthStatus, show_target: bool) {
-        match status {
-            AuthStatus::Loading => {
-                ui.label(RichText::new("…").color(Color32::GRAY));
-            }
-            AuthStatus::SignedOut { notice } => {
-                ui.horizontal(|ui| self.sign_in_button(ui, notice.as_ref()));
-            }
-            AuthStatus::Waiting { link } => {
-                ui.horizontal(|ui| {
-                    ui.spinner();
-                    ui.label(RichText::new("Waiting for the browser…").color(Color32::YELLOW))
-                        .on_hover_text("Finish signing in on the page that opened.");
-                    if let Some(link) = link
-                        && ui
-                            .small_button(egui_material_icons::icons::ICON_CONTENT_COPY)
-                            .on_hover_text(
-                                "Copy the sign-in link, to open it in the browser you use",
-                            )
-                            .clicked()
-                    {
-                        ui.ctx().copy_text(link.clone());
-                        self.toasts.info("Sign-in link copied");
-                    }
-                    if ui.small_button("Cancel").clicked() {
-                        self.send_tracker(TrackerRequest::CancelSignIn);
-                    }
-                });
-            }
-            AuthStatus::SignedIn { whoami, error } => {
-                let host = signin::host_of(&self.saved_state.tracker_api_url).unwrap_or_default();
-                ui.horizontal(|ui| {
-                    let user = whoami.as_ref().map_or("…", |w| w.user.as_str());
-                    ui.label(
-                        RichText::new(format!("Signed in as {user}"))
-                            .color(Color32::from_hex("#00ab3f").unwrap()),
-                    )
-                    .on_hover_text(format!("Uploads go to {host}"));
-                    if let Some(error) = error {
-                        ui.label(
-                            RichText::new(egui_material_icons::icons::ICON_WARNING)
-                                .color(Color32::RED),
-                        )
-                        .on_hover_text(error);
-                    }
-                    if ui
-                        .small_button(egui_material_icons::icons::ICON_LOGOUT)
-                        .on_hover_text("Sign out")
-                        .clicked()
-                    {
-                        self.send_tracker(TrackerRequest::SignOut);
-                    }
-                });
-                if !show_target {
-                    return;
-                }
-                ui.horizontal(|ui| {
-                    let target = whoami
-                        .as_ref()
-                        .map_or_else(|| "…".to_string(), Whoami::target_label);
-                    // Account mode whose account was deleted: nothing uploads
-                    // (409 `upload_target_missing`) until one is chosen.
-                    let unset = whoami
-                        .as_ref()
-                        .is_some_and(|w| w.scope == UploadScope::Account && w.account_id.is_none());
-                    let (colour, hover) = if unset {
-                        (
-                            Color32::RED,
-                            "The account uploads went to is gone. Choose another.",
-                        )
-                    } else {
-                        (
-                            Color32::GRAY,
-                            "Where this PC's uploads go. Change it on the tracker.",
-                        )
-                    };
-                    ui.label(RichText::new(format!("Uploads: {target}")).color(colour))
-                        .on_hover_text(hover);
-                    if let Some(url) = whoami.as_ref().and_then(|w| w.config_url.as_ref())
-                        && ui
-                            .small_button("Configure")
-                            .on_hover_text("Choose where uploads go, on the tracker")
-                            .clicked()
-                    {
-                        ui.ctx().open_url(OpenUrl::new_tab(url));
-                    }
-                });
-            }
-        }
-    }
-
-    /// The import key's account lines, for while signed out.
-    fn import_key_status_ui(&self, ui: &mut egui::Ui, captured_uid: Option<u32>) {
-        if self.saved_state.tracker_import_key.is_empty() {
-            return;
-        }
-        if let Some(account) = &self.tracker_account {
-            ui.label(
-                RichText::new(format!("Account: {}", account.name))
-                    .color(Color32::from_hex("#00ab3f").unwrap()),
-            )
-            .on_hover_text("Linked with an import key");
-            ui.horizontal(|ui| {
-                ui.label(RichText::new(format!("UID: {}", account.uid)).color(Color32::GRAY));
-                ui.label(RichText::new("•").color(Color32::DARK_GRAY));
-                ui.label(RichText::new(format!("Server: {}", account.server)).color(Color32::GRAY));
-            });
-            // Shown for as long as it is true; the toast in
-            // `note_uid_mismatch` only announces it.
-            if let Some(captured) = uid_mismatch(account, captured_uid) {
-                ui.label(
-                    RichText::new(format!(
-                        "{} Captured UID {captured} is not this account's",
-                        egui_material_icons::icons::ICON_WARNING
-                    ))
-                    .color(Color32::RED),
-                )
-                .on_hover_text(uid_mismatch_message(account, captured));
-            }
-        } else if self.tracker_verify_rx.is_some() {
-            ui.label(RichText::new("Verifying key...").color(Color32::YELLOW));
-        } else {
-            ui.label(RichText::new("Import key not verified").color(Color32::RED))
-                .on_hover_text("The tracker did not accept the import key, or was unreachable");
-        }
-    }
-
-    /// The tracker window's "Advanced" part: the tracker address and the
-    /// import key, the older way to link an account.
-    fn tracker_advanced_ui(&mut self, ui: &mut egui::Ui) {
-        // The URL used to be compile-time only (`#[serde(skip)]`, no
-        // widget), so anyone self-hosting on another host or port had to
-        // rebuild Teyvat.me to point it at their backend. It is now edited
-        // here and only takes effect once confirmed (`pending_address`).
-        ui.label("Tracker address").on_hover_text(
-            "The tracker's API address. A sign-in belongs to one address: changing it signs out.",
-        );
-        let change = address_change(&self.saved_state.tracker_api_url, &self.tracker_url_edit);
-        ui.horizontal(|ui| {
-            ui.add(
-                egui::TextEdit::singleline(&mut self.tracker_url_edit)
-                    .hint_text(default_tracker_url())
-                    .desired_width(230.0),
-            );
-            if ui
-                .add_enabled(
-                    matches!(change, AddressChange::To { .. }),
-                    Button::new("Apply"),
-                )
-                .clicked()
-                && let AddressChange::To { base, .. } = &change
-            {
-                self.pending_address = Some(base.clone());
-            }
-            if ui
-                .small_button(egui_material_icons::icons::ICON_RESTART_ALT)
-                .on_hover_text("Default address")
-                .clicked()
-            {
-                self.tracker_url_edit = default_tracker_url();
-            }
-        });
-        if change == AddressChange::Invalid {
-            ui.label(
-                RichText::new("Not an http(s) address")
-                    .color(Color32::RED)
-                    .small(),
-            );
-        }
-
-        ui.add_space(6.0);
-        ui.label("Import key").on_hover_text(
-            "Only used while signed out. Generate one on the tracker's dashboard and paste it here.",
-        );
-        ui.add(egui::TextEdit::singleline(&mut self.saved_state.tracker_import_key).password(true));
-        warning_note(
-            ui,
-            "Stored in plain text in Teyvat.me's app data and never expires. Signing in is safer.",
-        );
-        ui.horizontal(|ui| {
-            if ui
-                .button("Clear key")
-                .on_hover_text("Remove the stored key from this machine.")
-                .clicked()
-            {
-                self.saved_state.tracker_import_key.clear();
-                self.tracker_account = None;
-                self.saved_state.tracker_verified = false;
-                self.tracker_verify_rx = None;
-            }
-            if self.tracker_verify_rx.is_some() {
-                ui.label(RichText::new("Verifying key…").color(Color32::YELLOW));
-            } else if self.saved_state.tracker_verified {
-                if let Some(account) = &self.tracker_account {
-                    ui.label(
-                        RichText::new(format!("Valid: {} (UID {})", account.name, account.uid))
-                            .color(Color32::from_hex("#00ab3f").unwrap()),
-                    )
-                    .on_hover_text(format!("Server: {}", account.server));
-                }
-            } else if !self.saved_state.tracker_import_key.is_empty() {
-                ui.label(RichText::new("Key invalid or unreachable").color(Color32::RED));
-            }
-        });
-    }
-
     /// Point uploads at another tracker, once the user confirmed it.
     fn apply_tracker_address(&mut self, base: String) {
         tracing::info!("Tracker API URL changed to {base}");
@@ -2641,448 +1637,6 @@ impl TeyvatmeApp {
         self.saved_state.tracker_sign_in = TrackerSignIn::Unknown;
         self.send_tracker(TrackerRequest::SetAddress(base));
         self.request_tracker_verify();
-    }
-
-    fn tracker_ui(&mut self, ui: &mut egui::Ui, app_state: &AppState) {
-        let status = self.auth_status_rx.borrow().clone();
-
-        if self.tracker_key_modal_open {
-            let modal = Modal::new(Id::new("Tracker Key Modal")).show(ui.ctx(), |ui| {
-                ui.set_width(360.0);
-                ui.heading("Tracker");
-                ui.separator();
-                self.sign_in_status_ui(ui, &status, true);
-                ui.add_space(6.0);
-                egui::CollapsingHeader::new("Advanced")
-                    .id_salt("tracker_advanced")
-                    .show(ui, |ui| self.tracker_advanced_ui(ui));
-                ui.separator();
-                if ui.button("Save & Close").clicked() {
-                    self.tracker_key_modal_open = false;
-                    self.request_tracker_verify();
-                }
-            });
-            if modal.should_close() {
-                self.tracker_key_modal_open = false;
-            }
-        }
-
-        // "Uploads will now go to <host>": every upload carries the whole
-        // account, so a pasted lookalike address must not slip through.
-        if let Some(base) = self.pending_address.clone() {
-            let host = signin::host_of(&base).unwrap_or_else(|| base.clone());
-            let mut answer = None;
-            let modal = Modal::new(Id::new("Tracker Address Modal")).show(ui.ctx(), |ui| {
-                ui.set_width(320.0);
-                ui.label(format!("Uploads will now go to {host}. Continue?"));
-                if self.saved_state.tracker_sign_in == TrackerSignIn::SignedIn {
-                    warning_note(ui, "You will be signed out of the current tracker.");
-                }
-                ui.horizontal(|ui| {
-                    if ui.button("Continue").clicked() {
-                        answer = Some(true);
-                    }
-                    if ui.button("Cancel").clicked() {
-                        answer = Some(false);
-                    }
-                });
-            });
-            if modal.should_close() && answer.is_none() {
-                answer = Some(false);
-            }
-            match answer {
-                Some(true) => {
-                    self.pending_address = None;
-                    self.apply_tracker_address(base);
-                }
-                Some(false) => self.pending_address = None,
-                None => {}
-            }
-        }
-
-        let captured_uid = app_state.player.as_ref().and_then(|player| player.uid);
-        self.note_uid_mismatch(captured_uid);
-
-        let signed_in = self.saved_state.tracker_sign_in == TrackerSignIn::SignedIn;
-        // Signed in: whoami's link. Otherwise only while the key is verified:
-        // `tracker_account` is set by a successful verify and cleared
-        // whenever one starts or fails.
-        let dashboard_url = match &status {
-            AuthStatus::SignedIn { whoami, .. } => {
-                whoami.as_ref().and_then(|w| w.dashboard_url.clone())
-            }
-            _ => self
-                .tracker_account
-                .as_ref()
-                .and_then(|account| account.dashboard_url.clone()),
-        };
-
-        ui.vertical(|ui| {
-            egui::Sides::new().show(
-                ui,
-                |ui| {
-                    Self::section_header(ui, "Tracker");
-                },
-                |ui| {
-                    ui.horizontal(|ui| {
-                        if ui
-                            .button(egui_material_icons::icons::ICON_REFRESH)
-                            .clicked()
-                        {
-                            if signed_in {
-                                self.whoami_checked_at = Some(Instant::now());
-                                self.send_tracker(TrackerRequest::Refresh);
-                            } else {
-                                self.request_tracker_verify();
-                            }
-                        }
-                        // Only the classes this upload actually writes, and
-                        // the same check the click handler makes -- an
-                        // enabled button whose handler then refuses is
-                        // exactly what this used to be.
-                        let missing = missing_export_data(
-                            &OptimizerExportTarget::TrackerManual
-                                .export_settings(&self.saved_state.export_settings),
-                            &app_state.updated,
-                        );
-                        ui.add_enabled_ui(
-                            missing.is_empty()
-                                && can_upload_to_tracker(&self.saved_state)
-                                && self.optimizer_export_rx.is_none(),
-                            |ui| {
-                                if ui
-                                    .button(egui_material_icons::icons::ICON_CLOUD_UPLOAD)
-                                    .on_hover_text("Export current capture to Tracker")
-                                    .clicked()
-                                {
-                                    self.genshin_optimizer_request_export(
-                                        OptimizerExportTarget::TrackerManual,
-                                    );
-                                }
-                            },
-                        );
-                        if let Some(url) = &dashboard_url
-                            && ui
-                                .button(egui_material_icons::icons::ICON_OPEN_IN_NEW)
-                                .on_hover_text("Open dashboard")
-                                .clicked()
-                        {
-                            ui.ctx().open_url(OpenUrl::new_tab(url));
-                        }
-                        if ui
-                            .button(egui_material_icons::icons::ICON_SETTINGS)
-                            .clicked()
-                        {
-                            self.tracker_key_modal_open = true;
-                            self.tracker_url_edit = self.saved_state.tracker_api_url.clone();
-                            if !signed_in {
-                                self.request_tracker_verify();
-                            }
-                        }
-                    });
-                },
-            );
-
-            match &status {
-                AuthStatus::SignedOut { notice } => {
-                    // Sign in, and the import key's account while it is
-                    // still the way uploads are linked.
-                    ui.horizontal(|ui| self.sign_in_button(ui, notice.as_ref()));
-                    self.import_key_status_ui(ui, captured_uid);
-                }
-                other => {
-                    self.sign_in_status_ui(ui, other, false);
-                    if let Some(account) = signed_in.then(|| self.upload_account()).flatten()
-                        && let Some(captured) = uid_mismatch(&account, captured_uid)
-                    {
-                        warning_callout(ui, &format!("Captured UID {captured} differs"))
-                            .on_hover_text(uid_mismatch_message(&account, captured));
-                    }
-                }
-            }
-
-            ui.checkbox(
-                &mut self.saved_state.auto_export_to_tracker,
-                "Auto export to tracker",
-            );
-            ui.add_enabled(
-                self.saved_state.auto_export_to_tracker,
-                egui::Checkbox::new(&mut self.saved_state.live_sync, "Live sync"),
-            )
-            .on_hover_text(
-                "Between snapshots, send the tracker what changed as you play, so it stays \
-                 current without logging out. Off: every change uploads the whole account.",
-            );
-            // Checked but inert is otherwise completely silent: the
-            // automation upload simply never fires.
-            if self.saved_state.auto_export_to_tracker
-                && self.saved_state.tracker_sign_in != TrackerSignIn::Unknown
-                && !want_tracker_upload(&self.saved_state)
-            {
-                // One line: the panel already reaches down to the footer.
-                warning_callout(ui, "Not signed in: nothing uploads").on_hover_text(
-                    "Auto export is on, but you are not signed in (and have no verified key), \
-                     so nothing will be uploaded.",
-                );
-            }
-        });
-    }
-
-    fn automation_settings_modal(&mut self, ui: &mut egui::Ui) {
-        ui.set_width(360.0);
-        ui.heading("Save Result To File");
-        ui.separator();
-        let selected_folder = self
-            .saved_state
-            .save_result_folder
-            .as_ref()
-            .map(|path| path.display().to_string())
-            .unwrap_or_else(|| "No folder selected".to_string());
-        ui.label(format!("Selected folder: {selected_folder}"));
-        ui.horizontal(|ui| {
-            if ui.button("Choose folder").clicked() {
-                let mut dialog = FileDialog::new();
-                dialog.pick_directory();
-                self.automation_folder_dialog = Some(dialog);
-                self.automation_settings_open = false;
-                ui.close();
-            }
-            if ui.button("Clear").clicked() {
-                self.saved_state.save_result_folder = None;
-            }
-        });
-        ui.separator();
-        egui::Sides::new().show(
-            ui,
-            |_ui| {},
-            |ui| {
-                if ui.button("Ok").clicked() {
-                    ui.close();
-                }
-            },
-        );
-    }
-
-    fn power_tools_modal(&mut self, ui: &mut egui::Ui) {
-        ui.set_width(300.0);
-        ui.heading("Power Tools");
-        ui.separator();
-        if ui
-            .checkbox(&mut self.saved_state.log_raw_packets, "Log raw packets")
-            .changed()
-        {
-            let _ = self.log_packets_tx.send(self.saved_state.log_raw_packets);
-        };
-        let prev_level = self.saved_state.tracing_level;
-        egui::ComboBox::from_label("Logging Level")
-            .selected_text(format!("{}", self.saved_state.tracing_level))
-            .show_ui(ui, |ui| {
-                ui.selectable_value(
-                    &mut self.saved_state.tracing_level,
-                    TracingLevel::Default,
-                    "Default",
-                );
-                ui.selectable_value(
-                    &mut self.saved_state.tracing_level,
-                    TracingLevel::VerboseInfo,
-                    "Verbose Info",
-                );
-                ui.selectable_value(
-                    &mut self.saved_state.tracing_level,
-                    TracingLevel::VerboseDebug,
-                    "Verbose Debug",
-                );
-                // Named, not just "Verbose Trace": at this level
-                // teyvatme-protocol logs every decoded packet's payload as
-                // base64, so latest.log becomes a dump of the account's game
-                // data -- and the Bug Report modal asks users to attach it.
-                ui.selectable_value(
-                    &mut self.saved_state.tracing_level,
-                    TracingLevel::VerboseTrace,
-                    "Verbose Trace (dumps raw packet contents)",
-                )
-                .on_hover_text(
-                    "Writes every captured packet's contents to the log file. That includes \
-                     your characters, inventory and achievements, so review the log before \
-                     sharing it.",
-                );
-            });
-        if prev_level != self.saved_state.tracing_level {
-            self.tracing_reload_handle
-                .set_filter(self.saved_state.tracing_level.get_filter());
-        }
-        ui.end_row();
-        ui.separator();
-        egui::Sides::new().show(
-            ui,
-            |_ui| {},
-            |ui| {
-                if ui.button("Ok").clicked() {
-                    ui.close()
-                }
-            },
-        );
-    }
-
-    fn bug_report_modal(&mut self, ui: &mut egui::Ui) {
-        ui.set_width(300.0);
-        ui.heading("Bug Report");
-        ui.separator();
-        ui.label("When filing a bug, please include the latest log file:");
-        warning_note(
-            ui,
-            "Check it first: at the Verbose Trace logging level the log contains a dump of \
-             your account's game data.",
-        );
-        if ui.button("Open log directory").clicked() {
-            thread::spawn(|| {
-                let _ = open_log_dir();
-            });
-        }
-        ui.separator();
-        egui::Sides::new().show(
-            ui,
-            |_ui| {},
-            |ui| {
-                if ui.button("New GitHub Issue").clicked() {
-                    ui.ctx().open_url(OpenUrl::new_tab(
-                        "https://github.com/tawan475/teyvat.me-capture/issues/new",
-                    ));
-                    ui.close()
-                }
-                if ui.button("Cancel").clicked() {
-                    ui.close()
-                }
-            },
-        );
-    }
-
-    fn optimizer_settings_modal(&mut self, ui: &mut egui::Ui) {
-        ui.set_width(300.0);
-        ui.heading("Genshin Optimizer Settings");
-        // Kept short; the full reason is `ExportSettings::for_tracker`.
-        ui.label(
-            RichText::new(
-                "For file and clipboard exports. Tracker uploads always include everything.",
-            )
-            .small()
-            .color(Color32::GRAY),
-        );
-        ui.separator();
-        ui.checkbox(
-            &mut self.saved_state.export_settings.include_characters,
-            "Characters",
-        );
-        ui.horizontal(|ui| {
-            ui.add_space(20.);
-            egui::Grid::new("char_options")
-                .striped(true)
-                .show(ui, |ui| {
-                    ui.label("Min level".to_string());
-                    ui.add(
-                        DragValue::new(&mut self.saved_state.export_settings.min_character_level)
-                            .range(1..=90),
-                    );
-                    ui.end_row();
-                    ui.label("Min ascension".to_string());
-                    ui.add(
-                        DragValue::new(
-                            &mut self.saved_state.export_settings.min_character_ascension,
-                        )
-                        .range(0..=6),
-                    );
-                    ui.end_row();
-                    ui.label("Min constellation".to_string());
-                    ui.add(
-                        DragValue::new(
-                            &mut self.saved_state.export_settings.min_character_constellation,
-                        )
-                        .range(0..=6),
-                    );
-                    ui.end_row();
-                });
-        });
-        ui.checkbox(
-            &mut self.saved_state.export_settings.include_artifacts,
-            "Artifacts",
-        );
-        ui.horizontal(|ui| {
-            ui.add_space(20.);
-            egui::Grid::new("artifact_options")
-                .striped(true)
-                .show(ui, |ui| {
-                    ui.label("Min level".to_string());
-                    ui.add(
-                        DragValue::new(&mut self.saved_state.export_settings.min_artifact_level)
-                            .range(0..=20),
-                    );
-                    ui.end_row();
-                    ui.label("Min rarity".to_string());
-                    ui.add(
-                        DragValue::new(&mut self.saved_state.export_settings.min_artifact_rarity)
-                            .range(0..=6),
-                    );
-                    ui.end_row();
-                });
-        });
-        ui.checkbox(
-            &mut self.saved_state.export_settings.include_weapons,
-            "Weapons",
-        );
-        ui.horizontal(|ui| {
-            ui.add_space(20.);
-            egui::Grid::new("weapon_options")
-                .striped(true)
-                .show(ui, |ui| {
-                    ui.label("Min level".to_string());
-                    ui.add(
-                        DragValue::new(&mut self.saved_state.export_settings.min_weapon_level)
-                            .range(1..=90),
-                    );
-                    ui.end_row();
-
-                    ui.label("Min refinement".to_string());
-                    ui.add(
-                        DragValue::new(&mut self.saved_state.export_settings.min_weapon_refinement)
-                            .range(1..=5),
-                    );
-                    ui.end_row();
-
-                    ui.label("Min ascension".to_string());
-                    ui.add(
-                        DragValue::new(&mut self.saved_state.export_settings.min_weapon_ascension)
-                            .range(0..=6),
-                    );
-                    ui.end_row();
-
-                    ui.label("Min rarity".to_string());
-                    ui.add(
-                        DragValue::new(&mut self.saved_state.export_settings.min_weapon_rarity)
-                            .range(1..=5),
-                    );
-                    ui.end_row();
-                });
-        });
-        ui.checkbox(
-            &mut self.saved_state.export_settings.include_materials,
-            "Materials",
-        );
-        ui.checkbox(
-            &mut self.saved_state.export_settings.fake_initialize_4th_line,
-            "Fake level-up 5* artifacts with unactivated stats (hover for more info)"
-        ).on_hover_text(
-            "Genshin Optimizer still internally treats 5* 3-liners like pre-6.0, where the new stat is \"hidden\" and unknown to GO's optimizer.\nThis is a temporary workaround by activating that last stat line, but to prevent unintended effects, the artifacts are set to level 4, mimicking the player leveling it up.\nThe last line *should* be the unlockable 4th line."
-        );
-        ui.separator();
-        egui::Sides::new().show(
-            ui,
-            |_ui| {},
-            |ui| {
-                if ui.button("Ok").clicked() {
-                    ui.close()
-                }
-            },
-        );
     }
 
     /// Collect the result of an `ExportGenshinOptimizer` request.
@@ -3155,8 +1709,7 @@ impl TeyvatmeApp {
 
     fn optimizer_save_to_clipboard(&mut self, ctx: &Context, json: String) -> Result<()> {
         ctx.copy_text(json);
-        self.toasts
-            .info("Genshin Optimizer data copied to clipboard");
+        self.toasts.info("GOOD JSON copied");
         Ok(())
     }
 
@@ -3170,7 +1723,14 @@ impl TeyvatmeApp {
         let mut writer = BufWriter::new(file);
         writer.write_all(json.as_bytes())?;
 
-        self.toasts.info("Genshin Optimizer data saved to file");
+        let name = path
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        self.toasts
+            .success(format!("Saved {name}"))
+            .saved()
+            .action(crate::ui::toast::Action::Show(path.clone()));
         Ok(())
     }
 
@@ -3180,74 +1740,14 @@ impl TeyvatmeApp {
         counts: ExportCounts,
         credential: UploadCredential,
     ) {
-        self.toasts.info(format!("Uploading to Tracker: {counts}"));
+        let host = self.tracker_host();
+        self.toasts.info(format!("Uploading to {host} · {counts}"));
 
         let (tx, rx) = oneshot::channel();
         let _ = self
             .ui_message_tx
             .send(Message::UploadToTracker(json, credential, tx));
         self.tracker_upload_rx = Some(rx);
-    }
-
-    /// The achievement export, which is the one path that genuinely needs
-    /// achievement data.
-    ///
-    /// DEFERRED: this still cannot tell "no achievement packet has arrived"
-    /// from "one arrived and could not be read". teyvatme-protocol grew
-    /// `try_matches_achievement_packet` and `AchievementMatchError`
-    /// (`UnidentifiedFields` / `NoCandidateList`) for exactly that distinction,
-    /// and nothing in Teyvat.me calls either: surfacing it needs the classifier
-    /// in `monitor.rs::handle_game_packet` to keep the last failure and put it
-    /// on `AppState`, which is monitor's half of the change. Until then the
-    /// toast below says only that nothing has been captured yet -- true in both
-    /// cases, and no longer able to block a GOOD export either way.
-    fn achievement_ui(&mut self, ui: &mut egui::Ui, app_state: &AppState) {
-        ui.vertical(|ui| {
-            egui::Sides::new().show(
-                ui,
-                |ui| {
-                    Self::section_header(ui, "Achievement Export");
-                    ui.label(egui_material_icons::icons::ICON_HELP)
-                        .on_hover_text(
-                            "Click the Copy icon to copy your achievements to the clipboard.",
-                        );
-                },
-                |ui| {
-                    ui.add_enabled_ui(self.achievements_export_rx.is_none(), |ui| {
-                        if ui
-                            .button(egui_material_icons::icons::ICON_CONTENT_PASTE_GO)
-                            .clicked()
-                        {
-                            if app_state.updated.achievements_updated_time.is_some() {
-                                let (tx, rx) = oneshot::channel();
-                                let _ = self.ui_message_tx.send(Message::ExportAchievements(tx));
-                                self.achievements_export_rx = Some(rx);
-                                self.wish_link_failed_for = None;
-                            } else {
-                                self.wish_link_failed_for = None;
-                                self.toasts.error(
-                                    "No achievements yet: they arrive when you enter the world \
-                                     with Teyvat.me running.",
-                                );
-                            }
-                        }
-                    });
-                },
-            );
-
-            ui.horizontal(|ui| {
-                if ui.link("Open StarDB").clicked() {
-                    self.handle_achievement_open_button(app_state, ui, "https://stardb.gg/import");
-                }
-                if ui.link("Open Seelie.me").clicked() {
-                    self.handle_achievement_open_button(
-                        app_state,
-                        ui,
-                        "https://seelie.me/achievements",
-                    );
-                }
-            });
-        });
     }
 
     /// Collect the result of an `ExportAchievements` request.
@@ -3259,94 +1759,26 @@ impl TeyvatmeApp {
             Polled::Ready(Ok(achievements)) => Some(achievements),
             Polled::Ready(Err(_)) | Polled::Dropped => None,
         };
-
+        let open = self.pending_open_url.take();
         match achievements {
             Some(achievements) => {
                 let json = serde_json::json!({ "gi_achievements": achievements }).to_string();
                 ctx.copy_text(json);
-                self.toasts.info(format!(
-                    "{} Achievements copied to clipboard",
-                    achievements.len()
-                ));
-                self.wish_link_failed_for = None;
-                if let Some(target_url) = self.pending_open_url.take() {
-                    ctx.open_url(egui::OpenUrl::new_tab(target_url));
+                self.toasts
+                    .info(format!("{} achievements copied", achievements.len()));
+                if let Some(url) = open {
+                    ctx.open_url(egui::OpenUrl::new_tab(url));
                 }
             }
             None => {
-                if let Some(target_url) = self.pending_open_url.take() {
-                    self.wish_link_failed_for = Some(target_url);
-                    self.toasts
-                        .error("Export failed, click again to open anyways");
-                } else {
-                    self.wish_link_failed_for = None;
-                    self.toasts.error(
-                        "Export failed: no achievements yet. Enter the world with Teyvat.me running.",
-                    );
+                let toast = self.toasts.error("Achievements not found");
+                if let Some(url) = open {
+                    toast.action(crate::ui::toast::Action::OpenAnyway(url));
                 }
             }
         }
         Ok(())
     }
-
-    fn handle_achievement_open_button(
-        &mut self,
-        app_state: &AppState,
-        ui: &mut egui::Ui,
-        target_url: &str,
-    ) {
-        if self.wish_link_failed_for.as_deref() == Some(target_url) {
-            ui.ctx().open_url(egui::OpenUrl::new_tab(target_url));
-            self.wish_link_failed_for = None;
-        } else if app_state.updated.achievements_updated_time.is_some() {
-            let (tx, rx) = oneshot::channel();
-            let _ = self.ui_message_tx.send(Message::ExportAchievements(tx));
-            self.achievements_export_rx = Some(rx);
-            self.pending_open_url = Some(target_url.to_string());
-            self.wish_link_failed_for = None;
-        } else {
-            self.wish_link_failed_for = Some(target_url.to_string());
-            self.toasts
-                .error("Achievements not found, click again to open anyways");
-        }
-    }
-
-    fn section_header(ui: &mut egui::Ui, name: &str) {
-        ui.label(RichText::new(name).size(18.));
-    }
-}
-
-/// A warning that something the user turned on is not happening: body-size
-/// text with the warning icon, in a red box. It used to be small red text,
-/// which users could not read.
-fn warning_callout(ui: &mut egui::Ui, text: &str) -> egui::Response {
-    egui::Frame::new()
-        .fill(Color32::from_rgba_unmultiplied(220, 40, 40, 40))
-        .stroke(egui::Stroke::new(1.0_f32, Color32::from_rgb(220, 70, 70)))
-        .corner_radius(4.0)
-        .inner_margin(egui::Margin::symmetric(6, 2))
-        .show(ui, |ui| {
-            ui.label(
-                RichText::new(format!(
-                    "{} {text}",
-                    egui_material_icons::icons::ICON_WARNING
-                ))
-                .color(Color32::from_rgb(255, 150, 150)),
-            )
-        })
-        .inner
-}
-
-/// A caution beside a setting or in a dialog: body-size text in the theme's
-/// warning colour, with the warning icon. These were small grey text.
-fn warning_note(ui: &mut egui::Ui, text: &str) {
-    ui.label(
-        RichText::new(format!(
-            "{} {text}",
-            egui_material_icons::icons::ICON_WARNING
-        ))
-        .color(ui.visuals().warn_fg_color),
-    );
 }
 
 #[cfg(windows)]
@@ -3401,6 +1833,20 @@ fn close_window() {
     }
 }
 
+/// Whether this process can capture: elevated on Windows (the manifest asks
+/// for it, so only a bypass such as `__COMPAT_LAYER=RunAsInvoker` lands here
+/// without it); elsewhere the permission check runs before the window.
+fn is_admin() -> bool {
+    #[cfg(windows)]
+    {
+        unsafe { windows::Win32::UI::Shell::IsUserAnAdmin().into() }
+    }
+    #[cfg(not(windows))]
+    {
+        true
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3435,22 +1881,6 @@ mod tests {
             "the monitor is joined with a deadline while it may still be spending the \
              capture teardown budget, so the outer one has to be strictly larger"
         );
-    }
-
-    /// The background is decoded by hand at startup, where a broken asset
-    /// would only show as a missing background and a log line; and `main.rs`
-    /// sizes the window from it.
-    #[test]
-    fn the_background_decodes_at_the_size_the_window_is_built_around() {
-        let image = egui_extras::image::load_image_bytes(BACKGROUND_WEBP).unwrap();
-        assert_eq!(image.size, [1600, 1000]);
-    }
-
-    #[test]
-    fn the_background_becomes_a_texture() {
-        let ctx = Context::default();
-        let texture = load_background(&ctx).expect("the bundled background decodes");
-        assert_eq!(texture.size(), [1600, 1000]);
     }
 
     #[cfg(windows)]
@@ -3721,8 +2151,40 @@ mod tests {
     fn the_default_tracker_is_the_hosted_api() {
         // The tracker Worker mounts its API under `/api`
         // (genshin-data-tracker/apps/tracker/worker/index.ts `basePath`).
-        assert_eq!(FALLBACK_TRACKER_URL, "https://genshin-tracker.475.dev/api");
+        assert_eq!(FALLBACK_TRACKER_URL, "https://teyvat.me/api");
         assert_eq!(resolve_tracker_url(None), FALLBACK_TRACKER_URL);
+    }
+
+    #[test]
+    fn a_saved_old_hosted_address_moves_to_teyvat_me() {
+        for saved in [
+            "https://genshin-tracker.475.dev/api",
+            "https://genshin-tracker.475.dev/api/",
+            " https://genshin-tracker.475.dev/api\n",
+        ] {
+            assert_eq!(
+                migrated_tracker_url(saved, FALLBACK_TRACKER_URL).as_deref(),
+                Some(FALLBACK_TRACKER_URL),
+                "{saved:?}"
+            );
+        }
+        // Other paths on that host were typed by hand.
+        assert_eq!(
+            migrated_tracker_url("https://genshin-tracker.475.dev", FALLBACK_TRACKER_URL),
+            None
+        );
+        // A build that bakes the old address in keeps it.
+        assert_eq!(
+            migrated_tracker_url(OLD_HOSTED_TRACKER_URL, OLD_HOSTED_TRACKER_URL),
+            None
+        );
+        assert_eq!(
+            migrated_tracker_url(
+                "https://genshin-tracker.475.dev/api/",
+                OLD_HOSTED_TRACKER_URL
+            ),
+            None
+        );
     }
 
     #[test]
@@ -3969,10 +2431,10 @@ mod tests {
 
     #[test]
     fn an_edited_address_is_a_change_only_when_it_points_elsewhere() {
-        let current = "https://genshin-tracker.475.dev/api";
+        let current = "https://teyvat.me/api";
         assert_eq!(address_change(current, current), AddressChange::Same);
         assert_eq!(
-            address_change(current, " https://genshin-tracker.475.dev/api/ "),
+            address_change(current, " https://teyvat.me/api/ "),
             AddressChange::Same
         );
         assert_eq!(
@@ -3984,10 +2446,10 @@ mod tests {
         );
         // A lookalike is named by its host in the confirmation.
         assert_eq!(
-            address_change(current, "https://genshin-tracker.475.dev.evil.example/api"),
+            address_change(current, "https://teyvat.me.evil.example/api"),
             AddressChange::To {
-                base: "https://genshin-tracker.475.dev.evil.example/api".to_string(),
-                host: "genshin-tracker.475.dev.evil.example".to_string(),
+                base: "https://teyvat.me.evil.example/api".to_string(),
+                host: "teyvat.me.evil.example".to_string(),
             }
         );
         assert_eq!(

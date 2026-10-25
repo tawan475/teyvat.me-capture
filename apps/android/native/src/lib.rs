@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 tawan475
 
-//! Native side of Teyvat.me's Android app (phase 0 spike).
+//! Native side of Teyvat.me's Android app.
 //!
 //! The app's `VpnService` routes only the game's package into a tun device
 //! and hands its file descriptor here. Every packet the game sends is read
@@ -12,8 +12,10 @@
 //! phone's current default network.
 //!
 //! The game's KCP traffic (UDP 22101–22102, both directions) is copied aside
-//! as it passes, unchanged, into a pcap file (`LINKTYPE_RAW`), which
-//! `teyvatme --replay-export` reads. Nothing is altered on the way through.
+//! as it passes, unchanged, to the [`decoder`], which builds the account the
+//! app exports, and, when the app records a capture for a bug report, into a
+//! pcap file (`LINKTYPE_RAW`) that `teyvatme --replay-export` reads. Nothing
+//! is altered on the way through.
 //!
 //! Two things sit between the tun and the stack:
 //! - **The TCP gate.** ipstack answers a SYN with a SYN-ACK at once, so a
@@ -49,6 +51,10 @@ use tokio::io::unix::AsyncFd;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf};
 use tokio::net::{TcpStream, UdpSocket};
 use tokio::sync::{mpsc, oneshot, watch};
+
+mod decoder;
+mod logging;
+mod wish;
 
 /// The game server's KCP ports (Teyvat.me's `capture::PORT_RANGE`).
 const GAME_PORTS: (u16, u16) = (22101, 22102);
@@ -268,7 +274,8 @@ impl Syn {
 /// holding new SYNs at the gate.
 struct TunDevice {
     fd: Arc<AsyncFd<OwnedFd>>,
-    tee: mpsc::UnboundedSender<(SystemTime, Vec<u8>)>,
+    /// The recording's writer, when the app records the capture.
+    tee: Option<mpsc::UnboundedSender<(SystemTime, Vec<u8>)>>,
     shared: Arc<Shared>,
     /// SYNs whose upstream connected, handed to the stack before the tun.
     let_in: mpsc::UnboundedReceiver<Vec<u8>>,
@@ -278,7 +285,7 @@ struct TunDevice {
 impl TunDevice {
     fn new(
         fd: OwnedFd,
-        tee: mpsc::UnboundedSender<(SystemTime, Vec<u8>)>,
+        tee: Option<mpsc::UnboundedSender<(SystemTime, Vec<u8>)>>,
         shared: Arc<Shared>,
     ) -> io::Result<Self> {
         let raw = fd.as_raw_fd();
@@ -310,7 +317,11 @@ impl TunDevice {
                 .stats
                 .game_bytes
                 .fetch_add(packet.len() as u64, Ordering::Relaxed);
-            let _ = self.tee.send((SystemTime::now(), packet.to_vec()));
+            let at = SystemTime::now();
+            decoder::get().packet(at, packet.to_vec());
+            if let Some(tee) = &self.tee {
+                let _ = tee.send((at, packet.to_vec()));
+            }
         }
     }
 
@@ -610,12 +621,17 @@ async fn forward_udp(mut flow: IpStackUdpStream, shared: Arc<Shared>) {
 
 async fn run(
     fd: OwnedFd,
-    pcap_path: String,
+    pcap_path: Option<String>,
     shared: Arc<Shared>,
     stop: oneshot::Receiver<()>,
 ) -> anyhow::Result<()> {
-    let (tee, packets) = mpsc::unbounded_channel();
-    let writer = tokio::spawn(write_pcap(pcap_path, packets));
+    let (tee, writer) = match pcap_path {
+        Some(path) => {
+            let (tee, packets) = mpsc::unbounded_channel();
+            (Some(tee), Some(tokio::spawn(write_pcap(path, packets))))
+        }
+        None => (None, None),
+    };
     let device = TunDevice::new(fd, tee, shared.clone())?;
 
     let mut config = IpStackConfig::default();
@@ -651,12 +667,14 @@ async fn run(
     // Dropping the stack closes the tun (the VPN ends); the tee's sender goes
     // with it, so the writer drains and flushes.
     drop(stack);
-    let _ = tokio::time::timeout(Duration::from_secs(2), writer).await;
+    if let Some(writer) = writer {
+        let _ = tokio::time::timeout(Duration::from_secs(2), writer).await;
+    }
     log::info!("stopped: {}", shared.stats.line());
     Ok(())
 }
 
-fn start(fd: RawFd, pcap_path: String, resolvers: &str) -> anyhow::Result<()> {
+fn start(fd: RawFd, pcap_path: Option<String>, resolvers: &str) -> anyhow::Result<()> {
     let mut running = RUNNING.lock().unwrap();
     if running.is_some() {
         anyhow::bail!("already running");
@@ -674,6 +692,7 @@ fn start(fd: RawFd, pcap_path: String, resolvers: &str) -> anyhow::Result<()> {
         network: Network::new(resolvers),
         gate: Mutex::default(),
     });
+    decoder::get().capture_started();
     let (stop, stopped) = oneshot::channel();
     let task_shared = shared.clone();
     runtime.spawn(async move {
@@ -714,15 +733,6 @@ fn network_changed(resolvers: &str, new_network: bool) {
     }
 }
 
-fn init_logging() {
-    #[cfg(target_os = "android")]
-    android_logger::init_once(
-        android_logger::Config::default()
-            .with_tag("teyvatme")
-            .with_max_level(log::LevelFilter::Info),
-    );
-}
-
 fn java_string(env: &mut JNIEnv, s: &JString) -> Option<String> {
     match env.get_string(s) {
         Ok(s) => Some(s.into()),
@@ -733,8 +743,24 @@ fn java_string(env: &mut JNIEnv, s: &JString) -> Option<String> {
     }
 }
 
+/// `NativeBridge.init(logDir)`: logging to logcat and `logDir/latest.log`,
+/// and the decoder (it loads the game data in the background). Once per
+/// process; later calls do nothing.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_me_teyvat_app_NativeBridge_init(
+    mut env: JNIEnv,
+    _class: JClass,
+    log_dir: JString,
+) {
+    if let Some(dir) = java_string(&mut env, &log_dir) {
+        logging::init(std::path::Path::new(&dir));
+    }
+    decoder::get();
+}
+
 /// `NativeBridge.start(fd, pcapPath, resolvers)`: 0 on success, -1 on
-/// failure (logged). `resolvers` is a comma-separated address list.
+/// failure (logged). `resolvers` is a comma-separated address list;
+/// `pcapPath` is empty unless the app records the capture.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_me_teyvat_app_NativeBridge_start(
     mut env: JNIEnv,
@@ -743,16 +769,19 @@ pub extern "system" fn Java_me_teyvat_app_NativeBridge_start(
     pcap_path: JString,
     resolvers: JString,
 ) -> jint {
-    init_logging();
     let (Some(path), Some(resolvers)) = (
         java_string(&mut env, &pcap_path),
         java_string(&mut env, &resolvers),
     ) else {
         return -1;
     };
-    match start(fd, path.clone(), &resolvers) {
+    let recording = Some(path).filter(|path| !path.is_empty());
+    match start(fd, recording.clone(), &resolvers) {
         Ok(()) => {
-            log::info!("forwarder started, game packets to {path}");
+            match recording {
+                Some(path) => log::info!("forwarder started, recording game packets to {path}"),
+                None => log::info!("forwarder started"),
+            }
             0
         }
         Err(e) => {
@@ -796,6 +825,121 @@ pub extern "system" fn Java_me_teyvat_app_NativeBridge_stats(
     env.new_string(line)
         .map(|s| s.into_raw())
         .unwrap_or(std::ptr::null_mut())
+}
+
+fn java_result(env: &JNIEnv, value: Option<String>) -> jstring {
+    match value {
+        Some(value) => env
+            .new_string(value)
+            .map(|s| s.into_raw())
+            .unwrap_or(std::ptr::null_mut()),
+        None => std::ptr::null_mut(),
+    }
+}
+
+/// `NativeBridge.summary()`: the decoder's [`decoder::Summary`] as JSON.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_me_teyvat_app_NativeBridge_summary(
+    env: JNIEnv,
+    _class: JClass,
+) -> jstring {
+    java_result(&env, Some(decoder::get().summary_json()))
+}
+
+/// `NativeBridge.exportGood(settings)`: the GOOD JSON with the export
+/// settings (JSON, the desktop's `ExportSettings`; "" for the defaults), or
+/// null when nothing is captured or the settings do not parse (logged).
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_me_teyvat_app_NativeBridge_exportGood(
+    mut env: JNIEnv,
+    _class: JClass,
+    settings: JString,
+) -> jstring {
+    let Some(settings) = java_string(&mut env, &settings) else {
+        return std::ptr::null_mut();
+    };
+    let json = decoder::get().export(&settings).unwrap_or_else(|e| {
+        log::error!("export: {e:#}");
+        None
+    });
+    java_result(&env, json)
+}
+
+/// `NativeBridge.achievements()`: `{"gi_achievements": [...]}`, or null
+/// before achievements were captured.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_me_teyvat_app_NativeBridge_achievements(
+    env: JNIEnv,
+    _class: JClass,
+) -> jstring {
+    java_result(&env, decoder::get().achievements())
+}
+
+/// `NativeBridge.note(kind, text)`: an event from the app for the activity
+/// list; `kind` is `ok`, `error` or `info`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_me_teyvat_app_NativeBridge_note(
+    mut env: JNIEnv,
+    _class: JClass,
+    kind: JString,
+    text: JString,
+) {
+    let (Some(kind), Some(text)) = (java_string(&mut env, &kind), java_string(&mut env, &text))
+    else {
+        return;
+    };
+    let kind = match kind.as_str() {
+        "ok" => "ok",
+        "error" => "error",
+        _ => "info",
+    };
+    decoder::get().note(kind, &text);
+}
+
+/// `NativeBridge.wishUrl()`: the game's wish history link for this login's
+/// key, or null without one. A password while it lasts: never logged.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_me_teyvat_app_NativeBridge_wishUrl(
+    env: JNIEnv,
+    _class: JClass,
+) -> jstring {
+    java_result(&env, decoder::get().wishes.url())
+}
+
+/// `NativeBridge.startWishHistory(appVersion)`: start reading every banner
+/// into a UIGF file. 0 started; 1 no key; 2 the key's UID is not known yet;
+/// 3 a read is running.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_me_teyvat_app_NativeBridge_startWishHistory(
+    mut env: JNIEnv,
+    _class: JClass,
+    app_version: JString,
+) -> jint {
+    let version = java_string(&mut env, &app_version).unwrap_or_default();
+    match decoder::get().wishes.start(&version) {
+        Ok(()) => 0,
+        Err(wish::StartError::NoKey) => 1,
+        Err(wish::StartError::NoUid) => 2,
+        Err(wish::StartError::Running) => 3,
+    }
+}
+
+/// `NativeBridge.cancelWishHistory()`: stop a read in flight.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_me_teyvat_app_NativeBridge_cancelWishHistory(
+    _env: JNIEnv,
+    _class: JClass,
+) {
+    decoder::get().wishes.cancel();
+}
+
+/// `NativeBridge.wishHistory()`: the last read's UIGF v4 JSON, or null.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_me_teyvat_app_NativeBridge_wishHistory(
+    env: JNIEnv,
+    _class: JClass,
+) -> jstring {
+    java_result(&env, decoder::get().wishes.take())
 }
 
 #[cfg(test)]

@@ -631,7 +631,7 @@ mod tests {
 
     #[test]
     fn reads_back_what_the_debug_build_records() {
-        // The exact writer debug builds use for `irminsul-data/log/latest.pcapng`.
+        // The exact writer debug builds use for `teyvatme-data/log/latest.pcapng`.
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("latest.pcapng");
         let mut writer = crate::pcapng::PcapngWriter::new(path.clone()).unwrap();

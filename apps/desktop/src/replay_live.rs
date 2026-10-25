@@ -121,7 +121,7 @@ mod tests {
         assert!(is_local("http://127.0.0.1:5173/api"));
         assert!(is_local("http://localhost:8787/api"));
         assert!(is_local("http://[::1]:5173/api"));
-        assert!(!is_local("https://genshin-tracker.475.dev/api"));
+        assert!(!is_local("https://teyvat.me/api"));
         assert!(!is_local("http://127.0.0.1.example.com/api"));
         assert!(!is_local("http://localhost.example.com:80/api"));
         assert!(!is_local("ftp://127.0.0.1/api"));

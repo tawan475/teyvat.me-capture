@@ -35,10 +35,15 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use egui::{Button, Color32, Context, Id, Label, Modal, RichText, Ui};
-use egui_notify::Toasts;
+
+use crate::ui::toast::Toasts;
 
 /// The task's name in Task Scheduler's root folder.
-pub const TASK_NAME: &str = "Irminsul";
+pub const TASK_NAME: &str = "Teyvat.me";
+
+/// The task irminsul registered, which the first launch moves to
+/// [`TASK_NAME`] (irminsul's updater replaces its exe with this one).
+const IRMINSUL_TASK_NAME: &str = "Irminsul";
 
 /// How long after sign-in the task waits before starting Teyvat.me, so the
 /// desktop and the tray are up first.
@@ -184,7 +189,7 @@ fn xml_bool(text: &str) -> Option<bool> {
 /// - `Priority` 5 is a normal-priority process. Task Scheduler's default of 7
 ///   would start the capture below normal priority, behind the game.
 /// - The command is quoted; the working directory is the exe's folder, where
-///   a debug build keeps its `irminsul-data` (release builds use `%APPDATA%`).
+///   a debug build keeps its `teyvatme-data` (release builds use `%APPDATA%`).
 /// - `minimized` adds [`MINIMIZED_ARG`].
 pub fn task_xml(exe: &str, working_dir: &str, user_id: &str, minimized: bool) -> String {
     let command = xml_escape(&format!("\"{exe}\""));
@@ -472,8 +477,13 @@ impl Startup {
             modal_open: false,
             settings_open: false,
         };
+        // An `--isolated` run only reads; it never moves or registers tasks.
         if cfg!(windows) {
-            startup.start(Job::Migrate);
+            startup.start(if crate::isolated() {
+                Job::Refresh
+            } else {
+                Job::Migrate
+            });
         }
         startup
     }
@@ -537,7 +547,7 @@ impl Startup {
 
         match (job, outcome) {
             (Job::Migrate, Ok(Some(old))) => tracing::info!(
-                "moved Start on startup from the Run entry ({old}) to the {TASK_NAME} scheduled task"
+                "moved Start on startup from {old} to the {TASK_NAME} scheduled task"
             ),
             (Job::Migrate, Err(e)) => {
                 tracing::error!("could not move Start on startup to Task Scheduler: {e}");
@@ -609,83 +619,65 @@ impl Startup {
             .is_some_and(|snapshot| snapshot.minimized)
     }
 
-    /// The "Start Teyvat.me on startup" row: the checkbox, the cog for its
-    /// options, and the warning icon when the task starts another file.
-    pub fn checkbox_ui(&mut self, ui: &mut Ui, saved_on: &mut bool) {
-        ui.horizontal(|ui| {
-            let checkbox = egui::Checkbox::new(saved_on, CHECKBOX_LABEL);
-            if ui.add_enabled(!self.changing(), checkbox).changed() {
-                // Shown at once; the job's read-back corrects it if needed.
-                self.start(if *saved_on {
-                    Job::Enable {
-                        minimized: self.minimized(),
-                    }
-                } else {
-                    Job::Disable
-                });
-            }
-
-            if ui
-                .add_enabled(
-                    *saved_on,
-                    Button::new(egui_material_icons::icons::ICON_SETTINGS),
-                )
-                .clicked()
-            {
-                self.settings_open = true;
-            }
-
-            if let Some(warning) = self.warning(*saved_on) {
-                let icon = RichText::new(egui_material_icons::icons::ICON_WARNING)
-                    .color(ui.visuals().warn_fg_color);
-                if ui
-                    .add(Button::new(icon).frame(false))
-                    .on_hover_text(warning.title())
-                    .clicked()
-                {
+    /// The Settings › App rows: "Start with Windows" (with its warning when
+    /// the task starts another file) and "Start minimized". What Task
+    /// Scheduler holds decides both; a change is shown at once and read back.
+    pub fn settings_rows(&mut self, ui: &mut Ui, saved_on: &mut bool) {
+        use crate::ui::widgets;
+        let pal = widgets::p(ui);
+        // Locked in an `--isolated` run, which must not register tasks.
+        let changing = self.changing() || crate::isolated();
+        let title = if cfg!(windows) {
+            "Start with Windows"
+        } else {
+            "Start at sign-in"
+        };
+        let warning = self.warning(*saved_on);
+        let mut toggled = false;
+        widgets::list_row(ui, None, widgets::title_text(title, pal.tx), None, |ui| {
+            toggled = ui
+                .add_enabled_ui(!changing, |ui| widgets::switch(ui, saved_on))
+                .inner
+                .changed();
+            if let Some(warning) = warning {
+                let open = egui::Button::image(crate::ui::icons::image(
+                    crate::ui::icons::triangle_alert(),
+                    16.0,
+                    pal.warn_on,
+                ))
+                .fill(pal.warn_con)
+                .min_size(egui::Vec2::splat(32.0));
+                if ui.add(open).on_hover_text(warning.title()).clicked() {
                     self.modal_open = true;
                 }
             }
         });
-    }
-
-    /// The modals behind the cog and the warning icon, when they are open.
-    pub fn modal_ui(&mut self, ctx: &Context, saved_on: bool) {
-        self.settings_ui(ctx, saved_on);
-        self.warning_ui(ctx, saved_on);
-    }
-
-    /// The startup options behind the cog.
-    fn settings_ui(&mut self, ctx: &Context, saved_on: bool) {
-        if !self.settings_open {
-            return;
+        if toggled {
+            self.start(if *saved_on {
+                Job::Enable {
+                    minimized: self.minimized(),
+                }
+            } else {
+                Job::Disable
+            });
         }
-        if !saved_on {
-            self.settings_open = false;
-            return;
-        }
-
-        let changing = self.changing();
+        widgets::divider(ui);
         let mut minimized = self.minimized();
-        let modal = Modal::new(Id::new("Startup Settings")).show(ctx, |ui| {
-            ui.heading("Startup");
-            ui.separator();
-            let checkbox = egui::Checkbox::new(&mut minimized, "Start minimized");
-            if ui
-                .add_enabled(!changing, checkbox)
-                .on_hover_text("To the tray or the taskbar, like the minimize button")
-                .changed()
-            {
-                self.start(Job::Enable { minimized });
-            }
-            ui.separator();
-            if ui.button("Close").clicked() {
-                self.settings_open = false;
-            }
-        });
-        if modal.should_close() {
-            self.settings_open = false;
+        let before = minimized;
+        widgets::switch_row(
+            ui,
+            "Start minimized",
+            Some(widgets::secondary_text(
+                "To the tray or the taskbar",
+                pal.tx2,
+            )),
+            &mut minimized,
+            *saved_on && !changing,
+        );
+        if minimized != before {
+            self.start(Job::Enable { minimized });
         }
+        self.warning_ui(ui.ctx(), *saved_on);
     }
 
     /// The modal behind the warning icon.
@@ -773,6 +765,11 @@ fn path_label(ui: &mut Ui, id: &str, path: Option<&str>) {
     });
 }
 
+/// Show `path` in the file manager (selected, on Windows).
+pub fn reveal_file(path: &std::path::Path) {
+    reveal_in_explorer(&path.display().to_string());
+}
+
 #[cfg(windows)]
 fn reveal_in_explorer(path: &str) {
     windows_impl::reveal_in_explorer(path);
@@ -802,8 +799,8 @@ mod windows_impl {
     use windows::core::{PCWSTR, w};
 
     use super::{
-        Job, JobResult, RegisteredTask, Snapshot, TASK_NAME, clean_exe_path, decode_task_xml,
-        parse_task_xml, startup_warning, task_xml, utf16le_with_bom,
+        IRMINSUL_TASK_NAME, Job, JobResult, RegisteredTask, Snapshot, TASK_NAME, clean_exe_path,
+        decode_task_xml, parse_task_xml, startup_warning, task_xml, utf16le_with_bom,
     };
 
     /// `CREATE_NO_WINDOW`: schtasks and whoami are console programs, and a
@@ -852,7 +849,7 @@ mod windows_impl {
     }
 
     fn snapshot() -> Snapshot {
-        let task = query_task().unwrap_or_else(|e| {
+        let task = query_task(TASK_NAME).unwrap_or_else(|e| {
             tracing::warn!("could not read the {TASK_NAME} task: {e:#}");
             None
         });
@@ -905,19 +902,16 @@ mod windows_impl {
             .unwrap_or_else(|_| path.to_string())
     }
 
-    /// The registered task, or `None` when there is none.
+    /// The task `name` in the root folder, or `None` when there is none.
     ///
     /// Read from the task's file in Task Scheduler's store: UTF-16, so paths
     /// outside the console code page survive, readable by the user who
     /// registered it, and no process to start. `schtasks /Query /XML` is the
     /// fallback; piped, it prints the console code page, which loses them.
-    fn query_task() -> Result<Option<RegisteredTask>> {
+    fn query_task(name: &str) -> Result<Option<RegisteredTask>> {
         let store = std::env::var_os("SystemRoot").or_else(|| std::env::var_os("windir"));
         if let Some(root) = store {
-            let file = Path::new(&root)
-                .join("System32")
-                .join("Tasks")
-                .join(TASK_NAME);
+            let file = Path::new(&root).join("System32").join("Tasks").join(name);
             match std::fs::read(&file) {
                 Ok(bytes) => return Ok(Some(parse_task_xml(&decode_task_xml(&bytes)))),
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -926,7 +920,7 @@ mod windows_impl {
         }
 
         let output = hidden("schtasks")
-            .args(["/Query", "/TN", TASK_NAME, "/XML"])
+            .args(["/Query", "/TN", name, "/XML"])
             .output()
             .context("could not run schtasks")?;
         if output.status.success() {
@@ -999,16 +993,20 @@ mod windows_impl {
 
     /// Remove the task. One that is not there is fine.
     fn delete_task() -> Result<()> {
+        delete_named_task(TASK_NAME)
+    }
+
+    fn delete_named_task(name: &str) -> Result<()> {
         let output = hidden("schtasks")
-            .args(["/Delete", "/TN", TASK_NAME, "/F"])
+            .args(["/Delete", "/TN", name, "/F"])
             .output()
             .context("could not run schtasks")?;
         if output.status.success() {
-            tracing::info!("removed the {TASK_NAME} scheduled task");
+            tracing::info!("removed the {name} scheduled task");
             return Ok(());
         }
         // schtasks says "not found" in the system language, so look instead.
-        if query_task()?.is_none() {
+        if query_task(name)?.is_none() {
             return Ok(());
         }
         bail!("schtasks /Delete failed: {}", describe(&output))
@@ -1074,11 +1072,37 @@ mod windows_impl {
         }
     }
 
+    /// Move what an older version left to [`TASK_NAME`] for the running exe:
+    /// irminsul's own task, or before that its Run entry. `Some(what)` when
+    /// something was moved.
+    fn migrate() -> Result<Option<String>> {
+        if let Some(moved) = migrate_irminsul_task()? {
+            return Ok(Some(moved));
+        }
+        migrate_run_value()
+    }
+
+    /// Move irminsul's task to [`TASK_NAME`], keeping whether it was on and
+    /// started minimized; the old task goes once the new one exists. One
+    /// already moved (both present) only loses the old one.
+    fn migrate_irminsul_task() -> Result<Option<String>> {
+        let Some(old) = query_task(IRMINSUL_TASK_NAME)? else {
+            return Ok(None);
+        };
+        if old.enabled && query_task(TASK_NAME)?.is_none() {
+            create_task(old.minimized).with_context(|| {
+                format!("the {IRMINSUL_TASK_NAME} task is kept so the next launch tries again")
+            })?;
+        }
+        delete_named_task(IRMINSUL_TASK_NAME)?;
+        Ok(Some(format!("the {IRMINSUL_TASK_NAME} task")))
+    }
+
     /// Move a Run entry left by an older version to a task for the running
     /// exe. The entry only exists when startup was turned on, so a task is
     /// always made for it; it is removed once that worked, and otherwise kept
     /// so the next launch tries again. `Some(command)` when one was moved.
-    fn migrate() -> Result<Option<String>> {
+    fn migrate_run_value() -> Result<Option<String>> {
         let Some(old) = read_run_value()? else {
             return Ok(None);
         };

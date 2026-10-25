@@ -3,6 +3,10 @@
 // Portions copyright (c) 2025 Erik Gilling and irminsul contributors
 // See THIRD_PARTY_NOTICES.md.
 
+// Without the download only the reading half is used: the parsing code is
+// kept (and tested) for the builds that download.
+#![cfg_attr(not(feature = "download"), allow(dead_code))]
+
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Read, Write};
@@ -11,10 +15,12 @@ use std::str::FromStr;
 
 use anyhow::{Result, anyhow};
 
+#[cfg(feature = "download")]
 mod dimbreath;
 mod game_data;
 mod types;
 
+#[cfg(feature = "download")]
 use dimbreath::Dimbreath;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -232,6 +238,7 @@ impl AnimeGameData {
         self.db.is_some()
     }
 
+    #[cfg(feature = "download")]
     pub async fn needs_update(&self) -> Result<bool> {
         self.needs_update_impl(&Dimbreath::new()?).await
     }
@@ -243,6 +250,7 @@ impl AnimeGameData {
         Ok(db.git_hash != source.get_latest_hash().await?)
     }
 
+    #[cfg(feature = "download")]
     pub async fn update(&mut self) -> Result<()> {
         self.update_impl(&Dimbreath::new()?).await
     }

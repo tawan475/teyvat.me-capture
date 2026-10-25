@@ -7,7 +7,7 @@
 //! export it yields.
 //!
 //! For debugging exports against a session that was recorded once (debug
-//! builds record every captured frame to `irminsul-data/log/latest.pcapng`),
+//! builds record every captured frame to `teyvatme-data/log/latest.pcapng`),
 //! without asking anyone to log in again.
 //!
 //! The recording goes through the same decoding the live app runs --

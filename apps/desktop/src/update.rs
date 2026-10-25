@@ -535,7 +535,7 @@ async fn download_new_version_and_replace_current(
 
 /// Where the last "install this by hand" notice is remembered.
 fn manual_notice_marker() -> Option<PathBuf> {
-    eframe::storage_dir(crate::APP_ID).map(|mut path| {
+    eframe::storage_dir(crate::app_id()).map(|mut path| {
         path.push("last_manual_update_notice");
         path
     })
@@ -574,7 +574,7 @@ pub async fn check_for_app_update(
     state_tx: &watch::Sender<AppState>,
     update_answer_rx: &mut mpsc::UnboundedReceiver<UpdateAnswer>,
     cancel_token: &CancellationToken,
-    toast_tx: &mpsc::UnboundedSender<(String, bool)>,
+    toast_tx: &crate::activity::Sender,
     install_lock: &InstallLock,
 ) -> Result<()> {
     let mut app_state = state_tx.borrow().clone();
@@ -600,13 +600,12 @@ pub async fn check_for_app_update(
         // this hits, downloading by hand is the only way to get it -- but say
         // it once per release, not on every launch for the rest of its life.
         if should_report_manual_install(manual_notice_marker().as_deref(), &release.version) {
-            let _ = toast_tx.send((
+            let _ = toast_tx.send(crate::activity::Event::info(
+                crate::activity::Topic::App,
                 format!(
-                    "Teyvat.me {} is available, but has to be installed by hand on this \
-                     platform: {RELEASES_URL}",
+                    "Teyvat.me {} is out · install it by hand on this platform: {RELEASES_URL}",
                     release.version
                 ),
-                true,
             ));
         }
         return Ok(());
@@ -644,7 +643,10 @@ pub async fn check_for_app_update(
             // A failed install used to leave the spinner up and the reason in
             // the log file only; the guards above mean this is now a clean
             // error instead of a bricked binary, so it is worth showing.
-            let _ = toast_tx.send((format!("Update failed: {e}"), true));
+            let _ = toast_tx.send(crate::activity::Event::error(
+                crate::activity::Topic::App,
+                format!("Update failed: {e}"),
+            ));
             return Err(e);
         }
     }

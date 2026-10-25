@@ -1,0 +1,132 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 tawan475
+
+name: Android
+
+# The Android app's release APK, signed with the upload key (the key Google
+# Play will know as the upload key). The release workflow calls this and
+# publishes the artifact (a call always needs the key); workflow_dispatch
+# builds it on its own, and `unsigned` builds without the key to test the
+# build itself. Pushes to develop and main that touch the app build it too,
+# unsigned when the key is not there.
+#
+# The artifact `teyvatme-android` holds exactly one file,
+# `teyvatme-android.apk`.
+on:
+  push:
+    branches: ["main", "develop"]
+    paths:
+      - "apps/android/**"
+      - "crates/**"
+      - "apps/desktop/keys/**"
+      - "rust-toolchain.toml"
+      - ".github/workflows/android.yml"
+  workflow_call:
+    secrets:
+      ANDROID_KEYSTORE_B64:
+        required: false
+      ANDROID_KEYSTORE_PASSWORD:
+        required: false
+      ANDROID_KEY_ALIAS:
+        required: false
+      ANDROID_KEY_PASSWORD:
+        required: false
+  workflow_dispatch:
+    inputs:
+      unsigned:
+        description: "Build without the upload key (a test of the build; not a release APK)"
+        type: boolean
+        default: false
+
+env:
+  CARGO_TERM_COLOR: always
+  # The NDK and SDK the app's Gradle build names (apps/android/app/build.gradle.kts).
+  NDK_VERSION: "30.0.16248370"
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      # First, so a release without the key fails at once. A release build
+      # needs the upload key: an APK signed with any other key could never be
+      # updated by the releases after it.
+      - name: Check the upload key
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          # A dispatch that asks for it, or a CI push. Never a workflow_call:
+          # there `inputs` holds no `unsigned`, and github.workflow is the
+          # caller's name.
+          UNSIGNED: ${{ inputs.unsigned == true || (github.event_name == 'push' && github.workflow == 'Android') }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "SIGNED=true" >> "$GITHUB_ENV"
+          elif [ "$UNSIGNED" = "true" ]; then
+            echo "::notice::Building without the upload key (unsigned test build)."
+            echo "SIGNED=false" >> "$GITHUB_ENV"
+          else
+            echo "::error::The ANDROID_KEYSTORE_B64 secret is empty: a release APK must be signed with the upload key. Set ANDROID_KEYSTORE_B64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD, then re-run."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Android SDK packages
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install \
+            "ndk;$NDK_VERSION" "platforms;android-36" "build-tools;36.1.0" > /dev/null
+
+      # rust-toolchain.toml pins the toolchain; the Android target is added
+      # to it here.
+      - name: Rust Android target
+        run: rustup target add aarch64-linux-android
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/android/native
+          key: android
+          save-if: ${{ github.event_name != 'pull_request' }}
+
+      - name: cargo-ndk
+        run: cargo install cargo-ndk --version 4.1.2 --locked
+
+      - name: Write the upload key
+        if: env.SIGNED == 'true'
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+        run: |
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/upload.jks"
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/upload.jks" >> "$GITHUB_ENV"
+
+      - name: Build the release APK
+        working-directory: apps/android
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease --no-daemon --console=plain
+
+      - name: Name and check it
+        run: |
+          out=apps/android/app/build/outputs/apk/release
+          mkdir -p dist
+          if [ -n "$ANDROID_KEYSTORE_PATH" ]; then
+            cp "$out/app-release.apk" dist/teyvatme-android.apk
+            "$ANDROID_HOME/build-tools/36.1.0/apksigner" verify --print-certs dist/teyvatme-android.apk \
+              | grep -E "certificate DN|SHA-256"
+            rm -f "$ANDROID_KEYSTORE_PATH"
+          else
+            cp "$out/app-release-unsigned.apk" dist/teyvatme-android.apk
+          fi
+          ls -la dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: teyvatme-android
+          path: dist/teyvatme-android.apk
+          if-no-files-found: error
