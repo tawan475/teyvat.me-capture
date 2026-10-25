@@ -15,7 +15,10 @@ use clap::Parser;
 use serde::{Deserialize, Serialize};
 // The platform-free modules live in crates/core (shared with the
 // Android app); imported here so `crate::good` and the rest resolve as before.
-use teyvatme_core::{decode, delta, good, live, pcapng, player_data, recording};
+// Only debug builds record a pcapng.
+#[cfg(debug_assertions)]
+use teyvatme_core::pcapng;
+use teyvatme_core::{decode, delta, good, live, player_data, recording};
 use tokio::sync::oneshot;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::{EnvFilter, reload};
@@ -23,6 +26,7 @@ use tracing_subscriber::{EnvFilter, reload};
 use crate::game_watch::GameStatus;
 use crate::player_data::{ExportCounts, ExportSettings};
 
+mod activity;
 mod admin;
 mod app;
 mod autostart;
@@ -34,12 +38,30 @@ mod monitor;
 mod replay;
 mod replay_live;
 mod signin;
+mod ui;
 mod update;
 mod wish_history;
 
 /// The app id: where eframe keeps `app.ron`, and the data directory of a
 /// release build. One name for both, so settings and logs never part.
 const APP_ID: &str = "Teyvat.me";
+
+/// The app id of an `--isolated` run.
+const ISOLATED_APP_ID: &str = "Teyvat.me (isolated)";
+
+/// Set by `--isolated` (development): its own settings, sign-in, lock and
+/// startup state, and nothing taken over from irminsul, so a test run on a
+/// machine with a real install leaves that install alone.
+pub static ISOLATED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn isolated() -> bool {
+    ISOLATED.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// The app id this run uses.
+pub fn app_id() -> &'static str {
+    if isolated() { ISOLATED_APP_ID } else { APP_ID }
+}
 
 /// irminsul's app id, whose `app.ron` the first launch copies over
 /// (`migrate.rs`).
@@ -143,6 +165,10 @@ pub struct AppState {
     /// What the captured data says about the account (`gi_player`), for the
     /// data panel and the tracker's UID check. `None` until something is known.
     player: Option<good::GiPlayer>,
+    /// How much of each class is held, for the Captured card's tiles.
+    counts: Option<player_data::ExportCounts>,
+    /// When the captured data last changed.
+    captured_at: Option<chrono::DateTime<chrono::Local>>,
 }
 
 impl AppState {
@@ -153,6 +179,8 @@ impl AppState {
             updated: DataUpdated::new(),
             game_status: GameStatus::default(),
             player: None,
+            counts: None,
+            captured_at: None,
         }
     }
 }
@@ -170,6 +198,11 @@ struct Args {
                      is parsed."
     )]
     no_admin: bool,
+
+    /// Development: separate settings, sign-in and lock, no startup task and
+    /// nothing taken over from irminsul.
+    #[arg(long, hide = true)]
+    isolated: bool,
 
     #[arg(
         long = "capture-backend",
@@ -381,8 +414,14 @@ fn main() -> eframe::Result {
 
     // irminsul's lock as well as ours: the two capture the same traffic, and
     // an irminsul still running beside this would upload the account twice.
-    let instance = single_instance::SingleInstance::new("teyvatme_app_instance").unwrap();
-    let irminsul_instance = single_instance::SingleInstance::new("irminsul_app_instance").unwrap();
+    ISOLATED.store(args.isolated, std::sync::atomic::Ordering::Relaxed);
+    let (lock, irminsul_lock) = if args.isolated {
+        ("teyvatme_isolated_instance", "teyvatme_isolated_instance_2")
+    } else {
+        ("teyvatme_app_instance", "irminsul_app_instance")
+    };
+    let instance = single_instance::SingleInstance::new(lock).unwrap();
+    let irminsul_instance = single_instance::SingleInstance::new(irminsul_lock).unwrap();
     if !instance.is_single() {
         eprintln!("Another instance of Teyvat.me is already running.");
         std::process::exit(1);
@@ -395,10 +434,12 @@ fn main() -> eframe::Result {
     let (_guard, reload_handle, previous_run_notice) = tracing_init().unwrap();
 
     // Before eframe reads `app.ron`.
-    migrate::settings_from_irminsul(
-        eframe::storage_dir(IRMINSUL_APP_ID).as_deref(),
-        eframe::storage_dir(APP_ID).as_deref(),
-    );
+    if !args.isolated {
+        migrate::settings_from_irminsul(
+            eframe::storage_dir(IRMINSUL_APP_ID).as_deref(),
+            eframe::storage_dir(APP_ID).as_deref(),
+        );
+    }
 
     if !args.no_admin && !args.read_from_file {
         #[cfg(any(windows, unix))]
@@ -413,9 +454,8 @@ fn main() -> eframe::Result {
 
     let capture_backend = args.capture_backend;
 
-    // The background's 1600x1000 at half size, plus 20 px of height: the
-    // panels had grown past 500 px.
-    let window_size = [800., 520.];
+    // The design's wide layout; resizable down to its one-column minimum.
+    let window_size = [960., 600.];
 
     // Set by the UI once a self-update has been installed. The relaunch has to
     // happen out here, after `run_native` returns and `instance` is dropped:
@@ -428,14 +468,15 @@ fn main() -> eframe::Result {
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size(window_size)
-            .with_resizable(false)
+            .with_min_inner_size([380., 560.])
+            .with_resizable(true)
             .with_decorations(false)
             .with_icon(
                 // NOTE: Adding an icon is optional
                 eframe::icon_data::from_png_bytes(&include_bytes!("../assets/icon-256.png")[..])
                     .expect("Failed to load icon"),
             ),
-        persist_window: false,
+        persist_window: true,
         ..Default::default()
     };
     let start_window = if args.after_update {
@@ -446,7 +487,7 @@ fn main() -> eframe::Result {
         app::StartWindow::AsIs
     };
     let result = eframe::run_native(
-        APP_ID,
+        app_id(),
         native_options,
         Box::new(move |cc| {
             Ok(Box::new(app::TeyvatmeApp::new(
@@ -489,6 +530,13 @@ fn main() -> eframe::Result {
         // updated from comes back where they can see it, which
         // `--after-update` asks for.
         let args = relaunch_args(std::env::args_os().skip(1));
+        #[cfg(windows)]
+        if admin::ELEVATE_ON_RESTART.load(std::sync::atomic::Ordering::SeqCst) {
+            if admin::relaunch_elevated(&args) {
+                tracing::info!("relaunched as administrator");
+            }
+            return result;
+        }
         match std::env::current_exe() {
             Ok(exe) => match std::process::Command::new(&exe).args(&args).spawn() {
                 Ok(child) => {
@@ -527,7 +575,7 @@ pub fn data_dir() -> Result<PathBuf> {
         dir.push("teyvatme-data");
         return Ok(dir);
     }
-    eframe::storage_dir(APP_ID).context("Storage dir not found")
+    eframe::storage_dir(app_id()).context("Storage dir not found")
 }
 
 /// Where every HTTP client Teyvat.me builds starts, so that all of them use

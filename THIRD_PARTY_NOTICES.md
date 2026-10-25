@@ -79,6 +79,21 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+## Outfit (font)
+
+`apps/desktop/assets/fonts/Outfit-*.ttf` are the Outfit typeface by the Outfit
+Project Authors (https://github.com/Outfitio/Outfit-Fonts), under the SIL Open
+Font License 1.1, whose full text is next to them in
+`apps/desktop/assets/fonts/OFL.txt`.
+
+## Lucide (icons)
+
+`apps/desktop/assets/icons/*.svg` are Lucide icons (https://lucide.dev), taken
+from `lucide-vue-next` 1.0.0 and written out as plain SVG, under the ISC
+License (Lucide Contributors), with the parts derived from Feather under the
+MIT License (Cole Bemis). The full text is next to them in
+`apps/desktop/assets/icons/LICENSE.txt`.
+
 ## Gradle wrapper
 
 `apps/android/gradlew`, `gradlew.bat` and `gradle/wrapper/gradle-wrapper.jar`

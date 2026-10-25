@@ -1323,6 +1323,46 @@ fn signing_out_leaves_neither_sign_in_behind() {
     assert_eq!(store.previous.load(ORIGIN).unwrap(), None);
 }
 
+const OLD_HOST: &str = "https://genshin-tracker.475.dev";
+const NEW_HOST: &str = "https://teyvat.me";
+
+#[test]
+fn a_sign_in_saved_under_the_old_host_moves_to_teyvat_me() {
+    // Saved by Teyvat.me itself before the move.
+    let store = moving(&[(OLD_HOST, "gdt_irt_a")], &[]);
+    assert_eq!(store.load(NEW_HOST).unwrap().as_deref(), Some("gdt_irt_a"));
+    assert_eq!(
+        store.current.load(NEW_HOST).unwrap().as_deref(),
+        Some("gdt_irt_a")
+    );
+    assert_eq!(store.current.load(OLD_HOST).unwrap(), None);
+
+    // Saved by irminsul.
+    let store = moving(&[], &[(OLD_HOST, "gdt_irt_b")]);
+    assert_eq!(store.load(NEW_HOST).unwrap().as_deref(), Some("gdt_irt_b"));
+    assert_eq!(
+        store.current.load(NEW_HOST).unwrap().as_deref(),
+        Some("gdt_irt_b")
+    );
+    assert_eq!(store.previous.load(OLD_HOST).unwrap(), None);
+}
+
+#[test]
+fn the_old_host_takes_nothing_from_teyvat_me() {
+    // Only old → new: a build pointed at the old host keeps its own.
+    let store = moving(&[(NEW_HOST, "gdt_irt_new")], &[]);
+    assert_eq!(store.load(OLD_HOST).unwrap(), None);
+    assert!(store.current.load(NEW_HOST).unwrap().is_some());
+}
+
+#[test]
+fn signing_out_of_teyvat_me_clears_the_old_host_too() {
+    let store = moving(&[(OLD_HOST, "gdt_irt_a")], &[(OLD_HOST, "gdt_irt_b")]);
+    store.delete(NEW_HOST).unwrap();
+    assert_eq!(store.current.load(OLD_HOST).unwrap(), None);
+    assert_eq!(store.previous.load(OLD_HOST).unwrap(), None);
+}
+
 #[test]
 fn another_trackers_sign_in_is_not_taken() {
     let store = moving(&[], &[("https://other.example", "gdt_irt_other")]);

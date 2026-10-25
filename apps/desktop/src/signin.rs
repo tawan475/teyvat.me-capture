@@ -51,7 +51,7 @@ use tokio_util::sync::CancellationToken;
 pub const CLIENT_ID: &str = "irminsul";
 
 /// The credential store's service name; the entry's account is the tracker
-/// origin (`https://genshin-tracker.475.dev`).
+/// origin (`https://teyvat.me`).
 const KEYRING_SERVICE: &str = "teyvatme";
 
 /// The service irminsul saved its sign-in under, taken over on first read.
@@ -762,13 +762,15 @@ impl KeyringStore {
     /// Teyvat.me's entries (service `teyvatme`), taking over the one irminsul
     /// left (service `irminsul`) the first time it is read.
     pub fn taking_over_irminsul() -> MovingStore<KeyringStore, KeyringStore> {
+        // An `--isolated` run keeps a sign-in of its own and moves nothing.
+        let (current, previous) = if crate::isolated() {
+            ("teyvatme-isolated", "teyvatme-isolated")
+        } else {
+            (KEYRING_SERVICE, IRMINSUL_KEYRING_SERVICE)
+        };
         MovingStore {
-            current: KeyringStore {
-                service: KEYRING_SERVICE,
-            },
-            previous: KeyringStore {
-                service: IRMINSUL_KEYRING_SERVICE,
-            },
+            current: KeyringStore { service: current },
+            previous: KeyringStore { service: previous },
         }
     }
 
@@ -801,16 +803,43 @@ impl CredentialStore for KeyringStore {
     }
 }
 
-/// A [`CredentialStore`] that takes over an older one's entries: a read
-/// that finds nothing in `current` looks in `previous`, and moves what it
-/// finds.
+/// Tracker origins that moved, old → new. One Worker answers on both, so a
+/// refresh token saved under the old origin still works on the new one.
+pub(crate) const MOVED_ORIGINS: &[(&str, &str)] =
+    &[("https://genshin-tracker.475.dev", "https://teyvat.me")];
+
+/// The origins whose sign-in `origin` takes over.
+fn moved_to(origin: &str) -> impl Iterator<Item = &'static str> + '_ {
+    MOVED_ORIGINS
+        .iter()
+        .filter(move |(_, new)| *new == origin)
+        .map(|(old, _)| *old)
+}
+
+/// A [`CredentialStore`] that takes over older entries: a read that finds
+/// nothing in `current` looks in `previous` (irminsul's), then under the
+/// origins that moved to this one ([`MOVED_ORIGINS`]) in both, and moves
+/// what it finds.
 ///
 /// Moved, not copied: the refresh token rotates on every use, and the tracker
 /// ends the session when an already used one comes back (`refresh_prev_hash`),
-/// which a copy left behind for irminsul would be.
+/// which a copy left behind would be.
 pub struct MovingStore<C, P> {
     current: C,
     previous: P,
+}
+
+impl<C: CredentialStore, P: CredentialStore> MovingStore<C, P> {
+    /// Where an older sign-in for `origin` may be, in the order looked at.
+    fn older_places<'a>(
+        &'a self,
+        origin: &'a str,
+    ) -> impl Iterator<Item = (&'a dyn CredentialStore, &'a str)> + 'a {
+        let current: &dyn CredentialStore = &self.current;
+        let previous: &dyn CredentialStore = &self.previous;
+        std::iter::once((previous, origin))
+            .chain(moved_to(origin).flat_map(move |old| [(current, old), (previous, old)]))
+    }
 }
 
 impl<C: CredentialStore, P: CredentialStore> CredentialStore for MovingStore<C, P> {
@@ -818,36 +847,43 @@ impl<C: CredentialStore, P: CredentialStore> CredentialStore for MovingStore<C, 
         if let Some(token) = self.current.load(origin)? {
             return Ok(Some(token));
         }
-        let token = match self.previous.load(origin) {
-            Ok(Some(token)) => token,
-            Ok(None) => return Ok(None),
-            Err(e) => {
-                tracing::warn!("could not look for irminsul's saved sign-in: {e}");
-                return Ok(None);
-            }
-        };
-        // Kept in the old place until the new one holds it, so a failed save
-        // leaves the next read to try again.
-        match self.current.save(origin, &token) {
-            Ok(()) => {
-                tracing::info!("moved irminsul's saved sign-in for {origin} to Teyvat.me's");
-                if let Err(e) = self.previous.delete(origin) {
-                    tracing::warn!("could not remove irminsul's saved sign-in: {e}");
+        for (store, from) in self.older_places(origin) {
+            let token = match store.load(from) {
+                Ok(Some(token)) => token,
+                Ok(None) => continue,
+                Err(e) => {
+                    tracing::warn!("could not look for an older saved sign-in ({from}): {e}");
+                    continue;
                 }
+            };
+            // Kept in the old place until the new one holds it, so a failed
+            // save leaves the next read to try again.
+            match self.current.save(origin, &token) {
+                Ok(()) => {
+                    tracing::info!("moved the saved sign-in for {from} to {origin}");
+                    if let Err(e) = store.delete(from) {
+                        tracing::warn!("could not remove the older saved sign-in: {e}");
+                    }
+                }
+                Err(e) => tracing::warn!("could not move the older saved sign-in: {e}"),
             }
-            Err(e) => tracing::warn!("could not move irminsul's saved sign-in: {e}"),
+            return Ok(Some(token));
         }
-        Ok(Some(token))
+        Ok(None)
     }
 
     fn save(&self, origin: &str, token: &str) -> Result<(), String> {
         self.current.save(origin, token)
     }
 
-    /// Signing out removes both, so nothing of the sign-in is left behind.
+    /// Signing out removes every place, so nothing of the sign-in is left
+    /// behind.
     fn delete(&self, origin: &str) -> Result<(), String> {
         self.current.delete(origin)?;
-        self.previous.delete(origin)
+        for (store, from) in self.older_places(origin) {
+            store.delete(from)?;
+        }
+        Ok(())
     }
 }
 

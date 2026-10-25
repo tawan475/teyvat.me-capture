@@ -1519,15 +1519,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "egui-notify"
-version = "0.20.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3cd148c4c3fe05be0d9facf90add19a1531c1d7bfb9c7e4dbc179cfb31844d49"
-dependencies = [
- "egui",
-]
-
-[[package]]
 name = "egui-wgpu"
 version = "0.32.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1600,15 +1591,6 @@ dependencies = [
  "wasm-bindgen",
  "web-sys",
  "winit",
-]
-
-[[package]]
-name = "egui_material_icons"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "edaf2524c06db70ec9154db2de26b43ea278cd304547c0ee9339d5a46a4d6a04"
-dependencies = [
- "egui",
 ]
 
 [[package]]
@@ -5758,9 +5740,7 @@ dependencies = [
  "eframe",
  "egui",
  "egui-file-dialog",
- "egui-notify",
  "egui_extras",
- "egui_material_icons",
  "flate2",
  "futures",
  "futures-util",

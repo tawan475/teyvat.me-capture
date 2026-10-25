@@ -59,6 +59,102 @@ pub fn ensure_admin() {
     );
 }
 
+/// Set by the UI's "Restart as administrator": `main`'s relaunch then asks
+/// Windows to elevate the new copy instead of starting it plainly. Done
+/// there, after the window closed and the single-instance locks are free; a
+/// copy started from inside the app would find them held and exit.
+#[cfg(windows)]
+pub static ELEVATE_ON_RESTART: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// Start the running exe again through the `runas` verb (UAC), with `args`
+/// minus `--no-admin`. Returns whether Windows started it.
+#[cfg(windows)]
+pub fn relaunch_elevated(args: &[std::ffi::OsString]) -> bool {
+    use windows::Win32::UI::Shell::{SEE_MASK_NOASYNC, SHELLEXECUTEINFOW, ShellExecuteExW};
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+    use windows::core::{HSTRING, PCWSTR, w};
+
+    let Ok(exe) = std::env::current_exe() else {
+        return false;
+    };
+    let parameters: Vec<String> = args
+        .iter()
+        .map(|arg| arg.to_string_lossy().into_owned())
+        .filter(|arg| arg != "--no-admin")
+        .map(|arg| quote_windows_arg(&arg))
+        .collect();
+    let file = HSTRING::from(exe.as_os_str());
+    let parameters = HSTRING::from(parameters.join(" "));
+    let mut info = SHELLEXECUTEINFOW {
+        cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
+        fMask: SEE_MASK_NOASYNC,
+        lpVerb: w!("runas"),
+        lpFile: PCWSTR(file.as_ptr()),
+        lpParameters: PCWSTR(parameters.as_ptr()),
+        nShow: SW_SHOWNORMAL.0,
+        ..Default::default()
+    };
+    // SAFETY: every pointer in `info` outlives the call.
+    match unsafe { ShellExecuteExW(&mut info) } {
+        Ok(()) => true,
+        Err(e) => {
+            tracing::warn!("could not relaunch as administrator: {e}");
+            false
+        }
+    }
+}
+
+/// One argument quoted the way `CommandLineToArgvW` reads it back: quotes
+/// around anything with spaces, tabs or quotes, backslashes doubled before a
+/// quote.
+#[cfg(any(windows, test))]
+fn quote_windows_arg(arg: &str) -> String {
+    if !arg.is_empty() && !arg.contains([' ', '\t', '"']) {
+        return arg.to_owned();
+    }
+    let mut out = String::from("\"");
+    let mut backslashes = 0;
+    for c in arg.chars() {
+        match c {
+            '\\' => backslashes += 1,
+            '"' => {
+                out.extend(std::iter::repeat_n('\\', backslashes * 2 + 1));
+                out.push('"');
+                backslashes = 0;
+            }
+            _ => {
+                out.extend(std::iter::repeat_n('\\', backslashes));
+                out.push(c);
+                backslashes = 0;
+            }
+        }
+    }
+    out.extend(std::iter::repeat_n('\\', backslashes * 2));
+    out.push('"');
+    out
+}
+
+#[cfg(test)]
+mod quote_tests {
+    use super::quote_windows_arg;
+
+    #[test]
+    fn arguments_are_quoted_as_command_line_to_argv_reads_them() {
+        assert_eq!(quote_windows_arg("-b"), "-b");
+        assert_eq!(quote_windows_arg(""), "\"\"");
+        assert_eq!(
+            quote_windows_arg(r"D:\My Captures\a.pcap"),
+            r#""D:\My Captures\a.pcap""#
+        );
+        assert_eq!(quote_windows_arg(r#"say "hi""#), r#""say \"hi\"""#);
+        assert_eq!(
+            quote_windows_arg(r"C:\dir with space\"),
+            r#""C:\dir with space\\""#
+        );
+    }
+}
+
 #[cfg(unix)]
 pub fn ensure_admin() {
     // Running as root is always sufficient
