@@ -11,7 +11,6 @@
 //! screen and the notification) and [`Decoder::export`].
 
 use std::collections::{HashMap, VecDeque};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
@@ -38,19 +37,10 @@ const LINKTYPE_RAW: u16 = 101;
 /// Game packets still arriving this long after the last one the sniffer
 /// could place mean it cannot follow the connection: its login was missed.
 const STUCK_AFTER_MS: u64 = 5_000;
-/// No traffic from the game for this long: it is closed (or idle in the
-/// background), so the app waits for it again.
-const GAME_QUIET_MS: u64 = 60_000;
-/// No game connection packets (UDP 22101–22102) for this long: the login
-/// is over. Only these count once logged in: something under the game's UID
-/// keeps opening TCP connections after the game is closed (seen on a Galaxy
-/// A54, every 10–30 s), which kept "Data decrypting" up for good. In the
-/// world the connection is never this quiet; a short trip to the background
-/// keeps the state.
+/// No game connection packets (UDP 22101–22102) for this long: the game is
+/// closed, and the app waits for it again. In the world the connection is
+/// never this quiet; a short trip to the background keeps the state.
 const CONNECTION_QUIET_MS: u64 = 120_000;
-/// When the tun last carried anything from the game (Unix ms; 0 never): set
-/// by the forwarder for every packet, so it costs no channel send.
-pub static LAST_TRAFFIC: AtomicU64 = AtomicU64::new(0);
 /// The activity list keeps this many events.
 const EVENTS: usize = 50;
 /// The tiles' counts are rebuilt at most this often while data pours in.
@@ -66,17 +56,20 @@ pub struct Event {
     pub text: String,
 }
 
-/// What the home screen shows about the game, decided from the traffic
-/// (Android cannot see other apps' processes; only the game is in the VPN,
-/// so any traffic at all means it is running).
+/// What the home screen shows about the game, decided from its connection
+/// (Android cannot see other apps' processes). Only the game's own
+/// connection (UDP 22101–22102) counts: something under the game's UID
+/// keeps opening TCP connections after the game is closed, so its HTTP
+/// traffic says nothing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Phase {
-    /// No traffic from the game.
+    /// No game connection.
     Waiting,
-    /// The game talks (HTTP) but has no game connection yet.
-    TitleScreen,
-    /// A login began in this capture; its session key is not known yet.
+    /// The game connected (it does at the title screen), no login yet.
+    GameDetected,
+    /// The login's token exchange began (the first message under the
+    /// dispatch key, `GetPlayerTokenReq`); the session key is not known yet.
     LoginSeen,
     /// The session key is known: the account's data decrypts.
     Decrypting,
@@ -175,8 +168,6 @@ struct State {
     /// When the running capture's first game packet came.
     capture_first_game_packet: Option<u64>,
     capture_started: Option<u64>,
-    /// Any tun traffic (the forwarder's [`LAST_TRAFFIC`]), for tests.
-    last_traffic: Option<u64>,
     updated: Updated,
     data_at: Option<u64>,
     data_version: u64,
@@ -199,7 +190,6 @@ impl State {
             last_placed: None,
             capture_first_game_packet: None,
             capture_started: None,
-            last_traffic: None,
             updated: Updated::default(),
             data_at: None,
             data_version: 0,
@@ -233,34 +223,28 @@ impl State {
     }
 
     fn phase(&self, now: u64) -> Phase {
-        let traffic = match LAST_TRAFFIC.load(Ordering::Relaxed) {
-            0 => self.last_traffic,
-            at => Some(at.max(self.last_traffic.unwrap_or(0))),
-        };
-        let recent = |at: Option<u64>| at.is_some_and(|at| now.saturating_sub(at) < GAME_QUIET_MS);
         let connected = self
             .last_game_packet
             .is_some_and(|at| now.saturating_sub(at) < CONNECTION_QUIET_MS);
-        if let Some(connection) = &self.connection
-            && connected
-        {
-            if connection.key == Some(KeyState::Session) && !self.stuck(now) {
+        if !connected {
+            return Phase::Waiting;
+        }
+        let stuck = self.stuck(now);
+        if let Some(connection) = &self.connection {
+            if connection.key == Some(KeyState::Session) && !stuck {
                 return Phase::Decrypting;
             }
             if connection.recovery_failed {
                 return Phase::KeyLost;
             }
-            if connection.began_here && !self.stuck(now) {
+            if connection.began_here && connection.key == Some(KeyState::Dispatch) && !stuck {
                 return Phase::LoginSeen;
             }
         }
-        if self.stuck(now) {
-            return Phase::LaunchMissed;
-        }
-        if recent(traffic) {
-            Phase::TitleScreen
+        if stuck {
+            Phase::LaunchMissed
         } else {
-            Phase::Waiting
+            Phase::GameDetected
         }
     }
 
@@ -518,7 +502,6 @@ fn run(rx: mpsc::Receiver<Input>, state: Arc<Mutex<State>>, wishes: &Wishes) {
                 {
                     let mut state = state.lock().unwrap();
                     state.last_game_packet = Some(at);
-                    state.last_traffic = Some(at);
                     state.capture_first_game_packet.get_or_insert(at);
                 }
                 let Some(frame) = recording::as_ethernet(LINKTYPE_RAW, data) else {
@@ -553,7 +536,7 @@ fn handle(state: &mut State, event: SnifferEvent, at: u64, hub: &WishHub) {
             });
             state.restarted_mid_session = false;
             state.last_placed = Some(at);
-            state.event("info", "Login seen");
+            state.event("info", "Game connected");
         }
         SnifferEvent::Packet(packet, report) => {
             state.last_placed = Some(at);
@@ -579,7 +562,12 @@ fn handle(state: &mut State, event: SnifferEvent, at: u64, hub: &WishHub) {
 fn note_key(state: &mut State, report: KeyReport, at: u64) {
     let connection = state.connection.get_or_insert_with(Connection::default);
     let mut found = false;
+    let mut login = false;
     if connection.key != Some(report.state) {
+        // The first message under the dispatch key is the token exchange:
+        // the login itself, not just the game connecting.
+        login = report.state == KeyState::Dispatch
+            && connection.key.is_none_or(|key| key == KeyState::None);
         connection.key = Some(report.state);
         if report.state == KeyState::Session && connection.key_at.is_none() {
             connection.key_at = Some(at);
@@ -588,6 +576,9 @@ fn note_key(state: &mut State, report: KeyReport, at: u64) {
     }
     let lost = report.recovery_failed && !connection.recovery_failed;
     connection.recovery_failed |= report.recovery_failed;
+    if login {
+        state.event("info", "Login seen");
+    }
     if found {
         state.event("ok", "Session key found");
     }
@@ -709,33 +700,51 @@ mod tests {
         let now = 1_000_000;
         assert_eq!(state.phase(now), Phase::Waiting);
 
-        state.last_traffic = Some(now - 1_000);
-        assert_eq!(state.phase(now), Phase::TitleScreen);
-
-        // A login in this capture, before its key.
+        // The game connected at its title screen: no login yet.
         state.capture_first_game_packet = Some(now - 2_000);
         state.last_game_packet = Some(now - 100);
         state.last_placed = Some(now - 100);
         state.connection = Some(Connection {
             began_here: true,
-            key: Some(KeyState::Dispatch),
             ..Connection::default()
         });
+        assert_eq!(state.phase(now), Phase::GameDetected);
+        state.connection.as_mut().unwrap().key = Some(KeyState::None);
+        assert_eq!(state.phase(now), Phase::GameDetected);
+
+        // The token exchange: the login, before its key.
+        state.connection.as_mut().unwrap().key = Some(KeyState::Dispatch);
         assert_eq!(state.phase(now), Phase::LoginSeen);
 
         state.connection.as_mut().unwrap().key = Some(KeyState::Session);
         assert_eq!(state.phase(now), Phase::Decrypting);
 
         // A minute in the background is still the same login.
-        assert_eq!(state.phase(now + GAME_QUIET_MS), Phase::Decrypting);
+        assert_eq!(state.phase(now + 60_000), Phase::Decrypting);
 
         // The game closed: the data stays, the app waits for it again.
         let later = now + CONNECTION_QUIET_MS;
         assert_eq!(state.phase(later), Phase::Waiting);
+    }
 
-        // Stray TCP under the game's UID is not the game's connection.
-        state.last_traffic = Some(later - 1_000);
-        assert_ne!(state.phase(later), Phase::Decrypting);
+    #[test]
+    fn login_seen_is_the_token_exchange_not_the_connection() {
+        let mut state = State::new();
+        state.connection = Some(Connection {
+            began_here: true,
+            ..Connection::default()
+        });
+        let report = |state: KeyState| KeyReport {
+            state,
+            recovery_failed: false,
+        };
+        note_key(&mut state, report(KeyState::None), 1);
+        assert!(state.events.is_empty(), "connecting is not logging in");
+        note_key(&mut state, report(KeyState::Dispatch), 2);
+        note_key(&mut state, report(KeyState::Dispatch), 3);
+        note_key(&mut state, report(KeyState::Session), 4);
+        let events: Vec<_> = state.events.iter().map(|e| e.text.as_str()).collect();
+        assert_eq!(events, ["Login seen", "Session key found"]);
     }
 
     #[test]
@@ -744,12 +753,11 @@ mod tests {
         let now = 1_000_000;
         state.capture_first_game_packet = Some(now - 8_000);
         state.last_game_packet = Some(now - 100);
-        state.last_traffic = Some(now - 100);
         assert_eq!(state.phase(now), Phase::LaunchMissed);
 
         // Not before a few seconds of it, though.
         state.capture_first_game_packet = Some(now - 1_000);
-        assert_eq!(state.phase(now), Phase::TitleScreen);
+        assert_eq!(state.phase(now), Phase::GameDetected);
     }
 
     #[test]

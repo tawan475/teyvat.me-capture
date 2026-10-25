@@ -19,7 +19,7 @@ enum class VpnState { Off, Starting, On }
 
 /** What the home screen's hero shows (spec §4.1.1). */
 enum class Hero {
-    CaptureOff, Starting, Waiting, AtTitleScreen, LoginSeen, Decrypting, MissedAlreadyRunning,
+    CaptureOff, Starting, Waiting, GameDetected, LoginSeen, Decrypting, MissedAlreadyRunning,
     MissedCaptureStopped, KeyLost;
 
     val isProblem get() = this == MissedAlreadyRunning || this == MissedCaptureStopped || this == KeyLost
@@ -141,7 +141,7 @@ fun hero(vpn: VpnState, summary: Summary): Hero = when (vpn) {
     VpnState.Off -> Hero.CaptureOff
     VpnState.Starting -> Hero.Starting
     VpnState.On -> when (summary.phase) {
-        "titleScreen" -> Hero.AtTitleScreen
+        "gameDetected" -> Hero.GameDetected
         "loginSeen" -> Hero.LoginSeen
         "decrypting" -> Hero.Decrypting
         "launchMissed" -> if (summary.missedByRestart) Hero.MissedCaptureStopped else Hero.MissedAlreadyRunning

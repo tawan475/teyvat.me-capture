@@ -201,8 +201,9 @@ class GameVpnService : VpnService() {
     private fun notificationFor(hero: Hero, summary: Summary): Content {
         val title = getString(hero.title())
         return when (hero) {
-            Hero.Waiting, Hero.AtTitleScreen, Hero.CaptureOff ->
+            Hero.Waiting, Hero.CaptureOff ->
                 Content(title, getString(R.string.home_open_before), listOf(Action.OpenGenshin, Action.Stop), false)
+            Hero.GameDetected -> Content(title, getString(R.string.home_detected_line), listOf(Action.Stop), false)
             Hero.Starting -> Content(title, getString(R.string.home_starting_line), listOf(Action.Stop), false)
             Hero.LoginSeen -> Content(title, getString(R.string.home_login_seen_line), listOf(Action.Stop), false)
             Hero.Decrypting -> Content(

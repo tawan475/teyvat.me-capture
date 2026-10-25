@@ -214,18 +214,6 @@ fn is_game_port(port: u16) -> bool {
     (GAME_PORTS.0..=GAME_PORTS.1).contains(&port)
 }
 
-/// A unicast TCP or UDP packet: the game itself talking. The tun also
-/// carries the system's own packets when it comes up (multicast listener
-/// reports and the like), which say nothing about the game running.
-fn is_app_traffic(packet: &[u8]) -> bool {
-    let Ok(ip) = IpSlice::from_slice(packet) else {
-        return false;
-    };
-    let transport = ip.payload_ip_number();
-    (transport == IpNumber::TCP || transport == IpNumber::UDP)
-        && !ip.destination_addr().is_multicast()
-}
-
 fn is_game_packet(packet: &[u8]) -> bool {
     udp_ports(packet).is_some_and(|(src, dst)| is_game_port(src) || is_game_port(dst))
 }
@@ -454,9 +442,6 @@ impl AsyncRead for TunDevice {
                         .packets_out
                         .fetch_add(1, Ordering::Relaxed);
                     let packet = &buf.initialize_unfilled()[..n];
-                    if is_app_traffic(packet) {
-                        decoder::LAST_TRAFFIC.store(decoder::now_ms(), Ordering::Relaxed);
-                    }
                     this.copy_if_game(packet);
                     if this.hold_at_gate(packet) {
                         continue;
@@ -999,15 +984,6 @@ mod tests {
         let mut out = Vec::new();
         builder.write(&mut out, &[]).unwrap();
         out
-    }
-
-    #[test]
-    fn only_unicast_tcp_and_udp_mean_the_game_is_running() {
-        assert!(is_app_traffic(&ipv4_udp(40000, 443)));
-        let mut multicast = ipv4_udp(5353, 5353);
-        multicast[16..20].copy_from_slice(&[224, 0, 0, 251]);
-        assert!(!is_app_traffic(&multicast));
-        assert!(!is_app_traffic(&[0x60, 0, 0]));
     }
 
     #[test]

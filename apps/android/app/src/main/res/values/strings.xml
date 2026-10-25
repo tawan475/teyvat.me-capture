@@ -27,12 +27,13 @@
     <string name="home_starting_line">Back in a few seconds</string>
     <string name="home_open_activity">Open Activity</string>
     <string name="home_waiting_title">Waiting for the game</string>
-    <string name="home_waiting_line">Start Genshin now</string>
-    <string name="home_title_screen_line">Enter the world now</string>
+    <string name="home_waiting_line">Genshin isn\'t running · start it now</string>
+    <string name="home_detected_title">Game detected</string>
+    <string name="home_detected_line">Launch captured · enter the world to read your data</string>
     <string name="home_open_before">Open before the game</string>
     <string name="home_open_genshin">Open Genshin</string>
     <string name="home_login_seen_title">Login seen</string>
-    <string name="home_login_seen_line">Enter the world to read your data</string>
+    <string name="home_login_seen_line">Finding the session key</string>
     <string name="home_decrypting_title">Data decrypting</string>
     <string name="home_decrypting_line">Session key found · %s</string>
     <string name="home_missed_title">Launch missed</string>
@@ -44,7 +45,7 @@
     <string name="home_key_lost_title">Login not read</string>
     <string name="home_key_lost_line">Session key not found</string>
     <string name="home_data_kept">Captured data is kept</string>
-    <string name="step_vpn">VPN</string>
+    <string name="step_vpn">Capture</string>
     <string name="step_login">Login</string>
     <string name="step_key">Key</string>
     <string name="vpn_not_allowed">VPN not allowed</string>

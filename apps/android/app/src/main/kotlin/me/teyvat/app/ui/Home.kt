@@ -132,14 +132,13 @@ private fun HeroCard(hero: Hero, summary: Summary, startingSince: Long, now: Lon
                 TmButton(stringResource(R.string.home_open_activity), actions::openActivity, kind = ButtonKind.Text)
             }
         }
-        Hero.Waiting, Hero.AtTitleScreen -> StatusHero(stop, R.drawable.ic_gamepad, DiscKind.Neutral, title, line, steps(Step.Done, Step.Now, Step.Pending)) {
-            if (hero == Hero.Waiting) {
-                InfoChip(stringResource(R.string.home_open_before))
-                if (actions.gameInstalled()) {
-                    TmButton(stringResource(R.string.home_open_genshin), actions::openGenshin, kind = ButtonKind.Tonal, large = true, icon = R.drawable.ic_play)
-                }
+        Hero.Waiting -> StatusHero(stop, R.drawable.ic_gamepad, DiscKind.Neutral, title, line, steps(Step.Done, Step.Pending, Step.Pending)) {
+            InfoChip(stringResource(R.string.home_open_before))
+            if (actions.gameInstalled()) {
+                TmButton(stringResource(R.string.home_open_genshin), actions::openGenshin, kind = ButtonKind.Tonal, large = true, icon = R.drawable.ic_play)
             }
         }
+        Hero.GameDetected -> StatusHero(stop, R.drawable.ic_gamepad, DiscKind.Neutral, title, line, steps(Step.Done, Step.Now, Step.Pending))
         Hero.LoginSeen -> StatusHero(stop, R.drawable.ic_log_in, DiscKind.Fill, title, line, steps(Step.Done, Step.Done, Step.Now))
         Hero.Decrypting -> StatusHero(stop, 
             R.drawable.ic_circle_check, DiscKind.Success, title, line, steps(Step.Done, Step.Done, Step.Done),

@@ -15,7 +15,8 @@ import java.util.Locale
 fun Hero.title(): Int = when (this) {
     Hero.CaptureOff -> R.string.home_capture_off_title
     Hero.Starting -> R.string.home_starting_title
-    Hero.Waiting, Hero.AtTitleScreen -> R.string.home_waiting_title
+    Hero.Waiting -> R.string.home_waiting_title
+    Hero.GameDetected -> R.string.home_detected_title
     Hero.LoginSeen -> R.string.home_login_seen_title
     Hero.Decrypting -> R.string.home_decrypting_title
     Hero.MissedAlreadyRunning, Hero.MissedCaptureStopped -> R.string.home_missed_title
@@ -30,7 +31,7 @@ fun Hero.line(context: Context, summary: Summary): String = when (this) {
     Hero.CaptureOff -> context.getString(R.string.home_capture_off_line)
     Hero.Starting -> context.getString(R.string.home_starting_line)
     Hero.Waiting -> context.getString(R.string.home_waiting_line)
-    Hero.AtTitleScreen -> context.getString(R.string.home_title_screen_line)
+    Hero.GameDetected -> context.getString(R.string.home_detected_line)
     Hero.LoginSeen -> context.getString(R.string.home_login_seen_line)
     Hero.Decrypting -> context.getString(R.string.home_decrypting_line, summary.keyAt?.let(::hhmm) ?: "")
     Hero.MissedAlreadyRunning -> context.getString(R.string.home_missed_running_line)
