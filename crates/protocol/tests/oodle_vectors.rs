@@ -19,7 +19,7 @@ use std::io::Read;
 use std::path::Path;
 
 use flate2::read::GzDecoder;
-use logbook_protocol::oodle::{DICT_SIZE, TcpDecoder};
+use teyvatme_protocol::oodle::{DICT_SIZE, TcpDecoder};
 
 struct Message {
     raw: Vec<u8>,

@@ -4,8 +4,8 @@
 
 """Open an issue when Dimbreath publishes game data no release carries yet.
 
-Logbook's release builds download Dimbreath's newest game data dump
-(gitlab.com/Dimbreath/animegamedata2, through the `logbook-game-data` crate in
+Teyvat.me's release builds download Dimbreath's newest game data dump
+(gitlab.com/Dimbreath/animegamedata2, through the `teyvatme-game-data` crate in
 build.rs) when they are built. A release published after a dump commit
 therefore already carries it, and a dump newer than the latest release is new
 characters, weapons, artifacts and materials waiting for a release to ship.
@@ -22,7 +22,7 @@ answer.
 
 Usage: python .github/scripts/game_data_watch.py [--dry-run]
   GITHUB_TOKEN needs issues: write and contents: read. GITHUB_REPOSITORY
-  defaults to tawan475/logbook. --dry-run prints the decision and writes
+  defaults to tawan475/teyvat.me. --dry-run prints the decision and writes
   nothing.
 """
 
@@ -51,7 +51,7 @@ DUMP_COMMITS_URL = "https://gitlab.com/api/v4/projects/83871005/repository/commi
 LOG_FORMAT = "%H%x00%cI%x00%s"
 GIT_TIMEOUT_S = 120
 GITHUB_API = "https://api.github.com"
-DEFAULT_REPO = "tawan475/logbook"
+DEFAULT_REPO = "tawan475/teyvat.me"
 
 LABEL = "game-data"
 LABEL_COLOR = "1d76db"
@@ -63,7 +63,7 @@ LABEL_DESCRIPTION = "Game data newer than the latest release"
 DUMP_TITLE = re.compile(r"(?P<label>[A-Za-z]+(?P<version>\d+\.\d+\.\d+))(?:_[A-Z]+\d+)*")
 DATA_REVISION = re.compile(r"_(D\d+)(?=_|$)")
 
-USER_AGENT = "logbook-game-data-watch"
+USER_AGENT = "teyvatme-game-data-watch"
 
 
 def parse_time(text: str) -> datetime:
@@ -144,7 +144,7 @@ def issue_body(dump: Dump, release: Release | None) -> str:
         latest = f"the latest release, {release.tag}, was published {release.published_at.isoformat()}"
     return "\n".join(
         [
-            "Dimbreath published a game data dump that no Logbook release carries yet:",
+            "Dimbreath published a game data dump that no Teyvat.me release carries yet:",
             f"{latest}.",
             "",
             f"- Game version: {version}",

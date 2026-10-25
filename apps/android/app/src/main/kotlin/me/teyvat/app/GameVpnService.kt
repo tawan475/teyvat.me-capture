@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 tawan475
 
-package io.github.tawan475.logbook
+package me.teyvat.app
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -89,7 +89,7 @@ class GameVpnService : VpnService() {
         val lp = network?.let { connectivity.getLinkProperties(it) }
         val ipv6 = lp != null && hasGlobalIpv6(lp)
         val builder = Builder()
-            .setSession("Logbook")
+            .setSession("Teyvat.me")
             .setMtu(1500)
             .setMetered(false) // follow the underlying network instead
             .addAddress("10.111.0.2", 32)
@@ -164,7 +164,7 @@ class GameVpnService : VpnService() {
         val manager = getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(
             NotificationChannel(CHANNEL, "Capture", NotificationManager.IMPORTANCE_LOW).apply {
-                description = "Shown while Logbook captures the game"
+                description = "Shown while Teyvat.me captures the game"
                 setShowBadge(false)
             },
         )
@@ -177,7 +177,7 @@ class GameVpnService : VpnService() {
         val notification = Notification.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_capture)
             .setContentTitle("Capturing Genshin Impact")
-            .setContentText("Only the game's traffic goes through Logbook")
+            .setContentText("Only the game's traffic goes through Teyvat.me")
             .setContentIntent(open)
             .setOngoing(true)
             .setCategory(Notification.CATEGORY_SERVICE)
@@ -220,13 +220,13 @@ class GameVpnService : VpnService() {
 
     companion object {
         const val GAME_PACKAGE = "com.miHoYo.GenshinImpact"
-        const val ACTION_STOP = "io.github.tawan475.logbook.STOP"
+        const val ACTION_STOP = "me.teyvat.app.STOP"
         /** The forwarder's virtual resolver (`VIRTUAL_DNS` in android/native). */
         private const val VIRTUAL_DNS = "10.111.0.53"
         private const val TUN_IPV6 = "fd00:6972:6d::2"
         private const val CHANNEL = "capture"
         private const val NOTIFICATION_ID = 1
-        private const val TAG = "logbook"
+        private const val TAG = "teyvatme"
 
         @Volatile
         var lastPcap: String? = null

@@ -44,7 +44,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      # Keep the in-tree logbook-protocol crate compiled between runs (its
+      # Keep the in-tree teyvatme-protocol crate compiled between runs (its
       # generated protobuf code is the slowest thing to build and rarely
       # changes), and write caches only from pushes to develop/main: pull
       # requests restore them but don't save, which used to overflow the 10 GB
@@ -103,8 +103,8 @@ jobs:
         env:
           LIB: ${{ github.workspace }}/Lib/x64/
       # crates/core holds the decoder model, GOOD export and live
-      # sync that used to be logbook's own modules; its tests run on every OS.
-      - run: cargo test --release --locked -p logbook-core
+      # sync that used to be Teyvat.me's own modules; its tests run on every OS.
+      - run: cargo test --release --locked -p teyvatme-core
       - run: cargo build --release --locked --no-default-features --features "${{ matrix.features }}"
         env:
           LIB: ${{ github.workspace }}/Lib/x64/
@@ -113,7 +113,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}-${{ runner.os }}
-          path: target/release/logbook${{ matrix.suffix }}
+          path: target/release/teyvatme${{ matrix.suffix }}
 
   # Everything above builds --release only, so without this leg nothing in CI
   # ever compiles the #[cfg(debug_assertions)] code (all of
@@ -125,7 +125,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      # Keep the in-tree logbook-protocol crate compiled between runs (its
+      # Keep the in-tree teyvatme-protocol crate compiled between runs (its
       # generated protobuf code is the slowest thing to build and rarely
       # changes), and write caches only from pushes to develop/main: pull
       # requests restore them but don't save, which used to overflow the 10 GB
@@ -140,7 +140,7 @@ jobs:
         run: echo "TRACKER_API_URL=${{ vars.TRACKER_API_URL }}" >> "$GITHUB_ENV"
       - run: cargo clippy --locked --workspace --all-targets --no-default-features -- -Dwarnings
       - run: cargo test --locked --no-default-features
-      - run: cargo test --locked -p logbook-core
+      - run: cargo test --locked -p teyvatme-core
       - run: cargo build --locked --no-default-features
 
   # crates/protocol, the packet-parsing library: its own tests, the
@@ -156,7 +156,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      # Keep the in-tree logbook-protocol crate compiled between runs (its
+      # Keep the in-tree teyvatme-protocol crate compiled between runs (its
       # generated protobuf code is the slowest thing to build and rarely
       # changes), and write caches only from pushes to develop/main: pull
       # requests restore them but don't save, which used to overflow the 10 GB
@@ -167,22 +167,22 @@ jobs:
           save-if: ${{ github.event_name == 'push' }}
       # --all-features so the `cli` binary (src/main.rs) is linted and tested
       # too; without it the bin is skipped for want of its required feature.
-      - run: cargo clippy --locked -p logbook-protocol --all-targets --all-features -- -Dwarnings
-      - run: cargo test --locked -p logbook-protocol --all-features
-      # Default features must stay CLI-free: this is what logbook builds, and
+      - run: cargo clippy --locked -p teyvatme-protocol --all-targets --all-features -- -Dwarnings
+      - run: cargo test --locked -p teyvatme-protocol --all-features
+      # Default features must stay CLI-free: this is what Teyvat.me builds, and
       # it proves clap/anyhow are not in the library's dependency graph.
-      - run: cargo build --locked -p logbook-protocol
-      - run: cargo build --locked -p logbook-protocol --all-features
+      - run: cargo build --locked -p teyvatme-protocol
+      - run: cargo build --locked -p teyvatme-protocol --all-features
       # Broken intra-doc links (e.g. a public doc linking to a private item)
       # fail the build.
       - name: Doc
-        run: cargo doc --locked -p logbook-protocol --no-deps --all-features
+        run: cargo doc --locked -p teyvatme-protocol --no-deps --all-features
         env:
           RUSTDOCFLAGS: -Dwarnings
       # crates/game-data, the game data crate build.rs uses: pure Rust
       # as well, so it rides along here. --all-features covers its `cli` bin.
-      - run: cargo clippy --locked -p logbook-game-data --all-targets --all-features -- -Dwarnings
-      - run: cargo test --locked -p logbook-game-data --all-features
+      - run: cargo clippy --locked -p teyvatme-game-data --all-targets --all-features -- -Dwarnings
+      - run: cargo test --locked -p teyvatme-game-data --all-features
 
   # update_rev.py is what turns "upstream pushed something" into a new pinned
   # revision in Cargo.toml, and its two guards -- refuse to run under an active

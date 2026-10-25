@@ -4,7 +4,7 @@
 
 """Print the next release version: the Cargo.toml base plus the next -T-N.
 
-Logbook's releases are `<base>-T-<n>` (e.g. `0.2.3-T-12`): `<base>` is the
+Teyvat.me's releases are `<base>-T-<n>` (e.g. `0.2.3-T-12`): `<base>` is the
 `package.version` in Cargo.toml and `<n>` is one running count of this fork's
 releases. It never restarts, not even when the base changes: after T-9 comes
 10, then 11 (the user's rule, 2026-10-12). The release workflow runs this to

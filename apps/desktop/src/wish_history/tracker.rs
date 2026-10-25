@@ -19,7 +19,7 @@ pub(crate) const MAX_RECORDS_PER_IMPORT: usize = 2_000;
 /// The language the records are fetched in (the URL's `lang`).
 pub(crate) const RECORD_LANG: &str = "en-us";
 
-/// How logbook proves who it uploads for: the same choice as a snapshot
+/// How Teyvat.me proves who it uploads for: the same choice as a snapshot
 /// upload (`app::upload_credential`). Both routes accept either kind and
 /// resolve it to an owner exactly like a snapshot upload does.
 #[derive(Clone)]

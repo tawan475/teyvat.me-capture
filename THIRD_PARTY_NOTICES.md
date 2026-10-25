@@ -1,13 +1,13 @@
 # Third-party notices
 
-Logbook's own code is MIT licensed (see [`LICENSE`](LICENSE)). Parts of it
+Teyvat.me's own code is MIT licensed (see [`LICENSE`](LICENSE)). Parts of it
 come from the projects below, which are MIT licensed too. Their copyright and
 permission notices are reproduced here, as their licences require. Every
 source file says in its header whether it holds lines from one of them.
 
 ## irminsul
 
-Logbook grew out of [irminsul](https://github.com/konkers/irminsul) by Erik
+Teyvat.me grew out of [irminsul](https://github.com/konkers/irminsul) by Erik
 Gilling ([konkers](https://github.com/konkers)): the desktop app
 (`apps/desktop`), the GOOD export and the account model (`crates/core`) and the
 build and CI scripts started there. Contributors to it include NyanCatTW1,
@@ -90,8 +90,8 @@ the original authors, Gradle Inc.).
 
 - `apps/desktop/keys/gi.json` and `crates/protocol/keys/*.pem` are the keys the
   game's client uses, carried over from irminsul and auto-artifactarium as they
-  were. They are not licensed by Logbook.
-- The game data Logbook downloads at build time comes from Dimbreath's public
+  were. They are not licensed by Teyvat.me.
+- The game data Teyvat.me downloads at build time comes from Dimbreath's public
   dump; it is not part of this repository.
 
 ## Thanks
@@ -104,5 +104,5 @@ IceDynamix, whose Honkai: Star Rail network scanning work is at the root of
 most of these tools; emmachase's [pktmon](https://github.com/emmachase/pktmon),
 which lets Windows capture without a driver install;
 [Genshin Optimizer](https://frzyc.github.io/genshin-optimizer/), whose GOOD
-format Logbook exports; and
+format Teyvat.me exports; and
 [Inventory Kamera](https://github.com/Andrewthe13th/Inventory_Kamera).

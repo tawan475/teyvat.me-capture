@@ -115,7 +115,7 @@ impl TrackerSignIn {
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct SavedAppState {
     pub export_settings: ExportSettings,
-    /// Whether Windows starts Logbook at sign-in: the last state read from
+    /// Whether Windows starts Teyvat.me at sign-in: the last state read from
     /// Task Scheduler (see `autostart.rs`), which overrides this on every
     /// read. Only a cache, kept so the checkbox has something to show before
     /// the first read.
@@ -154,7 +154,7 @@ pub struct SavedAppState {
     /// `serde(skip)`, because it records a round trip that actually happened
     /// rather than a preference: persisting it would let a key revoked between
     /// runs start the next one looking verified. It lives on the saved state
-    /// rather than on `LogbookApp` because this struct is the channel
+    /// rather than on `TeyvatmeApp` because this struct is the channel
     /// `monitor.rs` reads, and the automation upload has to gate on the same
     /// thing the manual button does.
     #[serde(skip)]
@@ -515,7 +515,7 @@ fn uid_mismatch_message(account: &TrackerAccount, captured: u32) -> String {
     )
 }
 
-pub struct LogbookApp {
+pub struct TeyvatmeApp {
     ui_message_tx: mpsc::UnboundedSender<Message>,
     /// Answers to the update prompt only. Keeping these off `ui_message_tx` is
     /// what stops the update check from eating unrelated startup messages.
@@ -618,7 +618,7 @@ pub struct LogbookApp {
 
     app_settings_open: bool,
 
-    /// "Start Logbook on startup": the scheduled task's state, read in the
+    /// "Start Teyvat.me on startup": the scheduled task's state, read in the
     /// background, and the warning when it starts another copy.
     startup: Startup,
 
@@ -649,7 +649,7 @@ pub enum StartWindow {
     Front,
 }
 
-/// Set while the window is hidden to the tray: from [`LogbookApp::minimize`]
+/// Set while the window is hidden to the tray: from [`TeyvatmeApp::minimize`]
 /// until [`restore_window`], which runs on the tray's thread.
 static HIDDEN_TO_TRAY: AtomicBool = AtomicBool::new(false);
 
@@ -659,11 +659,11 @@ fn new_toasts() -> Toasts {
 }
 
 trait ToastError<T> {
-    fn toast_error(self, app: &mut LogbookApp) -> Option<T>;
+    fn toast_error(self, app: &mut TeyvatmeApp) -> Option<T>;
 }
 
 impl<T, E: Display> ToastError<T> for std::result::Result<T, E> {
-    fn toast_error(self, app: &mut LogbookApp) -> Option<T> {
+    fn toast_error(self, app: &mut TeyvatmeApp) -> Option<T> {
         match self {
             Ok(val) => Some(val),
             Err(e) => {
@@ -712,7 +712,7 @@ const RELEASE_HIDDEN_MEMORY_DELAY: Duration = Duration::from_secs(2);
 
 /// Hand back the RAM a window that is out of sight was holding.
 ///
-/// Most of a visible Logbook's memory belongs to the graphics driver (on an
+/// Most of a visible Teyvat.me's memory belongs to the graphics driver (on an
 /// NVIDIA card its OpenGL context alone is over 100 MB, kept until the process
 /// exits) and to egui, and none of it is touched while the window is in the
 /// tray or minimized, because nothing is drawn. Windows takes such pages back
@@ -776,7 +776,7 @@ fn release_memory_after(delay: Duration, what: &'static str) {
     }
 }
 
-/// Which releases [`LogbookApp::release_settled_memory`] starts this frame:
+/// Which releases [`TeyvatmeApp::release_settled_memory`] starts this frame:
 /// (start-up, game session). The start-up one once; the session one each time
 /// the game status turns to decoding.
 #[cfg(any(windows, test))]
@@ -797,11 +797,11 @@ fn trim_working_set() -> windows::core::Result<()> {
     unsafe { SetProcessWorkingSetSize(GetCurrentProcess(), usize::MAX, usize::MAX) }
 }
 
-/// Whether Logbook's window is hidden or minimized. `false` when it cannot
+/// Whether Teyvat.me's window is hidden or minimized. `false` when it cannot
 /// be found, so nothing is released on a guess.
 ///
 /// Only a window of this process counts: any other top-level window can be
-/// titled "Logbook" too, an Explorer window on a folder of that name for one.
+/// titled "Teyvat.me" too, an Explorer window on a folder of that name for one.
 #[cfg(windows)]
 fn window_out_of_sight() -> bool {
     use std::os::windows::ffi::OsStrExt;
@@ -811,7 +811,7 @@ fn window_out_of_sight() -> bool {
     };
     use windows::core::PCWSTR;
 
-    let title: Vec<u16> = std::ffi::OsStr::new("Logbook")
+    let title: Vec<u16> = std::ffi::OsStr::new("Teyvat.me")
         .encode_wide()
         .chain(std::iter::once(0))
         .collect();
@@ -888,7 +888,7 @@ fn start_async_runtime(
             // Notify egui of state changes. This has to be running *before* the
             // update check: the check pushes the "update available" prompt
             // through `state_tx`, and without a repainter listening the window
-            // sat on "Checking for Logbook updates" until the user happened to
+            // sat on "Checking for Teyvat.me updates" until the user happened to
             // move the pointer over it.
             tokio::spawn(async move {
                 loop {
@@ -949,7 +949,7 @@ fn start_async_runtime(
     )
 }
 
-impl LogbookApp {
+impl TeyvatmeApp {
     pub fn new(
         cc: &eframe::CreationContext<'_>,
         mut tracing_reload_handle: ReloadHandle,
@@ -1046,7 +1046,7 @@ impl LogbookApp {
             let menu_populated = tray_menu.append_items(&[&restore_i, &quit_i]).is_ok();
 
             tray_icon = TrayIconBuilder::new()
-                .with_tooltip("Logbook")
+                .with_tooltip("Teyvat.me")
                 .with_icon(icon)
                 .with_menu(Box::new(tray_menu))
                 .build()
@@ -1113,7 +1113,7 @@ impl LogbookApp {
                 }
 
                 let _tray_icon = match TrayIconBuilder::new()
-                    .with_tooltip("Logbook")
+                    .with_tooltip("Teyvat.me")
                     .with_icon(icon)
                     .with_menu(Box::new(tray_menu))
                     .build()
@@ -1202,7 +1202,7 @@ impl LogbookApp {
     }
 }
 
-impl Drop for LogbookApp {
+impl Drop for TeyvatmeApp {
     fn drop(&mut self) {
         self.monitor_cancel_token.cancel();
 
@@ -1248,7 +1248,7 @@ impl Drop for LogbookApp {
     }
 }
 
-impl eframe::App for LogbookApp {
+impl eframe::App for TeyvatmeApp {
     /// Called by the framework to save state before shutdown.
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, eframe::APP_KEY, &self.saved_state);
@@ -1290,7 +1290,7 @@ impl eframe::App for LogbookApp {
         // Nothing is drawn while the window is out of sight. Anything that
         // animates (a toast counting down, a spinner) asks for the next frame
         // at once, and eframe keeps running frames for a minimized window,
-        // only napping 10 ms between them: a toast kept a minimized Logbook
+        // only napping 10 ms between them: a toast kept a minimized Teyvat.me
         // at a full UI frame every 10 ms until it timed out, and a spinner
         // (a sign-in left waiting) would forever. Measured: 181 frames a
         // second on screen with a toast up, 3 in 30 s minimized once this
@@ -1461,7 +1461,7 @@ impl eframe::App for LogbookApp {
                         .clicked()
                     {
                         ui.ctx()
-                            .open_url(OpenUrl::new_tab("https://github.com/tawan475/logbook"));
+                            .open_url(OpenUrl::new_tab("https://github.com/tawan475/teyvat.me"));
                     }
 
                     let button = ui.add(
@@ -1517,11 +1517,11 @@ impl eframe::App for LogbookApp {
     }
 }
 
-impl LogbookApp {
+impl TeyvatmeApp {
     /// The notice that the previous run did not exit cleanly.
     ///
     /// A toast of its own rather than an `egui_notify` one, which cannot hold a
-    /// button, and one that stays until dismissed: Logbook often starts at
+    /// button, and one that stays until dismissed: Teyvat.me often starts at
     /// sign-in, long before anyone looks at it. Top left, over the background
     /// picture, where it covers nothing and no other toast goes.
     fn previous_run_notice_ui(&mut self, ctx: &Context) {
@@ -1713,7 +1713,7 @@ impl LogbookApp {
 
     fn checking_for_update_ui(&self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            ui.label("Checking for Logbook updates".to_string());
+            ui.label("Checking for Teyvat.me updates".to_string());
         });
     }
 
@@ -1777,7 +1777,7 @@ impl LogbookApp {
         confirmation_type: ConfirmationType,
     ) {
         let label = match confirmation_type {
-            ConfirmationType::Initial => "Logbook needs to download initial data",
+            ConfirmationType::Initial => "Teyvat.me needs to download initial data",
             ConfirmationType::Update => "New data available",
         };
         ui.label(label.to_string());
@@ -1886,7 +1886,7 @@ impl LogbookApp {
                 },
                 |ui| {
                     // No capture on/off control by design: capture is meant to
-                    // be running for as long as Logbook is, and a backend that
+                    // be running for as long as Teyvat.me is, and a backend that
                     // dies is brought back by the supervisor in `monitor.rs`
                     // rather than by the user noticing a stopped indicator. The
                     // game status line below reports whether it is actually
@@ -1998,7 +1998,7 @@ impl LogbookApp {
         };
         ui.label(status_text);
 
-        // Under "Status", as asked. The two lines above report Logbook's own
+        // Under "Status", as asked. The two lines above report Teyvat.me's own
         // health -- the backend is up, this much data has arrived -- and both
         // used to read perfectly green while the session could never be
         // decrypted at all, because the game had been started first. This line
@@ -2037,7 +2037,7 @@ impl LogbookApp {
         ui.separator();
         ui.label(match cause {
             Some(MissedLaunch::CaptureStopped) => "Capture was off when you logged in.",
-            _ => "Logbook started after you entered the world.",
+            _ => "Teyvat.me started after you entered the world.",
         });
         ui.add_space(6.0);
         ui.label(
@@ -2060,7 +2060,7 @@ impl LogbookApp {
         egui::Sides::new().show(
             ui,
             |ui| {
-                // No "quit Logbook" here: next to a dismiss button it was
+                // No "quit Teyvat.me" here: next to a dismiss button it was
                 // clicked by mistake, and quitting doesn't fix a missed
                 // login anyway (entering the world again does).
                 ui.add_enabled_ui(!kill_pending, |ui| {
@@ -2079,7 +2079,7 @@ impl LogbookApp {
                 if ui
                     .button(RichText::new("OK").strong())
                     .on_hover_text(
-                        "Dismiss this. The game status line stays red until a session Logbook watched start.",
+                        "Dismiss this. The game status line stays red until a session Teyvat.me watched start.",
                     )
                     .clicked()
                 {
@@ -2152,7 +2152,7 @@ impl LogbookApp {
                     Self::section_header(ui, "Wish History");
                     ui.label(egui_material_icons::icons::ICON_HELP)
                         .on_hover_text(
-                            "Logbook takes your wish key from the game when its wish history \
+                            "Teyvat.me takes your wish key from the game when its wish history \
                              page opens; each login starts fresh. Click the Copy icon to copy \
                              the wish URL, then paste it into paimon.moe (Manual import) or \
                              StarDB. With the Tracker set up and uploads on, new wishes are \
@@ -2558,7 +2558,7 @@ impl LogbookApp {
     fn tracker_advanced_ui(&mut self, ui: &mut egui::Ui) {
         // The URL used to be compile-time only (`#[serde(skip)]`, no
         // widget), so anyone self-hosting on another host or port had to
-        // rebuild Logbook to point it at their backend. It is now edited
+        // rebuild Teyvat.me to point it at their backend. It is now edited
         // here and only takes effect once confirmed (`pending_address`).
         ui.label("Tracker address").on_hover_text(
             "The tracker's API address. A sign-in belongs to one address: changing it signs out.",
@@ -2603,7 +2603,7 @@ impl LogbookApp {
         ui.add(egui::TextEdit::singleline(&mut self.saved_state.tracker_import_key).password(true));
         warning_note(
             ui,
-            "Stored in plain text in Logbook's app data and never expires. Signing in is safer.",
+            "Stored in plain text in Teyvat.me's app data and never expires. Signing in is safer.",
         );
         ui.horizontal(|ui| {
             if ui
@@ -2893,7 +2893,7 @@ impl LogbookApp {
                     "Verbose Debug",
                 );
                 // Named, not just "Verbose Trace": at this level
-                // logbook-protocol logs every decoded packet's payload as
+                // teyvatme-protocol logs every decoded packet's payload as
                 // base64, so latest.log becomes a dump of the account's game
                 // data -- and the Bug Report modal asks users to attach it.
                 ui.selectable_value(
@@ -2946,7 +2946,7 @@ impl LogbookApp {
             |ui| {
                 if ui.button("New GitHub Issue").clicked() {
                     ui.ctx().open_url(OpenUrl::new_tab(
-                        "https://github.com/tawan475/logbook/issues/new",
+                        "https://github.com/tawan475/teyvat.me/issues/new",
                     ));
                     ui.close()
                 }
@@ -3193,10 +3193,10 @@ impl LogbookApp {
     /// achievement data.
     ///
     /// DEFERRED: this still cannot tell "no achievement packet has arrived"
-    /// from "one arrived and could not be read". logbook-protocol grew
+    /// from "one arrived and could not be read". teyvatme-protocol grew
     /// `try_matches_achievement_packet` and `AchievementMatchError`
     /// (`UnidentifiedFields` / `NoCandidateList`) for exactly that distinction,
-    /// and nothing in logbook calls either: surfacing it needs the classifier
+    /// and nothing in Teyvat.me calls either: surfacing it needs the classifier
     /// in `monitor.rs::handle_game_packet` to keep the last failure and put it
     /// on `AppState`, which is monitor's half of the change. Until then the
     /// toast below says only that nothing has been captured yet -- true in both
@@ -3227,7 +3227,7 @@ impl LogbookApp {
                                 self.wish_link_failed_for = None;
                                 self.toasts.error(
                                     "No achievements yet: they arrive when you enter the world \
-                                     with Logbook running.",
+                                     with Teyvat.me running.",
                                 );
                             }
                         }
@@ -3281,7 +3281,7 @@ impl LogbookApp {
                 } else {
                     self.wish_link_failed_for = None;
                     self.toasts.error(
-                        "Export failed: no achievements yet. Enter the world with Logbook running.",
+                        "Export failed: no achievements yet. Enter the world with Teyvat.me running.",
                     );
                 }
             }
@@ -3358,7 +3358,7 @@ fn show_window() {
     };
     use windows::core::PCWSTR;
 
-    let title: Vec<u16> = std::ffi::OsStr::new("Logbook")
+    let title: Vec<u16> = std::ffi::OsStr::new("Teyvat.me")
         .encode_wide()
         .chain(std::iter::once(0))
         .collect();
@@ -3381,7 +3381,7 @@ fn close_window() {
     use windows::Win32::UI::WindowsAndMessaging::{FindWindowW, PostMessageW, WM_CLOSE};
     use windows::core::PCWSTR;
 
-    let title: Vec<u16> = std::ffi::OsStr::new("Logbook")
+    let title: Vec<u16> = std::ffi::OsStr::new("Teyvat.me")
         .encode_wide()
         .chain(std::iter::once(0))
         .collect();
@@ -3486,7 +3486,7 @@ mod tests {
         );
     }
 
-    /// The test process has no window, so whatever "Logbook" windows exist on
+    /// The test process has no window, so whatever "Teyvat.me" windows exist on
     /// the machine (a running copy, an Explorer folder) are someone else's.
     #[cfg(windows)]
     #[test]

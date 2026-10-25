@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 use anyhow::{Result, anyhow};
 use clap::{Parser, Subcommand};
-use logbook_protocol::{matches_avatars_all_data_notify, matches_items_all_data_notify};
+use teyvatme_protocol::{matches_avatars_all_data_notify, matches_items_all_data_notify};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -79,7 +79,7 @@ mod tests {
 
     #[test]
     fn parses_avatars_subcommand() {
-        let cli = Cli::parse_from(["logbook-protocol", "avatars", "dump.bin"]);
+        let cli = Cli::parse_from(["teyvatme-protocol", "avatars", "dump.bin"]);
         match cli.command {
             Command::Avatars { path } => assert_eq!(path, PathBuf::from("dump.bin")),
             other => panic!("expected `avatars`, got {other:?}"),
@@ -88,7 +88,7 @@ mod tests {
 
     #[test]
     fn parses_items_subcommand() {
-        let cli = Cli::parse_from(["logbook-protocol", "items", "dump.bin"]);
+        let cli = Cli::parse_from(["teyvatme-protocol", "items", "dump.bin"]);
         match cli.command {
             Command::Items { path } => assert_eq!(path, PathBuf::from("dump.bin")),
             other => panic!("expected `items`, got {other:?}"),
@@ -97,15 +97,15 @@ mod tests {
 
     #[test]
     fn rejects_unknown_subcommand_and_missing_path() {
-        assert!(Cli::try_parse_from(["logbook-protocol", "not-a-subcommand"]).is_err());
-        assert!(Cli::try_parse_from(["logbook-protocol", "avatars"]).is_err());
-        assert!(Cli::try_parse_from(["logbook-protocol"]).is_err());
+        assert!(Cli::try_parse_from(["teyvatme-protocol", "not-a-subcommand"]).is_err());
+        assert!(Cli::try_parse_from(["teyvatme-protocol", "avatars"]).is_err());
+        assert!(Cli::try_parse_from(["teyvatme-protocol"]).is_err());
     }
 
     #[test]
     fn read_file_round_trips_bytes() {
         let mut path = std::env::temp_dir();
-        path.push(format!("logbook-protocol-cli-{}.bin", std::process::id()));
+        path.push(format!("teyvatme-protocol-cli-{}.bin", std::process::id()));
 
         let payload: Vec<u8> = (0u8..=255).collect();
         {
@@ -123,7 +123,7 @@ mod tests {
     fn read_file_reports_missing_path() {
         let mut path = std::env::temp_dir();
         path.push(format!(
-            "logbook-protocol-does-not-exist-{}.bin",
+            "teyvatme-protocol-does-not-exist-{}.bin",
             std::process::id()
         ));
         assert!(read_file(path).is_err());

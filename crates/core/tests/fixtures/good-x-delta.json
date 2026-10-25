@@ -1,5 +1,5 @@
 {
-  "comment": "Contract fixture for live sync (docs/plans/live-sync.md, section 5.2), the same file in logbook (tests/fixtures/good-x-delta.json) and the tracker (packages/shared/test/fixtures/good-x-delta.json): applying delta.changes to base gives result, and diffing base against result gives the same changes (in any order). Synthetic data, placeholder UID.",
+  "comment": "Contract fixture for live sync (docs/plans/live-sync.md, section 5.2), the same file in teyvatme (tests/fixtures/good-x-delta.json) and the tracker (packages/shared/test/fixtures/good-x-delta.json): applying delta.changes to base gives result, and diffing base against result gives the same changes (in any order). Synthetic data, placeholder UID.",
   "base": {
     "format": "GOOD",
     "version": 2,

@@ -4,7 +4,7 @@
 # See THIRD_PARTY_NOTICES.md.
 
 [package]
-name = "logbook-game-data"
+name = "teyvatme-game-data"
 version = "0.1.0"
 edition = "2024"
 authors = ["Erik Gilling <konkers@konkers.net>"]
@@ -38,5 +38,5 @@ tokio = { version = "1.47.1", features = [
 cli = ["dep:clap", "dep:tokio"]
 
 [[bin]]
-name = "logbook-game-data"
+name = "teyvatme-game-data"
 required-features = ["cli"]

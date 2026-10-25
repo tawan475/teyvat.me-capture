@@ -5,7 +5,7 @@
 //! [`TrackerAuth`] and loopback on this side, the tracker's real Worker and
 //! `/link` page (driven by headless Chrome) on the other.
 //!
-//! Ignored by default and skipped unless `LOGBOOK_E2E_TRACKER` names the
+//! Ignored by default and skipped unless `TEYVATME_E2E_TRACKER` names the
 //! API of a tracker *you* run locally (it signs up a made-up user there).
 //! How to run it: `tests/e2e/README.md`. Nothing here touches the OS
 //! credential store ([`MemoryStore`]), `app.ron` or the data directory, and
@@ -30,10 +30,10 @@ struct Env {
 impl Env {
     /// `None` (the test does nothing) unless a tracker was named.
     fn from_env() -> Option<Self> {
-        let base = normalize_base(&std::env::var("LOGBOOK_E2E_TRACKER").ok()?);
-        let origin = origin_of(&base).expect("LOGBOOK_E2E_TRACKER is not an http(s) URL");
+        let base = normalize_base(&std::env::var("TEYVATME_E2E_TRACKER").ok()?);
+        let origin = origin_of(&base).expect("TEYVATME_E2E_TRACKER is not an http(s) URL");
         let profile = std::env::temp_dir().join(format!(
-            "logbook-e2e-{}",
+            "teyvatme-e2e-{}",
             random_url_safe(6).unwrap().replace(['-', '_'], "x")
         ));
         Some(Self {
@@ -60,15 +60,15 @@ impl Drop for Env {
 /// its JSON line (`ok: false` with the error when it failed).
 fn browser_raw(profile: &std::path::Path, args: &[&str]) -> serde_json::Value {
     let script = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/e2e/tracker-browser.mjs");
-    let chrome = std::env::var("LOGBOOK_E2E_CHROME")
+    let chrome = std::env::var("TEYVATME_E2E_CHROME")
         .unwrap_or_else(|_| "C:/Program Files/Google/Chrome/Application/chrome.exe".to_string());
     let output = match Command::new("node")
         .arg(script)
         // Not as arguments: a `node` shim on Windows may pass them through
         // cmd.exe, which splits the authorize link at its `&`s.
-        .env("LOGBOOK_E2E_ARGS", serde_json::json!(args).to_string())
-        .env("LOGBOOK_E2E_PROFILE", profile)
-        .env("LOGBOOK_E2E_CHROME", chrome)
+        .env("TEYVATME_E2E_ARGS", serde_json::json!(args).to_string())
+        .env("TEYVATME_E2E_PROFILE", profile)
+        .env("TEYVATME_E2E_CHROME", chrome)
         .output()
     {
         Ok(output) => output,
@@ -264,10 +264,10 @@ fn sid_of(config_url: &str) -> u64 {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "needs a local tracker: LOGBOOK_E2E_TRACKER, see tests/e2e/README.md"]
+#[ignore = "needs a local tracker: TEYVATME_E2E_TRACKER, see tests/e2e/README.md"]
 async fn e2e_sign_in_upload_refresh_retarget_and_sign_out() {
     let Some(env) = Env::from_env() else {
-        eprintln!("LOGBOOK_E2E_TRACKER is not set; nothing to do");
+        eprintln!("TEYVATME_E2E_TRACKER is not set; nothing to do");
         return;
     };
     let client = client();
@@ -281,7 +281,7 @@ async fn e2e_sign_in_upload_refresh_retarget_and_sign_out() {
     .await;
     eprintln!("step 0: website user ready ({})", made["how"]);
 
-    // 1. Discovery: logbook's reader accepts the tracker's real answer.
+    // 1. Discovery: Teyvat.me's reader accepts the tracker's real answer.
     let body = client
         .get(endpoint(&env.base, "oauth/irminsul"))
         .send()
@@ -352,7 +352,8 @@ async fn e2e_sign_in_upload_refresh_retarget_and_sign_out() {
         shown["text"]
             .as_str()
             .unwrap()
-            .contains(&format!("Logbook on {DEVICE}")),
+            // The tracker's own text for this client's sessions.
+            .contains(&format!("Irminsul on {DEVICE}")),
         "{shown}"
     );
     eprintln!("step 2c: configUrl opens {}", shown["url"]);
@@ -377,7 +378,7 @@ async fn e2e_sign_in_upload_refresh_retarget_and_sign_out() {
     eprintln!("step 3: upload made account {account_id} for UID {E2E_UID}");
 
     // 4. Refresh, twice: once because the access token is about to lapse
-    //    (logbook's own clock), once because the tracker refuses the one
+    //    (Teyvat.me's own clock), once because the tracker refuses the one
     //    it holds (401 token_expired -> refresh -> retry).
     {
         let mut session = s.auth.inner.session.lock().await;
@@ -572,10 +573,10 @@ async fn e2e_sign_in_upload_refresh_retarget_and_sign_out() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "needs a local tracker: LOGBOOK_E2E_TRACKER, see tests/e2e/README.md"]
+#[ignore = "needs a local tracker: TEYVATME_E2E_TRACKER, see tests/e2e/README.md"]
 async fn e2e_cancel_on_the_consent_page_is_access_denied() {
     let Some(env) = Env::from_env() else {
-        eprintln!("LOGBOOK_E2E_TRACKER is not set; nothing to do");
+        eprintln!("TEYVATME_E2E_TRACKER is not set; nothing to do");
         return;
     };
     let client = client();
@@ -598,7 +599,7 @@ async fn e2e_cancel_on_the_consent_page_is_access_denied() {
         }
     );
     assert_eq!(s.stored(&env.origin), None);
-    // No logbook session was made.
+    // No Teyvat.me session was made.
     let (_, sessions) = site(&env, "GET", "/api/auth/sessions", None).await;
     assert!(
         !sessions

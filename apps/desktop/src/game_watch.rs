@@ -2,17 +2,17 @@
 // Copyright (c) 2026 tawan475
 
 //! Whether Genshin is running, and -- the part that actually matters -- whether
-//! Logbook was capturing when it started.
+//! Teyvat.me was capturing when it started.
 //!
-//! Logbook can only read a game session it watched *begin*. The XOR key every
+//! Teyvat.me can only read a game session it watched *begin*. The XOR key every
 //! packet is encrypted with is recovered from the login handshake, and nothing
-//! after it carries the key again, so a session that started before Logbook
+//! after it carries the key again, so a session that started before Teyvat.me
 //! launched -- or while packet capture was stopped -- yields nothing at all, for
 //! as long as it lasts. Until now the UI said "Capture: running" throughout,
 //! which is true and useless: it is the app's most common failure mode and it
 //! was completely invisible.
 //!
-//! The useful signal is therefore not "is Genshin running" but "did Logbook
+//! The useful signal is therefore not "is Genshin running" but "did Teyvat.me
 //! watch this game session start, with capture active". That is a transition,
 //! not a snapshot, so [`GameWatch`] keeps the previous observation and judges
 //! the change. It is deliberately pure -- fed only "is the process there?" and
@@ -35,7 +35,7 @@
 //!
 //! Seeing the process appear inside the capture window is likewise *necessary*
 //! for the key, not *sufficient*: the exchange still has to be on an interface
-//! Logbook is capturing, and the seed search still has to succeed. The one
+//! Teyvat.me is capturing, and the seed search still has to succeed. The one
 //! state here backed by evidence is [`GameStatus::Decoding`], which is only
 //! ever set by game commands that actually decrypted -- and even that proves
 //! the login was seen rather than that every later packet will decode. The
@@ -86,8 +86,8 @@ pub fn is_game_process_name(name: &str) -> bool {
 /// and a user who just pressed Stop deserves to be told that is what did it.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MissedLaunch {
-    /// The game was already running the first time Logbook looked, i.e.
-    /// Logbook was started second.
+    /// The game was already running the first time Teyvat.me looked, i.e.
+    /// Teyvat.me was started second.
     AlreadyRunning,
     /// The game started, or kept running, while packet capture was stopped.
     CaptureStopped,
@@ -104,7 +104,7 @@ pub enum Severity {
     Problem,
 }
 
-/// What Logbook can honestly say about the game.
+/// What Teyvat.me can honestly say about the game.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum GameStatus {
     /// No game process found.
@@ -131,16 +131,16 @@ pub enum GameStatus {
     /// failure is reported as an error toast and in the log, and shows here as
     /// this state simply never clearing.
     CaptureOff,
-    /// The game was already open when Logbook started, and nothing says yet
+    /// The game was already open when Teyvat.me started, and nothing says yet
     /// whether its login is behind it or still to come.
     ///
-    /// The common, working case: Genshin parked on the title screen, Logbook
+    /// The common, working case: Genshin parked on the title screen, Teyvat.me
     /// opened, then the door clicked. The key comes from the token exchange as
     /// the client enters the world, so that session captures normally. Only
     /// game traffic with no login in it (a session already in the world, see
     /// [`IN_WORLD_GRACE`]) turns this into [`MissedLaunch::AlreadyRunning`].
     AwaitingLogin,
-    /// The game is running and Logbook cannot have seen it start.
+    /// The game is running and Teyvat.me cannot have seen it start.
     LaunchMissed(MissedLaunch),
     /// A connection's login was seen, but its session key was not recovered,
     /// so nothing from it decrypts. Reached when the search gave up, or when
@@ -170,7 +170,7 @@ impl GameStatus {
     /// The long explanation, shown on hover so the line itself stays short.
     pub fn tooltip(self) -> &'static str {
         match self {
-            GameStatus::NotRunning => "Start Genshin while Logbook is running.",
+            GameStatus::NotRunning => "Start Genshin while Teyvat.me is running.",
             GameStatus::LaunchCaptured => {
                 "Login seen. Says \"data decrypting\" once your data arrives."
             }
@@ -180,11 +180,11 @@ impl GameStatus {
             }
             GameStatus::CaptureOff => {
                 "Capture isn't running; it restarts itself within seconds. If this stays, run \
-                 Logbook as administrator and check the log."
+                 Teyvat.me as administrator and check the log."
             }
             GameStatus::AwaitingLogin => "Fine if you're on the title screen: enter the world now.",
             GameStatus::LaunchMissed(MissedLaunch::AlreadyRunning) => {
-                "Logbook started after you entered the world. Return to the title screen and \
+                "Teyvat.me started after you entered the world. Return to the title screen and \
                  enter again, or restart Genshin."
             }
             GameStatus::LaunchMissed(MissedLaunch::CaptureStopped) => {
@@ -234,8 +234,8 @@ const DECODING_TTL: Duration = Duration::from_secs(10);
 pub const KEY_RECOVERY_GRACE: Duration = Duration::from_secs(30);
 
 /// How long game traffic may flow, for a game that was already open when
-/// Logbook started, with no login seen in it before the session is judged to
-/// have begun before Logbook.
+/// Teyvat.me started, with no login seen in it before the session is judged to
+/// have begun before Teyvat.me.
 ///
 /// A client on the title screen sends nothing to the game server; entering the
 /// world opens the connection with a handshake that the sniffer reports (see
@@ -285,7 +285,7 @@ pub struct GameWatch {
     awaiting_key_since: Option<Instant>,
     /// The sniffer gave up recovering the current connection's session key.
     key_recovery_failed: bool,
-    /// For a game that was already open when Logbook started: when its game
+    /// For a game that was already open when Teyvat.me started: when its game
     /// traffic was first seen with no login watched since. See
     /// [`IN_WORLD_GRACE`] and [`GameStatus::AwaitingLogin`].
     traffic_without_login_since: Option<Instant>,
@@ -323,7 +323,7 @@ impl GameWatch {
     }
 
     /// Has game traffic flowed long enough, with no login in it, to say the
-    /// already-open game's session began before Logbook?
+    /// already-open game's session began before Teyvat.me?
     fn missed_in_world(&self) -> bool {
         self.traffic_without_login_since
             .is_some_and(|at| at.elapsed() >= IN_WORLD_GRACE)
@@ -436,14 +436,14 @@ impl GameWatch {
         } else if self.holed_cause.is_none() {
             // Record why this session is unrecoverable, the first time it is.
             self.holed_cause = match (previous, capturing) {
-                // Already there the first time we looked: Logbook cannot have
+                // Already there the first time we looked: Teyvat.me cannot have
                 // watched a process that predates it, so the login exchange the
                 // key comes from is behind us.
                 (None, _) => Some(MissedLaunch::AlreadyRunning),
                 // Started while capture was off: the handshake happened outside
                 // the capture window, so there is no key for this session.
                 (Some(false), false) => Some(MissedLaunch::CaptureStopped),
-                // Capture stopped part-way through a session Logbook *did*
+                // Capture stopped part-way through a session Teyvat.me *did*
                 // watch begin. Deliberately NOT written off. The session key was
                 // recovered at login and the sniffer still holds it -- stopping
                 // capture does not throw it away. The only thing a gap can cost
@@ -537,7 +537,7 @@ impl GameWatch {
 
     /// Game traffic arrived (any captured frame on the game's ports).
     ///
-    /// Only matters for a game that was already open when Logbook started:
+    /// Only matters for a game that was already open when Teyvat.me started:
     /// it starts the [`IN_WORLD_GRACE`] clock, which a login seen in time
     /// stops. The verdict itself changes at the next poll, so this does not
     /// report a change.
@@ -657,7 +657,7 @@ impl SystemProcessDetector {
     ///
     /// A zero return is a real outcome, not an error: the process may have
     /// exited between the scan and the kill, or the kill may have been refused.
-    /// Logbook runs elevated, so a refusal is unlikely but not impossible.
+    /// Teyvat.me runs elevated, so a refusal is unlikely but not impossible.
     pub fn kill_game_processes(&mut self) -> usize {
         self.system.refresh_processes_specifics(
             sysinfo::ProcessesToUpdate::All,
@@ -699,7 +699,7 @@ mod tests {
     const CAPTURING: bool = true;
     const STOPPED: bool = false;
 
-    /// A watch that has already seen the game absent once, i.e. Logbook was
+    /// A watch that has already seen the game absent once, i.e. Teyvat.me was
     /// started first and is waiting for the user to launch the game.
     fn watching_before_launch(capturing: bool) -> GameWatch {
         let mut watch = GameWatch::default();
@@ -760,7 +760,7 @@ mod tests {
 
     #[test]
     fn a_game_already_open_at_the_first_poll_waits_for_the_login() {
-        // Genshin on the title screen, Logbook opened, door not clicked yet:
+        // Genshin on the title screen, Teyvat.me opened, door not clicked yet:
         // the common working order. Nothing is missed until the client
         // connects, so this must not be red.
         let mut watch = GameWatch::default();
@@ -772,7 +772,7 @@ mod tests {
     }
 
     #[test]
-    fn a_login_seen_after_opening_logbook_is_a_captured_session() {
+    fn a_login_seen_after_opening_teyvatme_is_a_captured_session() {
         let mut watch = GameWatch::default();
         watch.observe(true, CAPTURING);
         watch.note_game_traffic();
@@ -798,7 +798,7 @@ mod tests {
 
     #[test]
     fn game_traffic_with_no_login_means_the_session_was_already_running() {
-        // Logbook opened while already in the world: the game keeps talking to
+        // Teyvat.me opened while already in the world: the game keeps talking to
         // the server, but the login that carried the key is behind us.
         let mut watch = GameWatch::default();
         watch.observe(true, CAPTURING);
@@ -816,7 +816,7 @@ mod tests {
 
     #[test]
     fn traffic_only_counts_for_a_game_that_was_already_open() {
-        // A launch Logbook watched has nothing to prove: its traffic must not
+        // A launch Teyvat.me watched has nothing to prove: its traffic must not
         // start the clock.
         let mut watch = watching_before_launch(CAPTURING);
         watch.observe(true, CAPTURING);
@@ -896,7 +896,7 @@ mod tests {
     fn decoded_data_beats_a_missed_launch() {
         // Returning to the title screen and logging in again re-handshakes
         // inside the same process, so a game that was already running when
-        // Logbook started can still become capturable without the process ever
+        // Teyvat.me started can still become capturable without the process ever
         // going away. Packets outrank the process heuristic.
         let mut watch = GameWatch::default();
         watch.observe(true, CAPTURING);
@@ -1328,7 +1328,7 @@ mod tests {
             // from the executable starting, so a client still sitting on the
             // title screen recovers by simply going in. Telling that user to
             // close and relaunch Genshin costs them minutes for nothing, and
-            // the quickstart explicitly blesses starting Logbook second.
+            // the quickstart explicitly blesses starting Teyvat.me second.
             assert!(state.tooltip().contains("world"), "{state:?}");
         }
     }

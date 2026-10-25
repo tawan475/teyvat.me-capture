@@ -1,19 +1,20 @@
-# Logbook
+# Teyvat.me
 
-> **Logbook is a working name.** The final name and brand come later;
-> `python tools/rename.py <name>` renames the project in one go.
+> **Unofficial fan project.** Teyvat.me is not affiliated with or endorsed by
+> HoYoverse. Genshin Impact and the names from its world belong to HoYoverse,
+> and none of its logos or art ship here.
 
-Logbook reads Genshin Impact's network traffic while you play and keeps your
+Teyvat.me reads Genshin Impact's network traffic while you play and keeps your
 account (characters, weapons, artifacts, materials, achievements, wish
 history, the planner's routine) up to date on the tracker, the website that
-shares Logbook's brand. It exports the
+shares Teyvat.me's brand. It exports the
 [GOOD](https://frzyc.github.io/genshin-optimizer/#/doc) format other tools
 read too.
 
 It is packet capture, not screen reading: it must be running before the game
 connects, so it can see the login handshake that carries the session key.
 
-Logbook is the successor of [irminsul](https://github.com/tawan475/irminsul)
+Teyvat.me is the successor of [irminsul](https://github.com/tawan475/irminsul)
 (itself a fork of [konkers/irminsul](https://github.com/konkers/irminsul)).
 This repository started fresh on 2026-10-25 from irminsul's code at that
 point; see [Credits](#credits).
@@ -22,11 +23,11 @@ point; see [Credits](#credits).
 
 | Path | What it is |
 |---|---|
-| `apps/desktop` | The desktop app (Windows, Linux, macOS): capture, decoding, tracker sign-in and uploads, live sync, wish history. Package `logbook`, binary `logbook`. Still irminsul's egui UI; it will be redesigned. |
+| `apps/desktop` | The desktop app (Windows, Linux, macOS): capture, decoding, tracker sign-in and uploads, live sync, wish history. Package `teyvatme`, binary `teyvatme`. Still irminsul's egui UI; it will be redesigned. |
 | `apps/android` | The Android app: a per-app VPN that forwards the game's traffic and keeps a copy of it (Kotlin + a Rust native library in `apps/android/native`). An early spike. |
-| `crates/core` | `logbook-core`: everything platform-free that both apps share. That is the decode layer from captured frames to account data, the account model, the GOOD export, live sync's deltas and policy, and the capture recordings. |
-| `crates/protocol` | `logbook-protocol`: KCP, the game's encryption and key recovery, Oodle decompression, and the message matchers. |
-| `crates/game-data` | `logbook-game-data`: downloads and indexes Dimbreath's game data dump (used at build time and run time). |
+| `crates/core` | `teyvatme-core`: everything platform-free that both apps share. That is the decode layer from captured frames to account data, the account model, the GOOD export, live sync's deltas and policy, and the capture recordings. |
+| `crates/protocol` | `teyvatme-protocol`: KCP, the game's encryption and key recovery, Oodle decompression, and the message matchers. |
+| `crates/game-data` | `teyvatme-game-data`: downloads and indexes Dimbreath's game data dump (used at build time and run time). |
 
 ## Building
 
@@ -61,12 +62,12 @@ Some names keep irminsul's spelling on purpose:
 ## Still to do
 
 - **Coming over from irminsul.**
-  - **First-launch migration.** Logbook should take over irminsul's settings,
+  - **First-launch migration.** Teyvat.me should take over irminsul's settings,
     data folder, sign-in and startup task under its own names. It should then
     stop using the stored irminsul names above.
   - **Bridge release.** The last irminsul release points its updater at this
     repository (irminsul's `src/update.rs`: `repo_owner`/`repo_name` and the
-    asset names), so installed copies update to Logbook. Logbook starts at
+    asset names), so installed copies update to Teyvat.me. Teyvat.me starts at
     1.0.0 so that it ranks above every irminsul release (0.2.x).
   - **Release workflow.** It was left behind with irminsul's; it needs
     rewriting for the new asset names.
@@ -85,12 +86,12 @@ the original copyright holder too. The full upstream notices are in
 
 ## Credits
 
-Logbook stands on the work of:
+Teyvat.me stands on the work of:
 
 - Erik Gilling ([konkers](https://github.com/konkers)), who wrote irminsul and
   anime-game-data;
 - IceDynamix, hashblen, Julius Kreutz and the auto-artifactarium contributors,
-  for the packet decoding Logbook's protocol crate grew from;
+  for the packet decoding Teyvat.me's protocol crate grew from;
 - PJK136, emmachase (pktmon), the Genshin Optimizer project and Inventory
   Kamera.
 

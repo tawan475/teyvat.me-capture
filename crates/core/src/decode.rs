@@ -15,7 +15,7 @@
 
 use std::time::{Duration, Instant};
 
-use logbook_protocol::{
+use teyvatme_protocol::{
     CommandMatch, GameCommand, GamePacket, GameSniffer, KeyState, classify_command, classify_union,
     flat_message, union_commands,
 };
@@ -29,7 +29,7 @@ use crate::player_data::{PlayerData, RoutinePart};
 /// has to be reported alongside the packets rather than queried by the monitor.
 /// `replay.rs` consumes the same events, from the same [`decode_one_packet`].
 pub enum SnifferEvent {
-    /// logbook-protocol concluded that the game connection restarted. Always
+    /// teyvatme-protocol concluded that the game connection restarted. Always
     /// sent *before* the packet that concluded it.
     SessionReset,
     /// A decoded packet, with the sniffer's key situation once it was decoded.
@@ -456,7 +456,7 @@ impl SnifferStats {
 /// `session_generation` is read rather than
 /// [`ConnectionPacket::HandshakeRequested`] because the handshake datagram is
 /// unauthenticated -- any local process can forge one with 20 bytes on a game
-/// port -- while the generation moves only when logbook-protocol has itself
+/// port -- while the generation moves only when teyvatme-protocol has itself
 /// corroborated the restart (a new KCP conversation, or the live session key
 /// going dead). Latching on the raw event instead handed anyone a one-packet
 /// "erase this user's capture" button, one layer above the library check that
@@ -491,14 +491,14 @@ pub fn decode_one_packet(
     }
 }
 
-/// Frame builders for tests, here and in logbook's (with the
+/// Frame builders for tests, here and in Teyvat.me's (with the
 /// `test-support` feature).
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support {
     /// An Ethernet II / IPv4 / UDP frame around `payload`.
     ///
     /// Both checksums are left zero: `SlicedPacket::from_ethernet`, which is
-    /// what logbook-protocol parses with, does not verify them, and a zero UDP
+    /// what teyvatme-protocol parses with, does not verify them, and a zero UDP
     /// checksum means "not computed" over IPv4 anyway.
     pub fn udp_frame(src_port: u16, dest_port: u16, payload: &[u8]) -> Vec<u8> {
         let udp_len = (8 + payload.len()) as u16;
@@ -564,8 +564,8 @@ pub mod test_support {
 mod tests {
     use std::collections::HashMap;
 
-    use logbook_game_data::AnimeGameData;
-    use logbook_protocol::ConnectionPacket;
+    use teyvatme_game_data::AnimeGameData;
+    use teyvatme_protocol::ConnectionPacket;
 
     use super::test_support::*;
     use super::*;
@@ -619,7 +619,7 @@ mod tests {
         // forgeable as any other 20-byte datagram on a game port -- and then
         // spend the latch on the next `Commands`, which an ACK of the *live*
         // session satisfies with an empty vec. One datagram wiped a live
-        // capture. Only a reset logbook-protocol has corroborated counts now,
+        // capture. Only a reset teyvatme-protocol has corroborated counts now,
         // and a real disconnect is always followed by the handshake that
         // corroborates one.
         let (tx, mut rx) = mpsc::unbounded_channel();
@@ -848,7 +848,7 @@ mod tests {
             vec![
                 (
                     1,
-                    CommandMatch::Commissions(logbook_protocol::DailyCommissions {
+                    CommandMatch::Commissions(teyvatme_protocol::DailyCommissions {
                         total: 4,
                         finished: Some(2),
                     }),
@@ -873,7 +873,7 @@ mod tests {
         // reconnect, and only dispatch-key traffic after it.
         let mut data = PlayerData::new(AnimeGameData::new());
         let mut replacement = DataReplacement::default();
-        let mut item = logbook_protocol::r#gen::protos::Item::new();
+        let mut item = teyvatme_protocol::r#gen::protos::Item::new();
         item.item_id = 104003;
         item.guid = 7;
         item.mut_material().count = 12;

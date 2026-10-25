@@ -18,15 +18,15 @@
 
 use std::collections::HashMap;
 
-use logbook_protocol::r#gen::protos::{
+use protobuf::Message;
+use teyvatme_protocol::r#gen::protos::{
     AvatarDataNotify, AvatarInfo, Equip, Item, Material, PacketHead, PacketWithItems,
     PlayerPropertyNotify, PropValue, Reliquary,
 };
-use logbook_protocol::{
+use teyvatme_protocol::{
     CommandMatch, GameCommand, GamePacket, GameSniffer, classify_command, matches_avatar_packet,
     matches_item_packet, matches_player_property_packet,
 };
-use protobuf::Message;
 
 /// Key version this fixture registers under.
 ///

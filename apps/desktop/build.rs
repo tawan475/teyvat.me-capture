@@ -18,18 +18,18 @@ async fn main() -> io::Result<()> {
     // Without these, cargo re-runs this build script on *every* source edit,
     // which means every edit performs a network probe against gitlab.com.  With
     // them the game data is refreshed when the build script or icon changes,
-    // when OUT_DIR is wiped (`cargo clean`), or when LOGBOOK_REFRESH_GAME_DATA
+    // when OUT_DIR is wiped (`cargo clean`), or when TEYVATME_REFRESH_GAME_DATA
     // is changed, which is the documented way to force a refresh.
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=assets/icon.ico");
-    println!("cargo:rerun-if-env-changed=LOGBOOK_REFRESH_GAME_DATA");
+    println!("cargo:rerun-if-env-changed=TEYVATME_REFRESH_GAME_DATA");
 
     // Download new game data and save it in a location to be included by the source.
     let out_dir = env::var_os("OUT_DIR").unwrap();
     let cache_path = Path::new(&out_dir).join("game_data.json");
     let gz_path = Path::new(&out_dir).join("game_data.gz");
 
-    let mut db = logbook_game_data::AnimeGameData::new_with_cache(&cache_path);
+    let mut db = teyvatme_game_data::AnimeGameData::new_with_cache(&cache_path);
 
     // Network failures must not fail the build when a usable cache already
     // exists: a build with a warm OUT_DIR is expected to work offline.
@@ -57,7 +57,7 @@ async fn main() -> io::Result<()> {
     // `include_bytes!` would happily embed.
     assert!(
         db.has_data(),
-        "no cached game data at {} and the download failed: logbook's first build needs network \
+        "no cached game data at {} and the download failed: Teyvat.me's first build needs network \
          access to gitlab.com",
         cache_path.display()
     );
@@ -84,7 +84,7 @@ async fn main() -> io::Result<()> {
             String::new()
         }
     };
-    println!("cargo:rustc-env=LOGBOOK_GAME_DATA_SHA={game_data_sha}");
+    println!("cargo:rustc-env=TEYVATME_GAME_DATA_SHA={game_data_sha}");
 
     // Add icon to windows binary.
     if env::var_os("CARGO_CFG_WINDOWS").is_some() {
@@ -154,7 +154,7 @@ fn gz_is_complete(gz_path: &Path) -> bool {
     }
 }
 
-/// The part of the game data blob this script reads back: `logbook-game-data`
+/// The part of the game data blob this script reads back: `teyvatme-game-data`
 /// serializes the Dimbreath commit it was built from as `git_hash`, but has no
 /// public accessor for it.
 #[derive(serde::Deserialize)]
@@ -180,7 +180,7 @@ fn read_game_data_sha(gz_path: &Path) -> io::Result<String> {
 /// Writes the compressed game data to a temporary file and renames it into
 /// place, so an interrupted build cannot leave a truncated `game_data.gz`
 /// behind.
-fn write_game_data_gz(db: &logbook_game_data::AnimeGameData, gz_path: &Path) -> io::Result<()> {
+fn write_game_data_gz(db: &teyvatme_game_data::AnimeGameData, gz_path: &Path) -> io::Result<()> {
     let tmp_path = gz_path.with_extension("gz.tmp");
     let file = File::create(&tmp_path)?;
     let mut writer = GzEncoder::new(file, Compression::best());

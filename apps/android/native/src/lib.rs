@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 tawan475
 
-//! Native side of logbook's Android app (phase 0 spike).
+//! Native side of Teyvat.me's Android app (phase 0 spike).
 //!
 //! The app's `VpnService` routes only the game's package into a tun device
 //! and hands its file descriptor here. Every packet the game sends is read
@@ -13,7 +13,7 @@
 //!
 //! The game's KCP traffic (UDP 22101–22102, both directions) is copied aside
 //! as it passes, unchanged, into a pcap file (`LINKTYPE_RAW`), which
-//! `logbook --replay-export` reads. Nothing is altered on the way through.
+//! `teyvatme --replay-export` reads. Nothing is altered on the way through.
 //!
 //! Two things sit between the tun and the stack:
 //! - **The TCP gate.** ipstack answers a SYN with a SYN-ACK at once, so a
@@ -50,7 +50,7 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf};
 use tokio::net::{TcpStream, UdpSocket};
 use tokio::sync::{mpsc, oneshot, watch};
 
-/// The game server's KCP ports (logbook's `capture::PORT_RANGE`).
+/// The game server's KCP ports (Teyvat.me's `capture::PORT_RANGE`).
 const GAME_PORTS: (u16, u16) = (22101, 22102);
 /// `LINKTYPE_RAW`: bare IPv4/IPv6 packets, what the tee writes.
 const LINKTYPE_RAW: u32 = 101;
@@ -667,7 +667,7 @@ fn start(fd: RawFd, pcap_path: String, resolvers: &str) -> anyhow::Result<()> {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
         .enable_all()
-        .thread_name("logbook-vpn")
+        .thread_name("teyvatme-vpn")
         .build()?;
     let shared = Arc::new(Shared {
         stats: Stats::default(),
@@ -718,7 +718,7 @@ fn init_logging() {
     #[cfg(target_os = "android")]
     android_logger::init_once(
         android_logger::Config::default()
-            .with_tag("logbook")
+            .with_tag("teyvatme")
             .with_max_level(log::LevelFilter::Info),
     );
 }
@@ -736,7 +736,7 @@ fn java_string(env: &mut JNIEnv, s: &JString) -> Option<String> {
 /// `NativeBridge.start(fd, pcapPath, resolvers)`: 0 on success, -1 on
 /// failure (logged). `resolvers` is a comma-separated address list.
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_io_github_tawan475_logbook_NativeBridge_start(
+pub extern "system" fn Java_me_teyvat_app_NativeBridge_start(
     mut env: JNIEnv,
     _class: JClass,
     fd: jint,
@@ -763,17 +763,14 @@ pub extern "system" fn Java_io_github_tawan475_logbook_NativeBridge_start(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_io_github_tawan475_logbook_NativeBridge_stop(
-    _env: JNIEnv,
-    _class: JClass,
-) {
+pub extern "system" fn Java_me_teyvat_app_NativeBridge_stop(_env: JNIEnv, _class: JClass) {
     stop();
 }
 
 /// `NativeBridge.networkChanged(resolvers, newNetwork)`: the underlying
 /// network's resolvers now, and whether the default network itself changed.
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_io_github_tawan475_logbook_NativeBridge_networkChanged(
+pub extern "system" fn Java_me_teyvat_app_NativeBridge_networkChanged(
     mut env: JNIEnv,
     _class: JClass,
     resolvers: JString,
@@ -786,7 +783,7 @@ pub extern "system" fn Java_io_github_tawan475_logbook_NativeBridge_networkChang
 
 /// `NativeBridge.stats()`: one line of counters, or "" when not running.
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_io_github_tawan475_logbook_NativeBridge_stats(
+pub extern "system" fn Java_me_teyvat_app_NativeBridge_stats(
     env: JNIEnv,
     _class: JClass,
 ) -> jstring {

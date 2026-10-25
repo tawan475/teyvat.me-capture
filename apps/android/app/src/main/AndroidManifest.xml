@@ -17,7 +17,7 @@
     </queries>
 
     <application
-        android:label="Logbook (spike)"
+        android:label="Teyvat.me (spike)"
         android:allowBackup="false">
 
         <activity

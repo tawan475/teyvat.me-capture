@@ -15,12 +15,12 @@ import unittest
 
 import update_rev
 
-PATH_DEPENDENCY = 'logbook-protocol = { path = "crates/protocol" }\n'
+PATH_DEPENDENCY = 'teyvatme-protocol = { path = "crates/protocol" }\n'
 # Vendored from a git repository, so a path now and nothing to pin.
-VENDORED_DEPENDENCY = 'logbook-game-data = { path = "crates/game-data" }\n'
+VENDORED_DEPENDENCY = 'teyvatme-game-data = { path = "crates/game-data" }\n'
 
 MANIFEST = """[package]
-name = "logbook"
+name = "teyvatme"
 
 [workspace]
 members = ["crates/game-data", "crates/protocol"]
@@ -28,7 +28,7 @@ members = ["crates/game-data", "crates/protocol"]
 [workspace.dependencies]
 """ + VENDORED_DEPENDENCY + """
 [dependencies]
-logbook-game-data = { workspace = true }
+teyvatme-game-data = { workspace = true }
 """ + PATH_DEPENDENCY + """kcp = { git = "https://github.com/hashblen/mhy-kcp", rev = "0000000000000000000000000000000000000000" }
 unpinned = { git = "https://example.com/unpinned" }
 
@@ -112,7 +112,7 @@ class RewritePinsTest(unittest.TestCase):
         )
 
     def test_path_dependencies_are_left_alone(self):
-        # logbook-protocol and the vendored logbook-game-data are workspace
+        # teyvatme-protocol and the vendored teyvatme-game-data are workspace
         # members: there is no repository to ask for a HEAD and no pin to
         # rewrite.
         asked = []

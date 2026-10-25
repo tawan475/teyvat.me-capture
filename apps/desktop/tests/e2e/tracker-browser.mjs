@@ -9,18 +9,18 @@
 //   node tracker-browser.mjs session <origin> <username> <password>
 //       Signs up (or, when the name is taken, signs in) a made-up user.
 //   node tracker-browser.mjs consent <authorize-link> <allow|cancel>
-//       Opens logbook's authorize link as that user, presses Allow or
-//       Cancel and waits for the browser to land on logbook's callback.
+//       Opens Teyvat.me's authorize link as that user, presses Allow or
+//       Cancel and waits for the browser to land on Teyvat.me's callback.
 //   node tracker-browser.mjs api <origin> <METHOD> <path> [json-body]
 //       A request from the signed-in browser (cookies + the CSRF header).
 //   node tracker-browser.mjs page <url> <css-selector>
 //       What a page shows once the selector has rendered.
 //
 // Every command prints one JSON line on stdout. The browser profile (and so
-// the website sign-in) lives in LOGBOOK_E2E_PROFILE, a scratch directory the
+// the website sign-in) lives in TEYVATME_E2E_PROFILE, a scratch directory the
 // test makes and deletes. Puppeteer is not a dependency of this repository:
-// LOGBOOK_E2E_PUPPETEER names a node_modules directory that has
-// puppeteer-core, LOGBOOK_E2E_CHROME the Chrome executable.
+// TEYVATME_E2E_PUPPETEER names a node_modules directory that has
+// puppeteer-core, TEYVATME_E2E_CHROME the Chrome executable.
 
 import { createRequire } from 'node:module'
 import path from 'node:path'
@@ -31,7 +31,7 @@ const env = (name) => {
   return value
 }
 
-const require = createRequire(path.join(env('LOGBOOK_E2E_PUPPETEER'), 'noop.js'))
+const require = createRequire(path.join(env('TEYVATME_E2E_PUPPETEER'), 'noop.js'))
 const puppeteer = require('puppeteer-core')
 
 // Cloudflare's always-pass Turnstile test secret accepts any token, and this
@@ -41,9 +41,9 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 async function withBrowser(run) {
   const browser = await puppeteer.launch({
-    executablePath: env('LOGBOOK_E2E_CHROME'),
+    executablePath: env('TEYVATME_E2E_CHROME'),
     headless: true,
-    userDataDir: env('LOGBOOK_E2E_PROFILE'),
+    userDataDir: env('TEYVATME_E2E_PROFILE'),
     args: ['--no-first-run', '--no-default-browser-check', '--disable-extensions'],
   })
   try {
@@ -130,7 +130,7 @@ async function consent(link, choice) {
       }
       if (!pressed) throw new Error('no Cancel button')
     }
-    // The page navigates to logbook's loopback callback, which answers
+    // The page navigates to Teyvat.me's loopback callback, which answers
     // once the code exchange is done.
     await page.waitForFunction(() => location.hostname === '127.0.0.1', { timeout: 30_000 })
     await page.waitForSelector('h1', { timeout: 30_000 })
@@ -170,11 +170,11 @@ async function api(origin, method, apiPath, json) {
   })
 }
 
-// The test hands its arguments over as a JSON array in LOGBOOK_E2E_ARGS:
+// The test hands its arguments over as a JSON array in TEYVATME_E2E_ARGS:
 // on Windows a `node` shim (Volta, nvm) may re-run node through cmd.exe,
 // which would split an authorize link at its `&`s.
-const argv = process.env.LOGBOOK_E2E_ARGS
-  ? JSON.parse(process.env.LOGBOOK_E2E_ARGS)
+const argv = process.env.TEYVATME_E2E_ARGS
+  ? JSON.parse(process.env.TEYVATME_E2E_ARGS)
   : process.argv.slice(2)
 const [command, ...args] = argv
 const commands = { session, consent, api, page: show }

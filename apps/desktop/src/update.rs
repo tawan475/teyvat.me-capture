@@ -32,13 +32,13 @@ pub enum UpdateAnswer {
     Declined,
 }
 
-/// Where a user is pointed when Logbook can find an update but cannot install
+/// Where a user is pointed when Teyvat.me can find an update but cannot install
 /// it for them.
-const RELEASES_URL: &str = "https://github.com/tawan475/logbook/releases";
+const RELEASES_URL: &str = "https://github.com/tawan475/teyvat.me/releases";
 
 /// Serialises replacing the installed binary against process exit.
 ///
-/// `LogbookApp::drop` cancels the monitor and then joins it with a deadline,
+/// `TeyvatmeApp::drop` cancels the monitor and then joins it with a deadline,
 /// after which the thread is detached and `main` returning kills it. That is
 /// right for a capture backend and catastrophic for `self_replace`, which on
 /// Windows renames the running exe aside, copies the replacement to a temporary
@@ -93,7 +93,7 @@ impl InstallLock {
         if state.installing {
             tracing::warn!(
                 "an update is being installed; waiting for it to finish before exiting \
-                 (killing Logbook now would leave no executable behind)"
+                 (killing Teyvat.me now would leave no executable behind)"
             );
         }
         while state.installing {
@@ -124,7 +124,7 @@ impl Drop for InstallInProgress<'_> {
 
 /// Whether a version string carries a semver pre-release identifier.
 ///
-/// Logbook's own version (`0.2.1-T-1`) is one, which is exactly why this
+/// Teyvat.me's own version (`0.2.1-T-1`) is one, which is exactly why this
 /// matters: a stable build must never be walked onto a prerelease, while a
 /// build that is already off the stable track may take another one.
 fn is_prerelease(version: &str) -> bool {
@@ -173,7 +173,7 @@ pub fn check_for_new_version() -> Result<Option<Release>> {
     let releases = thread::spawn(move || -> Result<Vec<Release>> {
         let releases = self_update::backends::github::ReleaseList::configure()
             .repo_owner("tawan475")
-            .repo_name("logbook")
+            .repo_name("teyvatme")
             .build()?
             .fetch()?;
         Ok(releases)
@@ -204,19 +204,19 @@ pub fn check_for_new_version() -> Result<Option<Release>> {
 const CURRENT_ASSET_NAME: Option<&str> = {
     #[cfg(all(target_os = "windows", feature = "pcap"))]
     {
-        Some("logbook-windows-pcap.exe")
+        Some("teyvatme-windows-pcap.exe")
     }
     #[cfg(all(target_os = "windows", not(feature = "pcap")))]
     {
-        Some("logbook-windows.exe")
+        Some("teyvatme-windows.exe")
     }
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     {
-        Some("logbook-linux-x86_64.tar.gz")
+        Some("teyvatme-linux-x86_64.tar.gz")
     }
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     {
-        Some("Logbook-macos-arm64.app.tar.gz")
+        Some("Teyvatme-macos-arm64.app.tar.gz")
     }
     #[cfg(not(any(
         target_os = "windows",
@@ -252,14 +252,14 @@ fn asset_for_current_platform(release: &Release) -> Result<ReleaseAsset> {
 /// `.github/workflows/release.yaml` builds it as `tar -czf <out_file> <binary>`
 /// from `target/release`, so the archive contains exactly one member, named
 /// after the matrix's `binary` field. Renaming that means renaming this.
-const TARBALL_EXECUTABLE_ENTRY: &str = "logbook";
+const TARBALL_EXECUTABLE_ENTRY: &str = "teyvatme";
 
 /// The executable inside the macOS release bundle.
 ///
-/// `.github/workflows/release.yaml` assembles `Logbook.app` by hand and tars
+/// `.github/workflows/release.yaml` assembles `Teyvatme.app` by hand and tars
 /// the whole directory, so this is the path of the Mach-O *within* the archive.
 /// It is also where `current_exe()` lands at run time: the `Info.plist`
-/// launcher execs `Contents/MacOS/logbook`, so replacing this one file is
+/// launcher execs `Contents/MacOS/teyvatme`, so replacing this one file is
 /// replacing the running program.
 ///
 /// What this does not update is the rest of the bundle -- `Info.plist`, the
@@ -273,7 +273,7 @@ const TARBALL_EXECUTABLE_ENTRY: &str = "logbook";
 /// written by this process is not tagged `com.apple.quarantine` the way a
 /// browser download is, so the `xattr -dr` step is a first-install concern
 /// only.
-const MACOS_BUNDLE_EXECUTABLE_ENTRY: &str = "Logbook.app/Contents/MacOS/logbook";
+const MACOS_BUNDLE_EXECUTABLE_ENTRY: &str = "Teyvatme.app/Contents/MacOS/teyvatme";
 
 /// How a downloaded release asset becomes the file handed to `self_replace`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -291,7 +291,7 @@ enum InstallPlan {
 ///
 /// Only shapes this function knows how to turn into a native executable are
 /// accepted. A macOS `.app` is a directory tree rather than a file, so it is
-/// not installed as one: the bundle logbook publishes is unsigned, which means
+/// not installed as one: the bundle Teyvat.me publishes is unsigned, which means
 /// the Mach-O inside it can be replaced on its own without invalidating a
 /// signature, and that file is exactly what `current_exe()` points at.
 fn install_plan_for(asset: &ReleaseAsset) -> Result<InstallPlan> {
@@ -306,7 +306,7 @@ fn install_plan_for(asset: &ReleaseAsset) -> Result<InstallPlan> {
 
     if asset.name.ends_with(".zip") {
         return Err(anyhow!(
-            "the release asset for this platform ({}) is a zip archive, which Logbook cannot \
+            "the release asset for this platform ({}) is a zip archive, which Teyvat.me cannot \
              install over itself; download it from {RELEASES_URL} and replace the \
              installed copy by hand",
             asset.name
@@ -323,7 +323,7 @@ fn install_plan_for(asset: &ReleaseAsset) -> Result<InstallPlan> {
 fn extract_tar_gz_entry(archive: &Path, into_dir: &Path, entry: &str) -> Result<PathBuf> {
     self_update::Extract::from_source(archive)
         // Named rather than sniffed from the extension: `detect_archive` keys
-        // off the *last* extension only, so `logbook-linux-x86_64.tar.gz`
+        // off the *last* extension only, so `teyvatme-linux-x86_64.tar.gz`
         // would be read as a bare gzip stream rather than as a tar.
         .archive(self_update::ArchiveKind::Tar(Some(
             self_update::Compression::Gz,
@@ -348,7 +348,7 @@ const MACHO_MAGIC_64: &[u8] = b"\xcf\xfa\xed\xfe";
 /// would still install if the release ever ships one.
 const MACHO_FAT_MAGIC: &[u8] = b"\xca\xfe\xba\xbe";
 
-/// No Logbook build is anywhere near this small; an HTTP error page is.
+/// No Teyvat.me build is anywhere near this small; an HTTP error page is.
 const MIN_ASSET_LEN: u64 = 64 * 1024;
 
 /// Reject a download that is too small to be a build of this program.
@@ -364,7 +364,7 @@ fn check_minimum_size(path: &Path) -> Result<()> {
 
     if len < MIN_ASSET_LEN {
         return Err(anyhow!(
-            "the downloaded update is only {len} bytes, which is too small to be an Logbook build"
+            "the downloaded update is only {len} bytes, which is too small to be an Teyvat.me build"
         ));
     }
 
@@ -383,7 +383,7 @@ fn check_is_native_executable(path: &Path) -> Result<()> {
         &[MACHO_MAGIC_64, MACHO_FAT_MAGIC]
     } else {
         return Err(anyhow!(
-            "Logbook cannot verify a downloaded update on this platform"
+            "Teyvat.me cannot verify a downloaded update on this platform"
         ));
     };
 
@@ -484,7 +484,7 @@ async fn download_new_version_and_replace_current(
 
     // The download is the long, network-bound half and nothing has been written
     // over the install yet, so closing the window during it must give up
-    // promptly rather than leave `LogbookApp::drop` waiting out its deadline
+    // promptly rather than leave `TeyvatmeApp::drop` waiting out its deadline
     // and then detaching this thread mid-download — which also leaked the
     // staging directory next to the executable, because `TempDir::drop` never
     // ran.
@@ -593,7 +593,7 @@ pub async fn check_for_app_update(
     if let Err(e) = asset_for_current_platform(&release).and_then(|asset| install_plan_for(&asset))
     {
         tracing::warn!(
-            "Logbook {} is available but cannot be installed in place: {e}",
+            "Teyvat.me {} is available but cannot be installed in place: {e}",
             release.version
         );
         // Say so rather than silently skipping the update: on the platforms
@@ -602,7 +602,7 @@ pub async fn check_for_app_update(
         if should_report_manual_install(manual_notice_marker().as_deref(), &release.version) {
             let _ = toast_tx.send((
                 format!(
-                    "Logbook {} is available, but has to be installed by hand on this \
+                    "Teyvat.me {} is available, but has to be installed by hand on this \
                      platform: {RELEASES_URL}",
                     release.version
                 ),
@@ -618,7 +618,7 @@ pub async fn check_for_app_update(
 
     // Wait for acknowledgment. Every arm here has to be able to give up:
     // without the cancel arm, closing the window at the prompt left this task
-    // parked forever while `LogbookApp::drop` joined on it, and the process
+    // parked forever while `TeyvatmeApp::drop` joined on it, and the process
     // sat at 0% CPU holding the single-instance mutex.
     let answer = tokio::select! {
         _ = cancel_token.cancelled() => return Ok(()),
@@ -685,10 +685,10 @@ mod tests {
     /// Every asset published by .github/workflows/release.yaml. Keep the two in
     /// sync (and docs/src/02-quickstart.md with them).
     const PUBLISHED_ASSETS: &[&str] = &[
-        "logbook-windows.exe",
-        "logbook-windows-pcap.exe",
-        "logbook-linux-x86_64.tar.gz",
-        "Logbook-macos-arm64.app.tar.gz",
+        "teyvatme-windows.exe",
+        "teyvatme-windows-pcap.exe",
+        "teyvatme-linux-x86_64.tar.gz",
+        "Teyvatme-macos-arm64.app.tar.gz",
     ];
 
     #[test]
@@ -713,7 +713,7 @@ mod tests {
         let release = release("9.9.9", &["some-other-project.exe"]);
 
         asset_for_current_platform(&release)
-            .expect_err("an unrelated asset must not be installed over logbook");
+            .expect_err("an unrelated asset must not be installed over teyvatme");
     }
 
     fn asset(name: &str) -> ReleaseAsset {
@@ -728,7 +728,7 @@ mod tests {
         // Handing the gzip bytes to self_replace is what bricked Linux
         // installs; refusing them outright is what removed in-app updates from
         // Linux entirely. Neither is the answer -- unpacking is.
-        for name in ["logbook-linux-x86_64.tar.gz", "logbook.tgz"] {
+        for name in ["teyvatme-linux-x86_64.tar.gz", "teyvatme.tgz"] {
             assert_eq!(
                 install_plan_for(&asset(name)).unwrap(),
                 InstallPlan::UnpackTarGz(TARBALL_EXECUTABLE_ENTRY),
@@ -743,21 +743,21 @@ mod tests {
         // inside it -- which is also what `current_exe()` points at. Note the
         // name also ends with `.tar.gz`, so the order of the checks in
         // `install_plan_for` is load bearing: the bare-tarball arm would look
-        // for a top-level `logbook` that a bundle does not have.
+        // for a top-level `teyvatme` that a bundle does not have.
         assert_eq!(
-            install_plan_for(&asset("Logbook-macos-arm64.app.tar.gz")).unwrap(),
+            install_plan_for(&asset("Teyvatme-macos-arm64.app.tar.gz")).unwrap(),
             InstallPlan::UnpackTarGz(MACOS_BUNDLE_EXECUTABLE_ENTRY),
         );
     }
 
     #[test]
     fn a_zip_is_still_refused() {
-        install_plan_for(&asset("logbook.zip")).expect_err("nothing unpacks zips");
+        install_plan_for(&asset("teyvatme.zip")).expect_err("nothing unpacks zips");
     }
 
     #[test]
     fn a_bare_executable_is_installed_verbatim() {
-        for name in ["logbook-windows.exe", "logbook-linux-x86_64"] {
+        for name in ["teyvatme-windows.exe", "teyvatme-linux-x86_64"] {
             assert_eq!(
                 install_plan_for(&asset(name)).unwrap(),
                 InstallPlan::Direct,
@@ -767,7 +767,7 @@ mod tests {
     }
 
     /// Build the archive shape release.yaml publishes for Linux:
-    /// `cd target/release && tar -czf <out_file> logbook`, one member named
+    /// `cd target/release && tar -czf <out_file> teyvatme`, one member named
     /// after the matrix's `binary` field.
     fn write_tarball(path: &Path, entries: &[(&str, &[u8])]) {
         let file = std::fs::File::create(path).unwrap();
@@ -786,7 +786,7 @@ mod tests {
     #[test]
     fn the_linux_tarball_yields_an_installable_executable() {
         let dir = tempfile::tempdir().unwrap();
-        let archive_path = dir.path().join("logbook-linux-x86_64.tar.gz");
+        let archive_path = dir.path().join("teyvatme-linux-x86_64.tar.gz");
 
         let mut payload = ELF_MAGIC.to_vec();
         payload.resize(MIN_ASSET_LEN as usize + 1, 0);
@@ -809,14 +809,14 @@ mod tests {
         // the extractor writes it under the staging directory rather than
         // flattening it -- `self_update` matches tar entries by whole path.
         let dir = tempfile::tempdir().unwrap();
-        let archive_path = dir.path().join("Logbook-macos-arm64.app.tar.gz");
+        let archive_path = dir.path().join("Teyvatme-macos-arm64.app.tar.gz");
 
         let mut payload = MACHO_MAGIC_64.to_vec();
         payload.resize(MIN_ASSET_LEN as usize + 1, 0);
         write_tarball(
             &archive_path,
             &[
-                ("Logbook.app/Contents/Info.plist", b"<plist/>"),
+                ("Teyvatme.app/Contents/Info.plist", b"<plist/>"),
                 (MACOS_BUNDLE_EXECUTABLE_ENTRY, &payload),
             ],
         );

@@ -4,23 +4,23 @@
 # See THIRD_PARTY_NOTICES.md.
 
 [package]
-name = "logbook-core"
+name = "teyvatme-core"
 version = "0.0.0"
 edition = "2024"
 rust-version = "1.88"
 publish = false
-description = "logbook's platform-free core: the game data model, GOOD export, live-sync deltas and recordings, shared by the desktop app and the Android app."
+description = "Teyvat.me's platform-free core: the game data model, GOOD export, live-sync deltas and recordings, shared by the desktop app and the Android app."
 license = "MIT"
 
 [features]
-# Helpers for other crates' tests (logbook's): the pcapng byte builders in
+# Helpers for other crates' tests (Teyvat.me's): the pcapng byte builders in
 # `recording::test_support` and a few test-only `PlayerData` methods.
 test-support = []
 
 [dependencies]
-logbook-game-data = { workspace = true }
+teyvatme-game-data = { workspace = true }
 anyhow = "1.0.99"
-logbook-protocol = { path = "../protocol" }
+teyvatme-protocol = { path = "../protocol" }
 chrono = "0.4.42"
 # The live sync session id (live.rs).
 getrandom = "0.3.4"

@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 tawan475
 
-package io.github.tawan475.logbook
+package me.teyvat.app
 
-/** The Rust forwarder in `android/native` (liblogbook_android.so). */
+/** The Rust forwarder in `android/native` (libteyvatme_android.so). */
 object NativeBridge {
     init {
-        System.loadLibrary("logbook_android")
+        System.loadLibrary("teyvatme_android")
     }
 
     /**

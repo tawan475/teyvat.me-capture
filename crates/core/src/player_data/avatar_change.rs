@@ -23,8 +23,8 @@
 //! notify and the reply of one upgrade, the weapon re-sent on every scene
 //! change) are no-ops.
 
-use logbook_game_data::ArtifactSlot;
-use logbook_protocol::{FlatMessage, parse_avatar_info};
+use teyvatme_game_data::ArtifactSlot;
+use teyvatme_protocol::{FlatMessage, parse_avatar_info};
 
 use super::{
     AVATAR_TYPE_FORMAL, CHARACTER_ASCENSION_RANGE, CHARACTER_LEVEL_RANGE, Item, PlayerData,
@@ -142,7 +142,7 @@ impl PlayerData {
             .get(&avatar_id)?
             .prop_map
             .get(&prop)
-            .and_then(logbook_protocol::prop_value_any)
+            .and_then(teyvatme_protocol::prop_value_any)
     }
 
     /// `AvatarPropNotify`: a level or an ascension, never lower than held.

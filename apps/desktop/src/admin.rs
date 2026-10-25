@@ -55,7 +55,7 @@ pub fn ensure_admin() {
     // so plainly rather than silently relaunching or exiting.
     tracing::warn!(
         "Not running with admin privileges even though the embedded manifest requires them; \
-         packet capture will fail. Restart Logbook with \"Run as administrator\"."
+         packet capture will fail. Restart Teyvat.me with \"Run as administrator\"."
     );
 }
 
@@ -111,10 +111,10 @@ fn show_packet_capture_permissions_missing_dialog() {
     let exe_path = std::env::current_exe()
         .ok()
         .map(|mut path| path.as_mut_os_string().to_string_lossy().to_string())
-        .unwrap_or("./logbook".to_owned());
+        .unwrap_or("./teyvatme".to_owned());
 
     let _ = eframe::run_simple_native(
-        "Logbook requires packet capture permissions",
+        "Teyvat.me requires packet capture permissions",
         options,
         move |ctx, _frame| {
             egui::CentralPanel::default().show(ctx, |ui| {
@@ -124,7 +124,7 @@ fn show_packet_capture_permissions_missing_dialog() {
 
                     #[cfg(target_os = "linux")]
                     {
-                        ui.label("1. Grant CAP_NET_RAW to Logbook (after every update):");
+                        ui.label("1. Grant CAP_NET_RAW to Teyvat.me (after every update):");
                         ui.label(format!(
                             "sudo setcap cap_net_raw=ep '{}' && '{}'",
                             exe_path, exe_path
@@ -138,10 +138,10 @@ fn show_packet_capture_permissions_missing_dialog() {
                     }
 
                     ui.add_space(5.0);
-                    ui.label("2. Run Logbook as root (every time):");
+                    ui.label("2. Run Teyvat.me as root (every time):");
                     ui.label(format!("sudo '{}'", exe_path));
                     ui.add_space(10.0);
-                    ui.label("Rerun Logbook with --no-admin if you wish to proceed without packet capture")
+                    ui.label("Rerun Teyvat.me with --no-admin if you wish to proceed without packet capture")
                 });
 
                 // Push button to the bottom

@@ -9,14 +9,14 @@ use std::ops::RangeInclusive;
 
 use anyhow::Result;
 use indexmap::IndexMap;
-use logbook_game_data::{AnimeGameData, Property, SkillType};
-pub use logbook_protocol::Achievement;
-pub use logbook_protocol::r#gen::protos::{AvatarInfo, Item, PropValue};
-use logbook_protocol::{
+use serde::{Deserialize, Serialize};
+use teyvatme_game_data::{AnimeGameData, Property, SkillType};
+pub use teyvatme_protocol::Achievement;
+pub use teyvatme_protocol::r#gen::protos::{AvatarInfo, Item, PropValue};
+use teyvatme_protocol::{
     ANECDOTE_AREA_IDS, ANECDOTE_IDS, AbyssPeriod, AnecdoteData, DailyCommissions, Expedition,
     HomeResources, MAX_ANECDOTE_FINISH_COUNT, MAX_ANECDOTE_STATE, MAX_ANECDOTES,
 };
-use serde::{Deserialize, Serialize};
 
 use crate::good::{self, fake_uninitialized_4th_line};
 
@@ -73,7 +73,7 @@ const TPS_AVATAR_ID_MALE: u32 = 10000134;
 
 /// Avatar ids that are never exported: the TPS placeholders.
 ///
-/// `logbook-game-data` reads them from ConstValueExcelConfigData, whose `value`
+/// `teyvatme-game-data` reads them from ConstValueExcelConfigData, whose `value`
 /// column is obfuscated from 7.1 on (`CBOMLBFIPJM` at dump 792978e5), so both
 /// lookups fail and the exclusion used to do nothing at all. The ids have not
 /// moved -- that dump still lists 10000135 and 10000134 under those names -- so
@@ -188,7 +188,7 @@ fn describe_character_extras(key: &str, extra: &good::GiCharacter) -> String {
 /// a real value falls in.
 ///
 /// The ids are the game's own enum rather than anything in the Excel data, so
-/// `logbook-game-data` cannot supply them. They have been stable since 1.0
+/// `teyvatme-game-data` cannot supply them. They have been stable since 1.0
 /// (Grasscutter's `PlayerProperty.java` is the reference) and a 7.1 login
 /// carries every one. A value outside its range is left out of `gi_player`
 /// rather than sent: these numbers are only ever read as facts, and the
@@ -257,7 +257,7 @@ const PROP_MAX_STAMINA: PlayerProp = PlayerProp {
 /// * `degraded` — the entity *is* in the snapshot, but one of its fields fell
 ///   back to a default. Logged, never toasted: `unknown_skill` fires on every
 ///   single export for anyone who owns Kamisato Ayaka or Mona, because
-///   `logbook-game-data` only ever indexes depot skill slots 0 and 1 plus the
+///   `teyvatme-game-data` only ever indexes depot skill slots 0 and 1 plus the
 ///   energy skill, and their alternate-sprint skill (slot 2, e.g. 10013) is
 ///   absent from `skill_type_map` by construction rather than by version drift.
 ///   A permanent red toast for a condition that is always true would destroy
@@ -358,11 +358,11 @@ fn artifact_export_level(wire_level: u32) -> Option<u32> {
 /// depending on the property and the game version, and reading only `val` made
 /// every character whose level came through the oneof decode as 0 — out of
 /// range, and so dropped from the export with the rest of its data. The decoder
-/// lives in `logbook_protocol` beside the one for player properties, which hit
+/// lives in `teyvatme_protocol` beside the one for player properties, which hit
 /// exactly this on the same message type; duplicating it here is what let the
 /// two drift apart in the first place.
 fn validated_avatar_prop(prop: &PropValue, range: RangeInclusive<u32>) -> Option<u32> {
-    let raw = logbook_protocol::prop_value_any(prop)?;
+    let raw = teyvatme_protocol::prop_value_any(prop)?;
     u32::try_from(raw).ok().filter(|v| range.contains(v))
 }
 
@@ -827,7 +827,7 @@ impl PlayerData {
 
     /// Drop items the game says are gone, returning how many were actually held.
     ///
-    /// The guids come from `logbook_protocol`'s delete matcher, which reports
+    /// The guids come from `teyvatme_protocol`'s delete matcher, which reports
     /// *candidates*: the packet shape it keys on is shared with roughly two
     /// dozen other messages. This intersection is what makes acting on them
     /// safe, and it is why the return value matters — a caller should treat
@@ -1078,7 +1078,7 @@ impl PlayerData {
     ///
     /// Assumed, not documented: the game mints item guids as
     /// `(uid << 32) + counter` (Grasscutter's `Player::getNextGuid`;
-    /// logbook-protocol's delete matcher only accepts guid lists of that
+    /// teyvatme-protocol's delete matcher only accepts guid lists of that
     /// shape), so the top half of an item guid would be the UID. Virtual items
     /// carry guid 0 and are skipped. The UID is the top half at least
     /// [`UID_MAJORITY`] of the items share; a real split claims nothing. Avatar
@@ -1461,7 +1461,7 @@ impl PlayerData {
                     tracing::warn!(
                         avatar_id = character.avatar_id,
                         val = level_prop.val,
-                        decoded = ?logbook_protocol::prop_value_any(level_prop),
+                        decoded = ?teyvatme_protocol::prop_value_any(level_prop),
                         "avatar level out of range; dropping it from the export"
                     );
                     report.record_dropped("character_invalid_level");
@@ -1482,7 +1482,7 @@ impl PlayerData {
                     tracing::warn!(
                         avatar_id = character.avatar_id,
                         val = ascension_prop.val,
-                        decoded = ?logbook_protocol::prop_value_any(ascension_prop),
+                        decoded = ?teyvatme_protocol::prop_value_any(ascension_prop),
                         "avatar ascension out of range; dropping it from the export"
                     );
                     report.record_dropped("character_invalid_ascension");
@@ -1500,7 +1500,7 @@ impl PlayerData {
                     let Ok(ty) = self.game_data.get_skill_type(*id) else {
                         // Not fatal, and usually not even a gap: the wire
                         // `skill_level_map` is the depot's whole `skills` list
-                        // plus `energySkill`, while `logbook-game-data` only
+                        // plus `energySkill`, while `teyvatme-game-data` only
                         // indexes depot slots 0 and 1 plus the energy skill. So
                         // slot 2 — the alternate sprint that only Kamisato
                         // Ayaka and Mona have — always misses. Degraded, never
@@ -1952,7 +1952,7 @@ impl PlayerData {
 
 #[cfg(test)]
 mod tests {
-    use logbook_protocol::r#gen::protos::Material;
+    use teyvatme_protocol::r#gen::protos::Material;
 
     use super::*;
 
@@ -2063,7 +2063,7 @@ mod tests {
     fn character(avatar_id: u32, skill_levels: &[(u32, u32)]) -> AvatarInfo {
         let mut avatar = avatar(avatar_id, &[]);
         for (prop_id, val) in [(4001u32, 90i64), (1002, 6)] {
-            let mut prop = logbook_protocol::r#gen::protos::PropValue::new();
+            let mut prop = teyvatme_protocol::r#gen::protos::PropValue::new();
             prop.val = val;
             avatar.prop_map.insert(prop_id, prop);
         }
@@ -2100,7 +2100,7 @@ mod tests {
     /// encoding that used to read as 0 and get the character dropped.
     fn prop_ival(val: i64) -> PropValue {
         let mut prop = PropValue::new();
-        prop.value = Some(logbook_protocol::r#gen::protos::prop_value::Value::Ival(
+        prop.value = Some(teyvatme_protocol::r#gen::protos::prop_value::Value::Ival(
             val,
         ));
         prop
@@ -2339,7 +2339,7 @@ mod tests {
     #[test]
     fn an_unindexed_alternate_sprint_skill_does_not_report_a_dropped_entity() {
         // Kamisato Ayaka's depot is `skills: [10024, 10018, 10013, 0]` with
-        // `energySkill: 10019`; `logbook-game-data` only indexes slots 0 and 1
+        // `energySkill: 10019`; `teyvatme-game-data` only indexes slots 0 and 1
         // plus the energy skill, so 10013 is missing from `skill_type_map` for
         // every build. Recording that as a dropped entity put a permanent red
         // "Export incomplete" toast in front of every Ayaka and Mona owner.
@@ -2778,7 +2778,7 @@ mod tests {
 
     /// One of everything GOOD carries -- a character, an artifact and a weapon
     /// on them, one material, one achievement -- and, with `extras`, everything
-    /// Logbook adds beside GOOD. The two differ in nothing GOOD can see.
+    /// Teyvat.me adds beside GOOD. The two differ in nothing GOOD can see.
     fn golden_player_data(extras: bool) -> PlayerData {
         let game_data = TestGameData {
             affix_map: r#""501204": {"property": "CritRate", "value": 3.89},
@@ -2806,9 +2806,9 @@ mod tests {
         let mut weapon = Item::new();
         weapon.item_id = 13501;
         weapon.guid = guid(1);
-        let mut equip = logbook_protocol::r#gen::protos::Equip::new();
+        let mut equip = teyvatme_protocol::r#gen::protos::Equip::new();
         equip.is_locked = true;
-        let mut homa = logbook_protocol::r#gen::protos::Weapon::new();
+        let mut homa = teyvatme_protocol::r#gen::protos::Weapon::new();
         homa.level = 90;
         homa.promote_level = 6;
         homa.affix_map.insert(113501, 0);
@@ -2818,9 +2818,9 @@ mod tests {
         let mut artifact = Item::new();
         artifact.item_id = 81524;
         artifact.guid = guid(2);
-        let mut equip = logbook_protocol::r#gen::protos::Equip::new();
+        let mut equip = teyvatme_protocol::r#gen::protos::Equip::new();
         equip.is_locked = true;
-        let mut reliquary = logbook_protocol::r#gen::protos::Reliquary::new();
+        let mut reliquary = teyvatme_protocol::r#gen::protos::Reliquary::new();
         reliquary.level = 21;
         reliquary.main_prop_id = 10001;
         reliquary.append_prop_id_list = vec![501204, 501234, 501204];
@@ -2856,19 +2856,19 @@ mod tests {
             ]));
             data.process_anecdotes(&AnecdoteData {
                 anecdotes: vec![
-                    logbook_protocol::Anecdote {
+                    teyvatme_protocol::Anecdote {
                         id: 100_001,
                         state: 3,
                         finish_count: 1,
                     },
-                    logbook_protocol::Anecdote {
+                    teyvatme_protocol::Anecdote {
                         id: 101_604,
                         state: 0,
                         finish_count: 3,
                     },
                 ],
                 unlocked_areas: vec![1, 2],
-                reward: Some(logbook_protocol::AnecdoteReward {
+                reward: Some(teyvatme_protocol::AnecdoteReward {
                     index: 0,
                     progress: 1,
                     target: 10,
@@ -3095,7 +3095,7 @@ mod tests {
     // -- gi_anecdotes ----------------------------------------------------------------
 
     fn book() -> AnecdoteData {
-        let entry = |id: u32, state: u32, finish_count: u32| logbook_protocol::Anecdote {
+        let entry = |id: u32, state: u32, finish_count: u32| teyvatme_protocol::Anecdote {
             id,
             state,
             finish_count,
@@ -3107,12 +3107,12 @@ mod tests {
                 entry(107_302, 2, 0),
             ],
             unlocked_areas: vec![3, 1, 2],
-            reward: Some(logbook_protocol::AnecdoteReward {
+            reward: Some(teyvatme_protocol::AnecdoteReward {
                 index: 12,
                 progress: 4,
                 target: 10,
             }),
-            wish: Some(logbook_protocol::AnecdoteWish {
+            wish: Some(teyvatme_protocol::AnecdoteWish {
                 npc_id: Some(9801),
                 last_wish_time: 1_790_000_000,
             }),
@@ -3182,7 +3182,7 @@ mod tests {
     fn an_implausible_wish_time_leaves_out_only_the_wish() {
         let mut data = player_data();
         let mut stale = book();
-        stale.wish = Some(logbook_protocol::AnecdoteWish {
+        stale.wish = Some(teyvatme_protocol::AnecdoteWish {
             npc_id: None,
             last_wish_time: (NOW_SECS + CLOCK_SLACK_SECS + 1) as u32,
         });
@@ -3464,8 +3464,8 @@ mod tests {
         let mut item = Item::new();
         item.item_id = item_id;
         item.guid = guid;
-        let mut equip = logbook_protocol::r#gen::protos::Equip::new();
-        let mut weapon = logbook_protocol::r#gen::protos::Weapon::new();
+        let mut equip = teyvatme_protocol::r#gen::protos::Equip::new();
+        let mut weapon = teyvatme_protocol::r#gen::protos::Weapon::new();
         weapon.level = level;
         equip.set_weapon(weapon);
         item.set_equip(equip);
@@ -3483,8 +3483,8 @@ mod tests {
         let mut item = Item::new();
         item.item_id = item_id;
         item.guid = guid;
-        let mut equip = logbook_protocol::r#gen::protos::Equip::new();
-        let mut reliquary = logbook_protocol::r#gen::protos::Reliquary::new();
+        let mut equip = teyvatme_protocol::r#gen::protos::Equip::new();
+        let mut reliquary = teyvatme_protocol::r#gen::protos::Reliquary::new();
         reliquary.level = wire_level;
         reliquary.main_prop_id = 10001;
         reliquary.append_prop_id_list = substats.to_vec();

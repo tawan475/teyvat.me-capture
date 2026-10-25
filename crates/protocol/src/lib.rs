@@ -34,7 +34,7 @@
 //!
 //! ## Example
 //! ```
-//! use logbook_protocol::{GamePacket, GameSniffer, ConnectionPacket};
+//! use teyvatme_protocol::{GamePacket, GameSniffer, ConnectionPacket};
 //!
 //! let packets: Vec<Vec<u8>> = vec![/**/];
 //!
@@ -158,7 +158,7 @@ const RETAINED_SEED_DEPTH: i32 = 1000;
 ///
 /// One per game process is all that is ever useful (every reconnect inside a
 /// process draws from the same generator), so this only has to cover a few
-/// game restarts while logbook keeps running. Bounded so a long-lived capture
+/// game restarts while Teyvat.me keeps running. Bounded so a long-lived capture
 /// cannot grow it, and so the probe below stays a fixed cost.
 const MAX_TIME_ANCHORS: usize = 4;
 
@@ -902,7 +902,7 @@ impl GameSniffer {
         if self.lane(direction).kcp.is_none() {
             // A conversation of a connection that already ended. The late
             // segment that bound one at 06:59 on 2026-10-04 left its lane
-            // rejecting the live conversation until logbook was closed.
+            // rejecting the live conversation until Teyvat.me was closed.
             if self.retired_convs.contains(&head.conv) {
                 debug!(
                     conv = head.conv,
@@ -2281,7 +2281,7 @@ fn prop_value(prop: &PropValue) -> Option<u64> {
 /// The number a `PropValue` carries, however this game version chose to encode
 /// it.
 ///
-/// The one entry point a consumer should use. `logbook` reads avatar levels and
+/// The one entry point a consumer should use. `teyvatme` reads avatar levels and
 /// ascensions out of `AvatarInfo::prop_map`, which is the same
 /// `map<uint32, PropValue>` shape as the player properties this module decodes,
 /// and reading only field 4 there silently dropped every character whose value
@@ -2971,7 +2971,7 @@ mod tests {
         new_key_from_seed(0xD15_0A7C)
     }
 
-    /// A sniffer that knows [`dispatch_key`], the way logbook's `keys/gi.json`
+    /// A sniffer that knows [`dispatch_key`], the way Teyvat.me's `keys/gi.json`
     /// supplies the real ones.
     ///
     /// The version a key answers to is the first two bytes of the ciphertext XOR
@@ -3625,7 +3625,7 @@ mod tests {
         // 06:59:37: with no session key live the handshake reset at once; a
         // late 32-byte segment of the old conversation 123542 then arrived
         // before the new one, bound the received direction, and the new
-        // conversation 123582 was rejected 10,384 times until logbook closed.
+        // conversation 123582 was rejected 10,384 times until Teyvat.me closed.
         let mut sniffer = connected_sniffer();
         let old = stalled_login(&mut sniffer, 123_542);
         let generation = sniffer.session_generation();
@@ -4263,7 +4263,7 @@ mod tests {
                 "property {key}"
             );
         }
-        // The five currencies logbook exports, and the account values beside
+        // The five currencies Teyvat.me exports, and the account values beside
         // them.
         assert_eq!(properties[&10015], 1600);
         assert_eq!(properties[&10016], 12_345_678);

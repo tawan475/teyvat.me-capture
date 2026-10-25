@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 tawan475
 
-package io.github.tawan475.logbook
+package me.teyvat.app
 
 import android.Manifest
 import android.app.Activity
@@ -86,26 +86,26 @@ class MainActivity : Activity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        Log.i("logbook", "notification permission: ${grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED}")
+        Log.i("teyvatme", "notification permission: ${grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED}")
         if (requestCode == REQUEST_NOTIFICATIONS) requestConsent()
     }
 
     private fun requestConsent() {
         val consent = VpnService.prepare(this)
-        Log.i("logbook", "Start tapped, consent needed: ${consent != null}")
+        Log.i("teyvatme", "Start tapped, consent needed: ${consent != null}")
         if (consent != null) startActivityForResult(consent, REQUEST_VPN) else startVpn()
     }
 
     @Deprecated("Activity result API is androidx; the spike has no dependencies")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        Log.i("logbook", "VPN consent result: $resultCode")
+        Log.i("teyvatme", "VPN consent result: $resultCode")
         if (requestCode == REQUEST_VPN && resultCode == RESULT_OK) startVpn()
     }
 
     private fun startVpn() {
         val started = startForegroundService(Intent(this, GameVpnService::class.java))
-        Log.i("logbook", "startForegroundService -> $started")
+        Log.i("teyvatme", "startForegroundService -> $started")
     }
 
     override fun onResume() {

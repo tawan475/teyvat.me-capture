@@ -19,7 +19,7 @@ resolver = "3"
 # the other. Declaring them once here and inheriting with `workspace = true`
 # makes that impossible to get wrong.
 [workspace.dependencies]
-logbook-game-data = { path = "crates/game-data" }
+teyvatme-game-data = { path = "crates/game-data" }
 flate2 = "1.1.9"
 tokio = { version = "1.47.1", features = [
 	"rt",
@@ -38,8 +38,8 @@ opt-level = 2
 # `"*"` matches only packages outside the workspace. The protocol crate's
 # session-key bruteforce (up to 3000 x 1000 candidate seeds) is CPU-bound, so
 # debug builds compile it optimized too.
-[profile.dev.package.logbook-protocol]
+[profile.dev.package.teyvatme-protocol]
 opt-level = 2
 
-[profile.dev.package.logbook-game-data]
+[profile.dev.package.teyvatme-game-data]
 opt-level = 2

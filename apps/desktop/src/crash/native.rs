@@ -20,7 +20,7 @@
 //!   There is deliberately no vectored handler either: it would also see every
 //!   first-chance exception a driver raises and handles itself, and report
 //!   crashes that never happened.
-//! - **`ExitProcess` without Logbook's shutdown**: a library calling `exit()`,
+//! - **`ExitProcess` without Teyvat.me's shutdown**: a library calling `exit()`,
 //!   or the main thread panicking out of `main`. No exception is involved, so
 //!   no filter sees it. [`on_tls_callback`] does: the loader calls it as the
 //!   process detaches, and it reports the exit unless [`super::mark_clean_exit`]
@@ -407,7 +407,7 @@ unsafe extern "system" fn on_tls_callback(
     // SAFETY: plain Win32 call.
     describe_thread(&mut line, unsafe { GetCurrentThreadId() });
     let _ = line.write_str(
-        " without Logbook's shutdown: the main thread panicked (see above), or code called \
+        " without Teyvat.me's shutdown: the main thread panicked (see above), or code called \
          exit()\nstack:\n",
     );
     // SAFETY: walks this thread's own stack.
@@ -437,7 +437,7 @@ fn prune_dumps(dir: &Path, keep: usize) {
 }
 
 /// Class of the window that hears Windows end the session.
-const SESSION_WINDOW_CLASS: PCWSTR = w!("LogbookSessionEndWatcher");
+const SESSION_WINDOW_CLASS: PCWSTR = w!("TeyvatmeSessionEndWatcher");
 
 fn start_session_watcher() {
     let spawned = std::thread::Builder::new()
@@ -460,7 +460,7 @@ fn start_session_watcher() {
 /// `WM_ENDSESSION` to top-level windows only (a message-only window gets
 /// neither), and one of its own on its own thread, because winit ignores both
 /// and a busy UI thread must not delay the marker. Never shown, and not titled
-/// "Logbook": `app.rs` finds the main window by that exact title.
+/// "Teyvat.me": `app.rs` finds the main window by that exact title.
 ///
 /// # Safety
 ///
@@ -482,7 +482,7 @@ unsafe fn run_session_watcher() -> windows::core::Result<()> {
         let window = CreateWindowExW(
             WINDOW_EX_STYLE(0),
             SESSION_WINDOW_CLASS,
-            w!("Logbook session-end watcher"),
+            w!("Teyvat.me session-end watcher"),
             WS_OVERLAPPED,
             0,
             0,
@@ -512,7 +512,7 @@ unsafe extern "system" fn session_window_proc(
     lparam: LPARAM,
 ) -> LRESULT {
     match message {
-        // Logbook has nothing to save and never stands in the way.
+        // Teyvat.me has nothing to save and never stands in the way.
         WM_QUERYENDSESSION => LRESULT(1),
         // Non-zero: the session really is ending, and Windows will terminate
         // the process once every window has answered.
@@ -528,7 +528,7 @@ unsafe extern "system" fn session_window_proc(
 /// The clean-exit reason for `WM_ENDSESSION`'s flags.
 fn session_end_reason(flags: u32) -> &'static str {
     if flags & ENDSESSION_CLOSEAPP != 0 {
-        "Windows asked Logbook to close (an installer or update needed it closed)"
+        "Windows asked Teyvat.me to close (an installer or update needed it closed)"
     } else if flags & ENDSESSION_LOGOFF != 0 {
         "Windows is signing the user out"
     } else {
@@ -558,7 +558,7 @@ mod tests {
     /// Set in a child this test binary starts of itself: the log directory the
     /// child installs everything into. The process-wide hooks can only be
     /// installed once per process, and some of these tests end theirs.
-    const CHILD_DIR: &str = "LOGBOOK_CRASH_TEST_DIR";
+    const CHILD_DIR: &str = "TEYVATME_CRASH_TEST_DIR";
 
     /// In a child, install everything into its log directory and return it.
     fn child_setup() -> Option<PathBuf> {
@@ -660,7 +660,7 @@ mod tests {
     fn assert_reported_with_a_dump(dir: &Path) {
         let report = read(dir, CRASH_LOG);
         assert_eq!(report.matches("==== ").count(), 1, "{report}");
-        assert!(report.contains(" native crash | Logbook "), "{report}");
+        assert!(report.contains(" native crash | Teyvat.me "), "{report}");
         assert!(
             report.contains("exception 0xC0000005 (access violation) at 0x"),
             "{report}"
@@ -883,7 +883,7 @@ mod tests {
         let output = run_child("a_panic_is_written_to_crash_log_synchronously", dir.path());
         assert!(output.status.success(), "{output:?}");
         let report = read(dir.path(), CRASH_LOG);
-        assert!(report.contains(" panic | Logbook "), "{report}");
+        assert!(report.contains(" panic | Teyvat.me "), "{report}");
         assert!(report.contains("thread 'doomed' panicked at "), "{report}");
         assert!(
             report.contains("the decoder fell over\nbacktrace:\n"),
@@ -1030,7 +1030,7 @@ mod tests {
             session_end_reason(ENDSESSION_LOGOFF),
             "Windows is signing the user out"
         );
-        assert!(session_end_reason(ENDSESSION_CLOSEAPP).contains("asked Logbook to close"));
+        assert!(session_end_reason(ENDSESSION_CLOSEAPP).contains("asked Teyvat.me to close"));
         assert!(session_end_reason(0).contains("shutting down"));
     }
 }

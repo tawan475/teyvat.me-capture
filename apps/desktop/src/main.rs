@@ -12,10 +12,10 @@ use std::time::Instant;
 
 use anyhow::{Context, Result};
 use clap::Parser;
+use serde::{Deserialize, Serialize};
 // The platform-free modules live in crates/core (shared with the
 // Android app); imported here so `crate::good` and the rest resolve as before.
-use logbook_core::{decode, delta, good, live, pcapng, player_data, recording};
-use serde::{Deserialize, Serialize};
+use teyvatme_core::{decode, delta, good, live, pcapng, player_data, recording};
 use tokio::sync::oneshot;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::{EnvFilter, reload};
@@ -128,7 +128,7 @@ pub struct AppState {
     state: State,
     capturing: bool,
     updated: DataUpdated,
-    /// Whether the game is running and, more to the point, whether Logbook
+    /// Whether the game is running and, more to the point, whether Teyvat.me
     /// watched this game session start. `capturing` says the backend is up; it
     /// says nothing about whether the traffic it sees can be decrypted at all.
     /// See [`game_watch`].
@@ -180,7 +180,7 @@ struct Args {
         default_value_t = false,
         help = "Start with the window minimized (to the tray or the taskbar, like its minimize button)",
         long_help = "Start with the window minimized: to the tray or the taskbar, as the window's \
-                     minimize button would. The \"Start Logbook on startup\" task passes it when \
+                     minimize button would. The \"Start Teyvat.me on startup\" task passes it when \
                      \"Start minimized\" is ticked."
     )]
     minimized: bool,
@@ -208,8 +208,8 @@ struct Args {
                      extras included), stamped with the time its data was captured.\n\n\
                      Nothing is uploaded, no key is verified, no automation file is saved, no \
                      update is checked for, no settings are read or written, nothing under \
-                     Logbook's data directory is touched, and the single-instance lock is not \
-                     taken, so it can run beside a running Logbook. It needs no administrator \
+                     Teyvat.me's data directory is touched, and the single-instance lock is not \
+                     taken, so it can run beside a running Teyvat.me. It needs no administrator \
                      rights, but on Windows the executable's manifest still asks for them before \
                      any of this runs: set __COMPAT_LAYER=RunAsInvoker to start it unelevated.\n\n\
                      The log goes to stdout and to OUT_JSON.log (RUST_LOG sets the level). Exits \
@@ -240,12 +240,12 @@ struct Args {
         value_name = "OUT_NDJSON",
         requires = "savefile_path",
         conflicts_with_all = ["read_from_file", "capture_backend", "replay_export", "replay_journal"],
-        help = "Debug builds: --replay-journal, but sent to a local tracker (LOGBOOK_REPLAY_TRACKER, LOGBOOK_REPLAY_IMPORT_KEY)",
+        help = "Debug builds: --replay-journal, but sent to a local tracker (TEYVATME_REPLAY_TRACKER, TEYVATME_REPLAY_IMPORT_KEY)",
         long_help = "Debug builds only, for testing a tracker: like --replay-journal, but the \
                      snapshots and batches really go to the tracker API at \
-                     LOGBOOK_REPLAY_TRACKER (a localhost or 127.0.0.1 address only, e.g. \
+                     TEYVATME_REPLAY_TRACKER (a localhost or 127.0.0.1 address only, e.g. \
                      http://127.0.0.1:5173/api) with the import key in \
-                     LOGBOOK_REPLAY_IMPORT_KEY, as fast as the tracker answers, stamped with \
+                     TEYVATME_REPLAY_IMPORT_KEY, as fast as the tracker answers, stamped with \
                      the recording's times. Never reads or writes the app's settings or data."
     )]
     replay_live: Option<PathBuf>,
@@ -257,10 +257,10 @@ struct Args {
                      template to record live traffic to.\n\n\
                      With --read-from-file or --replay-export the path is used as given: it is \
                      the recording to replay.\n\n\
-                     Without either the path is a template, not an output file. Logbook captures on \
+                     Without either the path is a template, not an output file. Teyvat.me captures on \
                      every eligible network interface at once, and each one is recorded to its \
                      own file named after the device, because one pcap dump file cannot be shared \
-                     by several capture handles. `logbook -b pcap session.pcap` therefore writes \
+                     by several capture handles. `teyvatme -b pcap session.pcap` therefore writes \
                      `session-<interface>.pcap` once per interface and no plain `session.pcap`; \
                      the log line \"Recording <device> to savefile ...\" names each file as it is \
                      opened.\n\n\
@@ -296,7 +296,7 @@ impl TracingLevel {
                 if cfg!(debug_assertions) {
                     "info"
                 } else {
-                    "warn,logbook=info,logbook_protocol=info"
+                    "warn,teyvatme=info,teyvatme_protocol=info"
                 }
             }
             TracingLevel::VerboseInfo => "info",
@@ -353,7 +353,7 @@ fn main() -> eframe::Result {
 
     // A replay is a command-line tool, not the app, and it goes before
     // anything the app does at startup: the single-instance lock (so it runs
-    // beside a live Logbook), the log rotation in the data directory (which
+    // beside a live Teyvat.me), the log rotation in the data directory (which
     // in a debug build would move the very recording being replayed), and the
     // elevation check. See `replay.rs` for what else it never does.
     if let Some((recording, out)) = args.live_request() {
@@ -374,7 +374,7 @@ fn main() -> eframe::Result {
 
     let instance = single_instance::SingleInstance::new("irminsul_app_instance").unwrap();
     if !instance.is_single() {
-        eprintln!("Another instance of Logbook is already running.");
+        eprintln!("Another instance of Teyvat.me is already running.");
         std::process::exit(1);
     }
 
@@ -426,10 +426,10 @@ fn main() -> eframe::Result {
         app::StartWindow::AsIs
     };
     let result = eframe::run_native(
-        "Logbook",
+        "Teyvat.me",
         native_options,
         Box::new(move |cc| {
-            Ok(Box::new(app::LogbookApp::new(
+            Ok(Box::new(app::TeyvatmeApp::new(
                 cc,
                 reload_handle,
                 capture_backend,
@@ -442,7 +442,7 @@ fn main() -> eframe::Result {
     );
 
     // Every orderly way out -- the close button, the tray's Quit, "Close
-    // Logbook" in the missed-launch modal, the update relaunch -- closes the
+    // Teyvat.me" in the missed-launch modal, the update relaunch -- closes the
     // window and comes back here, so this is the one place the clean exit is
     // marked. Before the relaunch: the replacement reads this log at startup.
     let restart = restart_requested.load(Ordering::SeqCst);
@@ -462,7 +462,7 @@ fn main() -> eframe::Result {
         // which can be a bare name or a path relative to a working directory
         // that no longer applies. argv[1..] on the other hand has to be carried
         // across -- without it a user who started
-        // `logbook-windows-pcap.exe -b pcap` came back on the pktmon default
+        // `teyvatme-windows-pcap.exe -b pcap` came back on the pktmon default
         // after an update, and `--no-admin` and `-r <file>` replay mode were
         // dropped the same way. Except `--minimized`: the window the user just
         // updated from comes back where they can see it, which
@@ -492,7 +492,7 @@ fn main() -> eframe::Result {
     result
 }
 
-/// The root everything Logbook writes for itself hangs off.
+/// The root everything Teyvat.me writes for itself hangs off.
 ///
 /// Release builds use the platform's per-application data directory, which is
 /// where a user's installed copy should keep its state. Debug builds use the
@@ -509,7 +509,7 @@ pub fn data_dir() -> Result<PathBuf> {
     eframe::storage_dir(APP_ID).context("Storage dir not found")
 }
 
-/// Where every HTTP client Logbook builds starts, so that all of them use
+/// Where every HTTP client Teyvat.me builds starts, so that all of them use
 /// rustls.
 ///
 /// reqwest is compiled with two TLS stacks: its default, native-tls, and
@@ -715,7 +715,7 @@ mod tests {
     use super::*;
 
     fn parse(args: &[&str]) -> Result<Args, clap::Error> {
-        Args::try_parse_from(std::iter::once("logbook").chain(args.iter().copied()))
+        Args::try_parse_from(std::iter::once("teyvatme").chain(args.iter().copied()))
     }
 
     #[test]

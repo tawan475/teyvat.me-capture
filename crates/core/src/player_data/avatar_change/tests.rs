@@ -3,9 +3,9 @@
 
 //! Each live update built as 7.1 lays it out, over a small held account.
 
-use logbook_game_data::AnimeGameData;
-use logbook_protocol::r#gen::protos::{AvatarInfo, Equip, Material, Reliquary, Weapon};
-use logbook_protocol::{GameCommand, flat_message};
+use teyvatme_game_data::AnimeGameData;
+use teyvatme_protocol::r#gen::protos::{AvatarInfo, Equip, Material, Reliquary, Weapon};
+use teyvatme_protocol::{GameCommand, flat_message};
 
 use super::*;
 
@@ -47,7 +47,7 @@ fn b(tag: u32, payload: &[u8]) -> Vec<u8> {
     out
 }
 
-/// The message as logbook's monitor hands it over.
+/// The message as Teyvat.me's monitor hands it over.
 fn flat(fields: &[Vec<u8>]) -> FlatMessage {
     let payload = fields.concat();
     flat_message(&GameCommand {

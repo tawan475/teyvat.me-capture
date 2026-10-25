@@ -36,7 +36,7 @@ pub struct Artifact {
     /// The game's id of this piece, as a decimal string (a u64 does not fit a
     /// JavaScript number): what live sync names it by (`delta.rs`). Tracker
     /// uploads only (`ExportSettings::item_guids`); omitted elsewhere. Not
-    /// camelCase: logbook's own keys keep their `gi_` names.
+    /// camelCase: Teyvat.me's own keys keep their `gi_` names.
     #[serde(rename = "gi_guid", skip_serializing_if = "Option::is_none", default)]
     pub gi_guid: Option<String>,
 }
@@ -84,7 +84,7 @@ pub struct Good {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timestamp: Option<u64>,
 
-    // Logbook's own additions. Not GOOD -- Genshin Optimizer owns that schema
+    // Teyvat.me's own additions. Not GOOD -- Genshin Optimizer owns that schema
     // -- so they ride as top-level keys of their own, like `gi_achievements`,
     // and come after every GOOD field: with all of them `None` the JSON is
     // byte for byte what it was before they existed. The tracker's importers
@@ -129,10 +129,10 @@ pub struct GiCapture {
     pub v: u32,
     /// `login`, `world`, `manual`, `collapse`, `logout`, `resync` or `change`.
     pub reason: String,
-    /// logbook's id of this game login: 16+ characters of `[A-Za-z0-9_-]`.
+    /// Teyvat.me's id of this game login: 16+ characters of `[A-Za-z0-9_-]`.
     pub session: String,
     /// 1 = the first world of the login, 2+ = each later full send of the
-    /// account in the same connection, by order (logbook cannot tell the
+    /// account in the same connection, by order (Teyvat.me cannot tell the
     /// player's own world from a co-op host's).
     pub world: u32,
     /// The journal this snapshot ends.
@@ -704,7 +704,7 @@ mod tests {
         assert_eq!(json["timestamp"], serde_json::json!(1_756_000_000_000u64));
         assert_eq!(json["materials"]["ChilledMeat"], serde_json::json!(12));
 
-        // Logbook's own account values. The UID is a JSON number; the
+        // Teyvat.me's own account values. The UID is a JSON number; the
         // tracker's account UID is a string of 9 or 10 digits.
         assert_eq!(
             keys(&json["gi_player"]),

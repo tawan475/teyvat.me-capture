@@ -137,7 +137,7 @@ pub struct GoodDelta {
     pub format: String,
     pub v: u8,
     pub uid: u32,
-    /// logbook's id of this game login (`gi_capture.session`).
+    /// Teyvat.me's id of this game login (`gi_capture.session`).
     pub session: String,
     /// 1, 2, 3 … within the journal of `base`.
     pub seq: u64,
@@ -650,14 +650,14 @@ mod tests {
     /// A synthetic journal for the tracker's replay check, covering every
     /// path kind the recordings rarely hold: random edits of the fixture's
     /// base, a batch per step, a state every few steps. Run with
-    /// `LOGBOOK_SYNTHETIC_JOURNAL=<out.ndjson> cargo test -- --ignored
+    /// `TEYVATME_SYNTHETIC_JOURNAL=<out.ndjson> cargo test -- --ignored
     /// synthetic_journal`, then check it like a `--replay-journal` file.
     #[test]
     #[ignore = "writes a file for the tracker's replay check"]
     fn synthetic_journal() {
         use std::io::Write;
 
-        let out = std::env::var("LOGBOOK_SYNTHETIC_JOURNAL").expect("set the output path");
+        let out = std::env::var("TEYVATME_SYNTHETIC_JOURNAL").expect("set the output path");
         let mut file = std::fs::File::create(out).unwrap();
         let mut line = |value: Value| writeln!(file, "{value}").unwrap();
         let fixture = fixture();

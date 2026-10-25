@@ -1,19 +1,19 @@
-# logbook-protocol
+# teyvatme-protocol
 
 Reads the game's network traffic: Ethernet/IP/UDP → KCP → the XOR-encrypted
 game commands → protobuf. It recovers the session key from the login
 handshake, decompresses Oodle-compressed messages (a clean-room decoder in
-`src/oodle.rs`), and recognises the messages Logbook needs by their shape
+`src/oodle.rs`), and recognises the messages Teyvat.me needs by their shape
 (inventory, characters, achievements, anecdotes, the planner's routine,
 wish history keys).
 
-It is the `crates/protocol` member of Logbook's Cargo workspace and is not
+It is the `crates/protocol` member of Teyvat.me's Cargo workspace and is not
 published to crates.io. Only the library builds by default. A small CLI that
 dumps captured avatar or item packets is behind the `cli` feature:
 
 ```sh
-cargo run -p logbook-protocol --features cli -- avatars path/to/packet.bin
-cargo run -p logbook-protocol --features cli -- items path/to/packet.bin
+cargo run -p teyvatme-protocol --features cli -- avatars path/to/packet.bin
+cargo run -p teyvatme-protocol --features cli -- items path/to/packet.bin
 ```
 
 ## Development
@@ -22,9 +22,9 @@ Run from the repository root (the toolchain and `rustfmt.toml` are the
 workspace's):
 
 ```sh
-cargo clippy -p logbook-protocol --all-targets --all-features -- -Dwarnings
-cargo test -p logbook-protocol --all-features
-RUSTDOCFLAGS=-Dwarnings cargo doc -p logbook-protocol --no-deps --all-features
+cargo clippy -p teyvatme-protocol --all-targets --all-features -- -Dwarnings
+cargo test -p teyvatme-protocol --all-features
+RUSTDOCFLAGS=-Dwarnings cargo doc -p teyvatme-protocol --no-deps --all-features
 ```
 
 `python check.py` runs these with the rest of the workspace's checks.

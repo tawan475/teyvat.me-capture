@@ -4,7 +4,7 @@
 //! Wish history from the game's own key.
 //!
 //! When the game's wish history page opens, the server sends a web view key
-//! (`GetAuthkeyRsp`, recognised by logbook-protocol). The key belongs to
+//! (`GetAuthkeyRsp`, recognised by teyvatme-protocol). The key belongs to
 //! the account logged in, and one PC may log in with several accounts (alt
 //! swapping), so a key only ever counts for the login it came after:
 //!
@@ -18,7 +18,7 @@
 //! Nothing else is a key source: the game's web cache is the PC's, not the
 //! login's, and is never read.
 //!
-//! From the key logbook
+//! From the key Teyvat.me
 //!
 //! * gives the wish URL that paimon.moe ("Manual" import) and stardb take,
 //!   for anyone to copy -- see [`WishView`]; and
@@ -46,7 +46,7 @@ mod tracker;
 use std::sync::Arc;
 use std::time::Instant;
 
-use logbook_protocol::{CommandMatch, GachaAuthKey, GachaRecordLink, GachaWish};
+use teyvatme_protocol::{CommandMatch, GachaAuthKey, GachaRecordLink, GachaWish};
 use tokio::sync::{mpsc, watch};
 
 use self::gacha_log::LinkParts;
@@ -186,7 +186,7 @@ impl Captured {
 /// is in the UID's first digit (after the leading 1 of a ten-digit one).
 ///
 /// The game learns its region from the dispatch server over HTTP, not from
-/// the traffic logbook reads, so this is how the link gets its `region`.
+/// the traffic Teyvat.me reads, so this is how the link gets its `region`.
 pub(crate) fn region_for_uid(uid: u32) -> Option<&'static str> {
     let digits = uid.to_string();
     let first = match digits.len() {

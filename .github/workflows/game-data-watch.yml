@@ -3,7 +3,7 @@
 
 name: Game data watch
 # Release builds download Dimbreath's newest game data dump when they are built
-# (the logbook-game-data crate, from build.rs), so a dump newer than the latest
+# (the teyvatme-game-data crate, from build.rs), so a dump newer than the latest
 # release is new characters, weapons, artifacts and materials waiting for a
 # release. Once a day this looks for one and opens an issue (label `game-data`)
 # per dump; shipping it is running Create Release on main. The logic and its

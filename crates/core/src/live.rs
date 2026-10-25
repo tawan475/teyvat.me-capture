@@ -4,7 +4,7 @@
 //! Live sync: between two snapshots, send the tracker what changed.
 //!
 //! Plan: the tracker's `docs/plans/live-sync.md` (§4.3 sending rules, §6
-//! logbook, §13 the contract as built). The game sends the whole account at
+//! irminsul, §13 the contract as built). The game sends the whole account at
 //! login and at every world change; each of those is a snapshot, as before,
 //! tagged with `gi_capture`. In between, this sends batches of changes
 //! (`delta.rs`) to `POST /irminsul/changes`, adaptively in time and amount,
@@ -16,7 +16,7 @@
 //!
 //! Live mode needs the tracker's consent: the answer to a snapshot upload
 //! names the journal's `live.base`. Without it (an older tracker, live sync
-//! off for the account, the switch off here) logbook stays in snapshot mode,
+//! off for the account, the switch off here) Teyvat.me stays in snapshot mode,
 //! today's behaviour: every change uploads the whole account after the 5 s
 //! debounce, tagged `reason: "change"`.
 
@@ -246,7 +246,7 @@ impl BatchAnswer {
     }
 }
 
-/// Live sync's state for one running logbook.
+/// Live sync's state for one running Teyvat.me.
 #[derive(Debug, Default)]
 pub struct LiveSync {
     login: Option<Login>,

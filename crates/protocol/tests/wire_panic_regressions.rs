@@ -6,7 +6,7 @@
 //! Every input below is one the audit fed to [`GameSniffer::receive_packet`] and
 //! watched abort the process. They are kept here as *positive* assertions -- the
 //! frame is ignored or rejected and control returns -- because of where this
-//! library sits: logbook runs it as Administrator over unvalidated bytes off
+//! library sits: Teyvat.me runs it as Administrator over unvalidated bytes off
 //! the wire, so anything able to put a datagram on a game port could otherwise
 //! take the scanner down with a single packet.
 //!
@@ -14,7 +14,7 @@
 //! reach the guards directly; only an integration test proves the whole
 //! Ethernet -> IP -> UDP -> KCP -> decrypt -> command chain survives them.
 
-use logbook_protocol::{GameCommand, GamePacket, GameSniffer};
+use teyvatme_protocol::{GameCommand, GamePacket, GameSniffer};
 
 /// Ethernet II / IPv4 / UDP frame carrying `payload`, built by hand so the exact
 /// bytes the audit used are what the test sends.

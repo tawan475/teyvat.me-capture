@@ -1,21 +1,21 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 tawan475
 
-//! "Start Logbook on startup".
+//! "Start Teyvat.me on startup".
 //!
 //! On Windows this is a Task Scheduler task, [`TASK_NAME`] in the root folder,
-//! that starts Logbook at the user's sign-in with highest privileges. It used
+//! that starts Teyvat.me at the user's sign-in with highest privileges. It used
 //! to be a `HKCU\...\CurrentVersion\Run` value, which never did anything: the
 //! executable's manifest requires administrator rights (`build.rs`), and
 //! Windows silently skips Run entries that need elevation at sign-in. A logon
 //! task with `RunLevel` `HighestAvailable` starts elevated without a UAC
-//! prompt. Registering one needs elevation, which Logbook always has. The old
+//! prompt. Registering one needs elevation, which Teyvat.me always has. The old
 //! Run value is moved to a task on the first launch that finds it.
 //!
 //! The checkbox shows what Task Scheduler holds rather than a saved
 //! preference. That is read on a background thread after every change, when
 //! the window regains focus, and otherwise at most every [`REFRESH_INTERVAL`] --
-//! never per frame. When the task starts a different copy of Logbook, or a
+//! never per frame. When the task starts a different copy of Teyvat.me, or a
 //! file that is gone, an amber icon next to the checkbox says so and offers to
 //! point it at the running copy.
 //!
@@ -40,7 +40,7 @@ use egui_notify::Toasts;
 /// The task's name in Task Scheduler's root folder.
 pub const TASK_NAME: &str = "Irminsul";
 
-/// How long after sign-in the task waits before starting Logbook, so the
+/// How long after sign-in the task waits before starting Teyvat.me, so the
 /// desktop and the tray are up first.
 const LOGON_DELAY: &str = "PT15S";
 
@@ -50,7 +50,7 @@ const REFRESH_INTERVAL: Duration = Duration::from_secs(30);
 /// Focus regained sooner than this after the last read does not read again.
 const FOCUS_REFRESH_MIN: Duration = Duration::from_secs(2);
 
-const CHECKBOX_LABEL: &str = "Start Logbook on startup";
+const CHECKBOX_LABEL: &str = "Start Teyvat.me on startup";
 
 /// The argument the task passes when "Start minimized" is ticked; `main.rs`
 /// parses it.
@@ -178,9 +178,9 @@ fn xml_bool(text: &str) -> Option<bool> {
 /// - `HighestAvailable` with an `InteractiveToken`: elevated, on the user's
 ///   desktop, without a stored password or a UAC prompt.
 /// - `ExecutionTimeLimit` `PT0S`: no limit. The default of 72 hours would
-///   stop Logbook three days into a session.
+///   stop Teyvat.me three days into a session.
 /// - Batteries never stop or prevent it, and a second trigger while it runs
-///   is ignored (`IgnoreNew`); Logbook is single-instance anyway.
+///   is ignored (`IgnoreNew`); Teyvat.me is single-instance anyway.
 /// - `Priority` 5 is a normal-priority process. Task Scheduler's default of 7
 ///   would start the capture below normal priority, behind the game.
 /// - The command is quoted; the working directory is the exe's folder, where
@@ -206,7 +206,7 @@ pub fn task_xml(exe: &str, working_dir: &str, user_id: &str, minimized: bool) ->
         r#"<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
-    <Description>Starts Logbook when you sign in. Set by its "{CHECKBOX_LABEL}" option.</Description>
+    <Description>Starts Teyvat.me when you sign in. Set by its "{CHECKBOX_LABEL}" option.</Description>
   </RegistrationInfo>
   <Triggers>
     <LogonTrigger>
@@ -350,7 +350,7 @@ pub fn same_exe(a: &str, b: &str) -> bool {
 /// Why the startup task deserves a second look.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StartupWarning {
-    /// It starts an Logbook other than the running one.
+    /// It starts an Teyvat.me other than the running one.
     OtherCopy,
     /// It starts a file that is not there any more.
     MissingFile,
@@ -389,7 +389,7 @@ pub fn startup_warning(
 struct Snapshot {
     /// The task exists and runs at sign-in.
     enabled: bool,
-    /// It starts Logbook minimized.
+    /// It starts Teyvat.me minimized.
     minimized: bool,
     warning: Option<StartupWarning>,
     /// The exe the task starts, unquoted, when there is a task.
@@ -602,14 +602,14 @@ impl Startup {
         }
     }
 
-    /// Whether the task starts Logbook minimized, as last read.
+    /// Whether the task starts Teyvat.me minimized, as last read.
     fn minimized(&self) -> bool {
         self.snapshot
             .as_ref()
             .is_some_and(|snapshot| snapshot.minimized)
     }
 
-    /// The "Start Logbook on startup" row: the checkbox, the cog for its
+    /// The "Start Teyvat.me on startup" row: the checkbox, the cog for its
     /// options, and the warning icon when the task starts another file.
     pub fn checkbox_ui(&mut self, ui: &mut Ui, saved_on: &mut bool) {
         ui.horizontal(|ui| {
@@ -977,7 +977,7 @@ mod windows_impl {
         // A directory rather than a `NamedTempFile`, so schtasks can open the
         // file however it likes; both go when `dir` is dropped.
         let dir = tempfile::Builder::new()
-            .prefix("logbook-task")
+            .prefix("teyvatme-task")
             .tempdir()
             .context("could not create a temporary directory")?;
         let file = dir.path().join("task.xml");
@@ -1067,9 +1067,9 @@ mod windows_impl {
         ] {
             let status = unsafe { RegDeleteKeyValueW(HKEY_CURRENT_USER, key, RUN_VALUE) };
             if status == ERROR_SUCCESS {
-                tracing::info!("removed the {name} entry for Logbook");
+                tracing::info!("removed the {name} entry for Teyvat.me");
             } else if status != ERROR_FILE_NOT_FOUND {
-                tracing::warn!("could not remove the {name} entry for Logbook: {status:?}");
+                tracing::warn!("could not remove the {name} entry for Teyvat.me: {status:?}");
             }
         }
     }
@@ -1108,8 +1108,8 @@ mod windows_impl {
 mod tests {
     use super::*;
 
-    const EXE: &str = r"D:\Apps\Logbook\logbook.exe";
-    const DIR: &str = r"D:\Apps\Logbook";
+    const EXE: &str = r"D:\Apps\Teyvatme\teyvatme.exe";
+    const DIR: &str = r"D:\Apps\Teyvat.me";
     const USER: &str = r"EXAMPLE1\player01";
 
     /// `schtasks /Query /TN RTSS /XML` on a real machine: a logon task made
@@ -1161,8 +1161,8 @@ mod tests {
             "<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>",
             "<StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>",
             "<Delay>PT15S</Delay>",
-            r#"<Command>"D:\Apps\Logbook\logbook.exe"</Command>"#,
-            r"<WorkingDirectory>D:\Apps\Logbook</WorkingDirectory>",
+            r#"<Command>"D:\Apps\Teyvatme\teyvatme.exe"</Command>"#,
+            r"<WorkingDirectory>D:\Apps\Teyvat.me</WorkingDirectory>",
         ] {
             assert!(xml.contains(expected), "missing {expected} in\n{xml}");
         }
@@ -1178,11 +1178,11 @@ mod tests {
 
     #[test]
     fn paths_and_names_are_escaped_in_the_task() {
-        let exe = r"C:\Tom & Jerry\<odd>\logbook.exe";
+        let exe = r"C:\Tom & Jerry\<odd>\teyvatme.exe";
         let xml = task_xml(exe, r"C:\Tom & Jerry\<odd>", r"R&D\a<b", false);
 
         assert!(
-            xml.contains(r#"<Command>"C:\Tom &amp; Jerry\&lt;odd&gt;\logbook.exe"</Command>"#),
+            xml.contains(r#"<Command>"C:\Tom &amp; Jerry\&lt;odd&gt;\teyvatme.exe"</Command>"#),
             "{xml}"
         );
         assert!(
@@ -1207,7 +1207,7 @@ mod tests {
         assert!(!task.minimized);
         assert_eq!(
             task.command.as_deref(),
-            Some(r#""D:\Apps\Logbook\logbook.exe""#)
+            Some(r#""D:\Apps\Teyvatme\teyvatme.exe""#)
         );
     }
 
@@ -1219,7 +1219,7 @@ mod tests {
         assert!(task.enabled && task.minimized);
         assert_eq!(
             task.command.as_deref(),
-            Some(r#""D:\Apps\Logbook\logbook.exe""#)
+            Some(r#""D:\Apps\Teyvatme\teyvatme.exe""#)
         );
 
         assert!(!task_xml(EXE, DIR, USER, false).contains("<Arguments>"));
@@ -1231,7 +1231,7 @@ mod tests {
 
     #[test]
     fn the_task_file_is_utf16_with_a_bom_and_non_ascii_paths_survive() {
-        let exe = r"C:\Users\ธวัช\下载\logbook.exe";
+        let exe = r"C:\Users\ธวัช\下载\teyvatme.exe";
         let xml = task_xml(exe, r"C:\Users\ธวัช\下载", USER, false);
         let bytes = utf16le_with_bom(&xml);
 
@@ -1330,26 +1330,26 @@ mod tests {
     #[test]
     fn exe_paths_compare_without_case_quotes_or_verbatim_prefixes() {
         for other in [
-            r"d:\apps\logbook\LOGBOOK.EXE",
-            r#""D:\Apps\Logbook\logbook.exe""#,
-            r#""D:\Apps\Logbook\logbook.exe"#,
-            r#"D:\Apps\Logbook\logbook.exe""#,
-            r#"  "D:\Apps\Logbook\logbook.exe"  "#,
-            r"\\?\D:\Apps\Logbook\logbook.exe",
-            r"D:/Apps/Logbook/logbook.exe",
+            r"d:\apps\teyvatme\TEYVATME.EXE",
+            r#""D:\Apps\Teyvatme\teyvatme.exe""#,
+            r#""D:\Apps\Teyvatme\teyvatme.exe"#,
+            r#"D:\Apps\Teyvatme\teyvatme.exe""#,
+            r#"  "D:\Apps\Teyvatme\teyvatme.exe"  "#,
+            r"\\?\D:\Apps\Teyvatme\teyvatme.exe",
+            r"D:/Apps/Teyvatme/teyvatme.exe",
         ] {
             assert!(same_exe(EXE, other), "{other}");
             assert!(same_exe(other, EXE), "{other}");
         }
         assert!(same_exe(
-            r"\\?\UNC\nas\share\logbook.exe",
-            r"\\nas\share\logbook.exe"
+            r"\\?\UNC\nas\share\teyvatme.exe",
+            r"\\nas\share\teyvatme.exe"
         ));
 
         for other in [
-            r"C:\Users\player01\Downloads\logbook-windows.exe",
-            r"D:\Apps\Logbook\logbook.exe.old",
-            r"D:\Apps\Logbook2\logbook.exe",
+            r"C:\Users\player01\Downloads\teyvatme-windows.exe",
+            r"D:\Apps\Teyvatme\teyvatme.exe.old",
+            r"D:\Apps\Teyvatme2\teyvatme.exe",
         ] {
             assert!(!same_exe(EXE, other), "{other}");
         }
@@ -1357,12 +1357,12 @@ mod tests {
 
     #[test]
     fn the_warning_names_another_copy_or_a_missing_file_only_when_startup_is_on() {
-        let downloads = r"C:\Users\player01\Downloads\logbook-windows.exe";
+        let downloads = r"C:\Users\player01\Downloads\teyvatme-windows.exe";
 
         // Startup opens this copy, however the path is spelled.
         assert_eq!(startup_warning(true, Some(EXE), EXE, true), None);
         assert_eq!(
-            startup_warning(true, Some(r"\\?\d:\apps\logbook\logbook.exe"), EXE, true),
+            startup_warning(true, Some(r"\\?\d:\apps\teyvatme\teyvatme.exe"), EXE, true),
             None
         );
 

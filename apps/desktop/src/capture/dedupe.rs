@@ -4,7 +4,7 @@
 //! Drop the duplicate copies of a datagram that pktmon reports.
 //!
 //! pktmon logs a packet at several points of the network stack, so every
-//! datagram on the game ports reaches logbook several times -- eight in the
+//! datagram on the game ports reaches Teyvat.me several times -- eight in the
 //! 2026-10-04 log, where every count of a connection event is a multiple of
 //! eight. Some copies are Ethernet frames and some are bare IP packets that
 //! `pktmon_backend` wraps in a synthetic Ethernet header, so the frames are

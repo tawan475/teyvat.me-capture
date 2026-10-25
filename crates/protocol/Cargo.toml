@@ -4,7 +4,7 @@
 # See THIRD_PARTY_NOTICES.md.
 
 [package]
-name = "logbook-protocol"
+name = "teyvatme-protocol"
 version = "1.4.0"
 edition = "2024"
 license = "MIT"
@@ -14,17 +14,17 @@ publish = false
 
 [features]
 default = []
-# The `logbook-protocol` CLI binary (src/main.rs) and the only dependencies it
-# needs. Library consumers (logbook) depend on the lib target with default
+# The `teyvatme-protocol` CLI binary (src/main.rs) and the only dependencies it
+# needs. Library consumers (Teyvat.me) depend on the lib target with default
 # features, so they never build clap or anyhow.
 cli = ["dep:anyhow", "dep:clap"]
 
 [lib]
-name = "logbook_protocol"
+name = "teyvatme_protocol"
 path = "src/lib.rs"
 
 [[bin]]
-name = "logbook-protocol"
+name = "teyvatme-protocol"
 path = "src/main.rs"
 required-features = ["cli"]
 

@@ -3,7 +3,7 @@
 // Portions copyright (c) 2025 Erik Gilling and irminsul contributors
 // See THIRD_PARTY_NOTICES.md.
 
-use logbook_game_data::AnimeGameData;
+use teyvatme_game_data::AnimeGameData;
 
 #[tokio::main]
 async fn main() {

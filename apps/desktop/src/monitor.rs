@@ -14,8 +14,8 @@ use anyhow::{Context, Result, anyhow};
 use base64::prelude::*;
 use chrono::prelude::*;
 use flate2::read::GzDecoder;
-use logbook_game_data::AnimeGameData;
-use logbook_protocol::{
+use teyvatme_game_data::AnimeGameData;
+use teyvatme_protocol::{
     CommandMatch, ConnectionPacket, GameCommand, GamePacket, GameSniffer, KeyState, PacketDirection,
 };
 use tokio::sync::{mpsc, oneshot, watch};
@@ -23,7 +23,7 @@ use tokio::task::{JoinError, JoinHandle};
 use tokio_util::sync::CancellationToken;
 
 use crate::capture::{self, BackendType, CaptureSource, create_capture};
-// The decode layer moved to logbook-core; the replay and this module's tests
+// The decode layer moved to teyvatme-core; the replay and this module's tests
 // still reach it through here.
 pub(crate) use crate::decode::{
     AppliedData, DataReplacement, DataVerdict, KeyReport, STATS_INTERVAL, SnifferEvent,
@@ -72,7 +72,7 @@ const TRACKER_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 /// (`"PktMon Rust"`), so a replacement built before that teardown completes can
 /// lose the race for the session and then capture nothing, silently, forever.
 ///
-/// `app::MONITOR_SHUTDOWN_TIMEOUT` -- the deadline `LogbookApp::drop` gives
+/// `app::MONITOR_SHUTDOWN_TIMEOUT` -- the deadline `TeyvatmeApp::drop` gives
 /// the whole monitor thread -- is derived from this and must stay strictly
 /// larger than it, or a teardown spending its full budget here is detached
 /// at the moment it would have succeeded. `app.rs` mirrors the value and a
@@ -306,7 +306,7 @@ fn spawn_sniffer_thread(
     let thread_queued = Arc::clone(&queued);
 
     std::thread::Builder::new()
-        .name("logbook-sniffer".to_string())
+        .name("teyvatme-sniffer".to_string())
         .spawn(move || {
             let mut last_generation = sniffer.session_generation();
             let mut stats = SnifferStats::default();
@@ -479,7 +479,7 @@ fn prune_packet_logs(dir: &std::path::Path, keep: usize) {
 /// consecutive failure up to [`CAPTURE_RETRY_MAX`].
 ///
 /// Capture has no on/off control any more: it is meant to be running whenever
-/// Logbook is, so a backend that dies has to come back on its own. Common
+/// Teyvat.me is, so a backend that dies has to come back on its own. Common
 /// causes are transient by nature -- an ETW session still held by a previous
 /// process, an adapter going down with a VPN -- and retrying is what turns them
 /// from "restart the app" into a pause nobody notices.
@@ -564,7 +564,7 @@ pub struct Monitor {
     capture_backend: BackendType,
     capture_source: CaptureSource,
 
-    /// Did Logbook watch the current game session start? Without that, the
+    /// Did Teyvat.me watch the current game session start? Without that, the
     /// handshake -- and so the session key -- was missed and nothing will ever
     /// decrypt, however healthy the capture backend looks.
     /// When the supervisor may next try to bring capture back up.
@@ -665,7 +665,7 @@ impl Monitor {
         });
 
         // `interval` fires its first tick immediately, which is what makes
-        // the "you started Logbook second" case visible at startup rather than
+        // the "you started Teyvat.me second" case visible at startup rather than
         // two seconds into it. `Delay` keeps a monitor loop that was busy for
         // several seconds from answering with a burst of back-to-back scans.
         let mut game_poll = tokio::time::interval(GAME_POLL_INTERVAL);
@@ -1096,14 +1096,14 @@ impl Monitor {
         // without a login makes it one.
         if first_look && status == GameStatus::AwaitingLogin {
             tracing::info!(
-                "Genshin was already open when Logbook started; waiting to see the login \
+                "Genshin was already open when Teyvat.me started; waiting to see the login \
                  (entering the world)"
             );
         }
         let missed = GameStatus::LaunchMissed(game_watch::MissedLaunch::AlreadyRunning);
         if status == missed && self.app_state.app_state.game_status != missed {
             tracing::warn!(
-                "Genshin was already in the world when Logbook started: game traffic arrived \
+                "Genshin was already in the world when Teyvat.me started: game traffic arrived \
                  with no login in it, so the session key was missed and nothing from this \
                  game session can be decrypted"
             );
@@ -1151,7 +1151,7 @@ impl Monitor {
             self.sniffer = None;
             tracing::error!("the packet decoding thread is gone; no further data can be captured");
             let _ = self.toast_tx.send((
-                "Packet decoding stopped. Restart Logbook to capture again.".to_string(),
+                "Packet decoding stopped. Restart Teyvat.me to capture again.".to_string(),
                 true,
             ));
             self.set_capturing(false);
@@ -1165,7 +1165,7 @@ impl Monitor {
             // connection, so nothing from the new account can land in the old
             // account's maps: the new connection's first data replaces them
             // (see `DataReplacement`). Captured state is insert-only, so without
-            // this a second account logged in without restarting Logbook
+            // this a second account logged in without restarting Teyvat.me
             // uploads the *union* of both inventories to whichever tracker
             // account holds the import key.
             SnifferEvent::SessionReset => self.handle_connection_reset(),
@@ -1233,7 +1233,7 @@ impl Monitor {
             for command in &commands {
                 let _span = tracing::info_span!("command", id = command.command_id).entered();
                 // The wish history key is a password: never on disk.
-                if logbook_protocol::matches_get_authkey_rsp(&command.proto_data).is_some() {
+                if teyvatme_protocol::matches_get_authkey_rsp(&command.proto_data).is_some() {
                     continue;
                 }
                 if let Err(e) = self.packet_log.append(command) {
@@ -1315,7 +1315,7 @@ impl Monitor {
     /// *still-live* session decodes to `Commands(vec![])` and consumed it.
     ///
     /// The reset now rides on [`SnifferEvent::SessionReset`], which
-    /// logbook-protocol only raises once it has corroborated the reconnect.
+    /// teyvatme-protocol only raises once it has corroborated the reconnect.
     /// A real disconnect is always followed by the handshake it corroborates,
     /// so nothing is lost by ignoring these here.
     fn handle_connection_packet(&mut self, conn: &ConnectionPacket) {
@@ -2067,7 +2067,7 @@ async fn get_database(
 pub(crate) fn load_game_data() -> Result<AnimeGameData> {
     static DATABASE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/game_data.gz"));
     let reader = GzDecoder::new(DATABASE);
-    let db = logbook_game_data::AnimeGameData::new_from_reader(reader)?;
+    let db = teyvatme_game_data::AnimeGameData::new_from_reader(reader)?;
     tracing::info!(
         dump = embedded_game_data_sha().unwrap_or("unknown"),
         "loaded the embedded game data"
@@ -2082,7 +2082,7 @@ pub(crate) fn load_game_data() -> Result<AnimeGameData> {
 /// could not. A binary built before a game patch carries an older dump, and
 /// this is what says so next to the `unknown_*` gaps in its exports.
 pub fn embedded_game_data_sha() -> Option<&'static str> {
-    Some(env!("LOGBOOK_GAME_DATA_SHA")).filter(|sha| !sha.is_empty())
+    Some(env!("TEYVATME_GAME_DATA_SHA")).filter(|sha| !sha.is_empty())
 }
 
 async fn capture_task(

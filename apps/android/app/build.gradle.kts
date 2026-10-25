@@ -8,12 +8,12 @@ plugins {
 val ndkVersionName = "30.0.16248370"
 
 android {
-    namespace = "io.github.tawan475.logbook"
+    namespace = "me.teyvat.app"
     compileSdk = 36
     ndkVersion = ndkVersionName
 
     defaultConfig {
-        applicationId = "io.github.tawan475.logbook"
+        applicationId = "me.teyvat.app"
         minSdk = 29
         targetSdk = 36
         versionCode = 1

@@ -9,7 +9,7 @@
 //! numbers whose shapes are shared with hundreds of others, so no shape alone
 //! can tell them apart. What can is the data: the avatar guid, its skill ids,
 //! its current levels. The library only takes the message apart; the caller,
-//! which holds the account, decides what it is (logbook's
+//! which holds the account, decides what it is (Teyvat.me's
 //! `PlayerData::apply_avatar_change`).
 
 use protobuf::Message;

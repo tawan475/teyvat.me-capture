@@ -35,19 +35,19 @@ FEATURE_SETS = {
 # The packet-parsing library in crates/protocol. It has no capture
 # backend of its own, so it is checked once per host with every feature on --
 # `cli` is the only thing that builds its src/main.rs -- rather than once per
-# logbook feature set. Mirrors the `library` job in .github/workflows/rust.yml.
-LIBRARY = "logbook-protocol"
+# Teyvat.me feature set. Mirrors the `library` job in .github/workflows/rust.yml.
+LIBRARY = "teyvatme-protocol"
 
 # crates/game-data, the game data crate build.rs downloads the dump with.
 # Pure Rust like the library, so once per host too; `cli` is its debugging
 # binary. Mirrors the same steps in the `library` job.
-GAME_DATA = "logbook-game-data"
+GAME_DATA = "teyvatme-game-data"
 
 # crates/core, the platform-free core shared with the Android app
 # (decoded account model, GOOD export, live sync, recordings). No features, so
 # its tests run once per host, debug and release, like the matrix and
 # debug_build legs in .github/workflows/rust.yml.
-CORE = "logbook-core"
+CORE = "teyvatme-core"
 
 def run_command(cmd, step_name, env=None):
     print(f"\n[{step_name}] Running: {' '.join(cmd)}")
@@ -116,11 +116,11 @@ def feature_label(feature_set):
 
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description="Run local CI checks for Logbook.")
+    parser = argparse.ArgumentParser(description="Run local CI checks for Teyvat.me.")
     parser.add_argument("--all", action="store_true", help="Run 'cargo check' across Windows, macOS, and Linux targets (requires cross-compilation toolchains).")
     args = parser.parse_args()
 
-    print("🚀 Starting local checks for Logbook...")
+    print("🚀 Starting local checks for Teyvat.me...")
 
     system = platform.system()
     feature_sets = FEATURE_SETS.get(system, [""])
@@ -180,7 +180,7 @@ def main():
         clippy_cmd = ["cargo", "clippy", "--workspace", "--all-targets", "--no-default-features"] + features + ["--", "-Dwarnings"]
         run_command(clippy_cmd, f"Clippy Lints [{label}]", env=env)
 
-        # 3. Cargo Test (logbook; the library's tests run below)
+        # 3. Cargo Test (Teyvat.me; the library's tests run below)
         test_cmd = ["cargo", "test", "--no-default-features"] + features
         run_command(test_cmd, f"Unit Tests [{label}]", env=env)
 
@@ -199,7 +199,7 @@ def main():
     run_command(["cargo", "clippy"] + lib + ["--all-targets", "--all-features", "--", "-Dwarnings"],
                 f"Clippy Lints [{LIBRARY}, all features]")
     run_command(["cargo", "test"] + lib + ["--all-features"], f"Unit Tests [{LIBRARY}, all features]")
-    # Default features are what logbook builds; this proves the CLI-only
+    # Default features are what Teyvat.me builds; this proves the CLI-only
     # dependencies (clap, anyhow) stay out of the library.
     run_command(["cargo", "build"] + lib, f"Build Verification [{LIBRARY}, default features]")
     run_command(["cargo", "build"] + lib + ["--all-features"], f"Build Verification [{LIBRARY}, all features]")

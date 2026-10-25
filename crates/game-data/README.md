@@ -1,11 +1,11 @@
-# logbook-game-data
+# teyvatme-game-data
 
-Downloads Dimbreath's game data dump and indexes what Logbook needs to name
+Downloads Dimbreath's game data dump and indexes what Teyvat.me needs to name
 things (characters, weapons, artifacts, materials, talents). The desktop app's
 `build.rs` uses it to build the blob the binary embeds, and the app uses it to
 look the data up at run time.
 
-It is the `crates/game-data` member of Logbook's Cargo workspace.
+It is the `crates/game-data` member of Teyvat.me's Cargo workspace.
 
 ## Credits
 

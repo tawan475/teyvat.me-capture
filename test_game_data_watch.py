@@ -126,7 +126,7 @@ class FakeHttp:
         return [(url, payload) for method, url, payload in self.calls if method == "POST"]
 
 
-REPO_API = f"{watch.GITHUB_API}/repos/tawan475/logbook"
+REPO_API = f"{watch.GITHUB_API}/repos/tawan475/teyvat.me"
 ISSUES_URL = f"{REPO_API}/issues?labels=game-data&state=all&per_page=100&page=1"
 
 
@@ -184,7 +184,7 @@ class FakeGit:
 
 
 def api(http, token="token", git=None):
-    return watch.Api("tawan475/logbook", token, http, git or FakeGit())
+    return watch.Api("tawan475/teyvat.me", token, http, git or FakeGit())
 
 
 class RunTest(unittest.TestCase):

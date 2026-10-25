@@ -24,7 +24,7 @@
 //! today), save an automation file, check for or install an update, read or
 //! write the app's saved settings or anything under its data directory, ask
 //! for administrator rights, or take the single-instance lock (so it can run
-//! beside a running Logbook). That holds by construction rather than by a
+//! beside a running Teyvat.me). That holds by construction rather than by a
 //! flag: this module builds no HTTP client, no monitor, no window and no saved
 //! state, and the tracker calls are private to `monitor.rs`, so they cannot be
 //! reached from here. `main.rs` routes here before it takes the lock, rotates
@@ -38,7 +38,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use anyhow::{Context, Result, bail};
-use logbook_protocol::{CommandMatch, ConnectionPacket, GamePacket, GameSniffer, KeyState};
+use teyvatme_protocol::{CommandMatch, ConnectionPacket, GamePacket, GameSniffer, KeyState};
 use tokio::sync::mpsc;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::{EnvFilter, fmt};
@@ -936,8 +936,8 @@ fn describe(applied: AppliedData) -> String {
 
 #[cfg(test)]
 mod tests {
-    use logbook_game_data::AnimeGameData;
-    use logbook_protocol::r#gen::protos::{Item, Material};
+    use teyvatme_game_data::AnimeGameData;
+    use teyvatme_protocol::r#gen::protos::{Item, Material};
 
     use super::*;
     use crate::decode::test_support::{handshake_frame, segment_frame, udp_frame};
@@ -1169,7 +1169,7 @@ mod tests {
             "signin",
             "TrackerAuth",
             "KeyringStore",
-            "LogbookApp",
+            "TeyvatmeApp",
             "eframe",
             "data_dir(",
             "log_dir(",

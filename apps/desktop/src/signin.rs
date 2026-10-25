@@ -4,12 +4,12 @@
 //! "Sign in with the tracker": OAuth 2.0 authorization code with PKCE over a
 //! loopback redirect, the flow RFC 8252 recommends for desktop apps.
 //!
-//! Logbook is a public client (nothing secret is baked into the binary), so
+//! Teyvat.me is a public client (nothing secret is baked into the binary), so
 //! it proves the code is its own with PKCE (RFC 7636, `S256`) and receives the
 //! browser's answer on a one-shot listener on `127.0.0.1`. The wire contract
 //! (discovery, authorize, token, revoke, whoami, import) is shared with the
 //! tracker and lives in its repository
-//! (`docs/plans/logbook-sign-in-and-destinations.md`, contract v1); the
+//! (`docs/plans/irminsul-sign-in-and-destinations.md`, contract v1); the
 //! endpoints are all under the API base the user configured
 //! (`SavedAppState::tracker_api_url`).
 //!
@@ -46,7 +46,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{Mutex, mpsc, watch};
 use tokio_util::sync::CancellationToken;
 
-/// The OAuth client id the tracker knows Logbook by.
+/// The OAuth client id the tracker knows Teyvat.me by.
 pub const CLIENT_ID: &str = "irminsul";
 
 /// The credential store's service name; the entry's account is the tracker
@@ -131,7 +131,8 @@ fn same_secret(a: &str, b: &str) -> bool {
 }
 
 /// The PC's name for the consent screen and the tracker's Devices list
-/// ("Logbook on <device>"). Only the signed-in user sees it.
+/// (the tracker writes "Irminsul on <device>", its own text for this
+/// client). Only the signed-in user sees it.
 pub fn device_name() -> String {
     clean_device_name(&gethostname::gethostname().to_string_lossy())
 }
@@ -292,14 +293,14 @@ impl Callback {
     /// The sentence the browser tab shows.
     fn page_message(&self) -> &'static str {
         match self {
-            Self::Code(_) => "You can close this tab and go back to Logbook.",
+            Self::Code(_) => "You can close this tab and go back to Teyvat.me.",
             Self::Denied => "Sign-in was cancelled. You can close this tab.",
             Self::Failed(_) | Self::Malformed => {
-                "The tracker did not sign you in. Try again from Logbook."
+                "The tracker did not sign you in. Try again from Teyvat.me."
             }
             Self::StateMismatch => {
-                "This sign-in link does not belong to the sign-in Logbook started. \
-                 Start again from Logbook."
+                "This sign-in link does not belong to the sign-in Teyvat.me started. \
+                 Start again from Teyvat.me."
             }
             Self::Other => "Not found.",
         }
@@ -387,7 +388,7 @@ pub(crate) fn callback_page(signed_in: bool, message: &str) -> String {
     format!(
         "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">\
          <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\
-         <title>Logbook: {title}</title><style>\
+         <title>Teyvat.me: {title}</title><style>\
          body{{margin:0;min-height:100vh;display:grid;place-items:center;\
          background:#111827;color:#e5e7eb;font:16px system-ui,sans-serif}}\
          main{{text-align:center;padding:24px}}\
@@ -551,7 +552,7 @@ impl Loopback {
 /// Who the signed-in user is and where this PC's uploads go
 /// (`GET <api>/irminsul/whoami`, also carried in token answers).
 ///
-/// Logbook never changes the target itself: the tracker's website does
+/// Teyvat.me never changes the target itself: the tracker's website does
 /// (`config_url`), and the UI re-reads this when the user comes back.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Whoami {
@@ -748,7 +749,7 @@ pub trait CredentialStore: Send + Sync {
 }
 
 /// The OS credential store, through the `keyring` crate: service
-/// `logbook`, account = the tracker origin.
+/// `teyvatme`, account = the tracker origin.
 pub struct KeyringStore;
 
 impl KeyringStore {
@@ -1122,7 +1123,7 @@ impl TrackerAuth {
     /// Sign in through the browser.
     ///
     /// The authorize page is opened the way every other link in the app is
-    /// (`egui::Context::open_url`, through `opener`). Logbook runs elevated
+    /// (`egui::Context::open_url`, through `opener`). Teyvat.me runs elevated
     /// on Windows, and a browser started from an elevated process can come up
     /// as a separate instance that is not signed in to the tracker (or, for
     /// some browsers, as a second profile). The sign-in still works there --
@@ -1250,7 +1251,7 @@ impl TrackerAuth {
         let tokens = match post_token(client, &discovery.token_url, &body).await {
             Ok(tokens) => tokens,
             Err(e) => {
-                hit.answer_failed("The tracker did not sign you in. Try again from Logbook.")
+                hit.answer_failed("The tracker did not sign you in. Try again from Teyvat.me.")
                     .await;
                 return Err(e.to_string());
             }
@@ -1262,7 +1263,7 @@ impl TrackerAuth {
             // belong to the old one. Give them back and keep nothing.
             drop(session);
             revoke(client, &discovery, &tokens.refresh_token).await;
-            hit.answer_failed("The tracker address changed in Logbook. Sign in again there.")
+            hit.answer_failed("The tracker address changed in Teyvat.me. Sign in again there.")
                 .await;
             return Err("The tracker address changed during the sign-in".to_string());
         }

@@ -369,7 +369,7 @@ mod tests {
     #[test]
     fn a_missing_program_is_a_clear_error() {
         let error = run_with_timeout(
-            "logbook-test-no-such-program",
+            "teyvatme-test-no-such-program",
             &["ls-remote"],
             Duration::from_secs(5),
         )

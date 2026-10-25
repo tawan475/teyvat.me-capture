@@ -4,7 +4,7 @@
 # See THIRD_PARTY_NOTICES.md.
 
 [package]
-name = "logbook"
+name = "teyvatme"
 # Above every irminsul release (0.2.x), so the bridge release offers it.
 version = "1.0.0"
 authors = ["tawan475", "Erik Gilling <konkers@konkers.net>"]
@@ -16,7 +16,7 @@ edition = "2024"
 rust-version = "1.88"
 
 [[bin]]
-name = "logbook"
+name = "teyvatme"
 path = "src/main.rs"
 
 [package.metadata.docs.rs]
@@ -25,7 +25,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 # Shared with [build-dependencies]; see [workspace.dependencies] in the root Cargo.toml.
-logbook-game-data = { workspace = true }
+teyvatme-game-data = { workspace = true }
 flate2 = { workspace = true }
 # `net` and `io-util` for the sign-in's loopback listener (src/signin.rs).
 # Both were already compiled in through reqwest's hyper; named here so the
@@ -35,9 +35,9 @@ tokio = { workspace = true, features = ["net", "io-util", "time"] }
 anyhow = "1.0.99"
 async-trait = "0.1.89"
 # Default features only: the library's `cli` feature is for its own binary.
-logbook-protocol = { path = "../../crates/protocol" }
+teyvatme-protocol = { path = "../../crates/protocol" }
 # The platform-free core shared with the Android app (see src/main.rs).
-logbook-core = { path = "../../crates/core" }
+teyvatme-core = { path = "../../crates/core" }
 base64 = "0.22.1"
 chrono = "0.4.42"
 clap = { version = "4.5.47", features = ["derive"] }
@@ -57,7 +57,7 @@ egui_extras = { version = "0.32.2", features = ["image", "svg", "webp"] }
 egui_material_icons = "0.4.0"
 futures = "0.3.31"
 # The PC's name, shown to the user on the tracker's consent screen and in its
-# Devices list ("Logbook on <PC>"). Already in the tree on Linux (x11rb);
+# Devices list ("Teyvat.me on <PC>"). Already in the tree on Linux (x11rb);
 # a small new crate on Windows and macOS.
 gethostname = "1.1.0"
 # Random bytes for the sign-in's PKCE verifier and `state` (src/signin.rs).
@@ -67,7 +67,7 @@ futures-util = "0.3.31"
 indexmap = "2.11.1"
 log = "0.4.27"
 open = "5.3.2"
-# The rustls features are for memory: every client logbook builds selects
+# The rustls features are for memory: every client Teyvat.me builds selects
 # rustls (see `http_client_builder` in `src/main.rs`), because the default
 # native-tls is SChannel on Windows, and its first HTTPS request leaves about
 # 30 MB behind for the life of the process. `rustls-tls` adds the bundled
@@ -166,7 +166,7 @@ libc = "0.2.177"
 
 [dev-dependencies]
 # The pcapng builders the replay tests use (`recording::test_support`).
-logbook-core = { path = "../../crates/core", features = ["test-support"] }
+teyvatme-core = { path = "../../crates/core", features = ["test-support"] }
 # Builds the fixture tarball that `src/update.rs` unpacks. Already in the
 # graph through self_update's `archive-tar`; named here so the tests can
 # construct one.
@@ -174,12 +174,12 @@ tar = "0.4"
 
 [build-dependencies]
 # Shared with [dependencies]; see [workspace.dependencies] in the root Cargo.toml.
-logbook-game-data = { workspace = true }
+teyvatme-game-data = { workspace = true }
 flate2 = { workspace = true }
 tokio = { workspace = true }
 
 # Read the dump commit back out of the game data blob (see build.rs). Both are
-# already in the graph at these versions as logbook-game-data's and logbook's
+# already in the graph at these versions as teyvatme-game-data's and Teyvat.me's
 # own dependencies.
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.143"

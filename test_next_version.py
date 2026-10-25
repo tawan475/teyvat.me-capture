@@ -66,7 +66,7 @@ class NextVersionTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             manifest = Path(tmp) / "Cargo.toml"
             manifest.write_text(
-                '[workspace]\nmembers = ["crates/x"]\n\n[package]\nname = "logbook"\nversion = "0.2.3"\n',
+                '[workspace]\nmembers = ["crates/x"]\n\n[package]\nname = "teyvatme"\nversion = "0.2.3"\n',
                 encoding="utf-8",
             )
             self.assertEqual(cargo_version(manifest), "0.2.3")

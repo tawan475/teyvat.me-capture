@@ -13,7 +13,7 @@
 //!   `extern "C"` callback, during unwinding, or in a `Drop`). Panics now go to
 //!   `crash.log` first, with a blocking write. On Windows, `native.rs` adds what
 //!   no panic hook sees: native crashes (an access violation, a stack overflow,
-//!   a fault inside a driver) and an `ExitProcess` that skipped Logbook's
+//!   a fault inside a driver) and an `ExitProcess` that skipped Teyvat.me's
 //!   shutdown, each with a minidump.
 //! - **A clean-exit marker.** Every orderly shutdown ends `latest.log` with a
 //!   [`CLEAN_EXIT_MARKER`] line ([`mark_clean_exit`]), so a log without one
@@ -74,7 +74,7 @@ struct Paths {
 static PATHS: OnceLock<Paths> = OnceLock::new();
 
 /// Set by the first [`mark_clean_exit`]. `native.rs` reads it to tell an exit
-/// Logbook chose from one something else forced.
+/// Teyvat.me chose from one something else forced.
 static CLEAN_EXIT: AtomicBool = AtomicBool::new(false);
 
 /// Start this run's `latest.log`, opened for appending, and write its first
@@ -91,7 +91,7 @@ pub fn create_run_log(log_dir: &Path) -> std::io::Result<File> {
     let line = log_line(
         "INFO",
         &format!(
-            "{RUN_START_MARKER} Logbook {} (pid {})",
+            "{RUN_START_MARKER} Teyvat.me {} (pid {})",
             env!("CARGO_PKG_VERSION"),
             std::process::id()
         ),
@@ -142,7 +142,7 @@ fn clean_exit_marked() -> bool {
 /// module writes itself read like the rest of the log.
 fn log_line(level: &str, message: &str) -> String {
     format!(
-        "{} {level:>5} logbook::crash: {message}\n",
+        "{} {level:>5} teyvatme::crash: {message}\n",
         Utc::now().format("%Y-%m-%dT%H:%M:%S%.6fZ")
     )
 }
@@ -153,7 +153,7 @@ fn write_report_header(out: &mut impl std::fmt::Write, kind: &str) {
     let now = Utc::now();
     let _ = writeln!(
         out,
-        "==== {:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z {kind} | Logbook {} | pid {} ====",
+        "==== {:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z {kind} | Teyvat.me {} | pid {} ====",
         now.year(),
         now.month(),
         now.day(),
@@ -367,7 +367,7 @@ pub fn report_previous_run(end: &RunEnd, kept_log: Option<&Path>) -> Option<Stri
                 long_time(*last_line)
             );
             Some(format!(
-                "Logbook stopped unexpectedly last time ({}) and left no crash report. Its log \
+                "Teyvat.me stopped unexpectedly last time ({}) and left no crash report. Its log \
                  was kept as {kept}.",
                 short_time(*last_line)
             ))
@@ -379,7 +379,7 @@ pub fn report_previous_run(end: &RunEnd, kept_log: Option<&Path>) -> Option<Stri
                 long_time(*last_line)
             );
             Some(format!(
-                "Logbook crashed last time ({}). The report is in {CRASH_LOG}, next to its log \
+                "Teyvat.me crashed last time ({}). The report is in {CRASH_LOG}, next to its log \
                  ({kept}).",
                 short_time(*last_line)
             ))
@@ -415,7 +415,7 @@ mod tests {
     use super::*;
 
     const START: &str =
-        "2026-10-05T17:15:11.851244Z  INFO logbook::crash: [run-start] Logbook 0.2.2 (pid 7)";
+        "2026-10-05T17:15:11.851244Z  INFO teyvatme::crash: [run-start] Teyvat.me 0.2.2 (pid 7)";
 
     fn time(stamp: &str) -> DateTime<Utc> {
         DateTime::parse_from_rfc3339(stamp).unwrap().into()
@@ -425,7 +425,7 @@ mod tests {
     fn a_log_from_a_build_that_marks_no_exits_says_nothing() {
         // The first start after updating from such a build must not call that
         // build's normal exit abrupt.
-        let head = "2026-10-05T17:15:11.851244Z  INFO logbook: Tracing initialized and logging \
+        let head = "2026-10-05T17:15:11.851244Z  INFO teyvatme: Tracing initialized and logging \
                     to file.\n";
         assert_eq!(classify(head, head, None), RunEnd::Unknown);
         assert_eq!(classify("", "", None), RunEnd::Unknown);
@@ -433,9 +433,9 @@ mod tests {
 
     #[test]
     fn a_log_that_ends_with_the_marker_was_a_clean_exit() {
-        let tail = "2026-10-06T07:39:41.6Z  INFO logbook::monitor: sniffer thread exiting\n\
-                    2026-10-06T07:39:41.7Z  INFO logbook::crash: [clean-exit] window closed\n\
-                    2026-10-06T07:39:41.8Z  INFO logbook: relaunched after update\n";
+        let tail = "2026-10-06T07:39:41.6Z  INFO teyvatme::monitor: sniffer thread exiting\n\
+                    2026-10-06T07:39:41.7Z  INFO teyvatme::crash: [clean-exit] window closed\n\
+                    2026-10-06T07:39:41.8Z  INFO teyvatme: relaunched after update\n";
         assert_eq!(classify(START, tail, None), RunEnd::Clean);
     }
 
@@ -443,7 +443,7 @@ mod tests {
     fn a_log_that_just_stops_ended_abruptly_at_its_last_line() {
         // The 2026-10-06 log: minute stats, then nothing.
         let tail = "ats (last minute) frames=879\n\
-                    2026-10-06T07:39:41.635185Z  INFO logbook::monitor: capture stats (last \
+                    2026-10-06T07:39:41.635185Z  INFO teyvatme::monitor: capture stats (last \
                     minute) frames=3648\n";
         assert_eq!(
             classify(START, tail, None),
@@ -455,7 +455,7 @@ mod tests {
 
     #[test]
     fn the_last_line_is_the_last_one_with_a_time() {
-        let tail = "2026-10-06T07:39:41Z ERROR logbook: something\n   0: frame\n   1: frame\n";
+        let tail = "2026-10-06T07:39:41Z ERROR teyvatme: something\n   0: frame\n   1: frame\n";
         assert_eq!(
             classify(START, tail, None),
             RunEnd::Abrupt {
@@ -474,7 +474,7 @@ mod tests {
     #[test]
     fn a_crash_report_written_during_the_run_makes_it_a_crash() {
         let started: SystemTime = time("2026-10-05T17:15:11.851244Z").into();
-        let tail = "2026-10-06T07:39:41Z  INFO logbook::monitor: capture stats\n";
+        let tail = "2026-10-06T07:39:41Z  INFO teyvatme::monitor: capture stats\n";
         let last_line = Some(time("2026-10-06T07:39:41Z"));
 
         let during = started + Duration::from_secs(3600);
@@ -550,11 +550,11 @@ mod tests {
 
         // A run long enough that its start is far outside the tail.
         let mut log = create_run_log(dir.path()).unwrap();
-        let filler = "2026-10-06T07:00:00Z  INFO logbook::monitor: capture stats\n";
+        let filler = "2026-10-06T07:00:00Z  INFO teyvatme::monitor: capture stats\n";
         for _ in 0..(2 * TAIL_BYTES as usize / filler.len()) {
             log.write_all(filler.as_bytes()).unwrap();
         }
-        log.write_all(b"2026-10-06T07:39:41Z  INFO logbook::monitor: last words\n")
+        log.write_all(b"2026-10-06T07:39:41Z  INFO teyvatme::monitor: last words\n")
             .unwrap();
         let abrupt = RunEnd::Abrupt {
             last_line: Some(time("2026-10-06T07:39:41Z")),

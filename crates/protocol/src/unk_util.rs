@@ -893,7 +893,7 @@ const MAX_ITEM_CHANGE_FIELDS: usize = 4;
 ///
 /// A list of ten or more is the full-send matcher's (it upserts the same way).
 /// The caller must still check the guids are the captured account's (the top
-/// half is its UID): see logbook's `PlayerData::change_items`.
+/// half is its UID): see Teyvat.me's `PlayerData::change_items`.
 pub(crate) fn discover_changed_items(data: &[u8]) -> Option<(u32, Vec<Item>)> {
     let msg = Unk::parse_from_bytes(data).ok()?;
     let mut numbers = BTreeSet::new();
@@ -1098,7 +1098,7 @@ mod tests {
     }
 
     /// The regression that used to lock those accounts out of every export path
-    /// in logbook: no field equal to 80014 anywhere in the dump.
+    /// in teyvatme: no field equal to 80014 anywhere in the dump.
     #[test]
     fn decodes_an_account_that_does_not_own_the_sentinel_achievement() {
         let data = achievement_packet(90001, 120);

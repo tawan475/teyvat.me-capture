@@ -201,7 +201,7 @@ impl WishSync {
         auth: TrackerAuth,
     ) -> Self {
         // `build` only fails if the TLS backend cannot initialise, which is
-        // exactly when every other HTTP request logbook makes fails too.
+        // exactly when every other HTTP request Teyvat.me makes fails too.
         let client = |timeout| {
             crate::http_client_builder()
                 .timeout(timeout)
@@ -493,7 +493,7 @@ mod tests {
 
     #[test]
     fn a_tracker_failure_keeps_the_key_and_an_expired_key_drops_it() {
-        use logbook_protocol::GachaAuthKey;
+        use teyvatme_protocol::GachaAuthKey;
 
         use super::super::WishEvent;
 
@@ -586,8 +586,8 @@ mod tests {
 
     // ---- logins and the sync, against a fake API and tracker ----
 
-    use logbook_protocol::GachaAuthKey;
     use serde_json::json;
+    use teyvatme_protocol::GachaAuthKey;
 
     use super::super::WishEvent;
     use super::super::test_server::{Reply, TestServer};

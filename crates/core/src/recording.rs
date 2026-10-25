@@ -5,7 +5,7 @@
 //!
 //! Two formats: pcapng, which is what debug builds record every captured frame
 //! to (`pcapng.rs`) and what Wireshark writes, and classic pcap, which is what
-//! `logbook -b pcap <template>` records.
+//! `teyvatme -b pcap <template>` records.
 //!
 //! A reader of its own rather than libpcap's, because replaying has to work in
 //! the build that made the recording: the default Windows build has no pcap
@@ -152,7 +152,7 @@ impl Interface {
 
 impl Recording<BufReader<File>> {
     /// Open a recording. Shared for reading only, so a file a running
-    /// Logbook is still writing can be replayed without disturbing it.
+    /// Teyvat.me is still writing can be replayed without disturbing it.
     pub fn open(path: &Path) -> Result<Self> {
         let file = File::open(path).with_context(|| format!("cannot open {}", path.display()))?;
         Self::new(BufReader::new(file))
@@ -523,7 +523,7 @@ fn read_u64(bytes: &[u8], big_endian: bool) -> u64 {
     }
 }
 
-/// pcapng byte builders for tests, here and in logbook's replay tests (with
+/// pcapng byte builders for tests, here and in Teyvat.me's replay tests (with
 /// the `test-support` feature).
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support {

@@ -17,5 +17,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "logbook-android"
+rootProject.name = "teyvatme-android"
 include(":app")

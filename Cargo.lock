@@ -3192,107 +3192,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad"
 
 [[package]]
-name = "logbook"
-version = "1.0.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "base64",
- "caps",
- "chrono",
- "clap",
- "ctrlc",
- "eframe",
- "egui",
- "egui-file-dialog",
- "egui-notify",
- "egui_extras",
- "egui_material_icons",
- "flate2",
- "futures",
- "futures-util",
- "gethostname",
- "getrandom 0.3.4",
- "gtk",
- "image",
- "indexmap",
- "keyring",
- "libc",
- "log",
- "logbook-core",
- "logbook-game-data",
- "logbook-protocol",
- "open",
- "pcap",
- "pktmon",
- "reqwest",
- "self_update",
- "serde",
- "serde_json",
- "sha2",
- "single-instance",
- "sysinfo",
- "tar",
- "tempfile",
- "tokio",
- "tokio-util",
- "tracing",
- "tracing-appender",
- "tracing-subscriber",
- "tray-icon",
- "windows 0.61.3",
- "winresource",
-]
-
-[[package]]
-name = "logbook-core"
-version = "0.0.0"
-dependencies = [
- "anyhow",
- "chrono",
- "getrandom 0.3.4",
- "indexmap",
- "logbook-game-data",
- "logbook-protocol",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "logbook-game-data"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "reqwest",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "logbook-protocol"
-version = "1.4.0"
-dependencies = [
- "anyhow",
- "base64",
- "clap",
- "etherparse",
- "flate2",
- "kcp",
- "protobuf",
- "protobuf-codegen",
- "rand_mt",
- "rsa",
- "tracing",
-]
-
-[[package]]
 name = "loop9"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5843,6 +5742,107 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06794f8f6c5c898b3275aebefa6b8a1cb24cd2c6c79397ab15774837a0bc5755"
 dependencies = [
  "winapi-util",
+]
+
+[[package]]
+name = "teyvatme"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "base64",
+ "caps",
+ "chrono",
+ "clap",
+ "ctrlc",
+ "eframe",
+ "egui",
+ "egui-file-dialog",
+ "egui-notify",
+ "egui_extras",
+ "egui_material_icons",
+ "flate2",
+ "futures",
+ "futures-util",
+ "gethostname",
+ "getrandom 0.3.4",
+ "gtk",
+ "image",
+ "indexmap",
+ "keyring",
+ "libc",
+ "log",
+ "open",
+ "pcap",
+ "pktmon",
+ "reqwest",
+ "self_update",
+ "serde",
+ "serde_json",
+ "sha2",
+ "single-instance",
+ "sysinfo",
+ "tar",
+ "tempfile",
+ "teyvatme-core",
+ "teyvatme-game-data",
+ "teyvatme-protocol",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
+ "tray-icon",
+ "windows 0.61.3",
+ "winresource",
+]
+
+[[package]]
+name = "teyvatme-core"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "getrandom 0.3.4",
+ "indexmap",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "teyvatme-game-data",
+ "teyvatme-protocol",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "teyvatme-game-data"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "teyvatme-protocol"
+version = "1.4.0"
+dependencies = [
+ "anyhow",
+ "base64",
+ "clap",
+ "etherparse",
+ "flate2",
+ "kcp",
+ "protobuf",
+ "protobuf-codegen",
+ "rand_mt",
+ "rsa",
+ "tracing",
 ]
 
 [[package]]

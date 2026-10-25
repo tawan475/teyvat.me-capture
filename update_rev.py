@@ -7,7 +7,7 @@ default-branch HEAD of its repository -- and prove the result still builds
 before leaving the new pin in place.
 
 Only `git = "..."` dependencies are pinned. Path dependencies -- such as
-`logbook-protocol` and the vendored `logbook-game-data`, which live in this
+`teyvatme-protocol` and the vendored `teyvatme-game-data`, which live in this
 repository under `crates/` -- have no revision and are left alone. Run it on
 the workspace root manifest (the default): the Cargo.lock it restores on
 failure is the one next to the manifest it is given.

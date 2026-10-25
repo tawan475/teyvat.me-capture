@@ -8,7 +8,7 @@
 //! Only to a tracker on this machine (`localhost` / `127.0.0.1`): a
 //! recording is old personal data, and must never reach a real tracker's
 //! history. The address and the import key come from the environment
-//! (`LOGBOOK_REPLAY_TRACKER`, `LOGBOOK_REPLAY_IMPORT_KEY`); no app setting
+//! (`TEYVATME_REPLAY_TRACKER`, `TEYVATME_REPLAY_IMPORT_KEY`); no app setting
 //! or data directory is read or written, no lock is taken.
 
 use std::path::Path;
@@ -55,15 +55,15 @@ impl LocalTracker {
         if !cfg!(debug_assertions) {
             bail!("--replay-live is for debug builds only");
         }
-        let api = std::env::var("LOGBOOK_REPLAY_TRACKER").context(
-            "set LOGBOOK_REPLAY_TRACKER to the local tracker's API, e.g. http://127.0.0.1:5173/api",
+        let api = std::env::var("TEYVATME_REPLAY_TRACKER").context(
+            "set TEYVATME_REPLAY_TRACKER to the local tracker's API, e.g. http://127.0.0.1:5173/api",
         )?;
         let api = api.trim().trim_end_matches('/').to_string();
         if !is_local(&api) {
-            bail!("LOGBOOK_REPLAY_TRACKER must be a localhost or 127.0.0.1 address, not {api}");
+            bail!("TEYVATME_REPLAY_TRACKER must be a localhost or 127.0.0.1 address, not {api}");
         }
-        let key = std::env::var("LOGBOOK_REPLAY_IMPORT_KEY")
-            .context("set LOGBOOK_REPLAY_IMPORT_KEY to an import key of the local tracker")?;
+        let key = std::env::var("TEYVATME_REPLAY_IMPORT_KEY")
+            .context("set TEYVATME_REPLAY_IMPORT_KEY to an import key of the local tracker")?;
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()?;

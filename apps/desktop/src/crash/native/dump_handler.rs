@@ -56,10 +56,10 @@ pub const HANDLER_ARG: &str = "--crash-dump-handler";
 /// What the handler is told, in its environment: the app's process id, the
 /// prefix of the shared objects' names, and where the dump and the outcome
 /// line go.
-const ENV_PARENT: &str = "LOGBOOK_DUMP_HANDLER_PARENT";
-const ENV_NAMES: &str = "LOGBOOK_DUMP_HANDLER_NAMES";
-const ENV_DIR: &str = "LOGBOOK_DUMP_HANDLER_DIR";
-const ENV_LOG: &str = "LOGBOOK_DUMP_HANDLER_LOG";
+const ENV_PARENT: &str = "TEYVATME_DUMP_HANDLER_PARENT";
+const ENV_NAMES: &str = "TEYVATME_DUMP_HANDLER_NAMES";
+const ENV_DIR: &str = "TEYVATME_DUMP_HANDLER_DIR";
+const ENV_LOG: &str = "TEYVATME_DUMP_HANDLER_LOG";
 
 /// The memory both processes map.
 #[repr(C)]
@@ -102,7 +102,7 @@ pub(super) fn start(dump_dir: &Path, crash_log: &Path) {
     }
     match launch(dump_dir, crash_log) {
         Ok(handler) => {
-            // A second Logbook process in Task Manager is this one.
+            // A second Teyvat.me process in Task Manager is this one.
             tracing::info!("crash dump handler running as process {}", handler.pid);
             let _ = HANDLER.set(handler);
         }
@@ -116,7 +116,7 @@ fn launch(dump_dir: &Path, crash_log: &Path) -> anyhow::Result<Handler> {
     let mut nonce = [0u8; 8];
     getrandom::fill(&mut nonce).map_err(|e| anyhow::anyhow!("no random bytes: {e}"))?;
     let names = format!(
-        "Local\\logbook-crash-{}-{:016x}",
+        "Local\\teyvatme-crash-{}-{:016x}",
         std::process::id(),
         u64::from_le_bytes(nonce)
     );

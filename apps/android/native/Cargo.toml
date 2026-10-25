@@ -2,11 +2,11 @@
 # Copyright (c) 2026 tawan475
 
 [package]
-name = "logbook-android"
+name = "teyvatme-android"
 version = "0.0.0"
 edition = "2024"
 publish = false
-description = "Native side of logbook's Android app: the VPN forwarder and the game traffic tee."
+description = "Native side of Teyvat.me's Android app: the VPN forwarder and the game traffic tee."
 
 # Built only for Android (cargo-ndk, from android/app's Gradle build), so it
 # stays out of the root workspace and its host-side clippy/test runs.
