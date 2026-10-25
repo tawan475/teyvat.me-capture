@@ -135,26 +135,6 @@ fn quote_windows_arg(arg: &str) -> String {
     out
 }
 
-#[cfg(test)]
-mod quote_tests {
-    use super::quote_windows_arg;
-
-    #[test]
-    fn arguments_are_quoted_as_command_line_to_argv_reads_them() {
-        assert_eq!(quote_windows_arg("-b"), "-b");
-        assert_eq!(quote_windows_arg(""), "\"\"");
-        assert_eq!(
-            quote_windows_arg(r"D:\My Captures\a.pcap"),
-            r#""D:\My Captures\a.pcap""#
-        );
-        assert_eq!(quote_windows_arg(r#"say "hi""#), r#""say \"hi\"""#);
-        assert_eq!(
-            quote_windows_arg(r"C:\dir with space\"),
-            r#""C:\dir with space\\""#
-        );
-    }
-}
-
 #[cfg(unix)]
 pub fn ensure_admin() {
     // Running as root is always sufficient
@@ -263,3 +243,23 @@ fn show_packet_capture_permissions_missing_dialog() {
 /// a marker the next start would call this exit abrupt.
 #[cfg(unix)]
 const PERMISSIONS_MISSING: &str = "packet capture permissions are missing";
+
+#[cfg(test)]
+mod quote_tests {
+    use super::quote_windows_arg;
+
+    #[test]
+    fn arguments_are_quoted_as_command_line_to_argv_reads_them() {
+        assert_eq!(quote_windows_arg("-b"), "-b");
+        assert_eq!(quote_windows_arg(""), "\"\"");
+        assert_eq!(
+            quote_windows_arg(r"D:\My Captures\a.pcap"),
+            r#""D:\My Captures\a.pcap""#
+        );
+        assert_eq!(quote_windows_arg(r#"say "hi""#), r#""say \"hi\"""#);
+        assert_eq!(
+            quote_windows_arg(r"C:\dir with space\"),
+            r#""C:\dir with space\\""#
+        );
+    }
+}
