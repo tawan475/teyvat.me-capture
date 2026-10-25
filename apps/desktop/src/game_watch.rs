@@ -174,7 +174,8 @@ impl GameStatus {
         match self {
             GameStatus::NotRunning => "Start Genshin while Teyvat.me is running.",
             GameStatus::LaunchCaptured => {
-                "Login seen. Says \"data decrypting\" once your data arrives."
+                "Genshin started while capture was running, so its login will be seen. Says \
+                 \"data decrypting\" once you enter the world and your data arrives."
             }
             GameStatus::Decoding => {
                 "Reading this session. Inventory, characters and achievements arrive by \

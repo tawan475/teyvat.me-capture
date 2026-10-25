@@ -197,8 +197,8 @@ impl TeyvatmeApp {
                 HeroVariant::Neutral,
                 neutral(icons::gamepad),
                 "Waiting for the game",
-                "Start Genshin now",
-                [Done, Now, Pending],
+                "Genshin isn't running · start it now",
+                [Done, Pending, Pending],
                 |ui| {
                     widgets::chip(ui, icons::info(), "Open before the game")
                         .on_hover_text("The login is the only moment the session key can be read");
@@ -208,8 +208,8 @@ impl TeyvatmeApp {
                 ui,
                 HeroVariant::Neutral,
                 neutral(icons::gamepad),
-                "Waiting for the game",
-                "Enter the world now",
+                "Game detected",
+                "Already open · enter the world now",
                 [Done, Now, Pending],
                 |_| {},
             ),
@@ -217,13 +217,13 @@ impl TeyvatmeApp {
                 ui,
                 HeroVariant::Neutral,
                 Disc::Icon {
-                    icon: icons::log_in,
+                    icon: icons::gamepad,
                     fill: |p: &Palette| p.fill,
                     ink: |_: &Palette| egui::Color32::WHITE,
                 },
-                "Login seen",
-                "Enter the world to read your data",
-                [Done, Done, Now],
+                "Game detected",
+                "Launch captured · enter the world now",
+                [Done, Now, Pending],
                 |_| {},
             ),
             GameStatus::Decoding => widgets::status_hero(
@@ -240,7 +240,7 @@ impl TeyvatmeApp {
                 HeroVariant::Neutral,
                 Disc::Spinner,
                 "Starting capture",
-                "Back in a few seconds",
+                "Packet capture restarts itself within seconds",
                 [Now, Pending, Pending],
                 |ui| {
                     if since_start > Duration::from_secs(30) {
