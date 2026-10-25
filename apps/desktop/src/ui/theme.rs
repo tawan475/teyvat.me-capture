@@ -328,3 +328,41 @@ fn visuals(theme: Theme, p: &Palette) -> Visuals {
     w.noninteractive.bg_stroke = Stroke::new(1.0_f32, p.line);
     v
 }
+
+#[cfg(test)]
+mod tests {
+    use sha2::{Digest, Sha256};
+
+    fn sha256(bytes: &[u8]) -> String {
+        Sha256::digest(bytes)
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect()
+    }
+
+    /// The embedded fonts are the upstream files byte for byte. Stored as text,
+    /// git once dropped their CR bytes and the release drew words with letters
+    /// missing (`.gitattributes` now marks them binary).
+    #[test]
+    fn the_embedded_fonts_are_intact() {
+        for (name, bytes, expected) in [
+            (
+                "Outfit-Regular",
+                &include_bytes!("../../assets/fonts/Outfit-Regular.ttf")[..],
+                "3b64ac4f6ab6a8eebddd4b0bc03c811c43602e11e176382ab0ee6be615ab861b",
+            ),
+            (
+                "Outfit-Medium",
+                &include_bytes!("../../assets/fonts/Outfit-Medium.ttf")[..],
+                "dc8d9212fc57556a55d01e863071f727cd6264b748e28885d853807aeb186142",
+            ),
+            (
+                "Outfit-SemiBold",
+                &include_bytes!("../../assets/fonts/Outfit-SemiBold.ttf")[..],
+                "bf2e1d2a6ec2a67952e8b36edd2b2bb9f340c0cdd10b0ad5145b4dbbc1339608",
+            ),
+        ] {
+            assert_eq!(sha256(bytes), expected, "{name}.ttf was altered");
+        }
+    }
+}
