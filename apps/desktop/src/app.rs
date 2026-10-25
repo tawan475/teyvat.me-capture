@@ -14,7 +14,6 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context as _, Result, anyhow};
 use egui::{Context, OpenUrl};
-use egui_file_dialog::FileDialog;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio_util::sync::CancellationToken;
@@ -184,6 +183,15 @@ impl ThemeChoice {
             ThemeChoice::System => egui::ThemePreference::System,
             ThemeChoice::Light => egui::ThemePreference::Light,
             ThemeChoice::Dark => egui::ThemePreference::Dark,
+        }
+    }
+
+    /// The same, for the native title bar.
+    fn system_theme(self) -> egui::SystemTheme {
+        match self {
+            ThemeChoice::System => egui::SystemTheme::SystemDefault,
+            ThemeChoice::Light => egui::SystemTheme::Light,
+            ThemeChoice::Dark => egui::SystemTheme::Dark,
         }
     }
 }
@@ -581,12 +589,12 @@ pub struct TeyvatmeApp {
 
     toasts: Toasts,
 
-    automation_folder_dialog: Option<FileDialog>,
+    /// A Save or Choose folder dialog to open once this frame is drawn.
+    file_request: Option<FileRequest>,
 
     optimizer_export_rx: Option<oneshot::Receiver<Result<(String, ExportCounts)>>>,
     achievements_export_rx: Option<oneshot::Receiver<Result<Vec<u32>>>>,
     pending_open_url: Option<String>,
-    optimizer_save_dialog: Option<FileDialog>,
     optimizer_save_path: Option<PathBuf>,
     optimizer_export_target: OptimizerExportTarget,
 
@@ -651,8 +659,9 @@ pub struct TeyvatmeApp {
     /// thread once its menu is up, hence the atomic.
     tray_menu_ready: Arc<AtomicBool>,
 
-    minimize_modal_open: bool,
-    minimize_modal_remember: bool,
+    /// The window was minimized last frame, to see the title bar's minimize
+    /// button pressed.
+    was_minimized: bool,
 
     /// "Start Teyvat.me on startup": the scheduled task's state, read in the
     /// background, and the warning when it starts another copy.
@@ -680,11 +689,23 @@ pub struct TeyvatmeApp {
     /// Whether this process can capture (Windows: elevated).
     is_admin: bool,
     applied_theme: Option<ThemeChoice>,
-    /// An update the user put off at start, for the footer pill and About.
+    /// An update the user put off at start, for the toolbar pill and About.
     update_put_off: Option<String>,
     /// The folder of the last manual save, for "Open export folder".
     last_save_folder: Option<PathBuf>,
     started_at: Instant,
+}
+
+/// A native file dialog the UI asked for.
+#[derive(Debug)]
+pub(crate) enum FileRequest {
+    /// Where to save a GOOD export: a suggested name, in this folder.
+    SaveGood {
+        name: String,
+        folder: Option<PathBuf>,
+    },
+    /// The auto-export folder.
+    ExportFolder,
 }
 
 /// The screen the window shows.
@@ -899,6 +920,8 @@ fn window_out_of_sight() -> bool {
 fn restore_window(ctx: &Context) {
     HIDDEN_TO_TRAY.store(false, Ordering::Relaxed);
     ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+    // Hidden from the title bar's minimize button, it was minimized too.
+    ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
     ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
     ctx.request_repaint();
     #[cfg(windows)]
@@ -1222,11 +1245,10 @@ impl TeyvatmeApp {
             tracing_reload_handle,
             toast_rx,
             toasts,
-            automation_folder_dialog: None,
+            file_request: None,
             optimizer_export_rx: None,
             achievements_export_rx: None,
             pending_open_url: None,
-            optimizer_save_dialog: None,
             optimizer_save_path: None,
             optimizer_export_target: OptimizerExportTarget::None,
             restarting: false,
@@ -1245,8 +1267,7 @@ impl TeyvatmeApp {
             tray_icon,
             state_rx,
             wishes,
-            minimize_modal_open: false,
-            minimize_modal_remember: true,
+            was_minimized: false,
             startup,
             previous_run_notice,
             start_window,
@@ -1321,8 +1342,11 @@ impl eframe::App for TeyvatmeApp {
         eframe::set_value(storage, eframe::APP_KEY, &self.saved_state);
     }
 
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         self.run_frame(ctx);
+        if let Some(request) = self.file_request.take() {
+            self.run_file_dialog(ctx, frame, request);
+        }
     }
 }
 
@@ -1387,13 +1411,6 @@ impl TeyvatmeApp {
         self.apply_tracker_verify_result(result);
     }
 
-    /// Hide to the tray, or fall back to the taskbar when there is no tray menu
-    /// to come back through.
-    ///
-    /// On Linux `TrayIconEvent` is never delivered, so a tray without a working
-    /// menu is a one-way trip: the window disappears with no restore and no
-    /// quit, and "Remember my choice" puts the next launch one click from the
-    /// same trap.
     /// Schedule the start-up and game-session memory releases (see
     /// [`release_memory_after`]); cheap to call every frame.
     #[cfg(windows)]
@@ -1414,6 +1431,12 @@ impl TeyvatmeApp {
         self.memory_release_status = now;
     }
 
+    /// Hide to the tray, or fall back to the taskbar when there is no tray menu
+    /// to come back through.
+    ///
+    /// On Linux `TrayIconEvent` is never delivered, so a tray without a working
+    /// menu is a one-way trip: the window would disappear with no restore and
+    /// no quit.
     fn minimize(&self, ctx: &Context, to_tray: bool) {
         #[cfg(windows)]
         release_memory_once_hidden();

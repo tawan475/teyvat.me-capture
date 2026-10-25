@@ -98,28 +98,6 @@ pub fn star(ui: &mut Ui, size: f32) -> Response {
     response
 }
 
-/// ✦ Teyvat.me (+ "Capture").
-pub fn brand(ui: &mut Ui, with_capture: bool) {
-    let p = p(ui);
-    ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 6.0;
-        star(ui, 18.0);
-        ui.label(
-            RichText::new("Teyvat.me")
-                .text_style(style::brand())
-                .color(p.tx),
-        );
-        if with_capture {
-            ui.label(
-                RichText::new("Capture")
-                    .text_style(style::brand())
-                    .family(egui::FontFamily::Proportional)
-                    .color(p.tx2),
-            );
-        }
-    });
-}
-
 // ---------------------------------------------------------------------------
 // Containers
 // ---------------------------------------------------------------------------

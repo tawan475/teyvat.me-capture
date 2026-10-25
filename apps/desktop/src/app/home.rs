@@ -816,20 +816,58 @@ impl TeyvatmeApp {
 
     pub(super) fn ask_where_to_save(&mut self) {
         let now = Local::now();
-        let mut dialog = egui_file_dialog::FileDialog::new()
-            .add_file_filter_extensions("JSON files", vec!["json"])
-            .default_file_name(&format!("teyvatme_{}.json", now.format("%Y-%m-%d_%H-%M")));
-        if let Some(folder) = self.export_folder() {
-            dialog = dialog.initial_directory(folder);
-        }
-        dialog.save_file();
-        self.optimizer_save_dialog = Some(dialog);
+        self.file_request = Some(super::FileRequest::SaveGood {
+            name: format!("teyvatme_{}.json", now.format("%Y-%m-%d_%H-%M")),
+            folder: self.export_folder(),
+        });
     }
 
     pub(super) fn pick_export_folder(&mut self) {
-        let mut dialog = egui_file_dialog::FileDialog::new();
-        dialog.pick_directory();
-        self.automation_folder_dialog = Some(dialog);
+        self.file_request = Some(super::FileRequest::ExportFolder);
+    }
+
+    /// The OS's own Save or Choose folder dialog, modal over the window. Like
+    /// any native dialog it holds this thread until answered; capture and
+    /// uploads run on their own threads meanwhile.
+    pub(super) fn run_file_dialog(
+        &mut self,
+        ctx: &egui::Context,
+        window: &eframe::Frame,
+        request: super::FileRequest,
+    ) {
+        match request {
+            super::FileRequest::SaveGood { name, folder } => {
+                let mut dialog = rfd::FileDialog::new()
+                    .set_parent(window)
+                    .set_title("Save GOOD JSON")
+                    .add_filter("JSON", &["json"])
+                    .set_file_name(name);
+                if let Some(folder) = folder {
+                    dialog = dialog.set_directory(folder);
+                }
+                if let Some(mut path) = dialog.save_file() {
+                    // A name typed without one gets the filter's extension.
+                    if path.extension().is_none() {
+                        path.set_extension("json");
+                    }
+                    self.last_save_folder = path.parent().map(|dir| dir.to_path_buf());
+                    self.optimizer_save_path = Some(path);
+                    self.genshin_optimizer_request_export(super::OptimizerExportTarget::File);
+                }
+            }
+            super::FileRequest::ExportFolder => {
+                let mut dialog = rfd::FileDialog::new()
+                    .set_parent(window)
+                    .set_title("Auto-export folder");
+                if let Some(folder) = &self.saved_state.save_result_folder {
+                    dialog = dialog.set_directory(folder);
+                }
+                if let Some(folder) = dialog.pick_folder() {
+                    self.saved_state.save_result_folder = Some(folder);
+                }
+            }
+        }
+        ctx.request_repaint();
     }
 
     /// The auto-export folder, else the folder of the last manual save.

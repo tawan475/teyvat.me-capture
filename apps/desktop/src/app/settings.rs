@@ -128,15 +128,13 @@ impl TeyvatmeApp {
                     pal.tx2,
                 )),
                 |ui| {
-                    widgets::segmented(
-                        ui,
-                        &mut self.saved_state.minimize_to_tray,
-                        &[
-                            (None, "Ask"),
-                            (Some(true), "Tray"),
-                            (Some(false), "Taskbar"),
-                        ],
-                    );
+                    // Unset (older settings, a fresh install) is the taskbar:
+                    // the title bar's button can't stop to ask.
+                    let mut to_tray = self.saved_state.minimize_to_tray == Some(true);
+                    widgets::segmented(ui, &mut to_tray, &[(true, "Tray"), (false, "Taskbar")]);
+                    if to_tray != (self.saved_state.minimize_to_tray == Some(true)) {
+                        self.saved_state.minimize_to_tray = Some(to_tray);
+                    }
                 },
             );
             divider(ui);

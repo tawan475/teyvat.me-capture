@@ -136,8 +136,9 @@ impl Toasts {
         std::mem::take(&mut self.raised)
     }
 
-    /// Draw them above the footer; returns the action clicked, if any.
-    pub fn show(&mut self, ctx: &Context, footer_height: f32) -> Option<Action> {
+    /// Draw them at the window's bottom right; returns the action clicked,
+    /// if any.
+    pub fn show(&mut self, ctx: &Context) -> Option<Action> {
         let now = Instant::now();
         self.items
             .retain(|toast| toast.remaining(now).is_none_or(|left| !left.is_zero()));
@@ -152,7 +153,7 @@ impl Toasts {
         let width = (screen.width() - 32.0).min(MAX_WIDTH);
         let mut clicked = None;
         let mut dismissed = None;
-        let mut y = screen.bottom() - footer_height - 12.0;
+        let mut y = screen.bottom() - 16.0;
 
         for (index, toast) in self.items.iter().enumerate().skip(start).rev() {
             let area = Area::new(Id::new("toast").with(index).with(toast.shown_at))
