@@ -12,7 +12,6 @@ use std::sync::atomic::Ordering;
 
 use egui::{Context, Frame};
 
-use super::frame::{FOOTER_HEIGHT, resize_edges};
 use super::{HIDDEN_TO_TRAY, Onboarding, Page, StartWindow, TeyvatmeApp, View};
 use crate::activity::{Event, Kind, Topic};
 use crate::game_watch::{GameStatus, MissedLaunch};
@@ -25,8 +24,18 @@ impl TeyvatmeApp {
         #[cfg(windows)]
         self.release_settled_memory();
 
-        let out_of_sight = HIDDEN_TO_TRAY.load(Ordering::Relaxed)
-            || ctx.input(|i| i.viewport().minimized) == Some(true);
+        // The title bar's own minimize button: on to the tray, when that is
+        // where minimize goes.
+        let minimized = ctx.input(|i| i.viewport().minimized) == Some(true);
+        if minimized
+            && !self.was_minimized
+            && self.saved_state.minimize_to_tray == Some(true)
+            && !HIDDEN_TO_TRAY.load(Ordering::Relaxed)
+        {
+            self.minimize(ctx, true);
+        }
+        self.was_minimized = minimized;
+        let out_of_sight = HIDDEN_TO_TRAY.load(Ordering::Relaxed) || minimized;
 
         match std::mem::replace(&mut self.start_window, StartWindow::AsIs) {
             StartWindow::AsIs => {}
@@ -55,24 +64,11 @@ impl TeyvatmeApp {
 
         if self.applied_theme != Some(self.saved_state.theme) {
             ctx.set_theme(self.saved_state.theme.preference());
+            // The native title bar follows the same choice.
+            ctx.send_viewport_cmd(egui::ViewportCommand::SetTheme(
+                self.saved_state.theme.system_theme(),
+            ));
             self.applied_theme = Some(self.saved_state.theme);
-        }
-
-        if let Some(dialog) = &mut self.optimizer_save_dialog {
-            dialog.update(ctx);
-            if let Some(path) = dialog.take_picked() {
-                self.optimizer_save_dialog = None;
-                self.last_save_folder = path.parent().map(|dir| dir.to_path_buf());
-                self.optimizer_save_path = Some(path);
-                self.genshin_optimizer_request_export(super::OptimizerExportTarget::File);
-            }
-        }
-        if let Some(dialog) = &mut self.automation_folder_dialog {
-            dialog.update(ctx);
-            if let Some(path) = dialog.take_picked() {
-                self.saved_state.save_result_folder = Some(path);
-                self.automation_folder_dialog = None;
-            }
         }
 
         let app_state = self.state_rx.borrow_and_update().clone();
@@ -98,32 +94,38 @@ impl TeyvatmeApp {
             self.view = View::FirstRun(Onboarding::Welcome);
         }
 
-        self.title_bar(ctx);
-        let capturing = app_state.capturing;
-        self.footer(ctx, capturing);
+        self.activity_anchor = None;
+
+        // A new view (or settings page) fades in over a moment.
+        if self.view != self.shown_view {
+            self.shown_view = self.view;
+            self.view_shown_at = std::time::Instant::now();
+        }
+        let fade = (self.view_shown_at.elapsed().as_secs_f32() / 0.16).min(1.0);
+        if fade < 1.0 {
+            ctx.request_repaint();
+        }
 
         let pal = crate::ui::theme::palette(ctx);
         egui::CentralPanel::default()
             .frame(Frame::new().fill(pal.bg))
-            .show(ctx, |ui| match (&app_state.state, self.view) {
-                (State::Main, View::Main) => self.home(ui, &app_state),
-                (State::Main, View::Settings(page)) => self.settings(ui, page),
-                (State::Main, View::FirstRun(step)) => self.first_run(ui, step),
-                (state, View::Settings(page))
-                    if matches!(page, Page::About | Page::Diagnostics) =>
-                {
-                    let _ = state;
-                    self.settings(ui, page)
-                }
-                (state, _) => self.startup_screen(ui, state),
+            .show(ctx, |ui| {
+                ui.multiply_opacity(0.35 + 0.65 * (1.0 - (1.0 - fade).powi(3)));
+                self.draw_view(ui, &app_state);
             });
 
+        self.quick_bar(ctx);
+        self.activity_popover(ctx);
         self.launch_missed_dialog(ctx);
         self.address_dialog(ctx);
-        self.minimize_dialog(ctx);
-        resize_edges(ctx);
 
-        if let Some(action) = self.toasts.show(ctx, FOOTER_HEIGHT) {
+        // Narrow, they would cover the floating buttons: start above them.
+        let inset = if self.view == View::Main && ctx.screen_rect().width() < 560.0 {
+            super::frame::QUICK_BAR_HEIGHT - 8.0
+        } else {
+            0.0
+        };
+        if let Some(action) = self.toasts.show(ctx, inset) {
             self.handle_toast_action(ctx, action);
         }
         for (kind, text) in self.toasts.take_raised() {
@@ -137,6 +139,21 @@ impl TeyvatmeApp {
         }
 
         let _ = self.saved_state_tx.send(self.saved_state.clone());
+    }
+
+    /// The view for this state: the main screen, Settings or the first run
+    /// once started; the startup screens before (About and Diagnostics open
+    /// from them too).
+    fn draw_view(&mut self, ui: &mut egui::Ui, app_state: &crate::AppState) {
+        match (&app_state.state, self.view) {
+            (State::Main, View::Main) => self.home(ui, app_state),
+            (State::Main, View::Settings(page)) => self.settings(ui, page),
+            (State::Main, View::FirstRun(step)) => self.first_run(ui, step),
+            (_, View::Settings(page)) if matches!(page, Page::About | Page::Diagnostics) => {
+                self.settings(ui, page)
+            }
+            (state, _) => self.startup_screen(ui, state),
+        }
     }
 
     /// Move the background's reports into the activity log, and toast the
@@ -184,6 +201,12 @@ impl TeyvatmeApp {
             && self.last_game_status != GameStatus::Decoding
         {
             self.decoding_since = Some(chrono::Local::now());
+            self.toasts.success("Session key found · reading your data");
+        }
+        if app_state.game_status == GameStatus::LaunchCaptured
+            && self.last_game_status == GameStatus::NotRunning
+        {
+            self.toasts.info("Genshin detected · enter the world");
         }
         self.last_game_status = app_state.game_status;
 

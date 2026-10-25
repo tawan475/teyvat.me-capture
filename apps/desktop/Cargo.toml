@@ -51,8 +51,10 @@ eframe = { version = "0.32", default-features = false, features = [
 	"x11",           # To support older Linux distributions (restores one of the default features)
 ] }
 egui = "0.32"
-egui-file-dialog = "0.11.0"
 egui_extras = { version = "0.32.2", features = ["image", "svg", "webp"] }
+# The OS's own Save and Choose folder dialogs: the Explorer dialog on Windows,
+# NSSavePanel on macOS, the desktop portal (D-Bus, no GTK) on Linux.
+rfd = "0.17.2"
 futures = "0.3.31"
 # The PC's name, shown to the user on the tracker's consent screen and in its
 # Devices list ("Teyvat.me on <PC>"). Already in the tree on Linux (x11rb);
@@ -90,11 +92,7 @@ serde_json = { version = "1.0.143", features = ["alloc"] }
 # tree at this version (self_update's ed25519-dalek, the Linux keyring).
 sha2 = "0.10.9"
 # Only the `system` feature, and only for a process-name scan (see
-# `src/game_watch.rs`). This is not really a new dependency: `egui-file-dialog`
-# already pulls the same 0.36 line in with `default-features = false,
-# features = ["disk"]`, so this is a feature union on a crate that was already
-# being compiled -- no new version in the tree, and none of `component`,
-# `network` or `user`.
+# `src/game_watch.rs`): none of `component`, `network` or `user`.
 sysinfo = { version = "0.36.1", default-features = false, features = ["system"] }
 tempfile = "3.21.0"
 tokio-util = "0.7.16"

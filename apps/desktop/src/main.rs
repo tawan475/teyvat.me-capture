@@ -63,6 +63,18 @@ pub fn app_id() -> &'static str {
     if isolated() { ISOLATED_APP_ID } else { APP_ID }
 }
 
+/// The OS title bar's text: the product, plus which kind of run this is.
+fn window_title() -> String {
+    let mut title = String::from("Teyvat.me Capture");
+    if cfg!(debug_assertions) {
+        title.push_str(" · debug");
+    }
+    if isolated() {
+        title.push_str(" (isolated)");
+    }
+    title
+}
+
 /// irminsul's app id, whose `app.ron` the first launch copies over
 /// (`migrate.rs`).
 const IRMINSUL_APP_ID: &str = "Irminsul";
@@ -470,7 +482,10 @@ fn main() -> eframe::Result {
             .with_inner_size(window_size)
             .with_min_inner_size([380., 560.])
             .with_resizable(true)
-            .with_decorations(false)
+            // The OS's own frame and title bar: its corners, snapping, buttons
+            // and resize edges on every platform.
+            .with_decorations(true)
+            .with_title(window_title())
             .with_icon(
                 // NOTE: Adding an icon is optional
                 eframe::icon_data::from_png_bytes(&include_bytes!("../assets/icon-256.png")[..])

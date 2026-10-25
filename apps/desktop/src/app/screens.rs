@@ -119,7 +119,7 @@ impl TeyvatmeApp {
     pub(super) fn first_run(&mut self, ui: &mut Ui, step: Onboarding) {
         let pal = widgets::p(ui);
         centred(ui, |ui| {
-            ui.set_max_width(460.0);
+            ui.set_max_width((ui.available_width() - 32.0).min(460.0));
             match step {
                 Onboarding::Welcome => {
                     widgets::star(ui, 44.0);
@@ -349,57 +349,6 @@ impl TeyvatmeApp {
             }
             Some(false) => self.pending_address = None,
             None => {}
-        }
-    }
-
-    /// Tray or taskbar, the first time minimize is pressed.
-    pub(super) fn minimize_dialog(&mut self, ctx: &Context) {
-        if !self.minimize_modal_open {
-            return;
-        }
-        let pal = crate::ui::theme::palette(ctx);
-        let mut choice = None;
-        let modal = dialog(ctx, "minimize_to").show(ctx, |ui| {
-            ui.set_width(dialog_width(ctx));
-            ui.label(
-                RichText::new("Minimize to")
-                    .text_style(style::dialog())
-                    .color(pal.tx),
-            );
-            ui.columns(2, |columns| {
-                for (column, (to_tray, label, icon)) in columns.iter_mut().zip([
-                    (true, "Tray", icons::inbox()),
-                    (false, "Taskbar", icons::panel_bottom()),
-                ]) {
-                    let tile = egui::Button::image_and_text(
-                        icons::image(icon, 22.0, pal.tx2),
-                        title_text(label, pal.tx),
-                    )
-                    .min_size(egui::vec2(column.available_width(), 72.0))
-                    .fill(pal.over)
-                    .stroke(egui::Stroke::NONE)
-                    .corner_radius(egui::CornerRadius::same(8));
-                    if column.add(tile).clicked() {
-                        choice = Some(to_tray);
-                    }
-                }
-            });
-            ui.checkbox(&mut self.minimize_modal_remember, "Remember my choice");
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if button(ui, ButtonKind::Ghost, None, "Cancel", false).clicked() {
-                    self.minimize_modal_open = false;
-                }
-            });
-        });
-        if let Some(to_tray) = choice {
-            if self.minimize_modal_remember {
-                self.saved_state.minimize_to_tray = Some(to_tray);
-            }
-            self.minimize_modal_open = false;
-            self.minimize(ctx, to_tray);
-        }
-        if modal.should_close() {
-            self.minimize_modal_open = false;
         }
     }
 }

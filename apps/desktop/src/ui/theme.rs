@@ -44,7 +44,6 @@ pub struct Palette {
     pub snack_tx: Color32,
     pub snack_ac: Color32,
     pub scrim: Color32,
-    pub close_hover: Color32,
     pub card_shadow: Color32,
     pub overlay_shadow: Color32,
 }
@@ -99,7 +98,6 @@ pub const LIGHT: Palette = Palette {
     snack_tx: hex(0xF1F5F9),
     snack_ac: hex(0xA5B4FC),
     scrim: rgba(15, 23, 42, 0.45),
-    close_hover: hex(0xDC2626),
     card_shadow: rgba(15, 23, 42, 0.06),
     overlay_shadow: rgba(15, 23, 42, 0.18),
 };
@@ -134,7 +132,6 @@ pub const DARK: Palette = Palette {
     snack_tx: hex(0x0F172A),
     snack_ac: hex(0x4338CA),
     scrim: rgba(2, 6, 23, 0.60),
-    close_hover: hex(0xDC2626),
     card_shadow: rgba(0, 0, 0, 0.30),
     overlay_shadow: rgba(0, 0, 0, 0.45),
 };

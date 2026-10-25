@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 tawan475
 
-//! What the app did, for the footer's activity line, its popover, and the
-//! toasts.
+//! What the app did, for the toasts and the History list.
 //!
 //! Every background report (an auto-export written, an upload stored or
 //! refused, live sync's batches, wishes sent) and every toast the UI raises
-//! is an [`Event`]. Routine background work goes only to the activity line;
-//! what the user just did, and every problem, is also a toast (spec §8).
+//! is an [`Event`]. Each is a toast as well, as irminsul's were, except the
+//! routine ones that would repeat every few seconds (live sync's batches),
+//! which go to History only ([`Event::routine`]).
 
 use std::collections::VecDeque;
 use std::path::PathBuf;
@@ -54,13 +54,11 @@ impl Event {
             kind,
             topic,
             text: text.into(),
-            // Problems always reach the user.
-            toast: matches!(kind, Kind::Error | Kind::Warn),
+            toast: true,
             path: None,
         }
     }
 
-    /// Routine success: the activity line only.
     pub fn ok(topic: Topic, text: impl Into<String>) -> Self {
         Self::new(Kind::Ok, topic, text)
     }
@@ -77,9 +75,10 @@ impl Event {
         Self::new(Kind::Error, topic, text)
     }
 
-    /// Raise a toast as well.
-    pub fn toast(mut self) -> Self {
-        self.toast = true;
+    /// Routine and frequent: History only, no toast. Problems are always
+    /// toasted.
+    pub fn routine(mut self) -> Self {
+        self.toast = matches!(self.kind, Kind::Error | Kind::Warn);
         self
     }
 
@@ -135,11 +134,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn problems_are_toasted_and_routine_work_is_not() {
-        assert!(Event::error(Topic::Export, "x").toast);
-        assert!(Event::warn(Topic::Export, "x").toast);
-        assert!(!Event::ok(Topic::Export, "x").toast);
-        assert!(Event::ok(Topic::Export, "x").toast().toast);
+    fn every_event_is_toasted_unless_routine_and_problems_always_are() {
+        assert!(Event::ok(Topic::Export, "x").toast);
+        assert!(Event::info(Topic::Export, "x").toast);
+        assert!(!Event::ok(Topic::Destination, "x").routine().toast);
+        assert!(Event::error(Topic::Destination, "x").routine().toast);
+        assert!(Event::warn(Topic::Destination, "x").routine().toast);
     }
 
     #[test]

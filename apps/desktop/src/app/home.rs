@@ -36,6 +36,7 @@ impl TeyvatmeApp {
                     .show(ui, |ui| {
                         ui.spacing_mut().item_spacing.y = 12.0;
                         self.crash_banner(ui);
+                        self.update_banner(ui);
                         let wide = ui.available_width() >= BREAKPOINT - 32.0;
                         if wide {
                             ui.columns(2, |columns| {
@@ -57,8 +58,38 @@ impl TeyvatmeApp {
                             self.export_card(ui, app_state);
                             self.destinations_card(ui);
                         }
+                        // Room under the last card for the floating buttons.
+                        ui.add_space(super::frame::QUICK_BAR_HEIGHT);
                     });
             });
+    }
+
+    /// The update put off at start, until installed (from About).
+    fn update_banner(&mut self, ui: &mut Ui) {
+        let Some(version) = self.update_put_off.clone() else {
+            return;
+        };
+        let pal = widgets::p(ui);
+        let mut open = false;
+        egui::Frame::new()
+            .fill(pal.ac_con)
+            .corner_radius(egui::CornerRadius::same(12))
+            .inner_margin(egui::Margin::symmetric(14, 10))
+            .show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                ui.horizontal(|ui| {
+                    ui.add(icons::image(icons::download(), 18.0, pal.ac_on));
+                    line(ui, strong_text(format!("Update {version}"), pal.ac_on));
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        open = button(ui, ButtonKind::Secondary, None, "Details", false)
+                            .on_hover_text("Installs and restarts Teyvat.me")
+                            .clicked();
+                    });
+                });
+            });
+        if open {
+            self.open_settings(Page::About);
+        }
     }
 
     /// "Crashed last time" / "Stopped unexpectedly", until dismissed.
@@ -149,7 +180,11 @@ impl TeyvatmeApp {
                     }
                 },
             );
-            response.on_hover_text("Windows lets only administrators read network packets");
+            self.hero_actions(
+                ui,
+                response,
+                "Windows lets only administrators read network packets",
+            );
             return;
         }
 
@@ -164,8 +199,8 @@ impl TeyvatmeApp {
                 HeroVariant::Neutral,
                 neutral(icons::gamepad),
                 "Waiting for the game",
-                "Start Genshin now",
-                [Done, Now, Pending],
+                "Genshin isn't running · start it now",
+                [Done, Pending, Pending],
                 |ui| {
                     widgets::chip(ui, icons::info(), "Open before the game")
                         .on_hover_text("The login is the only moment the session key can be read");
@@ -175,8 +210,8 @@ impl TeyvatmeApp {
                 ui,
                 HeroVariant::Neutral,
                 neutral(icons::gamepad),
-                "Waiting for the game",
-                "Enter the world now",
+                "Game detected",
+                "Already open · enter the world now",
                 [Done, Now, Pending],
                 |_| {},
             ),
@@ -184,13 +219,13 @@ impl TeyvatmeApp {
                 ui,
                 HeroVariant::Neutral,
                 Disc::Icon {
-                    icon: icons::log_in,
+                    icon: icons::gamepad,
                     fill: |p: &Palette| p.fill,
                     ink: |_: &Palette| egui::Color32::WHITE,
                 },
-                "Login seen",
-                "Enter the world to read your data",
-                [Done, Done, Now],
+                "Game detected",
+                "Launch captured · enter the world now",
+                [Done, Now, Pending],
                 |_| {},
             ),
             GameStatus::Decoding => widgets::status_hero(
@@ -207,7 +242,7 @@ impl TeyvatmeApp {
                 HeroVariant::Neutral,
                 Disc::Spinner,
                 "Starting capture",
-                "Back in a few seconds",
+                "Packet capture restarts itself within seconds",
                 [Now, Pending, Pending],
                 |ui| {
                     if since_start > Duration::from_secs(30) {
@@ -291,7 +326,12 @@ impl TeyvatmeApp {
                 },
             ),
         };
-        response.on_hover_text(status.tooltip());
+        self.hero_actions(ui, response, status.tooltip());
+    }
+
+    /// The status card's tooltip.
+    fn hero_actions(&mut self, _ui: &mut Ui, hero: egui::Response, tooltip: &str) {
+        hero.on_hover_text(tooltip);
     }
 
     fn captured_card(&mut self, ui: &mut Ui, app_state: &AppState) {
@@ -417,18 +457,27 @@ impl TeyvatmeApp {
             } else {
                 "Open the wish history in game first"
             };
-            egui::Frame::new()
-                .fill(pal.over)
-                .corner_radius(egui::CornerRadius::same(12))
-                .inner_margin(egui::Margin::symmetric(16, 4))
+            // A card like the others, its button there but not yet usable,
+            // so it reads as "coming", not as part of the background.
+            widgets::card_frame(ui)
                 .show(ui, |ui| {
                     ui.set_width(ui.available_width());
                     list_row(
                         ui,
                         Some((icons::sparkles(), pal.tx3)),
-                        title_text("Wish history", pal.tx2),
+                        title_text("Wish history", pal.tx),
                         Some(secondary_text(secondary, pal.tx2)),
-                        |_| {},
+                        |ui| {
+                            ui.add_enabled_ui(false, |ui| {
+                                button(
+                                    ui,
+                                    ButtonKind::Secondary,
+                                    Some(icons::copy()),
+                                    "Copy URL",
+                                    false,
+                                )
+                            });
+                        },
                     );
                 })
                 .response
@@ -816,20 +865,58 @@ impl TeyvatmeApp {
 
     pub(super) fn ask_where_to_save(&mut self) {
         let now = Local::now();
-        let mut dialog = egui_file_dialog::FileDialog::new()
-            .add_file_filter_extensions("JSON files", vec!["json"])
-            .default_file_name(&format!("teyvatme_{}.json", now.format("%Y-%m-%d_%H-%M")));
-        if let Some(folder) = self.export_folder() {
-            dialog = dialog.initial_directory(folder);
-        }
-        dialog.save_file();
-        self.optimizer_save_dialog = Some(dialog);
+        self.file_request = Some(super::FileRequest::SaveGood {
+            name: format!("teyvatme_{}.json", now.format("%Y-%m-%d_%H-%M")),
+            folder: self.export_folder(),
+        });
     }
 
     pub(super) fn pick_export_folder(&mut self) {
-        let mut dialog = egui_file_dialog::FileDialog::new();
-        dialog.pick_directory();
-        self.automation_folder_dialog = Some(dialog);
+        self.file_request = Some(super::FileRequest::ExportFolder);
+    }
+
+    /// The OS's own Save or Choose folder dialog, modal over the window. Like
+    /// any native dialog it holds this thread until answered; capture and
+    /// uploads run on their own threads meanwhile.
+    pub(super) fn run_file_dialog(
+        &mut self,
+        ctx: &egui::Context,
+        window: &eframe::Frame,
+        request: super::FileRequest,
+    ) {
+        match request {
+            super::FileRequest::SaveGood { name, folder } => {
+                let mut dialog = rfd::FileDialog::new()
+                    .set_parent(window)
+                    .set_title("Save GOOD JSON")
+                    .add_filter("JSON", &["json"])
+                    .set_file_name(name);
+                if let Some(folder) = folder {
+                    dialog = dialog.set_directory(folder);
+                }
+                if let Some(mut path) = dialog.save_file() {
+                    // A name typed without one gets the filter's extension.
+                    if path.extension().is_none() {
+                        path.set_extension("json");
+                    }
+                    self.last_save_folder = path.parent().map(|dir| dir.to_path_buf());
+                    self.optimizer_save_path = Some(path);
+                    self.genshin_optimizer_request_export(super::OptimizerExportTarget::File);
+                }
+            }
+            super::FileRequest::ExportFolder => {
+                let mut dialog = rfd::FileDialog::new()
+                    .set_parent(window)
+                    .set_title("Auto-export folder");
+                if let Some(folder) = &self.saved_state.save_result_folder {
+                    dialog = dialog.set_directory(folder);
+                }
+                if let Some(folder) = dialog.pick_folder() {
+                    self.saved_state.save_result_folder = Some(folder);
+                }
+            }
+        }
+        ctx.request_repaint();
     }
 
     /// The auto-export folder, else the folder of the last manual save.

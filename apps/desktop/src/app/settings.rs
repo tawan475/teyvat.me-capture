@@ -26,39 +26,114 @@ const PAGES: [(Page, &str); 5] = [
     (Page::About, "About"),
 ];
 
+fn page_icon(page: Page) -> egui::ImageSource<'static> {
+    match page {
+        Page::App => icons::settings(),
+        Page::Export => icons::download(),
+        Page::Destinations | Page::Teyvatme => icons::cloud(),
+        Page::Diagnostics => icons::bug(),
+        Page::About => icons::info(),
+    }
+}
+
+/// Back and the "Settings" title; true when Back was clicked.
+fn settings_heading(ui: &mut Ui) -> bool {
+    let pal = widgets::p(ui);
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 6.0;
+        let back = icon_button(ui, icons::arrow_left(), "Back").clicked();
+        ui.label(
+            RichText::new("Settings")
+                .text_style(style::brand())
+                .color(pal.tx),
+        );
+        back
+    })
+    .inner
+}
+
+/// One page in the side list: icon and name, a soft fill and an accent bar
+/// when selected (as the OS's own settings do), a dot for news.
+fn nav_item(
+    ui: &mut Ui,
+    icon: egui::ImageSource<'static>,
+    label: &str,
+    selected: bool,
+    badge: bool,
+) -> egui::Response {
+    let pal = widgets::p(ui);
+    let (rect, response) =
+        ui.allocate_exact_size(vec2(ui.available_width(), 36.0), egui::Sense::click());
+    let response = response.on_hover_cursor(egui::CursorIcon::PointingHand);
+    let painter = ui.painter();
+    if selected || response.hovered() {
+        let fill = if selected {
+            pal.over
+        } else {
+            pal.over.gamma_multiply(0.6)
+        };
+        painter.rect_filled(rect, egui::CornerRadius::same(6), fill);
+    }
+    if selected {
+        let bar = egui::Rect::from_center_size(
+            egui::pos2(rect.left() + 1.5, rect.center().y),
+            vec2(3.0, 16.0),
+        );
+        painter.rect_filled(bar, egui::CornerRadius::same(2), pal.ac_tx);
+    }
+    let ink = if selected { pal.tx } else { pal.tx2 };
+    let icon_rect = egui::Rect::from_center_size(
+        egui::pos2(rect.left() + 22.0, rect.center().y),
+        egui::Vec2::splat(16.0),
+    );
+    icons::image(icon, 16.0, ink).paint_at(ui, icon_rect);
+    let text = egui::WidgetText::from(title_text(label, ink)).into_galley(
+        ui,
+        Some(egui::TextWrapMode::Truncate),
+        rect.width() - 64.0,
+        egui::TextStyle::Body,
+    );
+    let text_pos = egui::pos2(rect.left() + 40.0, rect.center().y - text.size().y / 2.0);
+    ui.painter().galley(text_pos, text, ink);
+    if badge {
+        ui.painter().circle_filled(
+            egui::pos2(rect.right() - 14.0, rect.center().y),
+            3.5,
+            pal.ac_tx,
+        );
+    }
+    response.widget_info(|| {
+        egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, selected, label)
+    });
+    response
+}
+
 impl TeyvatmeApp {
     pub(super) fn settings(&mut self, ui: &mut Ui, page: Page) {
         let pal = widgets::p(ui);
         let wide = ui.available_width() >= BREAKPOINT;
         let mut chosen = page;
+        let mut back = false;
         if wide {
             egui::SidePanel::left("settings_nav")
-                .exact_width(200.0)
+                .exact_width(208.0)
                 .resizable(false)
-                .frame(
-                    egui::Frame::new()
-                        .fill(pal.bar)
-                        .inner_margin(egui::Margin::same(10)),
-                )
+                .show_separator_line(false)
+                .frame(egui::Frame::new().fill(pal.bar).inner_margin(egui::Margin {
+                    left: 8,
+                    right: 8,
+                    top: 8,
+                    bottom: 8,
+                }))
                 .show_inside(ui, |ui| {
+                    back = settings_heading(ui);
+                    ui.add_space(6.0);
                     ui.spacing_mut().item_spacing.y = 2.0;
                     for (option, label) in PAGES {
                         let selected = page == option
                             || (option == Page::Destinations && page == Page::Teyvatme);
-                        let text = title_text(label, if selected { pal.tx } else { pal.tx2 });
-                        let mut item = egui::Button::new(text)
-                            .fill(if selected {
-                                pal.over
-                            } else {
-                                egui::Color32::TRANSPARENT
-                            })
-                            .stroke(egui::Stroke::NONE)
-                            .corner_radius(egui::CornerRadius::same(6))
-                            .min_size(vec2(ui.available_width(), 34.0));
-                        if option == Page::About && self.update_put_off.is_some() {
-                            item = item.right_text(RichText::new("●").color(pal.ac_tx));
-                        }
-                        if ui.add(item).clicked() {
+                        let badge = option == Page::About && self.update_put_off.is_some();
+                        if nav_item(ui, page_icon(option), label, selected, badge).clicked() {
                             chosen = option;
                         }
                     }
@@ -68,6 +143,8 @@ impl TeyvatmeApp {
             .frame(egui::Frame::new().inner_margin(egui::Margin::same(16)))
             .show_inside(ui, |ui| {
                 if !wide {
+                    back = settings_heading(ui);
+                    ui.add_space(4.0);
                     let mut tab = if page == Page::Teyvatme {
                         Page::Destinations
                     } else {
@@ -86,7 +163,9 @@ impl TeyvatmeApp {
                 egui::ScrollArea::vertical()
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
-                        ui.set_max_width(600.0);
+                        // At most 600 px; `set_max_width` alone would also
+                        // widen it past a narrower window.
+                        ui.set_max_width(ui.available_width().min(600.0));
                         ui.spacing_mut().item_spacing.y = 10.0;
                         match page {
                             Page::App => self.app_page(ui),
@@ -98,7 +177,9 @@ impl TeyvatmeApp {
                         }
                     });
             });
-        if chosen != page {
+        if back {
+            self.leave_settings();
+        } else if chosen != page {
             self.view = View::Settings(chosen);
         }
     }
@@ -128,15 +209,13 @@ impl TeyvatmeApp {
                     pal.tx2,
                 )),
                 |ui| {
-                    widgets::segmented(
-                        ui,
-                        &mut self.saved_state.minimize_to_tray,
-                        &[
-                            (None, "Ask"),
-                            (Some(true), "Tray"),
-                            (Some(false), "Taskbar"),
-                        ],
-                    );
+                    // Unset (older settings, a fresh install) is the taskbar:
+                    // the title bar's button can't stop to ask.
+                    let mut to_tray = self.saved_state.minimize_to_tray == Some(true);
+                    widgets::segmented(ui, &mut to_tray, &[(true, "Tray"), (false, "Taskbar")]);
+                    if to_tray != (self.saved_state.minimize_to_tray == Some(true)) {
+                        self.saved_state.minimize_to_tray = Some(to_tray);
+                    }
                 },
             );
             divider(ui);

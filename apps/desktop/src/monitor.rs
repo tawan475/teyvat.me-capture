@@ -1686,15 +1686,20 @@ impl Monitor {
                     };
                 }
                 UploadReport::Quiet => {
-                    let _ = toast_tx.send(match result {
-                        Ok(()) => Event::ok(
-                            Topic::Destination,
-                            format!("Live sync · snapshot stored on {host}"),
-                        ),
-                        Err(e) => {
-                            Event::error(Topic::Destination, format!("{host} upload failed · {e}"))
+                    let _ = toast_tx.send(
+                        match result {
+                            Ok(()) => Event::ok(
+                                Topic::Destination,
+                                format!("Live sync · snapshot stored on {host}"),
+                            ),
+                            Err(e) => Event::error(
+                                Topic::Destination,
+                                format!("{host} upload failed · {e}"),
+                            ),
                         }
-                    });
+                        // Live sync stores these by itself; a failure still toasts.
+                        .routine(),
+                    );
                 }
             }
             ctx.request_repaint();
@@ -1804,10 +1809,13 @@ impl Monitor {
                 BatchAnswer::Stored { .. } => {
                     tracing::info!(seq = delta.seq, ?answer, "live sync: batch stored");
                     let changes = delta.changes.len();
-                    let _ = toast_tx.send(Event::ok(
-                        Topic::Destination,
-                        format!("Live sync · {changes} changes sent to {host}"),
-                    ));
+                    let _ = toast_tx.send(
+                        Event::ok(
+                            Topic::Destination,
+                            format!("Live sync · {changes} changes sent to {host}"),
+                        )
+                        .routine(),
+                    );
                 }
                 BatchAnswer::Duplicate => {
                     tracing::info!(seq = delta.seq, ?answer, "live sync: batch stored");

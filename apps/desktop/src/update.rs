@@ -600,16 +600,13 @@ pub async fn check_for_app_update(
         // this hits, downloading by hand is the only way to get it -- but say
         // it once per release, not on every launch for the rest of its life.
         if should_report_manual_install(manual_notice_marker().as_deref(), &release.version) {
-            let _ = toast_tx.send(
-                crate::activity::Event::info(
-                    crate::activity::Topic::App,
-                    format!(
-                        "Teyvat.me {} is out · install it by hand on this platform: {RELEASES_URL}",
-                        release.version
-                    ),
-                )
-                .toast(),
-            );
+            let _ = toast_tx.send(crate::activity::Event::info(
+                crate::activity::Topic::App,
+                format!(
+                    "Teyvat.me {} is out · install it by hand on this platform: {RELEASES_URL}",
+                    release.version
+                ),
+            ));
         }
         return Ok(());
     }
