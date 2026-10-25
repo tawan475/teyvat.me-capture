@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Notification icon: a plain shield (placeholder until the real UI's icon). -->
+<!-- The notification's small icon: the brand's four-point star, monochrome. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
@@ -7,5 +7,5 @@
     android:viewportHeight="24">
     <path
         android:fillColor="#FFFFFFFF"
-        android:pathData="M12,2 L4,5 V11 C4,16 7.4,20.7 12,22 C16.6,20.7 20,16 20,11 V5 Z" />
+        android:pathData="M12,1.5 C12.9,8.2 15.8,11.1 22.5,12 C15.8,12.9 12.9,15.8 12,22.5 C11.1,15.8 8.2,12.9 1.5,12 C8.2,11.1 11.1,8.2 12,1.5 Z" />
 </vector>

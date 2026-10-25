@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FileProvider: Share writes its GOOD JSON to cache/share; Share log sends files/latest.log. -->
+<paths>
+    <cache-path name="share" path="share/" />
+    <files-path name="logs" path="." />
+</paths>

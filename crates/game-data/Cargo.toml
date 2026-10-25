@@ -14,7 +14,9 @@ publish = false
 [dependencies]
 anyhow = "1.0.99"
 clap = { version = "4.5.46", features = ["derive"], optional = true }
-reqwest = { version = "0.12.23", features = ["gzip", "json"] }
+# The Dimbreath download (`needs_update`, `update`); off for the Android
+# app, which only reads the data its build script embedded.
+reqwest = { version = "0.12.23", features = ["gzip", "json"], optional = true }
 serde = { version = "1.0.219", features = ["derive", "alloc"] }
 serde_json = { version = "1.0.143", features = ["alloc"] }
 tokio = { version = "1.47.1", features = [
@@ -35,7 +37,9 @@ tokio = { version = "1.47.1", features = [
 ] }
 
 [features]
-cli = ["dep:clap", "dep:tokio"]
+default = ["download"]
+download = ["dep:reqwest"]
+cli = ["download", "dep:clap", "dep:tokio"]
 
 [[bin]]
 name = "teyvatme-game-data"

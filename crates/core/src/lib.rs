@@ -5,10 +5,12 @@
 //! app: the decode layer from captured frames to account data ([`decode`]),
 //! the decoded account model ([`player_data`]), its GOOD export
 //! ([`good`]), the live-sync deltas and policy ([`delta`], [`live`]), and the
-//! capture recordings ([`pcapng`] writes them, [`recording`] reads them).
+//! capture recordings ([`pcapng`] writes them, [`recording`] reads them),
+//! and wish history from the game's own key ([`wish`]).
 //!
 //! Nothing here captures packets, draws UI or talks to the tracker; those
-//! stay with each app.
+//! stay with each app (the wish history API is called through the app's own
+//! HTTP client).
 
 pub mod decode;
 pub mod delta;
@@ -17,3 +19,4 @@ pub mod live;
 pub mod pcapng;
 pub mod player_data;
 pub mod recording;
+pub mod wish;

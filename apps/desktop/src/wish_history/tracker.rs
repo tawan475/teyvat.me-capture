@@ -17,7 +17,9 @@ use crate::signin::{AuthError, TrackerAuth};
 pub(crate) const MAX_RECORDS_PER_IMPORT: usize = 2_000;
 
 /// The language the records are fetched in (the URL's `lang`).
-pub(crate) const RECORD_LANG: &str = "en-us";
+pub(crate) use teyvatme_core::wish::uigf::RECORD_LANG;
+/// The UTC offset a region's record times are in: the UIGF table.
+pub(crate) use teyvatme_core::wish::uigf::region_timezone;
 
 /// How Teyvat.me proves who it uploads for: the same choice as a snapshot
 /// upload (`app::upload_credential`). Both routes accept either kind and
@@ -178,15 +180,6 @@ pub(crate) struct ImportBody<'a> {
     /// time).
     pub(crate) timezone: i32,
     pub(crate) records: Vec<ImportRecord>,
-}
-
-/// The UTC offset a region's record times are in: the UIGF table.
-pub(crate) fn region_timezone(region: &str) -> i32 {
-    match region {
-        "os_usa" => -5,
-        "os_euro" => 1,
-        _ => 8,
-    }
 }
 
 /// Talks to one tracker with one credential.
