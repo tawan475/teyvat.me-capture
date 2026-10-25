@@ -29,7 +29,8 @@
     <string name="home_waiting_title">Waiting for the game</string>
     <string name="home_waiting_line">Genshin isn\'t running · start it now</string>
     <string name="home_detected_title">Game detected</string>
-    <string name="home_detected_line">Launch captured · enter the world to read your data</string>
+    <string name="home_detected_line">Launch captured · enter the world now</string>
+    <string name="home_already_open_line">Already open · enter the world now</string>
     <string name="home_open_before">Open before the game</string>
     <string name="home_open_genshin">Open Genshin</string>
     <string name="home_login_seen_title">Login seen</string>

@@ -19,7 +19,7 @@ enum class VpnState { Off, Starting, On }
 
 /** What the home screen's hero shows (spec §4.1.1). */
 enum class Hero {
-    CaptureOff, Starting, Waiting, GameDetected, LoginSeen, Decrypting, MissedAlreadyRunning,
+    CaptureOff, Starting, Waiting, GameDetected, GameAlreadyOpen, LoginSeen, Decrypting, MissedAlreadyRunning,
     MissedCaptureStopped, KeyLost;
 
     val isProblem get() = this == MissedAlreadyRunning || this == MissedCaptureStopped || this == KeyLost
@@ -64,6 +64,8 @@ data class Summary(
     val error: String? = null,
     val phase: String = "waiting",
     val missedByRestart: Boolean = false,
+    /** The game's connection began before this capture. */
+    val alreadyOpen: Boolean = false,
     val keyAt: Long? = null,
     val dataVersion: Long = 0,
     val updatedItems: Long? = null,
@@ -95,6 +97,7 @@ data class Summary(
                 error = if (o.isNull("error")) null else o.optString("error"),
                 phase = o.optString("phase", "waiting"),
                 missedByRestart = o.optBoolean("missedByRestart"),
+                alreadyOpen = o.optBoolean("alreadyOpen"),
                 keyAt = o.long("keyAt"),
                 dataVersion = o.optLong("dataVersion"),
                 updatedItems = updated?.long("items"),
@@ -141,7 +144,7 @@ fun hero(vpn: VpnState, summary: Summary): Hero = when (vpn) {
     VpnState.Off -> Hero.CaptureOff
     VpnState.Starting -> Hero.Starting
     VpnState.On -> when (summary.phase) {
-        "gameDetected" -> Hero.GameDetected
+        "gameDetected" -> if (summary.alreadyOpen) Hero.GameAlreadyOpen else Hero.GameDetected
         "loginSeen" -> Hero.LoginSeen
         "decrypting" -> Hero.Decrypting
         "launchMissed" -> if (summary.missedByRestart) Hero.MissedCaptureStopped else Hero.MissedAlreadyRunning

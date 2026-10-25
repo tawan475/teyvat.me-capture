@@ -117,6 +117,9 @@ pub struct Summary {
     pub phase: Phase,
     /// The capture that is running lost the game's login before it.
     pub missed_by_restart: bool,
+    /// The game's connection began before this capture (its handshake was
+    /// not seen): "Game detected" for a game that was already open.
+    pub already_open: bool,
     /// When this login's session key was found.
     pub key_at: Option<u64>,
     /// Bumped whenever the captured data changes.
@@ -273,6 +276,7 @@ impl State {
             error: self.error.clone(),
             phase: self.phase(now),
             missed_by_restart: self.restarted_mid_session,
+            already_open: !self.connection.as_ref().is_some_and(|c| c.began_here),
             key_at: self.connection.as_ref().and_then(|c| c.key_at),
             data_version: self.data_version,
             updated: self.updated,
