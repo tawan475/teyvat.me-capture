@@ -8,6 +8,16 @@ plugins {
 
 val ndkVersionName = "30.0.16248370"
 
+// One version for the whole release: apps/desktop/Cargo.toml's
+// `package.version` (the release workflow tags it). The version code counts
+// up with it (1.2.3 -> 10203), as Google Play needs.
+val releaseVersion: String = rootProject.file("../desktop/Cargo.toml").readLines()
+    .first { it.startsWith("version = ") }
+    .substringAfter('"').substringBefore('"')
+val releaseVersionCode: Int = releaseVersion.substringBefore('-').split('.')
+    .map { it.toInt() }
+    .let { (major, minor, patch) -> major * 10_000 + minor * 100 + patch }
+
 android {
     namespace = "me.teyvat.app"
     compileSdk = 36
@@ -17,8 +27,8 @@ android {
         applicationId = "me.teyvat.app"
         minSdk = 29
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = releaseVersionCode
+        versionName = releaseVersion
         ndk { abiFilters += listOf("arm64-v8a") }
     }
 
