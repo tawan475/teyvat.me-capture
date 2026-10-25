@@ -47,6 +47,27 @@ jobs:
   apk:
     runs-on: ubuntu-latest
     steps:
+      # First, so a release without the key fails at once. A release build
+      # needs the upload key: an APK signed with any other key could never be
+      # updated by the releases after it.
+      - name: Check the upload key
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          # A dispatch that asks for it, or a CI push. Never a workflow_call:
+          # there `inputs` holds no `unsigned`, and github.workflow is the
+          # caller's name.
+          UNSIGNED: ${{ inputs.unsigned == true || (github.event_name == 'push' && github.workflow == 'Android') }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "SIGNED=true" >> "$GITHUB_ENV"
+          elif [ "$UNSIGNED" = "true" ]; then
+            echo "::notice::Building without the upload key (unsigned test build)."
+            echo "SIGNED=false" >> "$GITHUB_ENV"
+          else
+            echo "::error::The ANDROID_KEYSTORE_B64 secret is empty: a release APK must be signed with the upload key. Set ANDROID_KEYSTORE_B64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD, then re-run."
+            exit 1
+          fi
+
       - uses: actions/checkout@v4
 
       - uses: actions/setup-java@v4
@@ -74,24 +95,11 @@ jobs:
       - name: cargo-ndk
         run: cargo install cargo-ndk --version 4.1.2 --locked
 
-      # The upload key from the repository's secrets. A release build needs
-      # it: an APK signed with any other key could never be updated by the
-      # releases after it.
-      - name: Upload key
+      - name: Write the upload key
+        if: env.SIGNED == 'true'
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
-          # A dispatch that asks for it, or a CI push. Never a workflow_call:
-          # there `inputs` holds no `unsigned`.
-          UNSIGNED: ${{ inputs.unsigned == true || (github.event_name == 'push' && github.workflow == 'Android') }}
         run: |
-          if [ -z "$KEYSTORE_B64" ]; then
-            if [ "$UNSIGNED" = "true" ]; then
-              echo "::notice::Building without the upload key (unsigned test build)."
-              exit 0
-            fi
-            echo "::error::The ANDROID_KEYSTORE_B64 secret is not set: a release APK must be signed with the upload key."
-            exit 1
-          fi
           echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/upload.jks"
           echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/upload.jks" >> "$GITHUB_ENV"
 
