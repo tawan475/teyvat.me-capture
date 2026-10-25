@@ -4,122 +4,435 @@
 package me.teyvat.app
 
 import android.Manifest
-import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.Insets
+import android.net.Uri
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import android.util.Log
-import android.view.Window
-import android.view.WindowInsets
-import android.widget.Button
-import android.widget.LinearLayout
-import android.widget.TextView
+import android.provider.Settings as AndroidSettings
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.browser.customtabs.CustomTabsIntent
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import me.teyvat.app.ui.AboutScreen
+import me.teyvat.app.ui.ActivityScreen
+import me.teyvat.app.ui.ExportSettingsActions
+import me.teyvat.app.ui.ExportSettingsScreen
+import me.teyvat.app.ui.HomeActions
+import me.teyvat.app.ui.HomeContent
+import me.teyvat.app.ui.HomeFooter
+import me.teyvat.app.ui.LicencesScreen
+import me.teyvat.app.ui.SettingsActions
+import me.teyvat.app.ui.SettingsScreen
+import me.teyvat.app.ui.SetUpActions
+import me.teyvat.app.ui.SetUpScreen
+import me.teyvat.app.ui.TeyvatScreen
+import me.teyvat.app.ui.TeyvatTheme
+import me.teyvat.app.ui.ThanksScreen
+import me.teyvat.app.ui.Tm
+import me.teyvat.app.ui.TmIcon
+import me.teyvat.app.ui.TmTopBar
+import me.teyvat.app.ui.WelcomeScreen
 
-/** Phase 0 spike screen: Start/Stop and the forwarder's counters. */
-class MainActivity : Activity() {
-    private lateinit var status: TextView
-    private val ticker = Handler(Looper.getMainLooper())
-    private val tick = object : Runnable {
-        override fun run() {
-            val stats = NativeBridge.stats()
-            status.text = if (stats.isEmpty()) "Stopped\n${GameVpnService.lastPcap ?: ""}"
-            else "Running\n${GameVpnService.lastPcap}\n\n${stats.replace(' ', '\n')}"
-            ticker.postDelayed(this, 1000)
+enum class Screen { Welcome, SetUp, Home, Settings, ExportSettings, Teyvat, Activity, About, Thanks, Licences }
+
+/** The one activity: first run, Home and the pushed screens (spec section 3). */
+class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsActions, ExportSettingsActions {
+    private val app get() = application as TeyvatApp
+    private val prefs get() = app.prefs
+    private val capture get() = app.capture
+    private val snackbars = SnackbarHostState()
+    private val stack = mutableStateListOf<Screen>()
+    private var notificationsGranted by mutableStateOf(true)
+    /** The JSON a Save is waiting to write, built when Save was tapped. */
+    private var pendingSave: String? = null
+    /** Start capture asked for notifications first; the VPN comes next. */
+    private var startAfterPermission = false
+
+    private val vpnConsent = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == RESULT_OK) {
+            vpnAllowed()
+        } else {
+            capture.setVpn(VpnState.Off)
+            snack(getString(R.string.vpn_not_allowed), getString(R.string.try_again)) { startCapture() }
         }
+    }
+
+    private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+        notificationsGranted = notificationsAllowed()
+        if (startAfterPermission) {
+            startAfterPermission = false
+            askForVpn()
+        }
+    }
+
+    private val saveDocument = registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        val json = pendingSave
+        pendingSave = null
+        if (uri == null || json == null) return@registerForActivityResult
+        lifecycleScope.launch {
+            val ok = withContext(Dispatchers.IO) { runCatching { Exports.write(this@MainActivity, uri, json) }.isSuccess }
+            if (ok) {
+                prefs.update { it.copy(lastSave = uri.toString()) }
+                val name = uri.lastPathSegment?.substringAfterLast('/') ?: Exports.fileName()
+                NativeBridge.note("ok", getString(R.string.export_saved, name))
+                snack(getString(R.string.export_saved, name), getString(R.string.open)) { Exports.openFile(this@MainActivity, uri) }
+            } else {
+                snack(getString(R.string.export_save_failed))
+            }
+        }
+    }
+
+    private val chooseTree = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri == null) return@registerForActivityResult
+        contentResolver.takePersistableUriPermission(
+            uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+        )
+        prefs.update { it.copy(exportTree = uri.toString(), autoExport = true, lastAutoExport = null) }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        // Target SDK 35+ draws edge to edge, and the framework's action bar
-        // then sits over the top of the content (it covered most of Start VPN,
-        // so taps there never reached it). No action bar; pad by the bars.
-        requestWindowFeature(Window.FEATURE_NO_TITLE)
-        val pad = (16 * resources.displayMetrics.density).toInt()
-        status = TextView(this).apply { textSize = 16f }
-        val start = Button(this).apply {
-            text = "Start VPN"
-            setOnClickListener { requestVpn() }
-        }
-        val stop = Button(this).apply {
-            text = "Stop VPN"
-            setOnClickListener {
-                startService(Intent(this@MainActivity, GameVpnService::class.java).setAction(GameVpnService.ACTION_STOP))
+        GameVpnService.createChannels(this)
+        notificationsGranted = notificationsAllowed()
+        if (stack.isEmpty()) stack.add(if (prefs.value.onboarded) Screen.Home else Screen.Welcome)
+        handle(intent)
+        setContent {
+            val settings by prefs.settings.collectAsState()
+            val dark = when (settings.theme) {
+                ThemeMode.System -> isSystemInDarkTheme()
+                ThemeMode.Light -> false
+                ThemeMode.Dark -> true
             }
+            TeyvatTheme(dark) { Root(settings) }
         }
-        setContentView(LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            addView(start)
-            addView(stop)
-            addView(status)
-            setOnApplyWindowInsetsListener { view, insets ->
-                val bars = systemBars(insets)
-                view.setPadding(pad + bars.left, pad + bars.top, pad + bars.right, pad + bars.bottom)
-                insets
-            }
-        })
     }
 
-    private fun systemBars(insets: WindowInsets): Insets =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
-        } else {
-            @Suppress("DEPRECATION")
-            insets.systemWindowInsets
-        }
-
-
-    /** Notifications first (Android 13+), for the service's Stop notification; refusing still starts. */
-    private fun requestVpn() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) {
-            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQUEST_NOTIFICATIONS)
-            return
-        }
-        requestConsent()
-    }
-
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        Log.i("teyvatme", "notification permission: ${grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED}")
-        if (requestCode == REQUEST_NOTIFICATIONS) requestConsent()
-    }
-
-    private fun requestConsent() {
-        val consent = VpnService.prepare(this)
-        Log.i("teyvatme", "Start tapped, consent needed: ${consent != null}")
-        if (consent != null) startActivityForResult(consent, REQUEST_VPN) else startVpn()
-    }
-
-    @Deprecated("Activity result API is androidx; the spike has no dependencies")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        Log.i("teyvatme", "VPN consent result: $resultCode")
-        if (requestCode == REQUEST_VPN && resultCode == RESULT_OK) startVpn()
-    }
-
-    private fun startVpn() {
-        val started = startForegroundService(Intent(this, GameVpnService::class.java))
-        Log.i("teyvatme", "startForegroundService -> $started")
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handle(intent)
     }
 
     override fun onResume() {
         super.onResume()
-        ticker.post(tick)
+        notificationsGranted = notificationsAllowed()
+        capture.refresh()
     }
 
-    override fun onPause() {
-        ticker.removeCallbacks(tick)
-        super.onPause()
+    /** The notification's actions and the alert's Start capture. */
+    private fun handle(intent: Intent?) {
+        when (intent?.action) {
+            ACTION_SHARE_GOOD -> shareGood()
+            ACTION_START_CAPTURE -> startCapture()
+            else -> return
+        }
+        intent.action = null
+        if (stack.lastOrNull() != Screen.Home && prefs.value.onboarded) {
+            stack.clear()
+            stack.add(Screen.Home)
+        }
     }
 
-    private companion object {
-        const val REQUEST_VPN = 1
-        const val REQUEST_NOTIFICATIONS = 2
+    private fun push(screen: Screen) {
+        stack.add(screen)
+    }
+
+    private fun pop() {
+        if (stack.size > 1) stack.removeAt(stack.lastIndex) else finish()
+    }
+
+    @Composable
+    private fun Root(settings: Settings) {
+        val screen = stack.lastOrNull() ?: Screen.Home
+        BackHandler(enabled = stack.size > 1) { pop() }
+        val vpn by capture.vpn.collectAsState()
+        val summary by capture.summary.collectAsState()
+        val hero = hero(vpn, summary)
+        val folder = Exports.folderLabel(this, settings)
+        Scaffold(
+            containerColor = MaterialTheme.colorScheme.background,
+            topBar = {
+                Box(Modifier.windowInsetsPadding(WindowInsets.statusBars)) {
+                    when (screen) {
+                        Screen.Welcome -> {}
+                        Screen.SetUp -> TmTopBar(onBack = ::pop, title = "")
+                        Screen.Home -> TmTopBar(actions = {
+                            IconButton(onClick = ::openSettings) { TmIcon(R.drawable.ic_settings, stringResource(R.string.settings)) }
+                        })
+                        Screen.Activity -> TmTopBar(stringResource(R.string.activity), ::pop) {
+                            IconButton(onClick = ::shareLog) { TmIcon(R.drawable.ic_share, stringResource(R.string.share_log)) }
+                        }
+                        Screen.Settings -> TmTopBar(stringResource(R.string.settings), ::pop)
+                        Screen.ExportSettings -> TmTopBar(stringResource(R.string.export_title), ::pop)
+                        Screen.Teyvat -> TmTopBar(Links.trackerHost, ::pop)
+                        Screen.About -> TmTopBar(stringResource(R.string.about), ::pop)
+                        Screen.Thanks -> TmTopBar(stringResource(R.string.thanks), ::pop)
+                        Screen.Licences -> TmTopBar(stringResource(R.string.licences), ::pop)
+                    }
+                }
+            },
+            bottomBar = {
+                if (screen == Screen.Home) {
+                    val event = activityLine(summary)
+                    val dot = when (vpn) {
+                        VpnState.On -> Tm.colors.success
+                        VpnState.Starting -> MaterialTheme.colorScheme.outline
+                        VpnState.Off -> MaterialTheme.colorScheme.error
+                    }
+                    HomeFooter(dot, event?.line() ?: stringResource(R.string.footer_idle), event?.isError == true, ::openActivity)
+                }
+            },
+            snackbarHost = {
+                SnackbarHost(snackbars) { data ->
+                    Snackbar(
+                        data,
+                        containerColor = MaterialTheme.colorScheme.inverseSurface,
+                        contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+                        actionColor = MaterialTheme.colorScheme.inversePrimary,
+                    )
+                }
+            },
+        ) { padding ->
+            val bottomOnly = PaddingValues(top = padding.calculateTopPadding(), bottom = padding.calculateBottomPadding())
+            when (screen) {
+                Screen.Welcome -> WelcomeScreen(bottomOnly) { push(Screen.SetUp) }
+                Screen.SetUp -> SetUpScreen(bottomOnly, settings, folder, notificationsGranted, this)
+                Screen.Home -> HomeContent(hero, summary, settings, capture.startingSince, folder, this, padding)
+                Screen.Settings -> SettingsScreen(padding, settings, this)
+                Screen.ExportSettings -> ExportSettingsScreen(padding, settings, folder, this)
+                Screen.Teyvat -> TeyvatScreen(padding) { openUrl(Links.trackerSite) }
+                Screen.Activity -> ActivityScreen(padding, summary.events)
+                Screen.About -> AboutScreen(padding, BuildConfig.VERSION_NAME, gameDataLabel(summary), ::openUrl) { push(Screen.Thanks) }
+                Screen.Thanks -> ThanksScreen(padding) { push(Screen.Licences) }
+                Screen.Licences -> LicencesScreen(padding, ::openUrl)
+            }
+        }
+    }
+
+    private fun snack(message: String, action: String? = null, onAction: (() -> Unit)? = null) {
+        lifecycleScope.launch {
+            snackbars.currentSnackbarData?.dismiss()
+            val result = snackbars.showSnackbar(message, action)
+            if (result == SnackbarResult.ActionPerformed) onAction?.invoke()
+        }
+    }
+
+    // -- capture ------------------------------------------------------------
+
+    override fun startCapture() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !notificationsAllowed() && !askedForNotifications) {
+            askedForNotifications = true
+            startAfterPermission = true
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            return
+        }
+        askForVpn()
+    }
+
+    private var askedForNotifications = false
+
+    private fun askForVpn() {
+        val consent = VpnService.prepare(this)
+        if (consent != null) {
+            try {
+                vpnConsent.launch(consent)
+            } catch (_: ActivityNotFoundException) {
+                snack(getString(R.string.vpn_not_allowed))
+            }
+        } else {
+            vpnAllowed()
+        }
+    }
+
+    private fun vpnAllowed() {
+        if (!prefs.value.onboarded) {
+            prefs.update { it.copy(onboarded = true) }
+            stack.clear()
+            stack.add(Screen.Home)
+        }
+        capture.setVpn(VpnState.Starting)
+        GameVpnService.start(this)
+    }
+
+    override fun gameInstalled() = Links.gameLaunch(this) != null
+
+    override fun openGenshin() {
+        Links.gameLaunch(this)?.let(::startActivity)
+    }
+
+    override fun forceStopGenshin() {
+        runCatching { startActivity(Links.gameAppInfo()) }
+    }
+
+    // -- navigation -----------------------------------------------------------
+
+    override fun openActivity() = push(Screen.Activity)
+    override fun openSettings() = push(Screen.Settings)
+    override fun openExportSettings() = push(Screen.ExportSettings)
+    override fun openTeyvat() = push(Screen.Teyvat)
+    override fun openAbout() = push(Screen.About)
+
+    override fun openUrl(url: String) {
+        try {
+            CustomTabsIntent.Builder().setShowTitle(true).build().launchUrl(this, Uri.parse(url))
+        } catch (_: ActivityNotFoundException) {
+            runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+        }
+    }
+
+    // -- export -------------------------------------------------------------
+
+    /** The GOOD JSON for a user action, or a snackbar saying why not. */
+    private fun goodOrSay(then: (String) -> Unit) {
+        val settings = prefs.value
+        when (val problem = Exports.problem(capture.summary.value, settings.filters)) {
+            ExportProblem.NothingYet -> return snack(getString(R.string.export_nothing))
+            is ExportProblem.Missing -> return snack(getString(R.string.export_not_captured, problem.what))
+            null -> {}
+        }
+        lifecycleScope.launch {
+            val json = withContext(Dispatchers.Default) { Exports.good(settings.filters) }
+            if (json == null) snack(getString(R.string.export_nothing)) else then(json)
+        }
+    }
+
+    override fun saveGood() = goodOrSay { json ->
+        pendingSave = json
+        saveDocument.launch(Exports.fileName())
+    }
+
+    override fun shareGood() = goodOrSay { json ->
+        lifecycleScope.launch {
+            val intent = withContext(Dispatchers.IO) { Exports.shareIntent(this@MainActivity, json) }
+            startActivity(intent)
+        }
+    }
+
+    override fun copyGood() = goodOrSay { json ->
+        if (Exports.copy(this, "GOOD JSON", json)) {
+            snack(getString(R.string.export_copied))
+        } else {
+            snack(getString(R.string.export_too_big))
+        }
+    }
+
+    override fun openExportFolder() {
+        val settings = prefs.value
+        if (!settings.autoExport && settings.lastSave != null) {
+            if (Exports.openFile(this, Uri.parse(settings.lastSave))) return
+        }
+        if (!Exports.openFolder(this, settings)) snack(getString(R.string.export_no_folder))
+    }
+
+    override fun setAutoExport(on: Boolean) {
+        prefs.update { it.copy(autoExport = on) }
+    }
+
+    override fun chooseFolder() {
+        runCatching { chooseTree.launch(null) }
+    }
+
+    override fun useDownloads() {
+        prefs.value.exportTree?.let { tree ->
+            runCatching {
+                contentResolver.releasePersistableUriPermission(
+                    Uri.parse(tree), Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                )
+            }
+        }
+        prefs.update { it.copy(exportTree = null, lastAutoExport = null) }
+    }
+
+    override fun setFilters(filters: ExportFilters) {
+        prefs.update { it.copy(filters = filters) }
+    }
+
+    /** Copy achievements; with [openUrl], open StarDB or Seelie.me after. */
+    override fun copyAchievements(openUrl: String?) {
+        val json = NativeBridge.achievements()
+        if (json == null) {
+            if (openUrl != null) {
+                snack(getString(R.string.achievements_not_found), getString(R.string.open_anyway)) { openUrl(openUrl) }
+            } else {
+                snack(getString(R.string.achievements_not_found))
+            }
+            return
+        }
+        Exports.copy(this, "Achievements", json)
+        snack(getString(R.string.achievements_copied, capture.summary.value.counts.achievements))
+        if (openUrl != null) openUrl(openUrl)
+    }
+
+    private fun shareLog() {
+        val intent = Exports.shareLogIntent(this) ?: return snack(getString(R.string.no_log))
+        startActivity(intent)
+    }
+
+    // -- set up and settings ------------------------------------------------
+
+    override fun openVpnSettings() {
+        runCatching { startActivity(Intent(AndroidSettings.ACTION_VPN_SETTINGS)) }
+    }
+
+    override fun openAlwaysOnVpn() = openVpnSettings()
+
+    override fun notificationsAllowed(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+
+    override fun allowNotifications() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            askedForNotifications = true
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    override fun openNotificationSettings() {
+        runCatching {
+            startActivity(Intent(AndroidSettings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(AndroidSettings.EXTRA_APP_PACKAGE, packageName))
+        }
+    }
+
+    override fun setTheme(theme: ThemeMode) {
+        prefs.update { it.copy(theme = theme) }
+    }
+
+    override fun setRecordCapture(on: Boolean) {
+        prefs.update { it.copy(recordCapture = on) }
+    }
+
+    companion object {
+        const val ACTION_SHARE_GOOD = "me.teyvat.app.SHARE_GOOD"
+        const val ACTION_START_CAPTURE = "me.teyvat.app.START_CAPTURE"
     }
 }

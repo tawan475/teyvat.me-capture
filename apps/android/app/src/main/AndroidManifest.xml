@@ -8,21 +8,33 @@
          Android 14+ allows for a consented VPN app. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" />
-    <!-- Its notification (with Stop), asked for at Start on Android 13+. -->
+    <!-- The capture notification, asked for in Set up and at Start (13+). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- The VPN's allowed list names the game, which needs it visible (API 30+). -->
+    <!-- The VPN's allowed list names the game, which needs it visible (API 30+);
+         also Open Genshin. -->
     <queries>
         <package android:name="com.miHoYo.GenshinImpact" />
+        <!-- Custom Tabs for the links. -->
+        <intent>
+            <action android:name="android.support.customtabs.action.CustomTabsService" />
+        </intent>
     </queries>
 
     <application
-        android:label="Teyvat.me (spike)"
-        android:allowBackup="false">
+        android:name=".TeyvatApp"
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Teyvat">
 
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:label="@string/launcher_name"
+            android:launchMode="singleTask"
+            android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -38,5 +50,15 @@
                 <action android:name="android.net.VpnService" />
             </intent-filter>
         </service>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 </manifest>

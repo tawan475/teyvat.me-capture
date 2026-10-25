@@ -6,7 +6,7 @@ name = "teyvatme-android"
 version = "0.0.0"
 edition = "2024"
 publish = false
-description = "Native side of Teyvat.me's Android app: the VPN forwarder and the game traffic tee."
+description = "Native side of Teyvat.me's Android app: the VPN forwarder, the game traffic tee and the decoder."
 
 # Built only for Android (cargo-ndk, from android/app's Gradle build), so it
 # stays out of the root workspace and its host-side clippy/test runs.
@@ -17,12 +17,34 @@ crate-type = ["cdylib"]
 
 [dependencies]
 anyhow = "1.0.99"
+base64 = "0.22"
+chrono = "0.4.42"
+flate2 = "1.1.9"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.143"
+teyvatme-core = { path = "../../../crates/core" }
+teyvatme-game-data = { path = "../../../crates/game-data", default-features = false }
+teyvatme-protocol = { path = "../../../crates/protocol" }
+# The core and protocol crates log through tracing; a fmt subscriber hands
+# their events to this crate's logger (logcat and latest.log). No
+# `tracing-log`: the logger's own records must not loop back.
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.20", default-features = false, features = ["fmt", "std"] }
 etherparse = "0.20.3"
 ipstack = "1.0.1"
 jni = "0.21.1"
 libc = "0.2.177"
 log = "0.4.27"
 tokio = { version = "1.47.1", features = ["rt-multi-thread", "net", "io-util", "time", "macros", "sync"] }
+
+# The game data the decoder embeds, downloaded at build time the way the
+# desktop's build.rs does it.
+[build-dependencies]
+flate2 = "1.1.9"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.143"
+teyvatme-game-data = { path = "../../../crates/game-data" }
+tokio = { version = "1.47.1", features = ["rt", "macros"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
 android_logger = "0.15.1"

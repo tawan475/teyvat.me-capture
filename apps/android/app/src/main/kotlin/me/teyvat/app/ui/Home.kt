@@ -1,0 +1,341 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 tawan475
+
+package me.teyvat.app.ui
+
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
+import me.teyvat.app.Hero
+import me.teyvat.app.Links
+import me.teyvat.app.R
+import me.teyvat.app.Settings
+import me.teyvat.app.Summary
+import me.teyvat.app.grouped
+import me.teyvat.app.hhmm
+import me.teyvat.app.line
+import me.teyvat.app.title
+
+/** What the home screen's buttons do; MainActivity implements it. */
+interface HomeActions {
+    fun startCapture()
+    fun openGenshin()
+    fun gameInstalled(): Boolean
+    fun forceStopGenshin()
+    fun openActivity()
+    fun openSettings()
+    fun openExportSettings()
+    fun saveGood()
+    fun shareGood()
+    fun copyGood()
+    fun openExportFolder()
+    fun setAutoExport(on: Boolean)
+    fun copyAchievements(openUrl: String?)
+    fun openUrl(url: String)
+}
+
+/** Now, ticking once a second, for "just now" and Starting's 30 s. */
+@Composable
+fun rememberNow(): Long {
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(1_000)
+            now = System.currentTimeMillis()
+        }
+    }
+    return now
+}
+
+@Composable
+fun HomeContent(
+    hero: Hero,
+    summary: Summary,
+    settings: Settings,
+    startingSince: Long,
+    folderLabel: String,
+    actions: HomeActions,
+    padding: PaddingValues,
+) {
+    val now = rememberNow()
+    LazyColumn(
+        contentPadding = PaddingValues(
+            start = 16.dp, end = 16.dp, top = padding.calculateTopPadding(), bottom = padding.calculateBottomPadding() + 16.dp,
+        ),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item { HeroCard(hero, summary, startingSince, now, actions) }
+        item { CapturedCard(summary, now) }
+        item { GreyCard(R.drawable.ic_sparkles, stringResource(R.string.wish_title), stringResource(R.string.not_in_this_version)) }
+        item { ExportCard(summary, settings, folderLabel, actions) }
+        item { DestinationsCard(actions) }
+    }
+}
+
+@Composable
+private fun HeroCard(hero: Hero, summary: Summary, startingSince: Long, now: Long, actions: HomeActions) {
+    val context = LocalContext.current
+    val title = stringResource(hero.title())
+    val line = hero.line(context, summary)
+    val tm = Tm.colors
+    val scheme = MaterialTheme.colorScheme
+    val vpn = stringResource(R.string.step_vpn)
+    val login = stringResource(R.string.step_login)
+    val key = stringResource(R.string.step_key)
+    fun steps(a: Step, b: Step, c: Step) = listOf(vpn to a, login to b, key to c)
+    when (hero) {
+        Hero.CaptureOff -> StatusHero(R.drawable.ic_shield_off, DiscKind.Neutral, title, line, steps(Step.Pending, Step.Pending, Step.Pending)) {
+            TmButton(stringResource(R.string.home_start_capture), actions::startCapture, large = true, icon = R.drawable.ic_power)
+        }
+        Hero.Starting -> StatusHero(null, DiscKind.Neutral, title, line, steps(Step.Now, Step.Pending, Step.Pending), spinning = true) {
+            if (now - startingSince > 30_000) {
+                TmButton(stringResource(R.string.home_open_activity), actions::openActivity, kind = ButtonKind.Text)
+            }
+        }
+        Hero.Waiting, Hero.AtTitleScreen -> StatusHero(R.drawable.ic_gamepad, DiscKind.Neutral, title, line, steps(Step.Done, Step.Now, Step.Pending)) {
+            if (hero == Hero.Waiting) {
+                InfoChip(stringResource(R.string.home_open_before))
+                if (actions.gameInstalled()) {
+                    TmButton(stringResource(R.string.home_open_genshin), actions::openGenshin, kind = ButtonKind.Tonal, large = true, icon = R.drawable.ic_play)
+                }
+            }
+        }
+        Hero.LoginSeen -> StatusHero(R.drawable.ic_log_in, DiscKind.Fill, title, line, steps(Step.Done, Step.Done, Step.Now))
+        Hero.Decrypting -> StatusHero(
+            R.drawable.ic_circle_check, DiscKind.Success, title, line, steps(Step.Done, Step.Done, Step.Done),
+            container = tm.successContainer, border = tm.successContainer,
+        )
+        Hero.MissedAlreadyRunning, Hero.MissedCaptureStopped -> StatusHero(
+            R.drawable.ic_triangle_alert, DiscKind.Error, title, line,
+            if (hero == Hero.MissedAlreadyRunning) steps(Step.Done, Step.Failed, Step.Pending) else steps(Step.Failed, Step.Pending, Step.Pending),
+            container = scheme.errorContainer, border = tm.errorBorder,
+        ) {
+            Text(stringResource(R.string.home_reenter), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+            TmButton(
+                stringResource(R.string.home_force_stop), actions::forceStopGenshin, kind = ButtonKind.Danger, large = true,
+                trailingIcon = R.drawable.ic_external_link,
+            )
+            Text(
+                stringResource(R.string.home_or_restart), style = MaterialTheme.typography.bodyMedium,
+                color = scheme.onSurfaceVariant, modifier = Modifier.align(Alignment.CenterHorizontally),
+            )
+        }
+        Hero.KeyLost -> StatusHero(
+            R.drawable.ic_triangle_alert, DiscKind.Error, title, line, steps(Step.Done, Step.Done, Step.Failed),
+            container = scheme.errorContainer, border = tm.errorBorder,
+        ) {
+            Text(stringResource(R.string.home_reenter), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+            Text(stringResource(R.string.home_data_kept), style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun InfoChip(text: String) {
+    Row(
+        Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        TmIcon(R.drawable.ic_info, null, size = 16.dp)
+        Spacer(Modifier.width(6.dp))
+        Text(text, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** "HH:mm · just now" / "· 5 min ago" / "· 1 h ago". */
+@Composable
+private fun ago(at: Long, now: Long): String {
+    val minutes = ((now - at) / 60_000).coerceAtLeast(0)
+    val rel = when {
+        minutes < 1 -> stringResource(R.string.just_now)
+        minutes < 60 -> stringResource(R.string.minutes_ago, minutes.toInt())
+        else -> stringResource(R.string.hours_ago, (minutes / 60).toInt())
+    }
+    return "${hhmm(at)} · $rel"
+}
+
+@Composable
+private fun CapturedCard(summary: Summary, now: Long) {
+    TmCard {
+        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.captured), style = MaterialTheme.typography.titleSmall)
+                val player = summary.player
+                val sub = when {
+                    !summary.captured -> stringResource(R.string.captured_nothing)
+                    player?.ar != null && player.server != null -> stringResource(R.string.captured_ar, player.ar, player.server)
+                    player?.ar != null -> stringResource(R.string.captured_ar_only, player.ar)
+                    else -> null
+                }
+                if (sub != null) {
+                    Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            summary.dataAt?.let {
+                Text(ago(it, now), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+            }
+        }
+        if (summary.captured) {
+            val c = summary.counts
+            fun v(n: Int, at: Long?) = if (at == null) null else grouped(n)
+            val narrow = LocalDensity.current.fontScale >= 1.3f
+            val tiles = listOf(
+                Triple(v(c.characters, summary.updatedCharacters), stringResource(R.string.tile_characters), summary.updatedCharacters),
+                Triple(v(c.weapons, summary.updatedItems), stringResource(R.string.tile_weapons), summary.updatedItems),
+                Triple(v(c.artifacts, summary.updatedItems), stringResource(R.string.tile_artifacts), summary.updatedItems),
+                Triple(v(c.materials, summary.updatedItems), stringResource(R.string.tile_materials), summary.updatedItems),
+                Triple(v(c.achievements, summary.updatedAchievements), stringResource(R.string.tile_achievements), summary.updatedAchievements),
+            )
+            val rows = if (narrow) tiles.chunked(2) else listOf(tiles.take(3), tiles.drop(3))
+            Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                for (row in rows) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        for ((value, label, at) in row) {
+                            StatTile(value, label, Modifier.weight(1f), flashKey = at)
+                        }
+                        if (narrow && row.size == 1) Spacer(Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ExportCard(summary: Summary, settings: Settings, folderLabel: String, actions: HomeActions) {
+    var menu by remember { mutableStateOf(false) }
+    val enabled = summary.captured
+    TmCard {
+        CardHeader(stringResource(R.string.export_title)) {
+            val hasFolder = settings.autoExport || settings.lastSave != null
+            IconButton(onClick = actions::openExportFolder, enabled = hasFolder) {
+                TmIcon(
+                    R.drawable.ic_folder,
+                    stringResource(if (hasFolder) R.string.export_open_folder else R.string.export_no_folder),
+                    tint = if (hasFolder) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.outline,
+                )
+            }
+            Box {
+                IconButton(onClick = { menu = true }) {
+                    TmIcon(R.drawable.ic_more_vertical, stringResource(R.string.export_more))
+                }
+                DropdownMenu(menu, onDismissRequest = { menu = false }) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.export_copy_achievements)) },
+                        leadingIcon = { TmIcon(R.drawable.ic_trophy, null, size = 20.dp) },
+                        onClick = { menu = false; actions.copyAchievements(null) },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.export_stardb)) },
+                        leadingIcon = { TmIcon(R.drawable.ic_external_link, null, size = 20.dp) },
+                        onClick = { menu = false; actions.copyAchievements(Links.STARDB_ACHIEVEMENTS) },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.export_seelie)) },
+                        leadingIcon = { TmIcon(R.drawable.ic_external_link, null, size = 20.dp) },
+                        onClick = { menu = false; actions.copyAchievements(Links.SEELIE_ACHIEVEMENTS) },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.export_filters)) },
+                        leadingIcon = { TmIcon(R.drawable.ic_sliders, null, size = 20.dp) },
+                        onClick = { menu = false; actions.openExportSettings() },
+                    )
+                }
+            }
+        }
+        Row(
+            Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            val described = stringResource(R.string.export_save_description)
+            TmButton(
+                stringResource(R.string.export_save), actions::saveGood, Modifier.weight(1.7f),
+                enabled = enabled, contentDescription = described,
+            )
+            TmButton(stringResource(R.string.export_share), actions::shareGood, Modifier.weight(1f), kind = ButtonKind.Outlined, enabled = enabled)
+            TmButton(stringResource(R.string.export_copy), actions::copyGood, Modifier.weight(1f), kind = ButtonKind.Outlined, enabled = enabled)
+        }
+        CardDivider()
+        val last = settings.lastAutoExport
+        val line = when {
+            !settings.autoExport -> stringResource(R.string.export_auto_off)
+            last != null -> stringResource(R.string.export_auto_saved, hhmm(last.at), last.name)
+            else -> stringResource(R.string.export_auto_on, folderLabel)
+        }
+        SwitchRow(
+            stringResource(R.string.export_auto), line, settings.autoExport, actions::setAutoExport,
+            icon = R.drawable.ic_folder,
+        )
+    }
+}
+
+@Composable
+private fun DestinationsCard(actions: HomeActions) {
+    TmCard {
+        CardHeader(stringResource(R.string.destinations), stringResource(R.string.optional))
+        Row(
+            Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Avatar(icon = R.drawable.ic_cloud_upload)
+            Spacer(Modifier.width(16.dp))
+            Column(Modifier.weight(1f)) {
+                Row(
+                    Modifier.clickable { actions.openUrl(Links.trackerSite) }.semantics { contentDescription = Links.trackerHost },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        Links.trackerHost, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false),
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    TmIcon(R.drawable.ic_external_link, null, tint = MaterialTheme.colorScheme.primary, size = 16.dp)
+                }
+                Text(
+                    stringResource(R.string.not_in_this_version),
+                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            TmButton(stringResource(R.string.connect), {}, kind = ButtonKind.Tonal, enabled = false)
+        }
+    }
+}

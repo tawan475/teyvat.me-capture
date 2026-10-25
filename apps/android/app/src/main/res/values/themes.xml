@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Only the window before Compose draws: no action bar, the screen ground. -->
+    <style name="Theme.Teyvat" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/window</item>
+    </style>
+</resources>
