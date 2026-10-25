@@ -136,7 +136,9 @@
     <string name="welcome_only_genshin">Only Genshin</string>
     <string name="welcome_only_genshin_line">Other apps skip the VPN</string>
     <string name="welcome_read_only">Read only</string>
-    <string name="welcome_read_only_line">Nothing is sent to the game</string>
+    <string name="welcome_read_only_line">Its packets pass on unchanged</string>
+    <string name="welcome_on_phone">Stays on this phone</string>
+    <string name="welcome_on_phone_line">Nothing is uploaded unless you share it</string>
     <string name="welcome_before_game">Open before the game</string>
     <string name="welcome_before_game_line">It must see Genshin\'s login</string>
     <string name="get_started">Get started</string>
@@ -150,7 +152,7 @@
     <string name="notifications">Notifications</string>
     <string name="notifications_line">Capture status while you play</string>
     <string name="allow">Allow</string>
-    <string name="setup_vpn_dialog">Android asks you to allow a VPN</string>
+    <string name="setup_vpn_dialog">Android asks you to allow a VPN: it is how an app may read another app\'s traffic</string>
 
     <!-- Settings -->
     <string name="section_app">App</string>
@@ -200,6 +202,7 @@
     <string name="thanks_and_licences">Thanks and licences</string>
     <string name="thanks">Thanks</string>
     <string name="licences">Open-source licences</string>
+    <string name="third_party_notices">Third-party notices</string>
     <string name="hoyoverse_names">Genshin Impact and its names belong to HoYoverse</string>
 
     <!-- Notification -->

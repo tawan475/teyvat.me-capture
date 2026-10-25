@@ -63,7 +63,7 @@ import me.teyvat.app.ui.TmIcon
 import me.teyvat.app.ui.TmTopBar
 import me.teyvat.app.ui.WelcomeScreen
 
-enum class Screen { Welcome, SetUp, Home, Settings, ExportSettings, Teyvat, Activity, About, Thanks, Licences }
+enum class Screen { Welcome, SetUp, Home, Settings, ExportSettings, Teyvat, Activity, About, Thanks, Licences, Notices }
 
 /** The one activity: first run, Home and the pushed screens (spec section 3). */
 class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsActions, ExportSettingsActions {
@@ -210,6 +210,7 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
                         Screen.About -> TmTopBar(stringResource(R.string.about), ::pop)
                         Screen.Thanks -> TmTopBar(stringResource(R.string.thanks), ::pop)
                         Screen.Licences -> TmTopBar(stringResource(R.string.licences), ::pop)
+                        Screen.Notices -> TmTopBar(stringResource(R.string.third_party_notices), ::pop)
                     }
                 }
             },
@@ -246,7 +247,8 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
                 Screen.Activity -> ActivityScreen(padding, summary.events)
                 Screen.About -> AboutScreen(padding, BuildConfig.VERSION_NAME, gameDataLabel(summary), ::openUrl) { push(Screen.Thanks) }
                 Screen.Thanks -> ThanksScreen(padding) { push(Screen.Licences) }
-                Screen.Licences -> LicencesScreen(padding, ::openUrl)
+                Screen.Licences -> LicencesScreen(padding, ::openUrl) { push(Screen.Notices) }
+                Screen.Notices -> me.teyvat.app.ui.NoticesScreen(padding)
             }
         }
     }
