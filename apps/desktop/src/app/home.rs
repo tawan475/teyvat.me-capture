@@ -36,6 +36,7 @@ impl TeyvatmeApp {
                     .show(ui, |ui| {
                         ui.spacing_mut().item_spacing.y = 12.0;
                         self.crash_banner(ui);
+                        self.update_banner(ui);
                         let wide = ui.available_width() >= BREAKPOINT - 32.0;
                         if wide {
                             ui.columns(2, |columns| {
@@ -59,6 +60,34 @@ impl TeyvatmeApp {
                         }
                     });
             });
+    }
+
+    /// The update put off at start, until installed (from About).
+    fn update_banner(&mut self, ui: &mut Ui) {
+        let Some(version) = self.update_put_off.clone() else {
+            return;
+        };
+        let pal = widgets::p(ui);
+        let mut open = false;
+        egui::Frame::new()
+            .fill(pal.ac_con)
+            .corner_radius(egui::CornerRadius::same(12))
+            .inner_margin(egui::Margin::symmetric(14, 10))
+            .show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                ui.horizontal(|ui| {
+                    ui.add(icons::image(icons::download(), 18.0, pal.ac_on));
+                    line(ui, strong_text(format!("Update {version}"), pal.ac_on));
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        open = button(ui, ButtonKind::Secondary, None, "Details", false)
+                            .on_hover_text("Installs and restarts Teyvat.me")
+                            .clicked();
+                    });
+                });
+            });
+        if open {
+            self.open_settings(Page::About);
+        }
     }
 
     /// "Crashed last time" / "Stopped unexpectedly", until dismissed.
@@ -149,7 +178,11 @@ impl TeyvatmeApp {
                     }
                 },
             );
-            response.on_hover_text("Windows lets only administrators read network packets");
+            self.hero_actions(
+                ui,
+                response,
+                "Windows lets only administrators read network packets",
+            );
             return;
         }
 
@@ -291,7 +324,51 @@ impl TeyvatmeApp {
                 },
             ),
         };
-        response.on_hover_text(status.tooltip());
+        self.hero_actions(ui, response, status.tooltip());
+    }
+
+    /// History and Settings in the status card's top-right corner, and the
+    /// card's tooltip everywhere else on it.
+    fn hero_actions(&mut self, ui: &mut Ui, hero: egui::Response, tooltip: &str) {
+        let pal = widgets::p(ui);
+        let pad = widgets::HERO_PADDING;
+        let corner = egui::Rect::from_min_size(
+            egui::pos2(
+                hero.rect.right() - pad - widgets::HERO_ACTIONS_WIDTH,
+                hero.rect.top() + pad,
+            ),
+            egui::vec2(widgets::HERO_ACTIONS_WIDTH, 44.0),
+        );
+        let mut corner_ui = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(corner)
+                .layout(Layout::right_to_left(Align::Center)),
+        );
+        corner_ui.spacing_mut().item_spacing.x = 4.0;
+        if icon_button(&mut corner_ui, icons::settings(), "Settings").clicked() {
+            self.open_settings(Page::App);
+        }
+        let hint = match self.activity.latest() {
+            Some(event) => format!("Activity · {}", event.line()),
+            None => "Activity".to_owned(),
+        };
+        let history = icon_button(&mut corner_ui, icons::history(), &hint);
+        if self
+            .activity
+            .latest()
+            .is_some_and(|event| event.kind == crate::activity::Kind::Error)
+        {
+            // A dot on the button for a failure not looked at.
+            let dot = history.rect.right_top() + egui::vec2(-8.0, 8.0);
+            corner_ui.painter().circle_filled(dot, 3.5, pal.bad);
+        }
+        if history.clicked() {
+            self.activity_open = !self.activity_open;
+        }
+        self.activity_anchor = Some(history.rect);
+        if !ui.rect_contains_pointer(corner) {
+            hero.on_hover_text(tooltip);
+        }
     }
 
     fn captured_card(&mut self, ui: &mut Ui, app_state: &AppState) {

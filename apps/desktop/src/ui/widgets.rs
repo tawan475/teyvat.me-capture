@@ -193,6 +193,12 @@ pub enum Disc {
 
 /// The capture status hero: disc, title, line, the three steps, and an
 /// optional body (chip, instruction, buttons).
+/// The width of the status hero's top-right corner that its title leaves
+/// free for two [`icon_button`]s.
+pub const HERO_ACTIONS_WIDTH: f32 = 70.0;
+/// The status hero's inner margin, to place those buttons.
+pub const HERO_PADDING: f32 = 16.0;
+
 pub fn status_hero(
     ui: &mut Ui,
     variant: HeroVariant,
@@ -212,7 +218,7 @@ pub fn status_hero(
         .fill(fill)
         .stroke(Stroke::new(1.0_f32, line_color))
         .corner_radius(CornerRadius::same(radius::HERO))
-        .inner_margin(Margin::same(16))
+        .inner_margin(Margin::same(HERO_PADDING as i8))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.spacing_mut().item_spacing.y = 14.0;
@@ -233,6 +239,8 @@ pub fn status_hero(
                     }
                 }
                 ui.vertical(|ui| {
+                    // The corner the caller puts its buttons in stays free.
+                    ui.set_max_width((ui.available_width() - HERO_ACTIONS_WIDTH).max(0.0));
                     ui.spacing_mut().item_spacing.y = 2.0;
                     line(
                         ui,

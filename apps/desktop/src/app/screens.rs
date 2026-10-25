@@ -119,7 +119,7 @@ impl TeyvatmeApp {
     pub(super) fn first_run(&mut self, ui: &mut Ui, step: Onboarding) {
         let pal = widgets::p(ui);
         centred(ui, |ui| {
-            ui.set_max_width(460.0);
+            ui.set_max_width((ui.available_width() - 32.0).min(460.0));
             match step {
                 Onboarding::Welcome => {
                     widgets::star(ui, 44.0);

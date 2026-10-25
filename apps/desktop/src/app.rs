@@ -679,6 +679,8 @@ pub struct TeyvatmeApp {
     /// What the app did, for the footer and its popover.
     activity: crate::activity::Log,
     activity_open: bool,
+    /// Where this frame drew the History button, for the list under it.
+    activity_anchor: Option<egui::Rect>,
     /// Background toasts that arrived while the window was out of sight:
     /// the newest success and the newest problem, for the return.
     held_notice: Option<crate::activity::Event>,
@@ -689,7 +691,7 @@ pub struct TeyvatmeApp {
     /// Whether this process can capture (Windows: elevated).
     is_admin: bool,
     applied_theme: Option<ThemeChoice>,
-    /// An update the user put off at start, for the toolbar pill and About.
+    /// An update the user put off at start, for the main screen's banner and About.
     update_put_off: Option<String>,
     /// The folder of the last manual save, for "Open export folder".
     last_save_folder: Option<PathBuf>,
@@ -1274,6 +1276,7 @@ impl TeyvatmeApp {
             view: View::Main,
             activity: crate::activity::Log::default(),
             activity_open: false,
+            activity_anchor: None,
             held_notice: None,
             held_problem: None,
             decoding_since: None,

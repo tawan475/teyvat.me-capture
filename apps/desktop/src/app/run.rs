@@ -94,7 +94,7 @@ impl TeyvatmeApp {
             self.view = View::FirstRun(Onboarding::Welcome);
         }
 
-        self.toolbar(ctx);
+        self.activity_anchor = None;
 
         let pal = crate::ui::theme::palette(ctx);
         egui::CentralPanel::default()
@@ -112,6 +112,7 @@ impl TeyvatmeApp {
                 (state, _) => self.startup_screen(ui, state),
             });
 
+        self.activity_popover(ctx);
         self.launch_missed_dialog(ctx);
         self.address_dialog(ctx);
 

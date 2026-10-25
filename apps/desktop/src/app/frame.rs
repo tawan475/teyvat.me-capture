@@ -1,108 +1,31 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 tawan475
 
-//! What sits around the views. The window frame, title bar and its buttons
-//! are the OS's own (native decorations on every platform); inside it is
-//! only a slim toolbar: Back and the page title in Settings, Activity, a
-//! pending update and Settings on the main screen.
+//! What floats over the views. The window frame, title bar and its buttons
+//! are the OS's own (native decorations on every platform), and the views
+//! start flush under them; History and Settings live in the status card's
+//! corner, and the activity list opens under History.
 
-use egui::{
-    Align, Align2, Context, CornerRadius, Frame, Id, Layout, Margin, Order, RichText, Stroke, vec2,
-};
+use egui::{Align, Align2, Context, CornerRadius, Frame, Id, Layout, Margin, Order};
 
 use super::{TeyvatmeApp, View};
 use crate::activity::Kind;
-use crate::ui::icons;
-use crate::ui::theme::{self, style, weight};
 use crate::ui::widgets::{self, line, small_text};
+use crate::ui::{icons, theme};
 
 /// Below this width the window is one column.
 pub(super) const BREAKPOINT: f32 = 720.0;
-const TOOLBAR_HEIGHT: f32 = 44.0;
 
 impl TeyvatmeApp {
-    /// The toolbar over the main screen and Settings; the first run has none.
-    pub(super) fn toolbar(&mut self, ctx: &Context) {
-        if matches!(self.view, View::FirstRun(_)) {
-            return;
-        }
-        let pal = theme::palette(ctx);
-        let mut activity_button = None;
-        egui::TopBottomPanel::top("toolbar")
-            .exact_height(TOOLBAR_HEIGHT)
-            .show_separator_line(false)
-            .frame(Frame::new().fill(pal.bg).inner_margin(Margin {
-                left: 10,
-                right: 10,
-                top: 6,
-                bottom: 0,
-            }))
-            .show(ctx, |ui| {
-                ui.horizontal_centered(|ui| {
-                    if let View::Settings(_) = self.view {
-                        if widgets::icon_button(ui, icons::arrow_left(), "Back").clicked() {
-                            self.leave_settings();
-                        }
-                        ui.label(
-                            RichText::new("Settings")
-                                .text_style(style::brand())
-                                .color(pal.tx),
-                        );
-                        return;
-                    }
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        ui.spacing_mut().item_spacing.x = 4.0;
-                        if widgets::icon_button(ui, icons::settings(), "Settings").clicked() {
-                            self.open_settings(super::Page::App);
-                        }
-                        let latest_failed = self
-                            .activity
-                            .latest()
-                            .is_some_and(|event| event.kind == Kind::Error);
-                        let hint = match self.activity.latest() {
-                            Some(event) => format!("Activity · {}", event.line()),
-                            None => "Activity".to_owned(),
-                        };
-                        let button = widgets::icon_button(ui, icons::history(), &hint);
-                        if latest_failed {
-                            // A dot on the button for a failure not looked at.
-                            let dot = button.rect.right_top() + vec2(-9.0, 9.0);
-                            ui.painter().circle_filled(dot, 3.5, pal.bad);
-                        }
-                        if button.clicked() {
-                            self.activity_open = !self.activity_open;
-                        }
-                        activity_button = Some(button.rect);
-                        if let Some(version) = self.update_put_off.clone() {
-                            let pill = egui::Button::new(
-                                small_text(format!("Update {version}"), pal.ac_on)
-                                    .family(weight::semibold()),
-                            )
-                            .fill(pal.ac_con)
-                            .stroke(Stroke::NONE)
-                            .corner_radius(CornerRadius::same(13))
-                            .min_size(vec2(0.0, 26.0));
-                            if ui
-                                .add(pill)
-                                .on_hover_text("Installs and restarts Teyvat.me")
-                                .clicked()
-                            {
-                                self.open_settings(super::Page::About);
-                            }
-                        }
-                    });
-                });
-            });
-        if self.view != View::Main {
-            self.activity_open = false;
-        }
-        if let (true, Some(anchor)) = (self.activity_open, activity_button) {
-            self.activity_popover(ctx, anchor);
-        }
-    }
-
-    /// The last 50 events, under the Activity button.
-    fn activity_popover(&mut self, ctx: &Context, anchor: egui::Rect) {
+    /// The last 50 events, under the History button, while open.
+    pub(super) fn activity_popover(&mut self, ctx: &Context) {
+        let anchor = match (self.activity_open, self.view, self.activity_anchor) {
+            (true, View::Main, Some(anchor)) => anchor,
+            _ => {
+                self.activity_open = false;
+                return;
+            }
+        };
         let pal = theme::palette(ctx);
         let area = egui::Area::new(Id::new("activity_popover"))
             .order(Order::Foreground)
