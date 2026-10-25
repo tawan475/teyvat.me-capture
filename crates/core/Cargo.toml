@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 tawan475
+# Portions copyright (c) 2025 Erik Gilling and irminsul contributors
+# See THIRD_PARTY_NOTICES.md.
+
+[package]
+name = "logbook-core"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.88"
+publish = false
+description = "logbook's platform-free core: the game data model, GOOD export, live-sync deltas and recordings, shared by the desktop app and the Android app."
+license = "MIT"
+
+[features]
+# Helpers for other crates' tests (logbook's): the pcapng byte builders in
+# `recording::test_support` and a few test-only `PlayerData` methods.
+test-support = []
+
+[dependencies]
+logbook-game-data = { workspace = true }
+anyhow = "1.0.99"
+logbook-protocol = { path = "../protocol" }
+chrono = "0.4.42"
+# The live sync session id (live.rs).
+getrandom = "0.3.4"
+indexmap = "2.11.1"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = { version = "1.0.143", features = ["alloc"] }
+tracing = { version = "0.1.41" }
+# The decode layer's event channel (decode.rs); the runtime is the caller's.
+tokio = { version = "1.47.1", default-features = false, features = ["sync"] }
+
+[dev-dependencies]
+tempfile = "3.21.0"

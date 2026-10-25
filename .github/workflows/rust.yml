@@ -1,0 +1,200 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 tawan475
+# Portions copyright (c) 2025 Erik Gilling and irminsul contributors
+# See THIRD_PARTY_NOTICES.md.
+
+name: Rust
+
+# develop is the integration branch; main only receives develop when releasing.
+# main is protected and requires these checks; develop runs them on every push.
+on:
+  push:
+    branches: ["main", "develop"]
+  pull_request:
+    branches: ["main", "develop"]
+
+env:
+  CARGO_TERM_COLOR: always
+  # TRACKER_API_URL is deliberately NOT set here: `option_env!("TRACKER_API_URL")`
+  # in src/app.rs yields Some("") for a set-but-empty variable, which would bake
+  # an unusable empty base URL into the released binary. The step below exports
+  # it only when the repository variable actually has a value.
+
+jobs:
+  test_matrix:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            artifact_name: ${{ github.event.repository.name }}-windows
+            suffix: ".exe"
+            features: ""
+          - os: windows-latest
+            artifact_name: ${{ github.event.repository.name }}-windows-pcap
+            suffix: ".exe"
+            features: "pcap"
+          - os: ubuntu-22.04
+            artifact_name: ${{ github.event.repository.name }}
+            suffix: ""
+            features: "pcap,static-libpcap"
+          - os: macos-latest
+            artifact_name: ${{ github.event.repository.name }}
+            suffix: ""
+            features: "pcap"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      # Keep the in-tree logbook-protocol crate compiled between runs (its
+      # generated protobuf code is the slowest thing to build and rarely
+      # changes), and write caches only from pushes to develop/main: pull
+      # requests restore them but don't save, which used to overflow the 10 GB
+      # cache budget and evict the branch caches.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          # One cache per leg; the two Windows legs used to share one key. Not
+          # keyed on `features`: cache keys can't contain commas, and the Linux
+          # leg's "pcap,static-libpcap" silently disabled its cache.
+          key: ${{ matrix.artifact_name }}
+          cache-workspace-crates: true
+          save-if: ${{ github.event_name == 'push' }}
+      - name: Export tracker API URL
+        if: vars.TRACKER_API_URL != ''
+        shell: bash
+        run: echo "TRACKER_API_URL=${{ vars.TRACKER_API_URL }}" >> "$GITHUB_ENV"
+      - name: Setup Linux GUI dependencies
+        if: runner.os == 'Linux'
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          echo "set man-db/auto-update false" | sudo debconf-communicate
+          sudo dpkg-reconfigure -f noninteractive man-db
+          sudo apt-get update
+          # libdbus-1-dev: the keyring crate's Secret Service backend, where
+          # the tracker sign-in keeps its refresh token (src/signin.rs).
+          sudo apt-get install -y libgtk-3-dev libappindicator3-dev libatk1.0-dev libdbus-1-dev pkg-config
+      - name: Setup libpcap
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/setup-libpcap
+      - name: Setup Windows (for pcap builds)
+        if: runner.os == 'Windows' && matrix.features == 'pcap'
+        shell: pwsh
+        run: |
+          # npcap.com first, the Internet Archive's copy of the same file when
+          # it fails (its certificate expired on 2026-10-18 and stopped every
+          # Windows pcap build). Either way the SHA-256 below must match.
+          curl.exe -fsSL https://npcap.com/dist/npcap-sdk-1.15.zip -o sdk.zip
+          if ($LASTEXITCODE -ne 0) {
+            curl.exe -fsSL https://web.archive.org/web/2025id_/https://npcap.com/dist/npcap-sdk-1.15.zip -o sdk.zip
+            if ($LASTEXITCODE -ne 0) { throw 'npcap SDK download failed' }
+          }
+          $expected = '52c7b9fb4abee3ad9fe739bb545c3efe77b731c8e127122bdf328eafdae3ed4f'
+          $actual = (Get-FileHash sdk.zip -Algorithm SHA256).Hash.ToLower()
+          if ($actual -ne $expected) {
+            throw "npcap SDK checksum mismatch: expected $expected, got $actual"
+          }
+          Expand-Archive -Path sdk.zip -DestinationPath . -Force
+      # clippy and rustfmt come from rust-toolchain.toml's components list.
+      - run: cargo fmt --all --check
+      # Every target (tests included) of every workspace member; `--features`
+      # only applies to the members that define it.
+      - run: cargo clippy --release --locked --workspace --all-targets --no-default-features --features "${{ matrix.features }}" -- -Dwarnings
+        env:
+          LIB: ${{ github.workspace }}/Lib/x64/
+      - run: cargo test --release --locked --no-default-features --features "${{ matrix.features }}"
+        env:
+          LIB: ${{ github.workspace }}/Lib/x64/
+      # crates/core holds the decoder model, GOOD export and live
+      # sync that used to be logbook's own modules; its tests run on every OS.
+      - run: cargo test --release --locked -p logbook-core
+      - run: cargo build --release --locked --no-default-features --features "${{ matrix.features }}"
+        env:
+          LIB: ${{ github.workspace }}/Lib/x64/
+      - if: ${{matrix.artifact_name}}
+        name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}-${{ runner.os }}
+          path: target/release/logbook${{ matrix.suffix }}
+
+  # Everything above builds --release only, so without this leg nothing in CI
+  # ever compiles the #[cfg(debug_assertions)] code (all of
+  # crates/core/src/pcapng.rs, plus
+  # blocks in main.rs and monitor.rs) or runs the tests with overflow checks on.
+  # Windows with default features needs no SDK, and is the configuration that
+  # ships by default.
+  debug_build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Keep the in-tree logbook-protocol crate compiled between runs (its
+      # generated protobuf code is the slowest thing to build and rarely
+      # changes), and write caches only from pushes to develop/main: pull
+      # requests restore them but don't save, which used to overflow the 10 GB
+      # cache budget and evict the branch caches.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-workspace-crates: true
+          save-if: ${{ github.event_name == 'push' }}
+      - name: Export tracker API URL
+        if: vars.TRACKER_API_URL != ''
+        shell: bash
+        run: echo "TRACKER_API_URL=${{ vars.TRACKER_API_URL }}" >> "$GITHUB_ENV"
+      - run: cargo clippy --locked --workspace --all-targets --no-default-features -- -Dwarnings
+      - run: cargo test --locked --no-default-features
+      - run: cargo test --locked -p logbook-core
+      - run: cargo build --locked --no-default-features
+
+  # crates/protocol, the packet-parsing library: its own tests, the
+  # `cli` feature, and its docs. It is pure Rust with no platform-specific code
+  # or system dependencies, so it runs once, on Linux; the legs above already
+  # compile and lint it on Windows and macOS (clippy --workspace --all-targets).
+  # The one-entry matrix keeps the check name "library (ubuntu-latest)", which
+  # main's branch protection requires.
+  library:
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      # Keep the in-tree logbook-protocol crate compiled between runs (its
+      # generated protobuf code is the slowest thing to build and rarely
+      # changes), and write caches only from pushes to develop/main: pull
+      # requests restore them but don't save, which used to overflow the 10 GB
+      # cache budget and evict the branch caches.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-workspace-crates: true
+          save-if: ${{ github.event_name == 'push' }}
+      # --all-features so the `cli` binary (src/main.rs) is linted and tested
+      # too; without it the bin is skipped for want of its required feature.
+      - run: cargo clippy --locked -p logbook-protocol --all-targets --all-features -- -Dwarnings
+      - run: cargo test --locked -p logbook-protocol --all-features
+      # Default features must stay CLI-free: this is what logbook builds, and
+      # it proves clap/anyhow are not in the library's dependency graph.
+      - run: cargo build --locked -p logbook-protocol
+      - run: cargo build --locked -p logbook-protocol --all-features
+      # Broken intra-doc links (e.g. a public doc linking to a private item)
+      # fail the build.
+      - name: Doc
+        run: cargo doc --locked -p logbook-protocol --no-deps --all-features
+        env:
+          RUSTDOCFLAGS: -Dwarnings
+      # crates/game-data, the game data crate build.rs uses: pure Rust
+      # as well, so it rides along here. --all-features covers its `cli` bin.
+      - run: cargo clippy --locked -p logbook-game-data --all-targets --all-features -- -Dwarnings
+      - run: cargo test --locked -p logbook-game-data --all-features
+
+  # update_rev.py is what turns "upstream pushed something" into a new pinned
+  # revision in Cargo.toml, and its two guards -- refuse to run under an active
+  # [patch], restore the manifest when the verification build fails -- are the
+  # only thing stopping an unverified dependency from being adopted. They get
+  # tested like the rest of the repo. The tests stub out git and cargo, so this
+  # leg needs no toolchain and finishes in seconds.
+  scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - run: python -m unittest discover -p "test_*.py" -v

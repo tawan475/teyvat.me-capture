@@ -1,0 +1,8 @@
+* text eol=lf
+*.png binary
+*.jpg binary
+*.webp binary
+*.gz binary
+*.ico binary
+*.icns binary
+docs/src/images/*.webp filter=lfs diff=lfs merge=lfs -text

@@ -1,0 +1,45 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 tawan475
+# Portions copyright (c) 2025 Erik Gilling and irminsul contributors
+# See THIRD_PARTY_NOTICES.md.
+
+[workspace]
+# The desktop app is the default member, so a bare `cargo build`, `cargo test`
+# or `cargo run` here means the desktop app; check.py and CI select the other
+# members with `-p`. The Android app's native crate (apps/android/native) is
+# its own workspace: it only builds for Android targets.
+members = ["apps/desktop", "crates/core", "crates/game-data", "crates/protocol"]
+default-members = ["apps/desktop"]
+exclude = ["apps/android/native"]
+resolver = "3"
+
+# `build.rs` writes the game data blob that the desktop app's monitor embeds,
+# so these crates are used by both the build script and the binary and must not
+# drift apart: flate2 in particular writes the gz on one side and reads it on
+# the other. Declaring them once here and inheriting with `workspace = true`
+# makes that impossible to get wrong.
+[workspace.dependencies]
+logbook-game-data = { path = "crates/game-data" }
+flate2 = "1.1.9"
+tokio = { version = "1.47.1", features = [
+	"rt",
+	"tokio-macros",
+	"macros",
+	"rt-multi-thread",
+] }
+
+[profile.release]
+opt-level = 2
+
+# Optimize all dependencies even in debug builds:
+[profile.dev.package."*"]
+opt-level = 2
+
+# `"*"` matches only packages outside the workspace. The protocol crate's
+# session-key bruteforce (up to 3000 x 1000 candidate seeds) is CPU-bound, so
+# debug builds compile it optimized too.
+[profile.dev.package.logbook-protocol]
+opt-level = 2
+
+[profile.dev.package.logbook-game-data]
+opt-level = 2

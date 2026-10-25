@@ -1,0 +1,195 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 tawan475
+# Portions copyright (c) 2025 Erik Gilling and irminsul contributors
+# See THIRD_PARTY_NOTICES.md.
+
+[package]
+name = "logbook"
+# Above every irminsul release (0.2.x), so the bridge release offers it.
+version = "1.0.0"
+authors = ["tawan475", "Erik Gilling <konkers@konkers.net>"]
+license = "MIT"
+publish = false
+edition = "2024"
+# The source uses let-chains (e.g. `src/app.rs`, `src/wish.rs`), stable since
+# 1.88, so anything lower will not compile.
+rust-version = "1.88"
+
+[[bin]]
+name = "logbook"
+path = "src/main.rs"
+
+[package.metadata.docs.rs]
+all-features = true
+targets = ["x86_64-unknown-linux-gnu"]
+
+[dependencies]
+# Shared with [build-dependencies]; see [workspace.dependencies] in the root Cargo.toml.
+logbook-game-data = { workspace = true }
+flate2 = { workspace = true }
+# `net` and `io-util` for the sign-in's loopback listener (src/signin.rs).
+# Both were already compiled in through reqwest's hyper; named here so the
+# listener does not depend on another crate's feature choice.
+tokio = { workspace = true, features = ["net", "io-util", "time"] }
+
+anyhow = "1.0.99"
+async-trait = "0.1.89"
+# Default features only: the library's `cli` feature is for its own binary.
+logbook-protocol = { path = "../../crates/protocol" }
+# The platform-free core shared with the Android app (see src/main.rs).
+logbook-core = { path = "../../crates/core" }
+base64 = "0.22.1"
+chrono = "0.4.42"
+clap = { version = "4.5.47", features = ["derive"] }
+ctrlc = "3.4.7"
+eframe = { version = "0.32", default-features = false, features = [
+	"accesskit",     # Make egui compatible with screen readers. NOTE: adds a lot of dependencies.
+	"default_fonts", # Embed the default egui fonts.
+	"glow",          # Use the glow rendering backend. Alternative: "wgpu".
+	"persistence",   # Enable restoring app state when restarting the app.
+	"wayland",       # To support Linux (and CI)
+	"x11",           # To support older Linux distributions (restores one of the default features)
+] }
+egui = "0.32"
+egui-file-dialog = "0.11.0"
+egui-notify = "0.20.0"
+egui_extras = { version = "0.32.2", features = ["image", "svg", "webp"] }
+egui_material_icons = "0.4.0"
+futures = "0.3.31"
+# The PC's name, shown to the user on the tracker's consent screen and in its
+# Devices list ("Logbook on <PC>"). Already in the tree on Linux (x11rb);
+# a small new crate on Windows and macOS.
+gethostname = "1.1.0"
+# Random bytes for the sign-in's PKCE verifier and `state` (src/signin.rs).
+# Already in the tree at this version (ahash, rand_core).
+getrandom = "0.3.4"
+futures-util = "0.3.31"
+indexmap = "2.11.1"
+log = "0.4.27"
+open = "5.3.2"
+# The rustls features are for memory: every client logbook builds selects
+# rustls (see `http_client_builder` in `src/main.rs`), because the default
+# native-tls is SChannel on Windows, and its first HTTPS request leaves about
+# 30 MB behind for the life of the process. `rustls-tls` adds the bundled
+# Mozilla roots and `rustls-tls-native-roots` the OS store, so a root the user
+# installed (an antivirus or company proxy) is still trusted. Neither is a new
+# TLS stack: self_update already compiles rustls in for the release check.
+reqwest = { version = "0.12.23", features = [
+	"gzip",
+	"stream",
+	"multipart",
+	"rustls-tls",
+	"rustls-tls-native-roots",
+] }
+# `compression-flate2` (which pulls in `archive-tar`) is what lets the Linux
+# release tarball be unpacked before `self_replace` installs the binary
+# inside it. Without it `src/update.rs` can only refuse the asset, which
+# leaves Linux with no in-app update path at all.
+self_update = { version = "0.42.0", features = ["compression-flate2"] }
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = { version = "1.0.143", features = ["alloc"] }
+# SHA-256 for the sign-in's PKCE challenge (RFC 7636 S256). Already in the
+# tree at this version (self_update's ed25519-dalek, the Linux keyring).
+sha2 = "0.10.9"
+# Only the `system` feature, and only for a process-name scan (see
+# `src/game_watch.rs`). This is not really a new dependency: `egui-file-dialog`
+# already pulls the same 0.36 line in with `default-features = false,
+# features = ["disk"]`, so this is a feature union on a crate that was already
+# being compiled -- no new version in the tree, and none of `component`,
+# `network` or `user`.
+sysinfo = { version = "0.36.1", default-features = false, features = ["system"] }
+tempfile = "3.21.0"
+tokio-util = "0.7.16"
+tracing = { version = "0.1.41" }
+tracing-appender = "0.2.3"
+tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
+tray-icon = { version = "0.24.1", default-features = false, features = [ "gtk" ] }
+image = "0.25.9"
+single-instance = "0.3.3"
+
+# The tracker sign-in's refresh token lives in the OS credential store, never
+# in app.ron (src/signin.rs `KeyringStore`): Windows Credential Manager, the
+# macOS Keychain, the Secret Service (GNOME Keyring, KWallet) on Linux. One
+# backend per platform, chosen per target below, so no platform compiles the
+# others'.
+[target.'cfg(windows)'.dependencies.keyring]
+version = "3.6.3"
+features = ["windows-native"]
+
+[target.'cfg(target_os = "macos")'.dependencies.keyring]
+version = "3.6.3"
+features = ["apple-native"]
+
+# `sync-secret-service` talks to the Secret Service over libdbus, which needs
+# `libdbus-1-dev` to build (CI installs it with the GTK packages).
+[target.'cfg(target_os = "linux")'.dependencies.keyring]
+version = "3.6.3"
+features = ["sync-secret-service", "crypto-rust"]
+
+[target.'cfg(windows)'.dependencies]
+pktmon = { version = "0.6.2", features = ["tokio"] }
+# On Windows pcap is optional (needs the Npcap SDK); pktmon is the default backend.
+pcap = { version = "2.3.0", features = ["capture-stream"], optional = true }
+windows = { version = "0.61.3", features = [
+	# RegisterClassW, for the hidden window that hears Windows end the session
+	# (crash/native.rs); its WNDCLASSW carries a brush type.
+	"Win32_Graphics_Gdi",
+	# CreateThread names a SECURITY_ATTRIBUTES type (crash/native.rs).
+	"Win32_Security",
+	# MiniDumpWriteDump is gated on these three besides Diagnostics_Debug.
+	"Win32_Storage_FileSystem",
+	"Win32_System_Console",
+	# SetUnhandledExceptionFilter and MiniDumpWriteDump (crash/native.rs).
+	"Win32_System_Diagnostics_Debug",
+	"Win32_System_Kernel",
+	# Which module a crash address is in (crash/native.rs).
+	"Win32_System_LibraryLoader",
+	"Win32_System_Memory",
+	"Win32_System_Registry",
+	# SetProcessWorkingSetSize: give back RAM while the window is hidden (app.rs).
+	"Win32_System_Threading",
+	"Win32_UI_Shell",
+	"Win32_UI_WindowsAndMessaging",
+] }
+
+# On every non-Windows platform pcap is the only capture backend, so it is a
+# mandatory dependency and always compiled in.
+[target.'cfg(not(windows))'.dependencies]
+pcap = { version = "2.3.0", features = ["capture-stream"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+caps = "0.5.6"
+gtk = "0.18.2"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2.177"
+
+[dev-dependencies]
+# The pcapng builders the replay tests use (`recording::test_support`).
+logbook-core = { path = "../../crates/core", features = ["test-support"] }
+# Builds the fixture tarball that `src/update.rs` unpacks. Already in the
+# graph through self_update's `archive-tar`; named here so the tests can
+# construct one.
+tar = "0.4"
+
+[build-dependencies]
+# Shared with [dependencies]; see [workspace.dependencies] in the root Cargo.toml.
+logbook-game-data = { workspace = true }
+flate2 = { workspace = true }
+tokio = { workspace = true }
+
+# Read the dump commit back out of the game data blob (see build.rs). Both are
+# already in the graph at these versions as logbook-game-data's and logbook's
+# own dependencies.
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.143"
+winresource = "0.1.23"
+
+[features]
+# `pcap` is intentionally NOT enabled by default: it requires the Npcap SDK
+# (wpcap.lib) to build and wpcap.dll at runtime on Windows. Windows uses the
+# pktmon backend by default, so enable `pcap` explicitly if you need it
+# (e.g. `cargo build --features pcap`).
+default = []
+pcap = ["dep:pcap"]
+static-libpcap = ["pcap"]

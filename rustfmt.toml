@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2025 Erik Gilling and irminsul contributors
+# Changes copyright (c) 2026 tawan475
+# See THIRD_PARTY_NOTICES.md.
+
+newline_style = "Unix"
+imports_granularity = "Module"
+group_imports = "StdExternalCrate"

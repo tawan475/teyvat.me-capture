@@ -1,0 +1,117 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 tawan475
+// Portions copyright (c) 2025 Erik Gilling and irminsul contributors
+// See THIRD_PARTY_NOTICES.md.
+
+// Only pktmon reports copies, so off Windows only the tests build this.
+#[cfg(any(windows, test))]
+mod dedupe;
+#[cfg(any(feature = "pcap", not(windows)))]
+mod pcap_backend;
+#[cfg(windows)]
+mod pktmon_backend;
+
+use std::fmt::{Debug, Display};
+use std::path::PathBuf;
+use std::sync::atomic::AtomicU64;
+
+use anyhow::Error;
+use async_trait::async_trait;
+use clap::ValueEnum;
+
+pub const PORT_RANGE: (u16, u16) = (22101, 22102);
+
+/// Duplicate copies of a datagram a capture backend dropped, for the stats
+/// line. Only pktmon reports copies; see `dedupe`.
+pub static DUPLICATES_DROPPED: AtomicU64 = AtomicU64::new(0);
+
+#[derive(Debug)]
+#[allow(dead_code)]
+pub enum CaptureError {
+    Filter(Error),
+    Capture { has_captured: bool, error: Error },
+    CaptureClosed,
+    ChannelClosed,
+    SavefileError(Error),
+}
+
+impl Display for CaptureError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CaptureError::Filter(e) => write!(f, "Filter error: {}", e),
+            CaptureError::Capture {
+                has_captured,
+                error,
+            } => write!(
+                f,
+                "Capture error (has_captured = {}): {}",
+                has_captured, error
+            ),
+            CaptureError::CaptureClosed => write!(f, "Capture closed"),
+            CaptureError::ChannelClosed => write!(f, "Channel closed"),
+            CaptureError::SavefileError(e) => write!(f, "Savefile open error: {}", e),
+        }
+    }
+}
+
+pub type Result<T> = std::result::Result<T, CaptureError>;
+
+#[async_trait]
+#[allow(clippy::double_must_use)]
+pub trait CaptureBackend: Send {
+    async fn next_packet(&mut self) -> Result<Vec<u8>>;
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
+#[allow(unused)]
+pub enum BackendType {
+    #[cfg(windows)]
+    Pktmon,
+    Pcap,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum CaptureSource {
+    Device(Option<PathBuf>),
+    File(PathBuf),
+}
+
+#[cfg(windows)]
+pub const DEFAULT_CAPTURE_BACKEND_TYPE: BackendType = BackendType::Pktmon;
+#[cfg(not(windows))]
+pub const DEFAULT_CAPTURE_BACKEND_TYPE: BackendType = BackendType::Pcap;
+
+pub fn create_capture(
+    backend: BackendType,
+    capture_source: CaptureSource,
+) -> Result<Box<dyn CaptureBackend>> {
+    match backend {
+        #[cfg(windows)]
+        BackendType::Pktmon => match capture_source {
+            CaptureSource::Device(None) => Ok(Box::new(pktmon_backend::PktmonBackend::new()?)),
+            _ => Err(CaptureError::Capture {
+                has_captured: false,
+                error: anyhow::anyhow!("Savefiles are only supported for the pcap backend"),
+            }),
+        },
+
+        #[cfg(any(feature = "pcap", not(windows)))]
+        BackendType::Pcap => Ok(Box::new(pcap_backend::PcapBackend::new(capture_source)?)),
+        #[cfg(not(any(feature = "pcap", not(windows))))]
+        BackendType::Pcap => Err(CaptureError::Capture {
+            has_captured: false,
+            error: anyhow::anyhow!(
+                "Please enable the pcap feature during build to use the pcap backend",
+            ),
+        }),
+
+        #[allow(unreachable_patterns)]
+        _ => Err(CaptureError::Capture {
+            has_captured: false,
+            error: anyhow::anyhow!(
+                "Capture backend type {:?} not supported on this operating system",
+                backend
+            ),
+        }),
+    }
+}
