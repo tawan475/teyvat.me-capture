@@ -176,64 +176,111 @@ pub fn ensure_admin() {
 
 #[cfg(unix)]
 fn show_packet_capture_permissions_missing_dialog() {
+    use crate::ui::widgets::{self, ButtonKind, secondary_text, title_text};
+
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([500.0, 200.0])
+            .with_inner_size([560.0, 380.0])
+            .with_min_inner_size([420.0, 340.0])
+            .with_title("Teyvat.me Capture")
             .with_resizable(true),
         ..Default::default()
     };
 
-    // Try to get the current executable path
     let exe_path = std::env::current_exe()
         .ok()
         .map(|mut path| path.as_mut_os_string().to_string_lossy().to_string())
         .unwrap_or("./teyvatme".to_owned());
 
-    let _ = eframe::run_simple_native(
-        "Teyvat.me requires packet capture permissions",
-        options,
-        move |ctx, _frame| {
-            egui::CentralPanel::default().show(ctx, |ui| {
-                ui.vertical_centered(|ui| {
-                    ui.label("How to grant packet capture permissions:");
-                    ui.add_space(5.0);
+    // Each way in: what it does, how often, and the command to copy.
+    let mut ways: Vec<(&str, &str, String)> = Vec::new();
+    #[cfg(target_os = "linux")]
+    ways.push((
+        "Let Teyvat.me capture",
+        "Once, and again after every update",
+        format!("sudo setcap cap_net_raw=ep '{exe_path}' && '{exe_path}'"),
+    ));
+    #[cfg(target_os = "macos")]
+    ways.push((
+        "Open the capture devices",
+        "Once, and again after every restart",
+        "sudo chmod 644 /dev/bpf*".to_owned(),
+    ));
+    ways.push(("Run it as root", "Every time", format!("sudo '{exe_path}'")));
 
-                    #[cfg(target_os = "linux")]
-                    {
-                        ui.label("1. Grant CAP_NET_RAW to Teyvat.me (after every update):");
-                        ui.label(format!(
-                            "sudo setcap cap_net_raw=ep '{}' && '{}'",
-                            exe_path, exe_path
-                        ));
-                    }
-
-                    #[cfg(target_os = "macos")]
-                    {
-                        ui.label("1. Grant read permissions on /dev/bpf* (after every reboot):");
-                        ui.label("sudo chmod 644 /dev/bpf*");
-                    }
-
-                    ui.add_space(5.0);
-                    ui.label("2. Run Teyvat.me as root (every time):");
-                    ui.label(format!("sudo '{}'", exe_path));
-                    ui.add_space(10.0);
-                    ui.label("Rerun Teyvat.me with --no-admin if you wish to proceed without packet capture")
-                });
-
-                // Push button to the bottom
-                ui.with_layout(
-                    egui::Layout::bottom_up(egui::Align::Center).with_cross_justify(true),
-                    |ui| {
-                        ui.add_space(10.0); // Small margin from bottom edge
-                        if ui.button("OK").clicked() {
-                            crate::crash::mark_clean_exit(PERMISSIONS_MISSING);
-                            std::process::exit(1);
-                        }
-                    },
+    let mut themed = false;
+    let _ = eframe::run_simple_native("Teyvat.me Capture", options, move |ctx, _frame| {
+        if !themed {
+            egui_extras::install_image_loaders(ctx);
+            crate::ui::theme::install(ctx);
+            themed = true;
+        }
+        let pal = crate::ui::theme::palette(ctx);
+        egui::CentralPanel::default()
+            .frame(
+                egui::Frame::new()
+                    .fill(pal.bg)
+                    .inner_margin(egui::Margin::same(20)),
+            )
+            .show(ctx, |ui| {
+                ui.spacing_mut().item_spacing.y = 10.0;
+                ui.label(
+                    egui::RichText::new("Packet capture needs permission")
+                        .text_style(crate::ui::theme::style::dialog())
+                        .color(pal.tx),
                 );
+                ui.label(secondary_text(
+                    "Teyvat.me reads the game's traffic, which this system lets only \
+                     privileged programs do. Pick one way in a terminal:",
+                    pal.tx2,
+                ));
+                for (title, when, command) in &ways {
+                    widgets::card_frame(ui).show(ui, |ui| {
+                        ui.set_width(ui.available_width());
+                        ui.horizontal(|ui| {
+                            ui.vertical(|ui| {
+                                ui.label(title_text(*title, pal.tx));
+                                ui.label(secondary_text(*when, pal.tx2));
+                            });
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    if widgets::button(
+                                        ui,
+                                        ButtonKind::Secondary,
+                                        Some(crate::ui::icons::copy()),
+                                        "Copy",
+                                        false,
+                                    )
+                                    .clicked()
+                                    {
+                                        ui.ctx().copy_text(command.clone());
+                                    }
+                                },
+                            );
+                        });
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(command.as_str())
+                                    .monospace()
+                                    .color(pal.tx2),
+                            )
+                            .wrap(),
+                        );
+                    });
+                }
+                ui.label(secondary_text(
+                    "Or start it with --no-admin to look around without capturing.",
+                    pal.tx3,
+                ));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Max), |ui| {
+                    if widgets::button(ui, ButtonKind::Fill, None, "Quit", false).clicked() {
+                        crate::crash::mark_clean_exit(PERMISSIONS_MISSING);
+                        std::process::exit(1);
+                    }
+                });
             });
-        },
-    );
+    });
 
     crate::crash::mark_clean_exit(PERMISSIONS_MISSING);
     std::process::exit(1);
