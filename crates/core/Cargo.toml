@@ -18,7 +18,9 @@ license = "MIT"
 test-support = []
 
 [dependencies]
-teyvatme-game-data = { workspace = true }
+# Without the download: the core only reads game data (the Android app
+# cannot build reqwest's TLS), and the apps that download enable it.
+teyvatme-game-data = { path = "../game-data", default-features = false }
 anyhow = "1.0.99"
 teyvatme-protocol = { path = "../protocol" }
 chrono = "0.4.42"
