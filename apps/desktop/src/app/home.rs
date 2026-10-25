@@ -58,6 +58,8 @@ impl TeyvatmeApp {
                             self.export_card(ui, app_state);
                             self.destinations_card(ui);
                         }
+                        // Room under the last card for the floating buttons.
+                        ui.add_space(super::frame::QUICK_BAR_HEIGHT);
                     });
             });
     }
@@ -327,48 +329,9 @@ impl TeyvatmeApp {
         self.hero_actions(ui, response, status.tooltip());
     }
 
-    /// History and Settings in the status card's top-right corner, and the
-    /// card's tooltip everywhere else on it.
-    fn hero_actions(&mut self, ui: &mut Ui, hero: egui::Response, tooltip: &str) {
-        let pal = widgets::p(ui);
-        let pad = widgets::HERO_PADDING;
-        let corner = egui::Rect::from_min_size(
-            egui::pos2(
-                hero.rect.right() - pad - widgets::HERO_ACTIONS_WIDTH,
-                hero.rect.top() + pad,
-            ),
-            egui::vec2(widgets::HERO_ACTIONS_WIDTH, 44.0),
-        );
-        let mut corner_ui = ui.new_child(
-            egui::UiBuilder::new()
-                .max_rect(corner)
-                .layout(Layout::right_to_left(Align::Center)),
-        );
-        corner_ui.spacing_mut().item_spacing.x = 4.0;
-        if icon_button(&mut corner_ui, icons::settings(), "Settings").clicked() {
-            self.open_settings(Page::App);
-        }
-        let hint = match self.activity.latest() {
-            Some(event) => format!("Activity · {}", event.line()),
-            None => "Activity".to_owned(),
-        };
-        let history = icon_button(&mut corner_ui, icons::history(), &hint);
-        if self
-            .activity
-            .latest()
-            .is_some_and(|event| event.kind == crate::activity::Kind::Error)
-        {
-            // A dot on the button for a failure not looked at.
-            let dot = history.rect.right_top() + egui::vec2(-8.0, 8.0);
-            corner_ui.painter().circle_filled(dot, 3.5, pal.bad);
-        }
-        if history.clicked() {
-            self.activity_open = !self.activity_open;
-        }
-        self.activity_anchor = Some(history.rect);
-        if !ui.rect_contains_pointer(corner) {
-            hero.on_hover_text(tooltip);
-        }
+    /// The status card's tooltip.
+    fn hero_actions(&mut self, _ui: &mut Ui, hero: egui::Response, tooltip: &str) {
+        hero.on_hover_text(tooltip);
     }
 
     fn captured_card(&mut self, ui: &mut Ui, app_state: &AppState) {
@@ -494,18 +457,27 @@ impl TeyvatmeApp {
             } else {
                 "Open the wish history in game first"
             };
-            egui::Frame::new()
-                .fill(pal.over)
-                .corner_radius(egui::CornerRadius::same(12))
-                .inner_margin(egui::Margin::symmetric(16, 4))
+            // A card like the others, its button there but not yet usable,
+            // so it reads as "coming", not as part of the background.
+            widgets::card_frame(ui)
                 .show(ui, |ui| {
                     ui.set_width(ui.available_width());
                     list_row(
                         ui,
                         Some((icons::sparkles(), pal.tx3)),
-                        title_text("Wish history", pal.tx2),
+                        title_text("Wish history", pal.tx),
                         Some(secondary_text(secondary, pal.tx2)),
-                        |_| {},
+                        |ui| {
+                            ui.add_enabled_ui(false, |ui| {
+                                button(
+                                    ui,
+                                    ButtonKind::Secondary,
+                                    Some(icons::copy()),
+                                    "Copy URL",
+                                    false,
+                                )
+                            });
+                        },
                     );
                 })
                 .response

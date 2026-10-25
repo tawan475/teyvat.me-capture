@@ -679,6 +679,9 @@ pub struct TeyvatmeApp {
     /// What the app did, for the footer and its popover.
     activity: crate::activity::Log,
     activity_open: bool,
+    /// The view drawn last frame and when it came up, for its fade-in.
+    shown_view: View,
+    view_shown_at: Instant,
     /// Where this frame drew the History button, for the list under it.
     activity_anchor: Option<egui::Rect>,
     /// Background toasts that arrived while the window was out of sight:
@@ -1277,6 +1280,8 @@ impl TeyvatmeApp {
             activity: crate::activity::Log::default(),
             activity_open: false,
             activity_anchor: None,
+            shown_view: View::Main,
+            view_shown_at: Instant::now(),
             held_notice: None,
             held_problem: None,
             decoding_since: None,

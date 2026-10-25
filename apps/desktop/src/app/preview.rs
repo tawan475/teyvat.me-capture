@@ -59,6 +59,21 @@ impl TeyvatmeApp {
                 self.decoding_since = Some(chrono::Local::now() - chrono::TimeDelta::minutes(3));
                 captured(&mut state);
             }
+            "toasts" => {
+                state.game_status = GameStatus::Decoding;
+                self.decoding_since = Some(chrono::Local::now());
+                captured(&mut state);
+                static RAISED: std::sync::Once = std::sync::Once::new();
+                RAISED.call_once(|| {
+                    self.toasts
+                        .success("Saved teyvatme_2026-10-26_01-20.json")
+                        .action(crate::ui::toast::Action::Show(std::env::temp_dir()))
+                        .saved();
+                    self.toasts
+                        .error("teyvat.me upload failed · HTTP 503")
+                        .action(crate::ui::toast::Action::RetryUpload);
+                });
+            }
             "missed" => state.game_status = GameStatus::LaunchMissed(MissedLaunch::AlreadyRunning),
             "keylost" => {
                 state.game_status = GameStatus::KeyLost;

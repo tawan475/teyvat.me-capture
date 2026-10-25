@@ -191,14 +191,26 @@ pub enum Disc {
     Spinner,
 }
 
+/// `target`, eased in over a quarter second from whatever `id` showed last.
+/// Asks for frames only while it moves.
+pub fn animated_color(ui: &Ui, id: egui::Id, target: Color32) -> Color32 {
+    let ctx = ui.ctx();
+    let [r, g, b, a] = target.to_array();
+    let channel = |name: &str, value: u8| {
+        ctx.animate_value_with_time(id.with(name), f32::from(value), 0.25)
+            .round()
+            .clamp(0.0, 255.0) as u8
+    };
+    Color32::from_rgba_premultiplied(
+        channel("r", r),
+        channel("g", g),
+        channel("b", b),
+        channel("a", a),
+    )
+}
+
 /// The capture status hero: disc, title, line, the three steps, and an
 /// optional body (chip, instruction, buttons).
-/// The width of the status hero's top-right corner that its title leaves
-/// free for two [`icon_button`]s.
-pub const HERO_ACTIONS_WIDTH: f32 = 70.0;
-/// The status hero's inner margin, to place those buttons.
-pub const HERO_PADDING: f32 = 16.0;
-
 pub fn status_hero(
     ui: &mut Ui,
     variant: HeroVariant,
@@ -214,11 +226,15 @@ pub fn status_hero(
         HeroVariant::Ok => (pal.ok_con, pal.ok_line),
         HeroVariant::Bad => (pal.bad_con, pal.bad_line),
     };
+    // A new status fades in rather than jumping.
+    let id = egui::Id::new("status_hero");
+    let fill = animated_color(ui, id.with("fill"), fill);
+    let line_color = animated_color(ui, id.with("line"), line_color);
     Frame::new()
         .fill(fill)
         .stroke(Stroke::new(1.0_f32, line_color))
         .corner_radius(CornerRadius::same(radius::HERO))
-        .inner_margin(Margin::same(HERO_PADDING as i8))
+        .inner_margin(Margin::same(16))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.spacing_mut().item_spacing.y = 14.0;
@@ -227,7 +243,8 @@ pub fn status_hero(
                 let (rect, _) = ui.allocate_exact_size(Vec2::splat(44.0), Sense::hover());
                 match disc {
                     Disc::Icon { icon, fill, ink } => {
-                        ui.painter().circle_filled(rect.center(), 22.0, fill(&pal));
+                        let disc = animated_color(ui, id.with("disc"), fill(&pal));
+                        ui.painter().circle_filled(rect.center(), 22.0, disc);
                         let icon_rect =
                             egui::Rect::from_center_size(rect.center(), Vec2::splat(22.0));
                         icons::image(icon(), 22.0, ink(&pal)).paint_at(ui, icon_rect);
@@ -239,8 +256,6 @@ pub fn status_hero(
                     }
                 }
                 ui.vertical(|ui| {
-                    // The corner the caller puts its buttons in stays free.
-                    ui.set_max_width((ui.available_width() - HERO_ACTIONS_WIDTH).max(0.0));
                     ui.spacing_mut().item_spacing.y = 2.0;
                     line(
                         ui,
@@ -255,25 +270,39 @@ pub fn status_hero(
         .response
 }
 
-/// Capture · Login · Key, each a 4 px bar over a label.
+/// Capture · Open Genshin · Enter world, each a 4 px bar over a label.
 pub fn stepper(ui: &mut Ui, steps: [Step; 3]) {
     let pal = p(ui);
     let gap = 8.0;
     let width = (ui.available_width() - 2.0 * gap) / 3.0;
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = gap;
-        for (step, label) in steps.into_iter().zip(["Capture", "Login", "Key"]) {
+        for (step, label) in steps
+            .into_iter()
+            .zip(["Capture", "Open Genshin", "Enter world"])
+        {
+            let id = egui::Id::new("stepper").with(label);
             let color = match step {
                 Step::Pending => pal.line2,
                 Step::Now => pal.ac_tx,
                 Step::Done => pal.ok,
                 Step::Failed => pal.bad,
             };
+            let color = animated_color(ui, id.with("color"), color);
+            // A step reached fills its bar from the left.
+            let reached = ui.ctx().animate_value_with_time(
+                id.with("reached"),
+                if step == Step::Pending { 0.0 } else { 1.0 },
+                0.35,
+            );
             ui.vertical(|ui| {
                 ui.set_width(width);
                 ui.spacing_mut().item_spacing.y = 4.0;
                 let (bar, _) = ui.allocate_exact_size(vec2(width, 4.0), Sense::hover());
-                ui.painter().rect_filled(bar, 2.0, color);
+                ui.painter().rect_filled(bar, 2.0, pal.line2);
+                let mut filled = bar;
+                filled.set_width(width * reached);
+                ui.painter().rect_filled(filled, 2.0, color);
                 let text = if step == Step::Failed {
                     pal.bad
                 } else {
@@ -525,7 +554,14 @@ pub fn icon_button(ui: &mut Ui, icon: ImageSource<'static>, name: &str) -> Respo
         .stroke(Stroke::NONE)
         .corner_radius(CornerRadius::same(radius::BUTTON))
         .min_size(Vec2::splat(32.0));
-    ui.add(widget).on_hover_text(name)
+    // Exactly 32 × 32: the 18 px icon plus 7 px a side, whatever the
+    // style's button padding, so rows of them can be measured.
+    ui.scope(|ui| {
+        ui.spacing_mut().button_padding = Vec2::splat(7.0);
+        ui.add(widget)
+    })
+    .inner
+    .on_hover_text(name)
 }
 
 // ---------------------------------------------------------------------------

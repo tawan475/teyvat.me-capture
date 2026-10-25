@@ -96,27 +96,36 @@ impl TeyvatmeApp {
 
         self.activity_anchor = None;
 
+        // A new view (or settings page) fades in over a moment.
+        if self.view != self.shown_view {
+            self.shown_view = self.view;
+            self.view_shown_at = std::time::Instant::now();
+        }
+        let fade = (self.view_shown_at.elapsed().as_secs_f32() / 0.16).min(1.0);
+        if fade < 1.0 {
+            ctx.request_repaint();
+        }
+
         let pal = crate::ui::theme::palette(ctx);
         egui::CentralPanel::default()
             .frame(Frame::new().fill(pal.bg))
-            .show(ctx, |ui| match (&app_state.state, self.view) {
-                (State::Main, View::Main) => self.home(ui, &app_state),
-                (State::Main, View::Settings(page)) => self.settings(ui, page),
-                (State::Main, View::FirstRun(step)) => self.first_run(ui, step),
-                (state, View::Settings(page))
-                    if matches!(page, Page::About | Page::Diagnostics) =>
-                {
-                    let _ = state;
-                    self.settings(ui, page)
-                }
-                (state, _) => self.startup_screen(ui, state),
+            .show(ctx, |ui| {
+                ui.multiply_opacity(0.35 + 0.65 * (1.0 - (1.0 - fade).powi(3)));
+                self.draw_view(ui, &app_state);
             });
 
+        self.quick_bar(ctx);
         self.activity_popover(ctx);
         self.launch_missed_dialog(ctx);
         self.address_dialog(ctx);
 
-        if let Some(action) = self.toasts.show(ctx) {
+        // Narrow, they would cover the floating buttons: start above them.
+        let inset = if self.view == View::Main && ctx.screen_rect().width() < 560.0 {
+            super::frame::QUICK_BAR_HEIGHT - 8.0
+        } else {
+            0.0
+        };
+        if let Some(action) = self.toasts.show(ctx, inset) {
             self.handle_toast_action(ctx, action);
         }
         for (kind, text) in self.toasts.take_raised() {
@@ -130,6 +139,21 @@ impl TeyvatmeApp {
         }
 
         let _ = self.saved_state_tx.send(self.saved_state.clone());
+    }
+
+    /// The view for this state: the main screen, Settings or the first run
+    /// once started; the startup screens before (About and Diagnostics open
+    /// from them too).
+    fn draw_view(&mut self, ui: &mut egui::Ui, app_state: &crate::AppState) {
+        match (&app_state.state, self.view) {
+            (State::Main, View::Main) => self.home(ui, app_state),
+            (State::Main, View::Settings(page)) => self.settings(ui, page),
+            (State::Main, View::FirstRun(step)) => self.first_run(ui, step),
+            (_, View::Settings(page)) if matches!(page, Page::About | Page::Diagnostics) => {
+                self.settings(ui, page)
+            }
+            (state, _) => self.startup_screen(ui, state),
+        }
     }
 
     /// Move the background's reports into the activity log, and toast the
@@ -177,6 +201,12 @@ impl TeyvatmeApp {
             && self.last_game_status != GameStatus::Decoding
         {
             self.decoding_since = Some(chrono::Local::now());
+            self.toasts.success("Session key found · reading your data");
+        }
+        if app_state.game_status == GameStatus::LaunchCaptured
+            && self.last_game_status == GameStatus::NotRunning
+        {
+            self.toasts.info("Genshin detected · enter the world");
         }
         self.last_game_status = app_state.game_status;
 
