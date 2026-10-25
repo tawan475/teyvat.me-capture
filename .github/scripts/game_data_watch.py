@@ -22,7 +22,7 @@ answer.
 
 Usage: python .github/scripts/game_data_watch.py [--dry-run]
   GITHUB_TOKEN needs issues: write and contents: read. GITHUB_REPOSITORY
-  defaults to tawan475/teyvat.me. --dry-run prints the decision and writes
+  defaults to tawan475/teyvat.me-capture. --dry-run prints the decision and writes
   nothing.
 """
 
@@ -51,7 +51,7 @@ DUMP_COMMITS_URL = "https://gitlab.com/api/v4/projects/83871005/repository/commi
 LOG_FORMAT = "%H%x00%cI%x00%s"
 GIT_TIMEOUT_S = 120
 GITHUB_API = "https://api.github.com"
-DEFAULT_REPO = "tawan475/teyvat.me"
+DEFAULT_REPO = "tawan475/teyvat.me-capture"
 
 LABEL = "game-data"
 LABEL_COLOR = "1d76db"

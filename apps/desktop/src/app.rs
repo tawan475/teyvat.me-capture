@@ -1461,7 +1461,7 @@ impl eframe::App for TeyvatmeApp {
                         .clicked()
                     {
                         ui.ctx()
-                            .open_url(OpenUrl::new_tab("https://github.com/tawan475/teyvat.me"));
+                            .open_url(OpenUrl::new_tab("https://github.com/tawan475/teyvat.me-capture"));
                     }
 
                     let button = ui.add(
@@ -2946,7 +2946,7 @@ impl TeyvatmeApp {
             |ui| {
                 if ui.button("New GitHub Issue").clicked() {
                     ui.ctx().open_url(OpenUrl::new_tab(
-                        "https://github.com/tawan475/teyvat.me/issues/new",
+                        "https://github.com/tawan475/teyvat.me-capture/issues/new",
                     ));
                     ui.close()
                 }

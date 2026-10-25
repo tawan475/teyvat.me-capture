@@ -34,7 +34,7 @@ pub enum UpdateAnswer {
 
 /// Where a user is pointed when Teyvat.me can find an update but cannot install
 /// it for them.
-const RELEASES_URL: &str = "https://github.com/tawan475/teyvat.me/releases";
+const RELEASES_URL: &str = "https://github.com/tawan475/teyvat.me-capture/releases";
 
 /// Serialises replacing the installed binary against process exit.
 ///
@@ -173,7 +173,7 @@ pub fn check_for_new_version() -> Result<Option<Release>> {
     let releases = thread::spawn(move || -> Result<Vec<Release>> {
         let releases = self_update::backends::github::ReleaseList::configure()
             .repo_owner("tawan475")
-            .repo_name("teyvatme")
+            .repo_name("teyvat.me-capture")
             .build()?
             .fetch()?;
         Ok(releases)
