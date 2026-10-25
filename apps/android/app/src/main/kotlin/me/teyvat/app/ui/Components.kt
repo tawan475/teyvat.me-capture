@@ -78,6 +78,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import me.teyvat.app.R
@@ -126,8 +127,11 @@ fun Brand(starSize: Int = 18, textStyle: androidx.compose.ui.text.TextStyle = Ma
         Text(
             buildAnnotatedString {
                 withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(stringResource(R.string.brand)) }
+                // Outfit's space is about 0.2 em, which after "Teyvat.me" read as
+                // no gap at all; widened to a normal word space, as on desktop.
+                withStyle(SpanStyle(letterSpacing = 0.1.em)) { append(" ") }
                 withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Normal)) {
-                    append(" " + stringResource(R.string.brand_suffix))
+                    append(stringResource(R.string.brand_suffix))
                 }
             },
             style = textStyle,
