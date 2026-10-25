@@ -7,9 +7,14 @@
 //!
 //! - **A native crash** -- an access violation, a stack overflow, a fault
 //!   inside a graphics driver. [`on_unhandled_exception`] appends the exception
-//!   code, address, faulting module and the stack to `crash.log` and writes a
-//!   minidump (`crash-<UTC time>.dmp`) next to it, then lets Windows Error
-//!   Reporting carry on as it would have.
+//!   code, address, faulting module and the stack to `crash.log` and has a
+//!   minidump (`crash-<UTC time>.dmp`) written next to it, then lets Windows
+//!   Error Reporting carry on as it would have. A second copy of this
+//!   executable writes the dump ([`dump_writer_entry`]): dbghelp dumping its
+//!   own process suspends every other thread -- the crashed one too, so its
+//!   wait could never time out -- and deadlocks when one of them holds a lock
+//!   it needs (seen in the tests: the dump stuck at 0 bytes, the process
+//!   unable to exit).
 //!
 //!   `__fastfail`, which is how Rust aborts (a panic that cannot unwind, a
 //!   double panic, an allocation failure), bypasses this filter entirely: the
@@ -38,12 +43,14 @@
 //! formatted into a [`LineBuf`] on the stack and written through a `crash.log`
 //! handle opened at startup.
 
-use std::ffi::c_void;
+use std::ffi::{OsStr, c_void};
 use std::fmt::{self, Write as _};
 use std::fs::{File, OpenOptions};
 use std::io::Write as _;
 use std::os::windows::io::AsRawHandle;
+use std::os::windows::process::CommandExt as _;
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, Ordering};
 
@@ -62,8 +69,8 @@ use windows::Win32::System::LibraryLoader::{
     GetModuleFileNameW, GetModuleHandleExW, GetModuleHandleW,
 };
 use windows::Win32::System::Threading::{
-    CreateThread, GetCurrentProcess, GetCurrentProcessId, GetCurrentThreadId,
-    THREAD_CREATION_FLAGS, WaitForSingleObject,
+    CREATE_NO_WINDOW, CreateThread, GetCurrentProcessId, GetCurrentThreadId, OpenProcess,
+    PROCESS_QUERY_INFORMATION, PROCESS_VM_READ, THREAD_CREATION_FLAGS, WaitForSingleObject,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DispatchMessageW, ENDSESSION_CLOSEAPP, ENDSESSION_LOGOFF,
@@ -79,9 +86,17 @@ use super::write_report_header;
 /// more until the next start.
 const DUMP_RETENTION: usize = 3;
 
-/// How long the crashed thread waits for its minidump before giving up and
-/// letting the process end anyway.
+/// How long the dump writer gets before the crashed process stops waiting for
+/// it and ends anyway.
 const DUMP_TIMEOUT_MS: u32 = 30_000;
+
+/// The crashed thread's wait for the helper thread, which itself waits up to
+/// [`DUMP_TIMEOUT_MS`] for the dump writer.
+const HELPER_TIMEOUT_MS: u32 = DUMP_TIMEOUT_MS + 5_000;
+
+/// First argument of the dump writer's command line: `<exe>
+/// --logbook-dump-writer <log dir> <pid> <thread id> <exception pointers>`.
+const DUMP_WRITER_ARG: &str = "--logbook-dump-writer";
 
 /// Stack frames written to `crash.log`. The exception dispatcher's own frames
 /// come first, so a crash gets a few more than an exit.
@@ -99,6 +114,8 @@ const DUMP_TYPE: MINIDUMP_TYPE =
 /// neither the heap nor a path conversion.
 static CRASH_FILE: OnceLock<File> = OnceLock::new();
 static DUMP_DIR: OnceLock<PathBuf> = OnceLock::new();
+/// This executable, which writes the dump ([`dump_writer_entry`]).
+static DUMP_WRITER_EXE: OnceLock<PathBuf> = OnceLock::new();
 /// Whichever filter was installed before ours, called after it.
 static PREVIOUS_FILTER: OnceLock<LPTOP_LEVEL_EXCEPTION_FILTER> = OnceLock::new();
 /// The first report wins. A second exception inside the handler, or the exit
@@ -121,6 +138,14 @@ pub(super) fn install(log_dir: &Path, crash_log: &Path) {
         Err(e) => tracing::warn!("cannot open {crash_log:?} for native crash reports: {e}"),
     }
     let _ = DUMP_DIR.set(log_dir.to_path_buf());
+    match std::env::current_exe() {
+        Ok(exe) => {
+            let _ = DUMP_WRITER_EXE.set(exe);
+        }
+        Err(e) => {
+            tracing::warn!("no minidumps for native crashes: cannot find this executable: {e}")
+        }
+    }
     prune_dumps(log_dir, DUMP_RETENTION);
 
     // SAFETY: plain Win32 calls; the filter is a valid `extern "system"`
@@ -227,9 +252,10 @@ unsafe fn report_exception(info: *const EXCEPTION_POINTERS) {
     unsafe { write_stack::<CRASH_FRAMES>(&mut line) };
     append(line.as_bytes());
 
-    // On a thread of its own: this one may have no stack left (an overflow),
-    // and if the dump deadlocks on a lock the crash left held, only the
-    // helper hangs -- this thread stops waiting and lets the process end.
+    // Started from a thread of its own: this one may have no stack left (an
+    // overflow), and if starting the writer hangs on a lock the crash left
+    // held, only the helper hangs -- this thread stops waiting and lets the
+    // process end.
     DUMP_EXCEPTION.store(info.cast_mut(), Ordering::SeqCst);
     DUMP_THREAD.store(thread, Ordering::SeqCst);
     // SAFETY: `dump_thread` is a valid thread routine taking no parameter.
@@ -247,8 +273,8 @@ unsafe fn report_exception(info: *const EXCEPTION_POINTERS) {
         Ok(handle) => {
             // SAFETY: a handle this function owns.
             unsafe {
-                if WaitForSingleObject(handle, DUMP_TIMEOUT_MS) != WAIT_OBJECT_0 {
-                    append(b"minidump: not finished after 30 s; gave up waiting\n");
+                if WaitForSingleObject(handle, HELPER_TIMEOUT_MS) != WAIT_OBJECT_0 {
+                    append(b"minidump: the helper thread did not finish; gave up waiting\n");
                 }
                 let _ = CloseHandle(handle);
             }
@@ -257,47 +283,111 @@ unsafe fn report_exception(info: *const EXCEPTION_POINTERS) {
     }
 }
 
-/// The helper thread [`report_exception`] starts.
+/// The helper thread [`report_exception`] starts: run the dump writer and wait
+/// for it, at most [`DUMP_TIMEOUT_MS`].
+///
+/// Allocates (the command line): it only runs on the helper thread, whose
+/// wait is bounded.
 unsafe extern "system" fn dump_thread(_: *mut c_void) -> u32 {
     let exception = DUMP_EXCEPTION.load(Ordering::SeqCst);
     let thread = DUMP_THREAD.load(Ordering::SeqCst);
-    write_minidump(Some((exception, thread)));
+    let (Some(exe), Some(dir)) = (DUMP_WRITER_EXE.get(), DUMP_DIR.get()) else {
+        return 0;
+    };
+    // SAFETY: plain Win32 call.
+    let pid = unsafe { GetCurrentProcessId() };
+    let writer = Command::new(exe)
+        .arg(DUMP_WRITER_ARG)
+        .arg(dir)
+        .args([
+            pid.to_string(),
+            thread.to_string(),
+            (exception as usize).to_string(),
+        ])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .creation_flags(CREATE_NO_WINDOW.0)
+        .spawn();
+    match writer {
+        Ok(mut writer) => {
+            // SAFETY: the child's handle, owned by `writer` for this whole call.
+            let waited =
+                unsafe { WaitForSingleObject(HANDLE(writer.as_raw_handle()), DUMP_TIMEOUT_MS) };
+            if waited != WAIT_OBJECT_0 {
+                append(b"minidump: not finished after 30 s; gave up waiting\n");
+                let _ = writer.kill();
+            }
+        }
+        Err(e) => {
+            let line = format!("minidump: could not start the dump writer ({e})\n");
+            append(line.as_bytes());
+        }
+    }
     0
 }
 
-/// Write `crash-<UTC time>.dmp` and say so in `crash.log`.
-///
-/// Allocates (the path, the outcome line): it only runs on the helper thread,
-/// whose wait is bounded.
-fn write_minidump(exception: Option<(*mut EXCEPTION_POINTERS, u32)>) {
-    let Some(dir) = DUMP_DIR.get() else {
+/// Runs before `main` in every process of this executable (the CRT calls the
+/// `.CRT$XCU` initializers first) and, in the dump writer started by
+/// [`dump_thread`] only, writes the dump and exits. The test binary gets it
+/// too, so its tests' children are dumped the same way.
+#[used]
+#[unsafe(link_section = ".CRT$XCU")]
+static DUMP_WRITER_HOOK: extern "C" fn() = dump_writer_entry;
+
+/// See [`DUMP_WRITER_HOOK`]. Anything but the writer's command line returns
+/// at once.
+extern "C" fn dump_writer_entry() {
+    let mut args = std::env::args_os().skip(1);
+    if args.next().as_deref() != Some(OsStr::new(DUMP_WRITER_ARG)) {
         return;
+    }
+    let dir = args.next().map(PathBuf::from);
+    let mut number = || -> Option<usize> { args.next()?.to_str()?.parse().ok() };
+    let (pid, thread, pointers) = (number(), number(), number());
+    let code = match (dir, pid, thread, pointers) {
+        (Some(dir), Some(pid), Some(thread), Some(pointers)) => {
+            write_minidump(&dir, pid as u32, thread as u32, pointers);
+            0
+        }
+        _ => 2,
     };
-    // UTC, like every time in `crash.log`; and no local time zone lookup in a
-    // crashed process.
+    std::process::exit(code);
+}
+
+/// Write `crash-<UTC time>.dmp` of process `pid` into `dir` and say so in its
+/// `crash.log`. `pointers` is the address of the exception's
+/// `EXCEPTION_POINTERS` in that process, `thread` the thread that crashed.
+fn write_minidump(dir: &Path, pid: u32, thread: u32, pointers: usize) {
+    // UTC, like every time in `crash.log`.
     let name = format!("crash-{}.dmp", Utc::now().format("%Y-%m-%d_%H-%M-%SZ"));
     let path = dir.join(&name);
-    let outcome = match File::create(&path) {
-        Ok(file) => {
-            let info = exception.map(|(pointers, thread)| MINIDUMP_EXCEPTION_INFORMATION {
+    // SAFETY: plain Win32 call; the handle is closed below.
+    let process = unsafe { OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, false, pid) };
+    let outcome = match (process, File::create(&path)) {
+        (Ok(process), Ok(file)) => {
+            let info = MINIDUMP_EXCEPTION_INFORMATION {
                 ThreadId: thread,
-                ExceptionPointers: pointers,
-                ClientPointers: false.into(),
-            });
-            // SAFETY: a file handle this function owns, and exception pointers
-            // the system gave the filter, which is still waiting on this.
+                ExceptionPointers: pointers as *mut EXCEPTION_POINTERS,
+                // The pointers are the crashed process's, not this one's.
+                ClientPointers: true.into(),
+            };
+            // SAFETY: handles this function owns; dbghelp reads the exception
+            // pointers out of the crashed process, whose filter is waiting.
             let written = unsafe {
                 MiniDumpWriteDump(
-                    GetCurrentProcess(),
-                    GetCurrentProcessId(),
+                    process,
+                    pid,
                     HANDLE(file.as_raw_handle()),
                     DUMP_TYPE,
-                    info.as_ref().map(|info| info as *const _),
+                    Some(&info),
                     None,
                     None,
                 )
             };
             drop(file);
+            // SAFETY: the handle OpenProcess returned.
+            let _ = unsafe { CloseHandle(process) };
             match written {
                 Ok(()) => format!("minidump: {name}\n"),
                 Err(e) => {
@@ -306,9 +396,24 @@ fn write_minidump(exception: Option<(*mut EXCEPTION_POINTERS, u32)>) {
                 }
             }
         }
-        Err(e) => format!("minidump: could not create {name} ({e})\n"),
+        (Err(e), file) => {
+            drop(file);
+            let _ = std::fs::remove_file(&path);
+            format!("minidump: cannot open the crashed process ({e})\n")
+        }
+        (Ok(process), Err(e)) => {
+            // SAFETY: the handle OpenProcess returned.
+            let _ = unsafe { CloseHandle(process) };
+            format!("minidump: could not create {name} ({e})\n")
+        }
     };
-    append(outcome.as_bytes());
+    if let Ok(mut log) = OpenOptions::new()
+        .append(true)
+        .open(dir.join(super::CRASH_LOG))
+    {
+        let _ = log.write_all(outcome.as_bytes());
+        let _ = log.sync_data();
+    }
 }
 
 const ACCESS_VIOLATION: u32 = 0xC000_0005;
@@ -612,7 +717,8 @@ fn session_end_reason(flags: u32) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use std::process::{Command, Output};
+    use std::io::Read;
+    use std::process::Output;
     use std::time::{Duration, Instant};
 
     use windows::Win32::Foundation::NTSTATUS;
@@ -637,6 +743,11 @@ mod tests {
         Some(dir)
     }
 
+    /// Longer than any child should take: the crash test's dump wait is 30 s
+    /// at most. A child that runs past it fails its test instead of holding
+    /// up the whole suite.
+    const CHILD_TIMEOUT: Duration = Duration::from_secs(60);
+
     /// Run the test `name` of this module in a child with `dir` as its log
     /// directory.
     fn run_child(name: &str, dir: &Path) -> Output {
@@ -644,7 +755,7 @@ mod tests {
         let module = module_path!()
             .split_once("::")
             .map_or(module_path!(), |(_, rest)| rest);
-        Command::new(std::env::current_exe().unwrap())
+        let mut child = Command::new(std::env::current_exe().unwrap())
             .args([
                 &format!("{module}::{name}"),
                 "--exact",
@@ -654,8 +765,36 @@ mod tests {
                 "--test-threads=1",
             ])
             .env(CHILD_DIR, dir)
-            .output()
-            .unwrap()
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let read_all = |mut pipe: Box<dyn Read + Send>| {
+            std::thread::spawn(move || {
+                let mut bytes = Vec::new();
+                let _ = pipe.read_to_end(&mut bytes);
+                bytes
+            })
+        };
+        let stdout = read_all(Box::new(child.stdout.take().unwrap()));
+        let stderr = read_all(Box::new(child.stderr.take().unwrap()));
+        let deadline = Instant::now() + CHILD_TIMEOUT;
+        let status = loop {
+            if let Some(status) = child.try_wait().unwrap() {
+                break status;
+            }
+            if Instant::now() >= deadline {
+                let _ = child.kill();
+                let _ = child.wait();
+                panic!("{name}: the child process was still running after {CHILD_TIMEOUT:?}");
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        };
+        Output {
+            status,
+            stdout: stdout.join().unwrap(),
+            stderr: stderr.join().unwrap(),
+        }
     }
 
     fn read(dir: &Path, name: &str) -> String {
