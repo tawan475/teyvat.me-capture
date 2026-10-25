@@ -16,8 +16,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -96,7 +94,7 @@ fun HomeContent(
         contentPadding = PaddingValues(
             start = 16.dp, end = 16.dp, top = padding.calculateTopPadding(), bottom = padding.calculateBottomPadding() + 16.dp,
         ),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item { HeroCard(hero, summary, startingSince, now, actions) }
         item { CapturedCard(summary, now) }
@@ -194,7 +192,7 @@ private fun ago(at: Long, now: Long): String {
 @Composable
 private fun CapturedCard(summary: Summary, now: Long) {
     TmCard {
-        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(stringResource(R.string.captured), style = MaterialTheme.typography.titleSmall)
                 val player = summary.player
@@ -224,7 +222,7 @@ private fun CapturedCard(summary: Summary, now: Long) {
                 Triple(v(c.achievements, summary.updatedAchievements), stringResource(R.string.tile_achievements), summary.updatedAchievements),
             )
             val rows = if (narrow) tiles.chunked(2) else listOf(tiles.take(3), tiles.drop(3))
-            Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.padding(start = 14.dp, end = 14.dp, bottom = 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 for (row in rows) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         for ((value, label, at) in row) {
@@ -256,32 +254,29 @@ private fun ExportCard(summary: Summary, settings: Settings, folderLabel: String
                 IconButton(onClick = { menu = true }) {
                     TmIcon(R.drawable.ic_more_vertical, stringResource(R.string.export_more))
                 }
-                DropdownMenu(menu, onDismissRequest = { menu = false }) {
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.export_copy_achievements)) },
-                        leadingIcon = { TmIcon(R.drawable.ic_trophy, null, size = 20.dp) },
-                        onClick = { menu = false; actions.copyAchievements(null) },
-                    )
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.export_stardb)) },
-                        leadingIcon = { TmIcon(R.drawable.ic_external_link, null, size = 20.dp) },
-                        onClick = { menu = false; actions.copyAchievements(Links.STARDB_ACHIEVEMENTS) },
-                    )
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.export_seelie)) },
-                        leadingIcon = { TmIcon(R.drawable.ic_external_link, null, size = 20.dp) },
-                        onClick = { menu = false; actions.copyAchievements(Links.SEELIE_ACHIEVEMENTS) },
-                    )
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.export_filters)) },
-                        leadingIcon = { TmIcon(R.drawable.ic_sliders, null, size = 20.dp) },
-                        onClick = { menu = false; actions.openExportSettings() },
-                    )
+                TmMenu(menu, onDismiss = { menu = false }) {
+                    TmMenuItem(stringResource(R.string.export_copy_achievements), R.drawable.ic_trophy) {
+                        menu = false
+                        actions.copyAchievements(null)
+                    }
+                    TmMenuItem(stringResource(R.string.export_stardb), R.drawable.ic_external_link) {
+                        menu = false
+                        actions.copyAchievements(Links.STARDB_ACHIEVEMENTS)
+                    }
+                    TmMenuItem(stringResource(R.string.export_seelie), R.drawable.ic_external_link) {
+                        menu = false
+                        actions.copyAchievements(Links.SEELIE_ACHIEVEMENTS)
+                    }
+                    CardDivider()
+                    TmMenuItem(stringResource(R.string.export_filters), R.drawable.ic_sliders) {
+                        menu = false
+                        actions.openExportSettings()
+                    }
                 }
             }
         }
         Row(
-            Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+            Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, bottom = 14.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             val described = stringResource(R.string.export_save_description)
@@ -311,11 +306,11 @@ private fun DestinationsCard(actions: HomeActions) {
     TmCard {
         CardHeader(stringResource(R.string.destinations), stringResource(R.string.optional))
         Row(
-            Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 14.dp),
+            Modifier.fillMaxWidth().padding(start = 16.dp, end = 14.dp, bottom = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Avatar(icon = R.drawable.ic_cloud_upload)
-            Spacer(Modifier.width(16.dp))
+            Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Row(
                     Modifier.clickable { actions.openUrl(Links.trackerSite) }.semantics { contentDescription = Links.trackerHost },

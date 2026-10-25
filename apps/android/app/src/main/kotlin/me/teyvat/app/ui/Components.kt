@@ -38,6 +38,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -82,7 +84,7 @@ import me.teyvat.app.R
 
 /** A lucide line icon from res/drawable. */
 @Composable
-fun TmIcon(@DrawableRes icon: Int, description: String?, modifier: Modifier = Modifier, tint: Color = Color.Unspecified, size: Dp = 24.dp) {
+fun TmIcon(@DrawableRes icon: Int, description: String?, modifier: Modifier = Modifier, tint: Color = Color.Unspecified, size: Dp = 22.dp) {
     Icon(
         painterResource(icon),
         contentDescription = description,
@@ -117,7 +119,7 @@ fun Spinner(tint: Color = MaterialTheme.colorScheme.primary, size: Dp = 20.dp, d
 
 /** ✦ Teyvat.me Capture. */
 @Composable
-fun Brand(starSize: Int = 22, textStyle: androidx.compose.ui.text.TextStyle = MaterialTheme.typography.titleLarge) {
+fun Brand(starSize: Int = 18, textStyle: androidx.compose.ui.text.TextStyle = MaterialTheme.typography.titleLarge) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Spark(starSize)
         Spacer(Modifier.width(8.dp))
@@ -146,13 +148,13 @@ fun Spark(size: Int) {
     )
 }
 
-/** 64 dp top bar: the brand (Home) or a back arrow and a title. */
+/** 56 dp top bar: the brand (Home) or a back arrow and a title. */
 @Composable
 fun TmTopBar(title: String? = null, onBack: (() -> Unit)? = null, actions: @Composable RowScope.() -> Unit = {}) {
     Row(
         Modifier
             .fillMaxWidth()
-            .height(64.dp)
+            .height(56.dp)
             .padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -189,14 +191,14 @@ fun TmButton(
     @DrawableRes trailingIcon: Int? = null,
     contentDescription: String? = null,
 ) {
-    val height = if (large) 56.dp else 40.dp
+    val height = if (large) 48.dp else 36.dp
     val m = (if (large) modifier.fillMaxWidth() else modifier).heightIn(min = height)
         .let { if (contentDescription != null) it.semantics { this.contentDescription = contentDescription } else it }
-    val padding = PaddingValues(horizontal = if (large) 24.dp else 12.dp)
+    val padding = PaddingValues(horizontal = if (large) 20.dp else 12.dp)
     val content: @Composable RowScope.() -> Unit = {
         val color = androidx.compose.material3.LocalContentColor.current
         if (icon != null) {
-            TmIcon(icon, null, tint = color, size = 18.dp)
+            TmIcon(icon, null, tint = color, size = 16.dp)
             Spacer(Modifier.width(8.dp))
         }
         Text(text, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -216,7 +218,7 @@ fun TmButton(
             }
             Button(
                 onClick, m, enabled,
-                shape = RoundedCornerShape(if (large) 16.dp else 12.dp),
+                shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = bg, contentColor = fg,
                     disabledContainerColor = bg.copy(alpha = 0.38f), disabledContentColor = fg.copy(alpha = 0.6f),
@@ -259,7 +261,7 @@ fun SectionLabel(text: String) {
         text,
         style = MaterialTheme.typography.labelLarge,
         color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(start = 16.dp, top = 20.dp, bottom = 8.dp),
+        modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 6.dp),
     )
 }
 
@@ -278,14 +280,14 @@ fun ListRow(
     Row(
         Modifier
             .fillMaxWidth()
-            .heightIn(min = 52.dp)
+            .heightIn(min = 48.dp)
             .let { if (onClick != null) it.clickable(enabled = enabled, onClick = onClick) else it }
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icon != null) {
             TmIcon(icon, null, tint = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.outline)
-            Spacer(Modifier.width(16.dp))
+            Spacer(Modifier.width(14.dp))
         }
         Column(Modifier.weight(1f)) {
             Text(
@@ -338,9 +340,9 @@ fun SwitchRow(
     Row(
         Modifier
             .fillMaxWidth()
-            .heightIn(min = 52.dp)
+            .heightIn(min = 48.dp)
             .toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = onChange)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (leading != null) {
@@ -367,6 +369,34 @@ fun SwitchRow(
         Spacer(Modifier.width(12.dp))
         TmSwitch(checked, null, enabled)
     }
+}
+
+/**
+ * The overflow menu: a rounded card with a border and a shadow, like the
+ * cards it opens from (Material's plain menu read as unfinished).
+ */
+@Composable
+fun TmMenu(expanded: Boolean, onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+    DropdownMenu(
+        expanded = expanded,
+        onDismissRequest = onDismiss,
+        shape = MaterialTheme.shapes.medium,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
+        tonalElevation = 0.dp,
+        shadowElevation = 8.dp,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        content = content,
+    )
+}
+
+@Composable
+fun TmMenuItem(text: String, @DrawableRes icon: Int, onClick: () -> Unit) {
+    DropdownMenuItem(
+        text = { Text(text, style = MaterialTheme.typography.bodyLarge) },
+        leadingIcon = { TmIcon(icon, null, size = 18.dp) },
+        onClick = onClick,
+        contentPadding = PaddingValues(horizontal = 16.dp),
+    )
 }
 
 @Composable
@@ -429,15 +459,15 @@ fun StatusHero(
             .clip(MaterialTheme.shapes.extraLarge)
             .background(container)
             .border(1.dp, border, MaterialTheme.shapes.extraLarge)
-            .padding(20.dp)
+            .padding(16.dp)
             .semantics(mergeDescendants = false) { liveRegion = LiveRegionMode.Polite },
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(48.dp).clip(CircleShape).background(discBg), contentAlignment = Alignment.Center) {
-                if (spinning) Spinner(discFg, 24.dp) else if (icon != null) TmIcon(icon, null, tint = discFg)
+            Box(Modifier.size(40.dp).clip(CircleShape).background(discBg), contentAlignment = Alignment.Center) {
+                if (spinning) Spinner(discFg, 20.dp) else if (icon != null) TmIcon(icon, null, tint = discFg, size = 20.dp)
             }
-            Spacer(Modifier.width(16.dp))
+            Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Text(title, style = MaterialTheme.typography.headlineSmall)
                 Text(line, style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant)
@@ -469,7 +499,7 @@ fun StatTile(value: String?, label: String, modifier: Modifier = Modifier, flash
         modifier
             .clip(RoundedCornerShape(12.dp))
             .background(bg)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .padding(horizontal = 10.dp, vertical = 8.dp),
     ) {
         Text(value ?: "—", style = MaterialTheme.typography.titleMedium, maxLines = 1)
         Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -485,11 +515,11 @@ fun GreyCard(@DrawableRes icon: Int, title: String, line: String) {
             .clip(MaterialTheme.shapes.large)
             .background(MaterialTheme.colorScheme.surfaceContainerHighest)
             .semantics(mergeDescendants = true) { disabled() }
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         TmIcon(icon, null, tint = MaterialTheme.colorScheme.outline)
-        Spacer(Modifier.width(16.dp))
+        Spacer(Modifier.width(14.dp))
         Column {
             Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(line, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -497,7 +527,7 @@ fun GreyCard(@DrawableRes icon: Int, title: String, line: String) {
     }
 }
 
-/** The 52 dp footer: capture dot, the newest event, chevron-up; the bar opens Activity. */
+/** The 48 dp footer: capture dot, the newest event, chevron-up; the bar opens Activity. */
 @Composable
 fun HomeFooter(dot: Color, line: String, error: Boolean, onClick: () -> Unit) {
     Surface(color = MaterialTheme.colorScheme.surfaceContainerLowest) {
@@ -506,7 +536,7 @@ fun HomeFooter(dot: Color, line: String, error: Boolean, onClick: () -> Unit) {
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .height(52.dp)
+                    .height(48.dp)
                     .clickable(onClick = onClick, onClickLabel = stringResource(R.string.activity))
                     .padding(horizontal = 16.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -537,11 +567,11 @@ fun ActivityRow(kind: String, time: String, text: String) {
     Row(
         Modifier
             .fillMaxWidth()
-            .heightIn(min = 52.dp)
+            .heightIn(min = 44.dp)
             .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        TmIcon(icon, null, tint = tint, size = 20.dp)
+        TmIcon(icon, null, tint = tint, size = 18.dp)
         Spacer(Modifier.width(12.dp))
         Text(time, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline, modifier = Modifier.width(42.dp))
         Text(
@@ -553,11 +583,11 @@ fun ActivityRow(kind: String, time: String, text: String) {
     }
 }
 
-/** A round avatar (40 dp) with an icon or a letter. */
+/** A round avatar (36 dp) with an icon or a letter. */
 @Composable
 fun Avatar(@DrawableRes icon: Int? = null, letter: String? = null, spinning: Boolean = false) {
     Box(
-        Modifier.size(40.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHighest),
+        Modifier.size(36.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHighest),
         contentAlignment = Alignment.Center,
     ) {
         when {
@@ -572,7 +602,7 @@ fun Avatar(@DrawableRes icon: Int? = null, letter: String? = null, spinning: Boo
 @Composable
 fun CardHeader(title: String, note: String? = null, actions: @Composable RowScope.() -> Unit = {}) {
     Row(
-        Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 6.dp).heightIn(min = 48.dp),
+        Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 2.dp).heightIn(min = 44.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(title, style = MaterialTheme.typography.titleSmall)

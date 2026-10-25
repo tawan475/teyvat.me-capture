@@ -139,18 +139,22 @@ private fun style(size: Int, line: Int, weight: FontWeight) = TextStyle(
     fontFeatureSettings = "tnum",
 )
 
+/**
+ * A step below Material's defaults (the spec's sizes): on a phone with a
+ * larger font setting they read as too big (user, 2026-10-26).
+ */
 private val Type = Typography(
-    displaySmall = style(34, 40, FontWeight.SemiBold),
-    headlineSmall = style(24, 30, FontWeight.SemiBold),
-    titleLarge = style(22, 28, FontWeight.Medium),
-    titleMedium = style(20, 26, FontWeight.SemiBold),
-    titleSmall = style(16, 22, FontWeight.SemiBold),
-    bodyLarge = style(16, 22, FontWeight.Medium),
-    bodyMedium = style(14, 20, FontWeight.Normal),
-    bodySmall = style(13, 16, FontWeight.Normal),
-    labelLarge = style(14, 20, FontWeight.SemiBold),
-    labelMedium = style(12, 16, FontWeight.Medium),
-    labelSmall = style(11, 16, FontWeight.Medium),
+    displaySmall = style(30, 36, FontWeight.SemiBold),
+    headlineSmall = style(20, 26, FontWeight.SemiBold),
+    titleLarge = style(19, 24, FontWeight.Medium),
+    titleMedium = style(18, 24, FontWeight.SemiBold),
+    titleSmall = style(15, 20, FontWeight.SemiBold),
+    bodyLarge = style(15, 20, FontWeight.Medium),
+    bodyMedium = style(13, 18, FontWeight.Normal),
+    bodySmall = style(12, 16, FontWeight.Normal),
+    labelLarge = style(13, 18, FontWeight.SemiBold),
+    labelMedium = style(11, 14, FontWeight.Medium),
+    labelSmall = style(10, 14, FontWeight.Medium),
 )
 
 private val Shape = Shapes(
