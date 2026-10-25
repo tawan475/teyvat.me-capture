@@ -39,7 +39,9 @@ use std::task::{Context, Poll, ready};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use etherparse::{IpNumber, IpSlice, PacketBuilder, TcpSlice};
-use ipstack::{IpStack, IpStackConfig, IpStackStream, IpStackTcpStream, IpStackUdpStream};
+use ipstack::{
+    IpStack, IpStackConfig, IpStackStream, IpStackTcpStream, IpStackUdpStream, TcpConfig,
+};
 use jni::JNIEnv;
 use jni::objects::{JClass, JString};
 use jni::sys::{jboolean, jint, jstring};
@@ -63,6 +65,9 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 /// How long a let-in SYN's flow stays known to the gate, so a retransmitted
 /// SYN goes to the stack instead of opening a second upstream connection.
 const LET_IN_FOR: Duration = Duration::from_secs(30);
+/// How long an established TCP flow may sit without data: 2 h 4 min, the
+/// least RFC 5382 lets a NAT keep one, so the tunnel never cuts sooner.
+const TCP_IDLE_TIMEOUT: Duration = Duration::from_secs(2 * 60 * 60 + 4 * 60);
 
 #[derive(Default)]
 struct Stats {
@@ -135,6 +140,8 @@ impl Network {
 fn parse_resolvers(list: &str) -> Vec<IpAddr> {
     list.split(',')
         .filter_map(|s| s.trim().parse().ok())
+        // The tunnel's own resolver would send DNS round in a circle.
+        .filter(|ip| *ip != IpAddr::V4(VIRTUAL_DNS))
         .collect()
 }
 
@@ -615,6 +622,11 @@ async fn run(
     config.mtu(MTU)?;
     // The game keeps its KCP flow busy; a minute of silence means it is gone.
     config.udp_timeout(Duration::from_secs(60));
+    // ipstack drops a TCP flow after 60 s without data, which cut idle
+    // HTTPS keep-alive connections (seen on the game's CDN flows).
+    let mut tcp = TcpConfig::default();
+    tcp.timeout = TCP_IDLE_TIMEOUT;
+    config.with_tcp_config(tcp);
     let mut stack = IpStack::new(config, device);
 
     let mut report = tokio::time::interval(Duration::from_secs(10));
@@ -900,6 +912,8 @@ mod tests {
         let other: SocketAddr = "203.0.113.7:53".parse().unwrap();
         assert_eq!(network.upstream(other), other);
         *network.resolvers.write().unwrap() = parse_resolvers("");
+        assert_eq!(network.upstream(dns), "1.1.1.1:53".parse().unwrap());
+        *network.resolvers.write().unwrap() = parse_resolvers("10.111.0.53");
         assert_eq!(network.upstream(dns), "1.1.1.1:53".parse().unwrap());
     }
 }

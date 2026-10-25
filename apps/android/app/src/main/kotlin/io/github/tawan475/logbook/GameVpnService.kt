@@ -13,8 +13,12 @@ import android.graphics.drawable.Icon
 import android.net.ConnectivityManager
 import android.net.LinkProperties
 import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.VpnService
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import java.io.File
 import java.net.Inet6Address
@@ -111,18 +115,37 @@ class GameVpnService : VpnService() {
         }
         currentNetwork = network
         currentAddresses = lp?.let(::addressList).orEmpty()
-        connectivity.registerDefaultNetworkCallback(networkCallback)
+        watchUnderlyingNetwork(connectivity)
         lastPcap = pcap.path
         Log.i(TAG, "VPN up for $GAME_PACKAGE, ipv6=$ipv6, resolvers=$resolvers, pcap=${pcap.path}")
     }
 
     /**
-     * The phone's default network (this app is outside its own VPN, so it is
-     * the underlying one) appeared or changed. A different network, or new
+     * Follows the network the phone would use without this VPN. The default
+     * network callback reports the VPN itself once it is up (seen on Android
+     * 16), so on 12+ ask for the best network that is not a VPN; older
+     * versions keep the default callback and skip VPNs in [onDefaultNetwork].
+     */
+    private fun watchUnderlyingNetwork(connectivity: ConnectivityManager) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val request = NetworkRequest.Builder()
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+                .build()
+            connectivity.registerBestMatchingNetworkCallback(request, networkCallback, Handler(Looper.getMainLooper()))
+        } else {
+            connectivity.registerDefaultNetworkCallback(networkCallback)
+        }
+    }
+
+    /**
+     * The phone's underlying network appeared or changed. A different network, or new
      * addresses on the same one, makes the forwarder's UDP flows reconnect
      * from the new address; resolvers are refreshed either way.
      */
     private fun onDefaultNetwork(network: Network, lp: LinkProperties) {
+        val vpn = connectivity?.getNetworkCapabilities(network)?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) ?: false
+        if (vpn) return
         val addresses = addressList(lp)
         val moved = network != currentNetwork || addresses != currentAddresses
         currentNetwork = network

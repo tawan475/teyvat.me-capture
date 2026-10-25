@@ -7,14 +7,15 @@ import android.Manifest
 import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Insets
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import android.view.MotionEvent
-import android.view.View
+import android.view.Window
+import android.view.WindowInsets
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -22,7 +23,6 @@ import android.widget.TextView
 /** Phase 0 spike screen: Start/Stop and the forwarder's counters. */
 class MainActivity : Activity() {
     private lateinit var status: TextView
-    private lateinit var buttons: List<Button>
     private val ticker = Handler(Looper.getMainLooper())
     private val tick = object : Runnable {
         override fun run() {
@@ -35,6 +35,10 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Target SDK 35+ draws edge to edge, and the framework's action bar
+        // then sits over the top of the content (it covered most of Start VPN,
+        // so taps there never reached it). No action bar; pad by the bars.
+        requestWindowFeature(Window.FEATURE_NO_TITLE)
         val pad = (16 * resources.displayMetrics.density).toInt()
         status = TextView(this).apply { textSize = 16f }
         val start = Button(this).apply {
@@ -47,38 +51,27 @@ class MainActivity : Activity() {
                 startService(Intent(this@MainActivity, GameVpnService::class.java).setAction(GameVpnService.ACTION_STOP))
             }
         }
-        buttons = listOf(start, stop)
         setContentView(LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(pad, pad * 3, pad, pad)
             addView(start)
             addView(stop)
             addView(status)
+            setOnApplyWindowInsetsListener { view, insets ->
+                val bars = systemBars(insets)
+                view.setPadding(pad + bars.left, pad + bars.top, pad + bars.right, pad + bars.bottom)
+                insets
+            }
         })
     }
 
-    /**
-     * Spike diagnostic for taps that never click on the Galaxy A54: every
-     * touch's action, screen position, tool, flags (0x1 = window obscured)
-     * and the button under it, if any.
-     */
-    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-        val handled = super.dispatchTouchEvent(ev)
-        if (ev.actionMasked != MotionEvent.ACTION_MOVE) {
-            val under = buttons.firstOrNull { it.contains(ev.rawX, ev.rawY) }?.text ?: "-"
-            Log.i(
-                "logbook",
-                "touch ${MotionEvent.actionToString(ev.action)} at (${ev.rawX.toInt()}, ${ev.rawY.toInt()}) " +
-                    "tool=${ev.getToolType(0)} flags=0x${ev.flags.toString(16)} on=$under handled=$handled",
-            )
+    private fun systemBars(insets: WindowInsets): Insets =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
+        } else {
+            @Suppress("DEPRECATION")
+            insets.systemWindowInsets
         }
-        return handled
-    }
 
-    private fun View.contains(x: Float, y: Float): Boolean {
-        val at = IntArray(2).also(::getLocationOnScreen)
-        return x >= at[0] && x < at[0] + width && y >= at[1] && y < at[1] + height
-    }
 
     /** Notifications first (Android 13+), for the service's Stop notification; refusing still starts. */
     private fun requestVpn() {
