@@ -54,6 +54,8 @@ fun WelcomeScreen(padding: PaddingValues, onStart: () -> Unit) {
             CardDivider()
             ListRow(stringResource(R.string.welcome_read_only), stringResource(R.string.welcome_read_only_line), R.drawable.ic_eye)
             CardDivider()
+            ListRow(stringResource(R.string.welcome_on_phone), stringResource(R.string.welcome_on_phone_line), R.drawable.ic_folder)
+            CardDivider()
             ListRow(stringResource(R.string.welcome_before_game), stringResource(R.string.welcome_before_game_line), R.drawable.ic_power)
         }
         Spacer(Modifier.height(8.dp))

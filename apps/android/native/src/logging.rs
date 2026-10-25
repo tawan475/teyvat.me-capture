@@ -106,6 +106,13 @@ pub fn init(dir: &Path) {
         if log::set_boxed_logger(Box::new(logger)).is_ok() {
             log::set_max_level(LevelFilter::Info);
         }
+        // A panic reaches latest.log (Share log), not only logcat.
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            log::error!("panic: {info}");
+            log::logger().flush();
+            previous(info);
+        }));
         let _ = tracing_subscriber::fmt()
             .with_max_level(tracing::Level::INFO)
             .with_ansi(false)

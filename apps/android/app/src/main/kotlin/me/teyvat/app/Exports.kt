@@ -88,15 +88,24 @@ object Exports {
         return Intent.createChooser(send, null)
     }
 
-    /** `latest.log` for the share sheet. */
+    /**
+     * The logs for a bug report: latest.log, previous.log and the last
+     * crash, whichever exist. They hold the account's numbers (Mora and the
+     * like) but never a key or a wish URL.
+     */
     fun shareLogIntent(context: Context): Intent? {
-        val file = File(context.filesDir, "latest.log").takeIf { it.exists() } ?: return null
-        val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
-        val send = Intent(Intent.ACTION_SEND)
+        val files = listOf("latest.log", "previous.log", "crash.txt")
+            .map { File(context.filesDir, it) }
+            .filter { it.exists() && it.length() > 0 }
+        if (files.isEmpty()) return null
+        val uris = ArrayList(files.map { FileProvider.getUriForFile(context, "${context.packageName}.files", it) })
+        val send = Intent(Intent.ACTION_SEND_MULTIPLE)
             .setType("text/plain")
-            .putExtra(Intent.EXTRA_STREAM, uri)
+            .putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        send.clipData = ClipData.newRawUri(file.name, uri)
+        val clip = ClipData.newRawUri(files[0].name, uris[0])
+        uris.drop(1).forEach { clip.addItem(ClipData.Item(it)) }
+        send.clipData = clip
         return Intent.createChooser(send, null)
     }
 

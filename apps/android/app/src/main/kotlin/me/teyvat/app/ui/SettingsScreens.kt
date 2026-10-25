@@ -316,7 +316,7 @@ private val LICENCES = listOf(
 )
 
 @Composable
-fun LicencesScreen(padding: PaddingValues, openUrl: (String) -> Unit) = Scrolling(padding) {
+fun LicencesScreen(padding: PaddingValues, openUrl: (String) -> Unit, openNotices: () -> Unit) = Scrolling(padding) {
     Spacer(Modifier.height(8.dp))
     Group {
         LICENCES.forEachIndexed { i, (what, licence) ->
@@ -324,6 +324,25 @@ fun LicencesScreen(padding: PaddingValues, openUrl: (String) -> Unit) = Scrollin
             ListRow(what, licence)
         }
         CardDivider()
-        ListRow("THIRD_PARTY_NOTICES.md", null, R.drawable.ic_file_json, onClick = { openUrl("${Links.SOURCE}/blob/main/THIRD_PARTY_NOTICES.md") }) { External() }
+        ListRow(stringResource(R.string.third_party_notices), "THIRD_PARTY_NOTICES.md · LICENSE", R.drawable.ic_file_json, onClick = openNotices) { Chevron() }
+        CardDivider()
+        ListRow(stringResource(R.string.source_code), "tawan475/teyvat.me-capture", R.drawable.ic_github, onClick = { openUrl(Links.SOURCE) }) { External() }
     }
+}
+
+/** The repo's THIRD_PARTY_NOTICES.md and LICENSE, as the build bundled them. */
+@Composable
+fun NoticesScreen(padding: PaddingValues) = Scrolling(padding) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val text = remember {
+        listOf("THIRD_PARTY_NOTICES.md", "LICENSE").joinToString("\n\n") { name ->
+            runCatching { context.assets.open(name).bufferedReader().use { it.readText() } }.getOrDefault("")
+        }.trim()
+    }
+    Text(
+        text,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(16.dp),
+    )
 }
