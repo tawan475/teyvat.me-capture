@@ -75,6 +75,14 @@ Some names keep irminsul's spelling on purpose:
   progress), and the user docs.
 - **The tracker.** It should know the app by its new name. The old irminsul
   client must keep working for copies that never update.
+- **A hanging test.** `crash::native::tests::a_native_crash_is_reported_with_its_module_stack_and_a_dump`
+  (inherited from irminsul) can hang in full test runs, so `python check.py`
+  can hang with it. The child process writes a minidump of itself and
+  apparently deadlocks under load. Run alone, it passes. Until it is fixed,
+  run the desktop tests with
+  `--skip a_native_crash_is_reported_with_its_module_stack_and_a_dump` and
+  run that one test on its own. The planned fix is a timeout on the child and
+  writing the dump from outside the crashing process.
 
 ## Licence
 
