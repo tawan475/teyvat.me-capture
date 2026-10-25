@@ -432,9 +432,13 @@ fun Stepper(steps: List<Pair<String, Step>>) {
 /** The disc beside the hero title. */
 enum class DiscKind { Neutral, Fill, Success, Error }
 
-/** 48 dp disc + headline + line; stepper; an action slot (spec StatusHero). */
+/**
+ * Disc + headline + line; stepper; an action slot (spec StatusHero). With
+ * [onStop], a Stop button beside the title ends the capture.
+ */
 @Composable
 fun StatusHero(
+    onStop: (() -> Unit)?,
     @DrawableRes icon: Int?,
     disc: DiscKind,
     title: String,
@@ -471,6 +475,12 @@ fun StatusHero(
             Column(Modifier.weight(1f)) {
                 Text(title, style = MaterialTheme.typography.headlineSmall)
                 Text(line, style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant)
+            }
+            if (onStop != null) {
+                TmButton(
+                    stringResource(R.string.stop), onStop, kind = ButtonKind.Outlined, icon = R.drawable.ic_power,
+                    contentDescription = stringResource(R.string.stop_capture),
+                )
             }
         }
         if (steps != null) Stepper(steps)

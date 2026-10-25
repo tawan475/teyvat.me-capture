@@ -261,6 +261,10 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
 
     private var askedForNotifications = false
 
+    override fun stopCapture() {
+        GameVpnService.stop(this)
+    }
+
     private fun askForVpn() {
         val consent = VpnService.prepare(this)
         if (consent != null) {

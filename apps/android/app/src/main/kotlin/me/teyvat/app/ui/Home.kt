@@ -51,6 +51,7 @@ import me.teyvat.app.title
 /** What the home screen's buttons do; MainActivity implements it. */
 interface HomeActions {
     fun startCapture()
+    fun stopCapture()
     fun openGenshin()
     fun gameInstalled(): Boolean
     fun forceStopGenshin()
@@ -115,16 +116,17 @@ private fun HeroCard(hero: Hero, summary: Summary, startingSince: Long, now: Lon
     val login = stringResource(R.string.step_login)
     val key = stringResource(R.string.step_key)
     fun steps(a: Step, b: Step, c: Step) = listOf(vpn to a, login to b, key to c)
+    val stop: (() -> Unit)? = if (hero == Hero.CaptureOff) null else actions::stopCapture
     when (hero) {
-        Hero.CaptureOff -> StatusHero(R.drawable.ic_shield_off, DiscKind.Neutral, title, line, steps(Step.Pending, Step.Pending, Step.Pending)) {
+        Hero.CaptureOff -> StatusHero(stop, R.drawable.ic_shield_off, DiscKind.Neutral, title, line, steps(Step.Pending, Step.Pending, Step.Pending)) {
             TmButton(stringResource(R.string.home_start_capture), actions::startCapture, large = true, icon = R.drawable.ic_power)
         }
-        Hero.Starting -> StatusHero(null, DiscKind.Neutral, title, line, steps(Step.Now, Step.Pending, Step.Pending), spinning = true) {
+        Hero.Starting -> StatusHero(stop, null, DiscKind.Neutral, title, line, steps(Step.Now, Step.Pending, Step.Pending), spinning = true) {
             if (now - startingSince > 30_000) {
                 TmButton(stringResource(R.string.home_open_activity), actions::openActivity, kind = ButtonKind.Text)
             }
         }
-        Hero.Waiting, Hero.AtTitleScreen -> StatusHero(R.drawable.ic_gamepad, DiscKind.Neutral, title, line, steps(Step.Done, Step.Now, Step.Pending)) {
+        Hero.Waiting, Hero.AtTitleScreen -> StatusHero(stop, R.drawable.ic_gamepad, DiscKind.Neutral, title, line, steps(Step.Done, Step.Now, Step.Pending)) {
             if (hero == Hero.Waiting) {
                 InfoChip(stringResource(R.string.home_open_before))
                 if (actions.gameInstalled()) {
@@ -132,12 +134,12 @@ private fun HeroCard(hero: Hero, summary: Summary, startingSince: Long, now: Lon
                 }
             }
         }
-        Hero.LoginSeen -> StatusHero(R.drawable.ic_log_in, DiscKind.Fill, title, line, steps(Step.Done, Step.Done, Step.Now))
-        Hero.Decrypting -> StatusHero(
+        Hero.LoginSeen -> StatusHero(stop, R.drawable.ic_log_in, DiscKind.Fill, title, line, steps(Step.Done, Step.Done, Step.Now))
+        Hero.Decrypting -> StatusHero(stop, 
             R.drawable.ic_circle_check, DiscKind.Success, title, line, steps(Step.Done, Step.Done, Step.Done),
             container = tm.successContainer, border = tm.successContainer,
         )
-        Hero.MissedAlreadyRunning, Hero.MissedCaptureStopped -> StatusHero(
+        Hero.MissedAlreadyRunning, Hero.MissedCaptureStopped -> StatusHero(stop, 
             R.drawable.ic_triangle_alert, DiscKind.Error, title, line,
             if (hero == Hero.MissedAlreadyRunning) steps(Step.Done, Step.Failed, Step.Pending) else steps(Step.Failed, Step.Pending, Step.Pending),
             container = scheme.errorContainer, border = tm.errorBorder,
@@ -152,7 +154,7 @@ private fun HeroCard(hero: Hero, summary: Summary, startingSince: Long, now: Lon
                 color = scheme.onSurfaceVariant, modifier = Modifier.align(Alignment.CenterHorizontally),
             )
         }
-        Hero.KeyLost -> StatusHero(
+        Hero.KeyLost -> StatusHero(stop, 
             R.drawable.ic_triangle_alert, DiscKind.Error, title, line, steps(Step.Done, Step.Done, Step.Failed),
             container = scheme.errorContainer, border = tm.errorBorder,
         ) {

@@ -185,6 +185,7 @@
     <string name="channel_alerts">Alerts</string>
     <string name="channel_alerts_line">Problems that need you</string>
     <string name="stop_capture">Stop capture</string>
+    <string name="stop">Stop</string>
     <string name="share_good">Share GOOD JSON</string>
     <string name="alert_capture_stopped">Capture stopped</string>
     <string name="alert_vpn_taken">Another VPN took over</string>
