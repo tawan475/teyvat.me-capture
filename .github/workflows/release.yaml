@@ -8,7 +8,8 @@ name: Create Release
 # Press "Run workflow" on main. The version is not typed: it is the
 # `package.version` in apps/desktop/Cargo.toml (plain semver, 1.0.0 first), and
 # the run refuses a version whose tag already exists, so bump it in the
-# release PR. The tag is created on the commit that was built.
+# release PR. The tag is created on the commit that was built. The desktop
+# files are released first; the signed APK is added to the same release after.
 on:
   workflow_dispatch:
 
@@ -152,14 +153,9 @@ jobs:
           path: target/release/${{ matrix.out_file }}
           if-no-files-found: error
 
-  android:
-    needs: [version]
-    uses: ./.github/workflows/android.yml
-    secrets: inherit
-
   create-release:
     runs-on: ubuntu-latest
-    needs: [version, desktop, android]
+    needs: [version, desktop]
     permissions:
       contents: write
     steps:
@@ -197,3 +193,35 @@ jobs:
           name: "Teyvat.me ${{ needs.version.outputs.version }}"
           bodyFile: notes.md
           artifacts: "upload/*"
+
+  # The APK comes after the desktop release and joins it, so a missing
+  # signing secret (ANDROID_KEYSTORE_B64, ANDROID_KEYSTORE_PASSWORD,
+  # ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD) fails only these two jobs:
+  # set the secrets, then "Re-run failed jobs" on this run.
+  android:
+    needs: [version, create-release]
+    uses: ./.github/workflows/android.yml
+    secrets: inherit
+
+  attach-apk:
+    runs-on: ubuntu-latest
+    needs: [version, android]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: teyvatme-android
+          path: apk
+      - name: Add the APK and its checksum to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v${{ needs.version.outputs.version }}
+        run: |
+          test -f apk/teyvatme-android.apk
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern SHA256SUMS.txt --dir sums
+          (cd apk && sha256sum teyvatme-android.apk) >> sums/SHA256SUMS.txt
+          sort -k2 -u sums/SHA256SUMS.txt -o sums/SHA256SUMS.txt
+          cat sums/SHA256SUMS.txt
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber \
+            apk/teyvatme-android.apk sums/SHA256SUMS.txt

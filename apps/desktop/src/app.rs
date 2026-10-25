@@ -711,6 +711,8 @@ pub(crate) enum FileRequest {
     },
     /// The auto-export folder.
     ExportFolder,
+    /// Where to save the wish history (UIGF): a suggested name.
+    SaveWishes { name: String },
 }
 
 /// The screen the window shows.

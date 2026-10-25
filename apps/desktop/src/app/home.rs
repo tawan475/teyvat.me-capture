@@ -529,6 +529,62 @@ impl TeyvatmeApp {
             if let Some(page) = open {
                 ui.ctx().open_url(egui::OpenUrl::new_tab(page));
             }
+
+            // The whole history as a UIGF file, read here and saved locally.
+            divider(ui);
+            let save = self.wishes.save.state();
+            match &save {
+                crate::wish_history::SaveState::Done { path, records } => {
+                    self.toasts
+                        .success(format!("Saved {records} wishes"))
+                        .action(crate::ui::toast::Action::Show(path.clone()))
+                        .saved();
+                    self.wishes.save.clear();
+                }
+                crate::wish_history::SaveState::Failed(why) => {
+                    self.toasts.error(format!("Wish history not saved · {why}"));
+                    self.wishes.save.clear();
+                }
+                _ => {}
+            }
+            let reading = self.wishes.save.reading();
+            let line = save
+                .line()
+                .filter(|_| reading)
+                .unwrap_or_else(|| "Every banner as UIGF, for any wish tracker".to_owned());
+            list_row(
+                ui,
+                None,
+                title_text("Save history", pal.tx),
+                Some(secondary_text(line, pal.tx2)),
+                |ui| {
+                    if reading {
+                        if button(ui, ButtonKind::Ghost, None, "Cancel", false).clicked() {
+                            self.wishes.save.cancel();
+                        }
+                        ui.add(egui::Spinner::new().size(16.0).color(pal.ac_tx));
+                    } else if button(
+                        ui,
+                        ButtonKind::Secondary,
+                        Some(icons::download()),
+                        "Save…",
+                        false,
+                    )
+                    .on_hover_text(
+                        "Reads every banner from the game's wish API (1 s a page, a few \
+                         minutes for a long history) and saves it as UIGF JSON",
+                    )
+                    .clicked()
+                    {
+                        self.file_request = Some(super::FileRequest::SaveWishes {
+                            name: format!(
+                                "teyvatme_wishes_{}.json",
+                                Local::now().format("%Y-%m-%d_%H-%M")
+                            ),
+                        });
+                    }
+                },
+            );
             if linked {
                 divider(ui);
                 let sync = self.wishes.sync_line(now);
@@ -902,6 +958,29 @@ impl TeyvatmeApp {
                     self.last_save_folder = path.parent().map(|dir| dir.to_path_buf());
                     self.optimizer_save_path = Some(path);
                     self.genshin_optimizer_request_export(super::OptimizerExportTarget::File);
+                }
+            }
+            super::FileRequest::SaveWishes { name } => {
+                let mut dialog = rfd::FileDialog::new()
+                    .set_parent(window)
+                    .set_title("Save wish history")
+                    .add_filter("UIGF JSON", &["json"])
+                    .set_file_name(name);
+                if let Some(folder) = self.export_folder() {
+                    dialog = dialog.set_directory(folder);
+                }
+                if let Some(mut path) = dialog.save_file() {
+                    if path.extension().is_none() {
+                        path.set_extension("json");
+                    }
+                    match self.wishes.key(Instant::now()) {
+                        Some(key) => self.wishes.save.start(key, path, ctx.clone()),
+                        None => {
+                            self.toasts.error(
+                                "The wish key expired · open the wish history in game again",
+                            );
+                        }
+                    }
                 }
             }
             super::FileRequest::ExportFolder => {
