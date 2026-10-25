@@ -5,12 +5,22 @@ name: Android
 
 # The Android app's release APK, signed with the upload key (the key Google
 # Play will know as the upload key). The release workflow calls this and
-# publishes the artifact; workflow_dispatch builds it on its own, and
-# `unsigned` builds without the key to test the build itself.
+# publishes the artifact (a call always needs the key); workflow_dispatch
+# builds it on its own, and `unsigned` builds without the key to test the
+# build itself. Pushes to develop and main that touch the app build it too,
+# unsigned when the key is not there.
 #
 # The artifact `teyvatme-android` holds exactly one file,
 # `teyvatme-android.apk`.
 on:
+  push:
+    branches: ["main", "develop"]
+    paths:
+      - "apps/android/**"
+      - "crates/**"
+      - "apps/desktop/keys/**"
+      - "rust-toolchain.toml"
+      - ".github/workflows/android.yml"
   workflow_call:
     secrets:
       ANDROID_KEYSTORE_B64:
@@ -70,7 +80,9 @@ jobs:
       - name: Upload key
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
-          UNSIGNED: ${{ inputs.unsigned }}
+          # A dispatch that asks for it, or a CI push. Never a workflow_call:
+          # there `inputs` holds no `unsigned`.
+          UNSIGNED: ${{ inputs.unsigned == true || (github.event_name == 'push' && github.workflow == 'Android') }}
         run: |
           if [ -z "$KEYSTORE_B64" ]; then
             if [ "$UNSIGNED" = "true" ]; then
