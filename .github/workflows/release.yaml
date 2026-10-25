@@ -1,0 +1,199 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 tawan475
+# Portions copyright (c) 2025 Erik Gilling and irminsul contributors
+# See THIRD_PARTY_NOTICES.md.
+
+name: Create Release
+# Releases come only from main, which receives develop through a pull request.
+# Press "Run workflow" on main. The version is not typed: it is the
+# `package.version` in apps/desktop/Cargo.toml (plain semver, 1.0.0 first), and
+# the run refuses a version whose tag already exists, so bump it in the
+# release PR. The tag is created on the commit that was built.
+on:
+  workflow_dispatch:
+
+# TRACKER_API_URL is deliberately NOT set at workflow level: option_env! in
+# src/app.rs yields Some("") for a set-but-empty variable, which would bake an
+# unusable empty base URL into the released binary. The "Export tracker API
+# URL" step sets it only when the repository variable has a value.
+
+jobs:
+  version:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # to see the existing tags
+      - id: read
+        shell: bash
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' apps/desktop/Cargo.toml | head -n1)
+          if [ -z "$version" ]; then
+            echo "no version in apps/desktop/Cargo.toml" >&2
+            exit 1
+          fi
+          if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+            echo "v$version is already released; bump apps/desktop/Cargo.toml first" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Releasing v$version"
+
+  desktop:
+    needs: [version]
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            name: windows
+            binary: teyvatme.exe
+            features: ""
+            out_file: teyvatme-windows.exe
+          - os: windows-latest
+            name: windows-pcap
+            binary: teyvatme.exe
+            features: "pcap"
+            out_file: teyvatme-windows-pcap.exe
+          - os: ubuntu-22.04
+            name: linux-x86_64
+            binary: teyvatme
+            features: "pcap,static-libpcap"
+            out_file: teyvatme-linux-x86_64.tar.gz
+          - os: macos-latest
+            name: macos-arm64
+            binary: teyvatme
+            features: "pcap"
+            out_file: Teyvatme-macos-arm64.app.tar.gz
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.name }}
+          cache-workspace-crates: true
+      - name: Export tracker API URL
+        if: vars.TRACKER_API_URL != ''
+        shell: bash
+        run: echo "TRACKER_API_URL=${{ vars.TRACKER_API_URL }}" >> "$GITHUB_ENV"
+      - name: Setup Linux GUI dependencies
+        if: runner.os == 'Linux'
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          echo "set man-db/auto-update false" | sudo debconf-communicate
+          sudo dpkg-reconfigure -f noninteractive man-db
+          sudo apt-get update
+          # libdbus-1-dev: the keyring crate's Secret Service backend, where
+          # the tracker sign-in keeps its refresh token (src/signin.rs).
+          sudo apt-get install -y libgtk-3-dev libappindicator3-dev libatk1.0-dev libdbus-1-dev pkg-config
+      - name: Setup libpcap
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/setup-libpcap
+      - name: Setup Windows (for pcap builds)
+        if: runner.os == 'Windows' && matrix.features == 'pcap'
+        shell: pwsh
+        run: |
+          # npcap.com first, the Internet Archive's copy of the same file when
+          # it fails. Either way the SHA-256 below must match.
+          curl.exe -fsSL https://npcap.com/dist/npcap-sdk-1.15.zip -o sdk.zip
+          if ($LASTEXITCODE -ne 0) {
+            curl.exe -fsSL https://web.archive.org/web/2025id_/https://npcap.com/dist/npcap-sdk-1.15.zip -o sdk.zip
+            if ($LASTEXITCODE -ne 0) { throw 'npcap SDK download failed' }
+          }
+          $expected = '52c7b9fb4abee3ad9fe739bb545c3efe77b731c8e127122bdf328eafdae3ed4f'
+          $actual = (Get-FileHash sdk.zip -Algorithm SHA256).Hash.ToLower()
+          if ($actual -ne $expected) {
+            throw "npcap SDK checksum mismatch: expected $expected, got $actual"
+          }
+          Expand-Archive -Path sdk.zip -DestinationPath . -Force
+      # --locked: ship exactly the dependency graph CI tested.
+      - run: cargo build --release --locked -p teyvatme --no-default-features --features "${{ matrix.features }}"
+        env:
+          LIB: ${{ github.workspace }}/Lib/x64/
+      - name: Package Windows
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          cd target/release
+          mv ${{ matrix.binary }} ${{ matrix.out_file }}
+      - name: Package Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          cd target/release
+          strip ${{ matrix.binary }} 2>/dev/null || true
+          chmod +x ${{ matrix.binary }}
+          tar -czf ${{ matrix.out_file }} ${{ matrix.binary }}
+      - name: Package macOS app
+        if: runner.os == 'macOS'
+        run: |
+          version=${{ needs.version.outputs.version }}
+          app=Teyvatme.app
+          mkdir -p $app/Contents/{MacOS,Resources}
+          sed "s/APPVERSION/$version/g" apps/desktop/macos/Info.plist > $app/Contents/Info.plist
+          # AppIcon.icns from the 1024 px master (apps/desktop/assets/make_icons.py).
+          iconset=AppIcon.iconset
+          mkdir -p $iconset
+          for size in 16 32 128 256 512; do
+            sips -z $size $size apps/desktop/assets/icon-1024.png --out $iconset/icon_${size}x${size}.png >/dev/null
+            double=$((size * 2))
+            sips -z $double $double apps/desktop/assets/icon-1024.png --out $iconset/icon_${size}x${size}@2x.png >/dev/null
+          done
+          iconutil -c icns $iconset -o $app/Contents/Resources/AppIcon.icns
+          cp apps/desktop/macos/launcher $app/Contents/MacOS/
+          cp target/release/teyvatme $app/Contents/MacOS/
+          chmod +x $app/Contents/MacOS/{launcher,teyvatme}
+          tar -czf target/release/${{ matrix.out_file }} $app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: teyvatme-${{ matrix.name }}
+          path: target/release/${{ matrix.out_file }}
+          if-no-files-found: error
+
+  android:
+    needs: [version]
+    uses: ./.github/workflows/android.yml
+    secrets: inherit
+
+  create-release:
+    runs-on: ubuntu-latest
+    needs: [version, desktop, android]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Checksums
+        run: |
+          mkdir -p upload
+          find artifacts -type f -exec cp {} upload/ \;
+          cd upload
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+      - name: Release notes
+        run: |
+          version=${{ needs.version.outputs.version }}
+          # This version's section of CHANGELOG.md, without its heading.
+          awk -v v="## $version" '
+            index($0, v) == 1 { on = 1; next }
+            /^## / && on { exit }
+            on { print }
+          ' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then
+            echo "CHANGELOG.md has no section for $version" >&2
+            exit 1
+          fi
+      # The tag is created on the commit this run built; main is not pushed to.
+      - name: Create release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: v${{ needs.version.outputs.version }}
+          commit: ${{ github.sha }}
+          name: "Teyvat.me ${{ needs.version.outputs.version }}"
+          bodyFile: notes.md
+          artifacts: "upload/*"
