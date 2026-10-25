@@ -17,7 +17,8 @@
 //! - the **refresh token** in the OS credential store ([`KeyringStore`]:
 //!   Windows Credential Manager, the macOS Keychain, the Secret Service on
 //!   Linux), one entry per tracker *origin*, never in `app.ron`. It rotates on
-//!   every use, so every refresh writes the new one back.
+//!   every use, so every refresh writes the new one back. An entry irminsul
+//!   left is moved to Teyvat.me's the first time it is read ([`MovingStore`]).
 //! - the **access token** in memory only, refreshed shortly before it expires
 //!   and once more when the tracker answers 401 `token_expired`.
 //!
@@ -51,7 +52,10 @@ pub const CLIENT_ID: &str = "irminsul";
 
 /// The credential store's service name; the entry's account is the tracker
 /// origin (`https://genshin-tracker.475.dev`).
-const KEYRING_SERVICE: &str = "irminsul";
+const KEYRING_SERVICE: &str = "teyvatme";
+
+/// The service irminsul saved its sign-in under, taken over on first read.
+const IRMINSUL_KEYRING_SERVICE: &str = "irminsul";
 
 /// How long the loopback listener waits for the browser. Signing in may mean
 /// a password, a human check or a Discord round trip, so this is generous;
@@ -748,20 +752,35 @@ pub trait CredentialStore: Send + Sync {
     fn delete(&self, origin: &str) -> Result<(), String>;
 }
 
-/// The OS credential store, through the `keyring` crate: service
-/// `teyvatme`, account = the tracker origin.
-pub struct KeyringStore;
+/// The OS credential store, through the `keyring` crate: one service name,
+/// account = the tracker origin.
+pub struct KeyringStore {
+    service: &'static str,
+}
 
 impl KeyringStore {
-    fn entry(origin: &str) -> Result<keyring::Entry, String> {
-        keyring::Entry::new(KEYRING_SERVICE, origin)
+    /// Teyvat.me's entries (service `teyvatme`), taking over the one irminsul
+    /// left (service `irminsul`) the first time it is read.
+    pub fn taking_over_irminsul() -> MovingStore<KeyringStore, KeyringStore> {
+        MovingStore {
+            current: KeyringStore {
+                service: KEYRING_SERVICE,
+            },
+            previous: KeyringStore {
+                service: IRMINSUL_KEYRING_SERVICE,
+            },
+        }
+    }
+
+    fn entry(&self, origin: &str) -> Result<keyring::Entry, String> {
+        keyring::Entry::new(self.service, origin)
             .map_err(|e| format!("the credential store is unavailable: {e}"))
     }
 }
 
 impl CredentialStore for KeyringStore {
     fn load(&self, origin: &str) -> Result<Option<String>, String> {
-        match Self::entry(origin)?.get_password() {
+        match self.entry(origin)?.get_password() {
             Ok(token) => Ok(Some(token)),
             Err(keyring::Error::NoEntry) => Ok(None),
             Err(e) => Err(format!("could not read the saved sign-in: {e}")),
@@ -769,16 +788,66 @@ impl CredentialStore for KeyringStore {
     }
 
     fn save(&self, origin: &str, token: &str) -> Result<(), String> {
-        Self::entry(origin)?
+        self.entry(origin)?
             .set_password(token)
             .map_err(|e| format!("could not save the sign-in: {e}"))
     }
 
     fn delete(&self, origin: &str) -> Result<(), String> {
-        match Self::entry(origin)?.delete_credential() {
+        match self.entry(origin)?.delete_credential() {
             Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
             Err(e) => Err(format!("could not remove the saved sign-in: {e}")),
         }
+    }
+}
+
+/// A [`CredentialStore`] that takes over an older one's entries: a read
+/// that finds nothing in `current` looks in `previous`, and moves what it
+/// finds.
+///
+/// Moved, not copied: the refresh token rotates on every use, and the tracker
+/// ends the session when an already used one comes back (`refresh_prev_hash`),
+/// which a copy left behind for irminsul would be.
+pub struct MovingStore<C, P> {
+    current: C,
+    previous: P,
+}
+
+impl<C: CredentialStore, P: CredentialStore> CredentialStore for MovingStore<C, P> {
+    fn load(&self, origin: &str) -> Result<Option<String>, String> {
+        if let Some(token) = self.current.load(origin)? {
+            return Ok(Some(token));
+        }
+        let token = match self.previous.load(origin) {
+            Ok(Some(token)) => token,
+            Ok(None) => return Ok(None),
+            Err(e) => {
+                tracing::warn!("could not look for irminsul's saved sign-in: {e}");
+                return Ok(None);
+            }
+        };
+        // Kept in the old place until the new one holds it, so a failed save
+        // leaves the next read to try again.
+        match self.current.save(origin, &token) {
+            Ok(()) => {
+                tracing::info!("moved irminsul's saved sign-in for {origin} to Teyvat.me's");
+                if let Err(e) = self.previous.delete(origin) {
+                    tracing::warn!("could not remove irminsul's saved sign-in: {e}");
+                }
+            }
+            Err(e) => tracing::warn!("could not move irminsul's saved sign-in: {e}"),
+        }
+        Ok(Some(token))
+    }
+
+    fn save(&self, origin: &str, token: &str) -> Result<(), String> {
+        self.current.save(origin, token)
+    }
+
+    /// Signing out removes both, so nothing of the sign-in is left behind.
+    fn delete(&self, origin: &str) -> Result<(), String> {
+        self.current.delete(origin)?;
+        self.previous.delete(origin)
     }
 }
 

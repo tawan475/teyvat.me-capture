@@ -4,4 +4,5 @@
 # Byte-compiled update_rev.py, produced by running test_update_rev.py
 __pycache__/
 # Debug builds write their log, packet log and pcapng trace here (see data_dir)
+/teyvatme-data
 /irminsul-data

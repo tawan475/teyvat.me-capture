@@ -54,17 +54,26 @@ Some names keep irminsul's spelling on purpose:
   audience, the `/api/oauth/irminsul` and `/api/irminsul/{whoami,import,changes}`
   routes, the GOOD `gi_*` keys, the GOOD `source` value `"Irminsul"`, and the
   upload's `irminsul_capture.json` file name.
-- **What installed copies of irminsul already stored on users' machines.**
-  That is the credential store entry `irminsul`, the app id `Irminsul` (where
-  `app.ron` lives), the startup task `Irminsul`, the single-instance lock
-  `irminsul_app_instance`, and the debug data folder `irminsul-data`.
+
+## Coming over from irminsul
+
+The bridge release of irminsul installs Teyvat.me over irminsul's exe. On its
+first launch Teyvat.me takes over what irminsul kept on the machine, under its
+own names:
+
+| What | irminsul | Teyvat.me | How |
+|---|---|---|---|
+| Settings (`app.ron`) | app id `Irminsul` | app id `Teyvat.me` | copied, irminsul's kept (`migrate.rs`) |
+| Tracker sign-in | credential `irminsul` | credential `teyvatme` | moved on first read (`signin.rs` `MovingStore`) |
+| Start on startup | task `Irminsul` | task `Teyvat.me` | moved, keeping "start minimized" (`autostart.rs`) |
+| Single instance | `irminsul_app_instance` | `teyvatme_app_instance` | both held, so the two never capture at once |
+| Debug data folder | `irminsul-data` | `teyvatme-data` | not moved (debug builds only) |
+
+Logs, crash reports and packet logs stay with irminsul: they describe its runs.
 
 ## Still to do
 
 - **Coming over from irminsul.**
-  - **First-launch migration.** Teyvat.me should take over irminsul's settings,
-    data folder, sign-in and startup task under its own names. It should then
-    stop using the stored irminsul names above.
   - **Bridge release.** The last irminsul release points its updater at this
     repository (irminsul's `src/update.rs`: `repo_owner`/`repo_name` and the
     asset names), so installed copies update to Teyvat.me. Teyvat.me starts at

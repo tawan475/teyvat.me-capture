@@ -38,7 +38,11 @@ use egui::{Button, Color32, Context, Id, Label, Modal, RichText, Ui};
 use egui_notify::Toasts;
 
 /// The task's name in Task Scheduler's root folder.
-pub const TASK_NAME: &str = "Irminsul";
+pub const TASK_NAME: &str = "Teyvat.me";
+
+/// The task irminsul registered, which the first launch moves to
+/// [`TASK_NAME`] (irminsul's updater replaces its exe with this one).
+const IRMINSUL_TASK_NAME: &str = "Irminsul";
 
 /// How long after sign-in the task waits before starting Teyvat.me, so the
 /// desktop and the tray are up first.
@@ -184,7 +188,7 @@ fn xml_bool(text: &str) -> Option<bool> {
 /// - `Priority` 5 is a normal-priority process. Task Scheduler's default of 7
 ///   would start the capture below normal priority, behind the game.
 /// - The command is quoted; the working directory is the exe's folder, where
-///   a debug build keeps its `irminsul-data` (release builds use `%APPDATA%`).
+///   a debug build keeps its `teyvatme-data` (release builds use `%APPDATA%`).
 /// - `minimized` adds [`MINIMIZED_ARG`].
 pub fn task_xml(exe: &str, working_dir: &str, user_id: &str, minimized: bool) -> String {
     let command = xml_escape(&format!("\"{exe}\""));
@@ -537,7 +541,7 @@ impl Startup {
 
         match (job, outcome) {
             (Job::Migrate, Ok(Some(old))) => tracing::info!(
-                "moved Start on startup from the Run entry ({old}) to the {TASK_NAME} scheduled task"
+                "moved Start on startup from {old} to the {TASK_NAME} scheduled task"
             ),
             (Job::Migrate, Err(e)) => {
                 tracing::error!("could not move Start on startup to Task Scheduler: {e}");
@@ -802,8 +806,8 @@ mod windows_impl {
     use windows::core::{PCWSTR, w};
 
     use super::{
-        Job, JobResult, RegisteredTask, Snapshot, TASK_NAME, clean_exe_path, decode_task_xml,
-        parse_task_xml, startup_warning, task_xml, utf16le_with_bom,
+        IRMINSUL_TASK_NAME, Job, JobResult, RegisteredTask, Snapshot, TASK_NAME, clean_exe_path,
+        decode_task_xml, parse_task_xml, startup_warning, task_xml, utf16le_with_bom,
     };
 
     /// `CREATE_NO_WINDOW`: schtasks and whoami are console programs, and a
@@ -852,7 +856,7 @@ mod windows_impl {
     }
 
     fn snapshot() -> Snapshot {
-        let task = query_task().unwrap_or_else(|e| {
+        let task = query_task(TASK_NAME).unwrap_or_else(|e| {
             tracing::warn!("could not read the {TASK_NAME} task: {e:#}");
             None
         });
@@ -905,19 +909,16 @@ mod windows_impl {
             .unwrap_or_else(|_| path.to_string())
     }
 
-    /// The registered task, or `None` when there is none.
+    /// The task `name` in the root folder, or `None` when there is none.
     ///
     /// Read from the task's file in Task Scheduler's store: UTF-16, so paths
     /// outside the console code page survive, readable by the user who
     /// registered it, and no process to start. `schtasks /Query /XML` is the
     /// fallback; piped, it prints the console code page, which loses them.
-    fn query_task() -> Result<Option<RegisteredTask>> {
+    fn query_task(name: &str) -> Result<Option<RegisteredTask>> {
         let store = std::env::var_os("SystemRoot").or_else(|| std::env::var_os("windir"));
         if let Some(root) = store {
-            let file = Path::new(&root)
-                .join("System32")
-                .join("Tasks")
-                .join(TASK_NAME);
+            let file = Path::new(&root).join("System32").join("Tasks").join(name);
             match std::fs::read(&file) {
                 Ok(bytes) => return Ok(Some(parse_task_xml(&decode_task_xml(&bytes)))),
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -926,7 +927,7 @@ mod windows_impl {
         }
 
         let output = hidden("schtasks")
-            .args(["/Query", "/TN", TASK_NAME, "/XML"])
+            .args(["/Query", "/TN", name, "/XML"])
             .output()
             .context("could not run schtasks")?;
         if output.status.success() {
@@ -999,16 +1000,20 @@ mod windows_impl {
 
     /// Remove the task. One that is not there is fine.
     fn delete_task() -> Result<()> {
+        delete_named_task(TASK_NAME)
+    }
+
+    fn delete_named_task(name: &str) -> Result<()> {
         let output = hidden("schtasks")
-            .args(["/Delete", "/TN", TASK_NAME, "/F"])
+            .args(["/Delete", "/TN", name, "/F"])
             .output()
             .context("could not run schtasks")?;
         if output.status.success() {
-            tracing::info!("removed the {TASK_NAME} scheduled task");
+            tracing::info!("removed the {name} scheduled task");
             return Ok(());
         }
         // schtasks says "not found" in the system language, so look instead.
-        if query_task()?.is_none() {
+        if query_task(name)?.is_none() {
             return Ok(());
         }
         bail!("schtasks /Delete failed: {}", describe(&output))
@@ -1074,11 +1079,37 @@ mod windows_impl {
         }
     }
 
+    /// Move what an older version left to [`TASK_NAME`] for the running exe:
+    /// irminsul's own task, or before that its Run entry. `Some(what)` when
+    /// something was moved.
+    fn migrate() -> Result<Option<String>> {
+        if let Some(moved) = migrate_irminsul_task()? {
+            return Ok(Some(moved));
+        }
+        migrate_run_value()
+    }
+
+    /// Move irminsul's task to [`TASK_NAME`], keeping whether it was on and
+    /// started minimized; the old task goes once the new one exists. One
+    /// already moved (both present) only loses the old one.
+    fn migrate_irminsul_task() -> Result<Option<String>> {
+        let Some(old) = query_task(IRMINSUL_TASK_NAME)? else {
+            return Ok(None);
+        };
+        if old.enabled && query_task(TASK_NAME)?.is_none() {
+            create_task(old.minimized).with_context(|| {
+                format!("the {IRMINSUL_TASK_NAME} task is kept so the next launch tries again")
+            })?;
+        }
+        delete_named_task(IRMINSUL_TASK_NAME)?;
+        Ok(Some(format!("the {IRMINSUL_TASK_NAME} task")))
+    }
+
     /// Move a Run entry left by an older version to a task for the running
     /// exe. The entry only exists when startup was turned on, so a task is
     /// always made for it; it is removed once that worked, and otherwise kept
     /// so the next launch tries again. `Some(command)` when one was moved.
-    fn migrate() -> Result<Option<String>> {
+    fn migrate_run_value() -> Result<Option<String>> {
         let Some(old) = read_run_value()? else {
             return Ok(None);
         };

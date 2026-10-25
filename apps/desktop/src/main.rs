@@ -29,6 +29,7 @@ mod autostart;
 mod capture;
 mod crash;
 mod game_watch;
+mod migrate;
 mod monitor;
 mod replay;
 mod replay_live;
@@ -36,7 +37,13 @@ mod signin;
 mod update;
 mod wish_history;
 
-const APP_ID: &str = "Irminsul";
+/// The app id: where eframe keeps `app.ron`, and the data directory of a
+/// release build. One name for both, so settings and logs never part.
+const APP_ID: &str = "Teyvat.me";
+
+/// irminsul's app id, whose `app.ron` the first launch copies over
+/// (`migrate.rs`).
+const IRMINSUL_APP_ID: &str = "Irminsul";
 
 #[derive(Clone, Copy, Debug)]
 pub enum ConfirmationType {
@@ -198,7 +205,7 @@ struct Args {
         help = "Decode the recording SAVEFILE_PATH without the app and write its export to OUT_JSON",
         long_help = "Decode the recording SAVEFILE_PATH without starting the app, and write the \
                      export it yields to OUT_JSON.\n\n\
-                     The recording is the irminsul-data/log/*.pcapng a debug build writes, or a \
+                     The recording is the teyvatme-data/log/*.pcapng a debug build writes, or a \
                      pcap or pcapng file from `-b pcap <template>` or Wireshark; no pcap support \
                      is needed to read it. It is decoded the way live capture decodes: the \
                      session key is recovered from the login in the recording, and a reconnect or \
@@ -372,13 +379,26 @@ fn main() -> eframe::Result {
         std::process::exit(code);
     }
 
-    let instance = single_instance::SingleInstance::new("irminsul_app_instance").unwrap();
+    // irminsul's lock as well as ours: the two capture the same traffic, and
+    // an irminsul still running beside this would upload the account twice.
+    let instance = single_instance::SingleInstance::new("teyvatme_app_instance").unwrap();
+    let irminsul_instance = single_instance::SingleInstance::new("irminsul_app_instance").unwrap();
     if !instance.is_single() {
         eprintln!("Another instance of Teyvat.me is already running.");
         std::process::exit(1);
     }
+    if !irminsul_instance.is_single() {
+        eprintln!("Irminsul is running. Close it first: Teyvat.me replaces it.");
+        std::process::exit(1);
+    }
 
     let (_guard, reload_handle, previous_run_notice) = tracing_init().unwrap();
+
+    // Before eframe reads `app.ron`.
+    migrate::settings_from_irminsul(
+        eframe::storage_dir(IRMINSUL_APP_ID).as_deref(),
+        eframe::storage_dir(APP_ID).as_deref(),
+    );
 
     if !args.no_admin && !args.read_from_file {
         #[cfg(any(windows, unix))]
@@ -426,7 +446,7 @@ fn main() -> eframe::Result {
         app::StartWindow::AsIs
     };
     let result = eframe::run_native(
-        "Teyvat.me",
+        APP_ID,
         native_options,
         Box::new(move |cc| {
             Ok(Box::new(app::TeyvatmeApp::new(
@@ -452,9 +472,10 @@ fn main() -> eframe::Result {
         Ok(()) => crash::mark_clean_exit("window closed"),
     }
 
-    // Release the single-instance mutex before the replacement tries to take
-    // it.
+    // Release the single-instance mutexes before the replacement tries to
+    // take them.
     drop(instance);
+    drop(irminsul_instance);
 
     if restart {
         // The command line is reproduced as faithfully as it can be. argv[0]
@@ -503,7 +524,7 @@ fn main() -> eframe::Result {
 pub fn data_dir() -> Result<PathBuf> {
     if cfg!(debug_assertions) {
         let mut dir = std::env::current_dir().context("Working directory not found")?;
-        dir.push("irminsul-data");
+        dir.push("teyvatme-data");
         return Ok(dir);
     }
     eframe::storage_dir(APP_ID).context("Storage dir not found")

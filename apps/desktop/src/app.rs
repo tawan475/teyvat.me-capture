@@ -985,7 +985,7 @@ impl TeyvatmeApp {
         let notify_ctx = cc.egui_ctx.clone();
         let tracker_auth = TrackerAuth::new(
             &saved_state.tracker_api_url,
-            Arc::new(signin::KeyringStore),
+            Arc::new(signin::KeyringStore::taking_over_irminsul()),
             signin::device_name(),
             Arc::new(move |url| {
                 let _ = browser_tx.send(url);
@@ -1460,8 +1460,9 @@ impl eframe::App for TeyvatmeApp {
                         .add(Button::new(RichText::new(GITHUB).size(16.)).frame(false))
                         .clicked()
                     {
-                        ui.ctx()
-                            .open_url(OpenUrl::new_tab("https://github.com/tawan475/teyvat.me-capture"));
+                        ui.ctx().open_url(OpenUrl::new_tab(
+                            "https://github.com/tawan475/teyvat.me-capture",
+                        ));
                     }
 
                     let button = ui.add(
