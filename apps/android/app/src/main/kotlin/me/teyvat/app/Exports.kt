@@ -15,6 +15,7 @@ import android.os.Environment
 import android.os.PersistableBundle
 import android.provider.DocumentsContract
 import android.provider.MediaStore
+import android.provider.OpenableColumns
 import android.util.Log
 import androidx.core.content.FileProvider
 import java.io.File
@@ -130,6 +131,16 @@ object Exports {
         }
         return context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
     }
+
+    /**
+     * A document's file name. Its URI says nothing a person can read (the
+     * Downloads provider's ends in an id), so ask the provider.
+     */
+    fun displayName(context: Context, uri: Uri): String? = runCatching {
+        context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) cursor.getString(0) else null
+        }
+    }.getOrNull()
 
     /** The folder's name as the rows show it. */
     fun folderLabel(context: Context, settings: Settings): String {

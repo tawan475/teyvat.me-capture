@@ -103,7 +103,7 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
             val ok = withContext(Dispatchers.IO) { runCatching { Exports.write(this@MainActivity, uri, json) }.isSuccess }
             if (ok) {
                 prefs.update { it.copy(lastSave = uri.toString()) }
-                val name = uri.lastPathSegment?.substringAfterLast('/') ?: Exports.fileName()
+                val name = Exports.displayName(this@MainActivity, uri) ?: Exports.fileName()
                 NativeBridge.note("ok", getString(R.string.export_saved, name))
                 snack(getString(R.string.export_saved, name), getString(R.string.open)) { Exports.openFile(this@MainActivity, uri) }
             } else {

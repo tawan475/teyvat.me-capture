@@ -38,6 +38,13 @@ const STUCK_AFTER_MS: u64 = 5_000;
 /// No traffic from the game for this long: it is closed (or idle in the
 /// background), so the app waits for it again.
 const GAME_QUIET_MS: u64 = 60_000;
+/// No game connection packets (UDP 22101–22102) for this long: the login
+/// is over. Only these count once logged in: something under the game's UID
+/// keeps opening TCP connections after the game is closed (seen on a Galaxy
+/// A54, every 10–30 s), which kept "Data decrypting" up for good. In the
+/// world the connection is never this quiet; a short trip to the background
+/// keeps the state.
+const CONNECTION_QUIET_MS: u64 = 120_000;
 /// When the tun last carried anything from the game (Unix ms; 0 never): set
 /// by the forwarder for every packet, so it costs no channel send.
 pub static LAST_TRAFFIC: AtomicU64 = AtomicU64::new(0);
@@ -218,19 +225,19 @@ impl State {
             at => Some(at.max(self.last_traffic.unwrap_or(0))),
         };
         let recent = |at: Option<u64>| at.is_some_and(|at| now.saturating_sub(at) < GAME_QUIET_MS);
-        let game_traffic = recent(self.last_game_packet);
-        if let Some(connection) = &self.connection {
+        let connected = self
+            .last_game_packet
+            .is_some_and(|at| now.saturating_sub(at) < CONNECTION_QUIET_MS);
+        if let Some(connection) = &self.connection
+            && connected
+        {
             if connection.key == Some(KeyState::Session) && !self.stuck(now) {
-                return if game_traffic || recent(traffic) {
-                    Phase::Decrypting
-                } else {
-                    Phase::Waiting
-                };
+                return Phase::Decrypting;
             }
             if connection.recovery_failed {
                 return Phase::KeyLost;
             }
-            if connection.began_here && !self.stuck(now) && game_traffic {
+            if connection.began_here && !self.stuck(now) {
                 return Phase::LoginSeen;
             }
         }
@@ -675,8 +682,16 @@ mod tests {
         state.connection.as_mut().unwrap().key = Some(KeyState::Session);
         assert_eq!(state.phase(now), Phase::Decrypting);
 
+        // A minute in the background is still the same login.
+        assert_eq!(state.phase(now + GAME_QUIET_MS), Phase::Decrypting);
+
         // The game closed: the data stays, the app waits for it again.
-        assert_eq!(state.phase(now + GAME_QUIET_MS), Phase::Waiting);
+        let later = now + CONNECTION_QUIET_MS;
+        assert_eq!(state.phase(later), Phase::Waiting);
+
+        // Stray TCP under the game's UID is not the game's connection.
+        state.last_traffic = Some(later - 1_000);
+        assert_ne!(state.phase(later), Phase::Decrypting);
     }
 
     #[test]
@@ -702,7 +717,10 @@ mod tests {
             recovery_failed: true,
             ..Connection::default()
         });
+        state.last_game_packet = Some(999_000);
         assert_eq!(state.phase(1_000_000), Phase::KeyLost);
+        // Until the game is gone: then it waits for the next launch.
+        assert_eq!(state.phase(999_000 + CONNECTION_QUIET_MS), Phase::Waiting);
     }
 
     #[test]
