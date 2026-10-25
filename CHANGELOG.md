@@ -2,6 +2,26 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.0.1
+
+Fixes the 1.0.0 desktop downloads, which drew most text with letters missing:
+the app's fonts reached the build damaged (git had stored them as text). The
+fonts are binary files in the repository now, and a test checks them byte for
+byte. Android builds get the intact fonts too.
+
+Everything in 1.0.0 below still applies. 1.0.0 offers this update by itself.
+
+| Platform | File |
+|---|---|
+| Windows 10/11 | `teyvatme-windows.exe` (built-in packet capture; asks for administrator rights) |
+| Windows with Npcap | `teyvatme-windows-pcap.exe` |
+| Linux x86_64 | `teyvatme-linux-x86_64.tar.gz` |
+| macOS (Apple silicon) | `Teyvatme-macos-arm64.app.tar.gz` |
+| Android 10+ | `teyvatme-android.apk` |
+
+Check a download against `SHA256SUMS.txt`. Unofficial fan project, not
+affiliated with HoYoverse.
+
 ## 1.0.0
 
 The first release of Teyvat.me Capture, irminsul's successor under its own
