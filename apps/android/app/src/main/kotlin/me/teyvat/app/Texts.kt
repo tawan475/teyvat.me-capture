@@ -56,6 +56,8 @@ object Links {
     const val TRACKER_API = "https://teyvat.me/api"
     const val STARDB_ACHIEVEMENTS = "https://stardb.gg/import"
     const val SEELIE_ACHIEVEMENTS = "https://seelie.me/achievements"
+    const val PAIMON_WISH_IMPORT = "https://paimon.moe/wish/import"
+    const val STARDB_WISH_IMPORT = "https://stardb.gg/en/genshin/wish-import"
 
     /** The tracker's site: the API address without `/api`. */
     val trackerSite: String get() = TRACKER_API.removeSuffix("/api")

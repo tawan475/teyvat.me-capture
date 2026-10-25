@@ -35,6 +35,25 @@ data class Counts(
 
 data class Player(val ar: Int?, val wl: Int?, val server: String?)
 
+/** Reading the wish history into a UIGF file (native `wish::Read`). */
+data class WishRead(
+    /** `idle`, `running`, `done` or `failed`. */
+    val state: String = "idle",
+    val banner: Int = 0,
+    val page: Int = 0,
+    val records: Int = 0,
+    val at: Long = 0,
+    val error: String? = null,
+)
+
+/** The wish card (native `wish::WishSummary`). */
+data class WishInfo(
+    /** `none`, `ready` or `expired`. */
+    val key: String = "none",
+    val uidKnown: Boolean = false,
+    val read: WishRead = WishRead(),
+)
+
 data class ActivityEvent(val at: Long, val kind: String, val text: String) {
     val isError get() = kind == "error"
 }
@@ -56,6 +75,7 @@ data class Summary(
     val player: Player? = null,
     val gameData: String? = null,
     val events: List<ActivityEvent> = emptyList(),
+    val wish: WishInfo = WishInfo(),
 ) {
     val captured get() = dataAt != null
 
@@ -68,6 +88,8 @@ data class Summary(
             val counts = o.optJSONObject("counts")
             val player = o.optJSONObject("player")
             val events = o.optJSONArray("events")
+            val wish = o.optJSONObject("wish")
+            val read = wish?.optJSONObject("read")
             return Summary(
                 ready = o.optBoolean("ready"),
                 error = if (o.isNull("error")) null else o.optString("error"),
@@ -91,6 +113,18 @@ data class Summary(
                     Player(it.int("ar"), it.int("wl"), if (it.isNull("server")) null else it.optString("server"))
                 },
                 gameData = if (o.isNull("gameData")) null else o.optString("gameData"),
+                wish = WishInfo(
+                    key = wish?.optString("key", "none") ?: "none",
+                    uidKnown = wish?.optBoolean("uidKnown") ?: false,
+                    read = WishRead(
+                        state = read?.optString("state", "idle") ?: "idle",
+                        banner = read?.optInt("banner") ?: 0,
+                        page = read?.optInt("page") ?: 0,
+                        records = read?.optInt("records") ?: 0,
+                        at = read?.optLong("at") ?: 0,
+                        error = read?.takeIf { it.has("error") }?.optString("error"),
+                    ),
+                ),
                 events = buildList {
                     for (i in 0 until (events?.length() ?: 0)) {
                         val e = events!!.getJSONObject(i)

@@ -54,6 +54,7 @@ use tokio::sync::{mpsc, oneshot, watch};
 
 mod decoder;
 mod logging;
+mod wish;
 
 /// The game server's KCP ports (Teyvat.me's `capture::PORT_RANGE`).
 const GAME_PORTS: (u16, u16) = (22101, 22102);
@@ -908,6 +909,52 @@ pub extern "system" fn Java_me_teyvat_app_NativeBridge_note(
         _ => "info",
     };
     decoder::get().note(kind, &text);
+}
+
+/// `NativeBridge.wishUrl()`: the game's wish history link for this login's
+/// key, or null without one. A password while it lasts: never logged.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_me_teyvat_app_NativeBridge_wishUrl(
+    env: JNIEnv,
+    _class: JClass,
+) -> jstring {
+    java_result(&env, decoder::get().wishes.url())
+}
+
+/// `NativeBridge.startWishHistory(appVersion)`: start reading every banner
+/// into a UIGF file. 0 started; 1 no key; 2 the key's UID is not known yet;
+/// 3 a read is running.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_me_teyvat_app_NativeBridge_startWishHistory(
+    mut env: JNIEnv,
+    _class: JClass,
+    app_version: JString,
+) -> jint {
+    let version = java_string(&mut env, &app_version).unwrap_or_default();
+    match decoder::get().wishes.start(&version) {
+        Ok(()) => 0,
+        Err(wish::StartError::NoKey) => 1,
+        Err(wish::StartError::NoUid) => 2,
+        Err(wish::StartError::Running) => 3,
+    }
+}
+
+/// `NativeBridge.cancelWishHistory()`: stop a read in flight.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_me_teyvat_app_NativeBridge_cancelWishHistory(
+    _env: JNIEnv,
+    _class: JClass,
+) {
+    decoder::get().wishes.cancel();
+}
+
+/// `NativeBridge.wishHistory()`: the last read's UIGF v4 JSON, or null.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_me_teyvat_app_NativeBridge_wishHistory(
+    env: JNIEnv,
+    _class: JClass,
+) -> jstring {
+    java_result(&env, decoder::get().wishes.take())
 }
 
 #[cfg(test)]

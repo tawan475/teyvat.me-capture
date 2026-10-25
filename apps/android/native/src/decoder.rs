@@ -27,8 +27,11 @@ use teyvatme_core::decode::{
 };
 use teyvatme_core::player_data::{ExportSettings, PlayerData};
 use teyvatme_core::recording;
+use teyvatme_core::wish::hub::{WishHub, take_wish_events};
 use teyvatme_game_data::AnimeGameData;
 use teyvatme_protocol::{GamePacket, GameSniffer, KeyState};
+
+use crate::wish::{WishSummary, Wishes};
 
 /// `LINKTYPE_RAW`, what the tee carries: bare IP packets.
 const LINKTYPE_RAW: u16 = 101;
@@ -135,6 +138,8 @@ pub struct Summary {
     pub player: Option<Player>,
     pub game_data: Option<&'static str>,
     pub events: Vec<Event>,
+    /// The wish card ([`Wishes::summary`]), filled in by the decoder.
+    pub wish: Option<WishSummary>,
 }
 
 /// What a frame from the tee is.
@@ -219,6 +224,14 @@ impl State {
         });
     }
 
+    /// The captured account's UID, once its data says.
+    fn uid(&self) -> Option<u32> {
+        self.player_data
+            .as_ref()
+            .and_then(|data| data.gi_player())
+            .and_then(|player| player.uid)
+    }
+
     fn phase(&self, now: u64) -> Phase {
         let traffic = match LAST_TRAFFIC.load(Ordering::Relaxed) {
             0 => self.last_traffic,
@@ -289,6 +302,7 @@ impl State {
             }),
             game_data: embedded_game_data_sha(),
             events: self.events.iter().cloned().collect(),
+            wish: None,
         }
     }
 
@@ -351,6 +365,8 @@ fn unix_ms(at: SystemTime) -> u64 {
 pub struct Decoder {
     tx: Mutex<mpsc::Sender<Input>>,
     state: Arc<Mutex<State>>,
+    /// The wish key the decoder hands on, and the history reader.
+    pub wishes: Arc<Wishes>,
 }
 
 static DECODER: OnceLock<Decoder> = OnceLock::new();
@@ -365,13 +381,16 @@ impl Decoder {
         let (tx, rx) = mpsc::channel();
         let state = Arc::new(Mutex::new(State::new()));
         let thread_state = state.clone();
+        let wishes = Arc::new(Wishes::new());
+        let thread_wishes = Arc::clone(&wishes);
         thread::Builder::new()
             .name("teyvatme-decode".into())
-            .spawn(move || run(rx, thread_state))
+            .spawn(move || run(rx, thread_state, &thread_wishes))
             .expect("the decoder thread starts");
         Self {
             tx: Mutex::new(tx),
             state,
+            wishes,
         }
     }
 
@@ -390,7 +409,9 @@ impl Decoder {
     }
 
     pub fn summary_json(&self) -> String {
-        serde_json::to_string(&self.state.lock().unwrap().summary()).unwrap_or_default()
+        let mut summary = self.state.lock().unwrap().summary();
+        summary.wish = Some(self.wishes.summary());
+        serde_json::to_string(&summary).unwrap_or_default()
     }
 
     /// The GOOD export with `settings` (the desktop's Genshin Optimizer
@@ -447,7 +468,7 @@ fn load_keys() -> Result<HashMap<u16, Vec<u8>>> {
 
 /// The decoder thread: the game data is loaded first (packets queue
 /// meanwhile), then every teed packet goes through the decode layer.
-fn run(rx: mpsc::Receiver<Input>, state: Arc<Mutex<State>>) {
+fn run(rx: mpsc::Receiver<Input>, state: Arc<Mutex<State>>, wishes: &Wishes) {
     let loaded = load_game_data().and_then(|data| Ok((data, load_keys()?)));
     let mut sniffer = match loaded {
         Ok((game_data, keys)) => {
@@ -512,7 +533,7 @@ fn run(rx: mpsc::Receiver<Input>, state: Arc<Mutex<State>>) {
                     &mut stats,
                 );
                 while let Ok(event) = events_rx.try_recv() {
-                    handle(&mut state.lock().unwrap(), event, at);
+                    handle(&mut state.lock().unwrap(), event, at, wishes.hub());
                 }
                 state.lock().unwrap().refresh_counts(false);
             }
@@ -522,7 +543,7 @@ fn run(rx: mpsc::Receiver<Input>, state: Arc<Mutex<State>>) {
 
 /// What the monitor does with one sniffer event, minus the UI, uploads and
 /// the automation (the app runs those from the summary).
-fn handle(state: &mut State, event: SnifferEvent, at: u64) {
+fn handle(state: &mut State, event: SnifferEvent, at: u64, hub: &WishHub) {
     match event {
         SnifferEvent::SessionReset => {
             state.replacement.connection_reset();
@@ -543,8 +564,14 @@ fn handle(state: &mut State, event: SnifferEvent, at: u64) {
             if commands.is_empty() {
                 return;
             }
-            let classified = decode::classify_commands(&commands);
-            apply(state, report.state, classified, at);
+            let mut classified = decode::classify_commands(&commands);
+            // Wish history messages are not account data: they go to the
+            // wish key's hub, not into the batch that may replace the data.
+            let events = take_wish_events(&mut classified);
+            if !events.is_empty() {
+                hub.forward(events, state.uid());
+            }
+            apply(state, report.state, classified, at, hub);
         }
     }
 }
@@ -574,6 +601,7 @@ fn apply(
     key: KeyState,
     classified: Vec<(u16, teyvatme_protocol::CommandMatch)>,
     at: u64,
+    hub: &WishHub,
 ) {
     if classified.is_empty() {
         return;
@@ -581,6 +609,8 @@ fn apply(
     match state.replacement.verdict_for_batch(key, &classified) {
         DataVerdict::Apply => {}
         DataVerdict::ReplaceThenApply => {
+            // A new login: its key, if any, is not the old one's.
+            hub.new_login();
             if let Some(data) = &mut state.player_data {
                 data.reset();
             }
@@ -608,6 +638,8 @@ fn apply(
     }
     state.data_at = Some(at);
     state.data_version += 1;
+    // The login's UID binds its wish key; another UID is a new login.
+    hub.note_uid(state.uid());
     if first && (applied.items || applied.characters) {
         state.event("ok", "Account data captured");
     }
@@ -630,10 +662,16 @@ mod tests {
         let mut recording = recording::Recording::open(std::path::Path::new(&pcap)).unwrap();
         let mut last = UNIX_EPOCH;
         while let Some(frame) = recording.next_frame().unwrap() {
-            assert_eq!(frame.link_type, LINKTYPE_RAW);
+            // The tee's own captures are bare IP; a desktop recording's
+            // frames are Ethernet, whose header the tee never sees.
+            let data = match frame.link_type {
+                LINKTYPE_RAW => frame.data,
+                1 if frame.data.len() > 14 => frame.data[14..].to_vec(),
+                _ => continue,
+            };
             let at = UNIX_EPOCH + Duration::from_nanos(frame.timestamp_ns.unwrap_or(0));
             last = at;
-            decoder.packet(at, frame.data);
+            decoder.packet(at, data);
         }
         let (done, flushed) = mpsc::channel();
         decoder.tx.lock().unwrap().send(Input::Flush(done)).unwrap();
@@ -648,6 +686,12 @@ mod tests {
             state.phase(unix_ms(last)),
             state.counts,
             state.events.iter().map(|e| &e.text).collect::<Vec<_>>()
+        );
+        // Whether the wish key came through, never the URL itself.
+        println!(
+            "wish {:?}, url built: {}",
+            decoder.wishes.summary(),
+            decoder.wishes.url().is_some()
         );
     }
 

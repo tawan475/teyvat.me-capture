@@ -29,6 +29,9 @@ teyvatme-protocol = { path = "../../../crates/protocol" }
 # their events to this crate's logger (logcat and latest.log). No
 # `tracing-log`: the logger's own records must not loop back.
 tracing = "0.1.41"
+# The wish history API (wish.rs), with rustls: Android has no OpenSSL.
+reqwest = { version = "0.12.23", default-features = false, features = ["rustls-tls", "gzip"] }
+url = "2.5.4"
 tracing-subscriber = { version = "0.3.20", default-features = false, features = ["fmt", "std"] }
 etherparse = "0.20.3"
 ipstack = "1.0.1"

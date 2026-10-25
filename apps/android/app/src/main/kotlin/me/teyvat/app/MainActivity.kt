@@ -112,6 +112,17 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
         }
     }
 
+    /** Where the wish history read goes when it finishes: a picked file, the share sheet. */
+    private var pendingWishSave: Uri? = null
+    private var pendingWishShare = false
+
+    private val saveWishDocument = registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri == null) return@registerForActivityResult
+        pendingWishSave = uri
+        if (!wishFileFresh()) startWishRead()
+        onWishRead(capture.summary.value.wish.read)
+    }
+
     private val chooseTree = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri == null) return@registerForActivityResult
         contentResolver.takePersistableUriPermission(
@@ -177,6 +188,7 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
         BackHandler(enabled = stack.size > 1) { pop() }
         val vpn by capture.vpn.collectAsState()
         val summary by capture.summary.collectAsState()
+        androidx.compose.runtime.LaunchedEffect(summary.wish.read) { onWishRead(summary.wish.read) }
         val hero = hero(vpn, summary)
         val folder = Exports.folderLabel(this, settings)
         Scaffold(
@@ -382,6 +394,91 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
     }
 
     /** Copy achievements; with [openUrl], open StarDB or Seelie.me after. */
+    // -- wish history ---------------------------------------------------------
+
+    override fun copyWishUrl(openUrl: String?) {
+        val url = NativeBridge.wishUrl() ?: return snack(getString(R.string.wish_no_key))
+        Exports.copy(this, "Wish URL", url, sensitive = true)
+        snack(getString(R.string.wish_url_copied))
+        if (openUrl != null) openUrl(openUrl)
+    }
+
+    /** A finished read is reused for a minute, then read again (new wishes). */
+    private fun wishFileFresh(): Boolean {
+        val read = capture.summary.value.wish.read
+        return read.state == "done" && System.currentTimeMillis() - read.at < 60_000
+    }
+
+    private fun startWishRead() {
+        when (NativeBridge.startWishHistory(BuildConfig.VERSION_NAME)) {
+            0 -> capture.refresh()
+            1 -> snack(getString(R.string.wish_no_key))
+            2 -> snack(getString(R.string.wish_waiting_uid))
+            3 -> snack(getString(R.string.wish_busy))
+        }
+        if (capture.summary.value.wish.read.state != "running") {
+            pendingWishSave = null
+            pendingWishShare = false
+        }
+    }
+
+    override fun saveWishes() {
+        runCatching { saveWishDocument.launch(Exports.wishFileName()) }
+    }
+
+    override fun shareWishes() {
+        pendingWishShare = true
+        if (!wishFileFresh()) startWishRead()
+        onWishRead(capture.summary.value.wish.read)
+    }
+
+    override fun cancelWishes() {
+        NativeBridge.cancelWishHistory()
+        pendingWishSave = null
+        pendingWishShare = false
+    }
+
+    /** The read moved: finish a pending Save or Share, or say why not. */
+    private fun onWishRead(read: WishRead) {
+        if (pendingWishSave == null && !pendingWishShare) return
+        when (read.state) {
+            "done" -> {
+                val json = NativeBridge.wishHistory() ?: return
+                pendingWishSave?.let { uri ->
+                    pendingWishSave = null
+                    lifecycleScope.launch {
+                        val ok = withContext(Dispatchers.IO) { runCatching { Exports.write(this@MainActivity, uri, json) }.isSuccess }
+                        val name = Exports.displayName(this@MainActivity, uri) ?: Exports.wishFileName()
+                        if (ok) {
+                            NativeBridge.note("ok", getString(R.string.wish_saved, name))
+                            snack(getString(R.string.wish_saved, name), getString(R.string.open)) { Exports.openFile(this@MainActivity, uri) }
+                        } else {
+                            snack(getString(R.string.export_save_failed))
+                        }
+                    }
+                }
+                if (pendingWishShare) {
+                    pendingWishShare = false
+                    lifecycleScope.launch {
+                        val intent = withContext(Dispatchers.IO) {
+                            Exports.shareIntent(this@MainActivity, json, Exports.wishFileName())
+                        }
+                        startActivity(intent)
+                    }
+                }
+            }
+            "failed" -> {
+                pendingWishSave = null
+                pendingWishShare = false
+                snack(getString(R.string.wish_read_failed, read.error.orEmpty()))
+            }
+            "idle" -> {
+                pendingWishSave = null
+                pendingWishShare = false
+            }
+        }
+    }
+
     override fun copyAchievements(openUrl: String?) {
         val json = NativeBridge.achievements()
         if (json == null) {

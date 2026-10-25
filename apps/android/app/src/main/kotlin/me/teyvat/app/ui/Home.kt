@@ -43,6 +43,7 @@ import me.teyvat.app.Links
 import me.teyvat.app.R
 import me.teyvat.app.Settings
 import me.teyvat.app.Summary
+import me.teyvat.app.WishInfo
 import me.teyvat.app.grouped
 import me.teyvat.app.hhmm
 import me.teyvat.app.line
@@ -65,6 +66,11 @@ interface HomeActions {
     fun setAutoExport(on: Boolean)
     fun copyAchievements(openUrl: String?)
     fun openUrl(url: String)
+    /** Copy the wish URL; with [openUrl], open that importer after. */
+    fun copyWishUrl(openUrl: String?)
+    fun saveWishes()
+    fun shareWishes()
+    fun cancelWishes()
 }
 
 /** Now, ticking once a second, for "just now" and Starting's 30 s. */
@@ -99,7 +105,7 @@ fun HomeContent(
     ) {
         item { HeroCard(hero, summary, startingSince, now, actions) }
         item { CapturedCard(summary, now) }
-        item { GreyCard(R.drawable.ic_sparkles, stringResource(R.string.wish_title), stringResource(R.string.not_in_this_version)) }
+        item { WishCard(summary.wish, actions) }
         item { ExportCard(summary, settings, folderLabel, actions) }
         item { DestinationsCard(actions) }
     }
@@ -333,6 +339,99 @@ private fun DestinationsCard(actions: HomeActions) {
             }
             Spacer(Modifier.width(8.dp))
             TmButton(stringResource(R.string.connect), {}, kind = ButtonKind.Tonal, enabled = false)
+        }
+    }
+}
+
+/** The banner's name as the game shows it. */
+@Composable
+private fun bannerName(banner: Int): String = when (banner) {
+    302 -> stringResource(R.string.banner_302)
+    500 -> stringResource(R.string.banner_500)
+    200 -> stringResource(R.string.banner_200)
+    100 -> stringResource(R.string.banner_100)
+    else -> stringResource(R.string.banner_301)
+}
+
+/**
+ * Wish history (spec section 4.1.3): greyed until the game sends its key
+ * (Wish → History in game); then Copy URL for paimon.moe or StarDB, and Save
+ * or Share of the whole history as UIGF.
+ */
+@Composable
+private fun WishCard(wish: WishInfo, actions: HomeActions) {
+    when (wish.key) {
+        "none" -> return GreyCard(R.drawable.ic_sparkles, stringResource(R.string.wish_title), stringResource(R.string.wish_open_in_game))
+        "expired" -> return GreyCard(R.drawable.ic_sparkles, stringResource(R.string.wish_title), stringResource(R.string.wish_expired))
+    }
+    var menu by remember { mutableStateOf(false) }
+    val read = wish.read
+    val running = read.state == "running"
+    TmCard {
+        Row(
+            Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TmIcon(R.drawable.ic_sparkles, null, tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
+                Text(stringResource(R.string.wish_title), style = MaterialTheme.typography.titleSmall)
+                val (line, error) = when (read.state) {
+                    "running" -> stringResource(R.string.wish_reading, bannerName(read.banner), read.page, grouped(read.records)) to false
+                    "done" -> stringResource(R.string.wish_read_done, hhmm(read.at), grouped(read.records)) to false
+                    "failed" -> stringResource(R.string.wish_read_failed, read.error.orEmpty()) to true
+                    else -> (if (wish.uidKnown) stringResource(R.string.wish_ready) else stringResource(R.string.wish_waiting_uid)) to false
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (running) {
+                        Spinner(size = 14.dp)
+                        Spacer(Modifier.width(6.dp))
+                    }
+                    Text(
+                        line, style = MaterialTheme.typography.bodyMedium,
+                        color = if (error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            Box {
+                IconButton(onClick = { menu = true }) {
+                    TmIcon(R.drawable.ic_more_vertical, stringResource(R.string.more))
+                }
+                TmMenu(menu, onDismiss = { menu = false }) {
+                    TmMenuItem(stringResource(R.string.wish_open_paimon), R.drawable.ic_external_link) {
+                        menu = false
+                        actions.copyWishUrl(Links.PAIMON_WISH_IMPORT)
+                    }
+                    TmMenuItem(stringResource(R.string.wish_open_stardb), R.drawable.ic_external_link) {
+                        menu = false
+                        actions.copyWishUrl(Links.STARDB_WISH_IMPORT)
+                    }
+                    CardDivider()
+                    TmMenuItem(stringResource(R.string.wish_share), R.drawable.ic_share) {
+                        menu = false
+                        actions.shareWishes()
+                    }
+                }
+            }
+        }
+        Row(
+            Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, bottom = 14.dp, top = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            TmButton(
+                stringResource(R.string.wish_copy_url), { actions.copyWishUrl(null) }, Modifier.weight(1f),
+                kind = ButtonKind.Outlined, icon = R.drawable.ic_copy,
+            )
+            if (running) {
+                TmButton(stringResource(R.string.cancel), actions::cancelWishes, Modifier.weight(1f), kind = ButtonKind.Text)
+            } else {
+                TmButton(
+                    stringResource(R.string.wish_save), actions::saveWishes, Modifier.weight(1f),
+                    kind = ButtonKind.Outlined, icon = R.drawable.ic_download,
+                    contentDescription = stringResource(R.string.wish_save_description),
+                )
+            }
         }
     }
 }

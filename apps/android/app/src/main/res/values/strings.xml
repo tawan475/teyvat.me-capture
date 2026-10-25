@@ -64,6 +64,27 @@
     <!-- Wish history -->
     <string name="wish_title">Wish history</string>
     <string name="wish_open_in_game">Open the wish history in game first</string>
+    <string name="wish_expired">Key expired · open the wish history in game again</string>
+    <string name="wish_ready">URL ready for paimon.moe, StarDB…</string>
+    <string name="wish_reading">Reading · %1$s, page %2$d · %3$s wishes</string>
+    <string name="wish_read_done">✓ Read %1$s · %2$s wishes</string>
+    <string name="wish_read_failed">Read failed · %s</string>
+    <string name="wish_copy_url">Copy URL</string>
+    <string name="wish_save">Save history</string>
+    <string name="wish_save_description">Wish history as UIGF v4 JSON, read by paimon.moe, StarDB and other wish trackers</string>
+    <string name="wish_share">Share history</string>
+    <string name="wish_open_paimon">Open paimon.moe</string>
+    <string name="wish_open_stardb">Open StarDB</string>
+    <string name="wish_url_copied">Wish URL copied</string>
+    <string name="wish_no_key">No wish key · open the wish history in game</string>
+    <string name="wish_waiting_uid">Waiting for the account\'s UID</string>
+    <string name="wish_busy">Already reading</string>
+    <string name="wish_saved">Saved %s</string>
+    <string name="banner_301">Character event</string>
+    <string name="banner_302">Weapon event</string>
+    <string name="banner_500">Chronicled</string>
+    <string name="banner_200">Standard</string>
+    <string name="banner_100">Beginners\'</string>
 
     <!-- Export -->
     <string name="export_title">Export</string>

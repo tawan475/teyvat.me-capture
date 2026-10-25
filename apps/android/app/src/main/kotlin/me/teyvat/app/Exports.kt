@@ -42,6 +42,10 @@ object Exports {
     /** The desktop's automation debounce: this long after the last new data. */
     const val DEBOUNCE_MS = 5_000L
 
+    /** `teyvatme_wishes_<yyyy-MM-dd_HH-mm>.json`: a UIGF file. */
+    fun wishFileName(at: Long = System.currentTimeMillis()): String =
+        "teyvatme_wishes_" + SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.ROOT).format(Date(at)) + ".json"
+
     /** `teyvatme_<yyyy-MM-dd_HH-mm>.json`. */
     fun fileName(at: Long = System.currentTimeMillis()): String =
         "teyvatme_" + SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.ROOT).format(Date(at)) + ".json"
@@ -69,10 +73,10 @@ object Exports {
     }
 
     /** The GOOD JSON as a file in the cache, for the share sheet. */
-    fun shareIntent(context: Context, json: String): Intent {
+    fun shareIntent(context: Context, json: String, name: String = fileName()): Intent {
         val dir = File(context.cacheDir, "share").apply { mkdirs() }
         dir.listFiles()?.forEach { it.delete() }
-        val file = File(dir, fileName())
+        val file = File(dir, name)
         file.writeText(json)
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
         val send = Intent(Intent.ACTION_SEND)

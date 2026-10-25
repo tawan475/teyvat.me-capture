@@ -47,4 +47,21 @@ object NativeBridge {
 
     /** An event for the activity list; [kind] is `ok`, `error` or `info`. */
     external fun note(kind: String, text: String)
+
+    /**
+     * The game's wish history link for this login's key, or null. A password
+     * while it lasts: never log it.
+     */
+    external fun wishUrl(): String?
+
+    /**
+     * Start reading every banner into a UIGF file: 0 started, 1 no key, 2 the
+     * key's UID is not known yet, 3 a read is running.
+     */
+    external fun startWishHistory(appVersion: String): Int
+
+    external fun cancelWishHistory()
+
+    /** The last read's UIGF v4 JSON, or null. */
+    external fun wishHistory(): String?
 }
