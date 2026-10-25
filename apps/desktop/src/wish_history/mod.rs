@@ -38,6 +38,7 @@ mod gacha_log;
 mod run;
 #[cfg(test)]
 mod run_tests;
+mod save;
 mod sync;
 #[cfg(test)]
 pub(crate) mod test_server;
@@ -54,6 +55,7 @@ pub(crate) use teyvatme_core::wish::hub::{
 use tokio::sync::watch;
 
 pub(crate) use self::gacha_log::WishKey;
+pub(crate) use self::save::{HistorySave, SaveState};
 pub(crate) use self::sync::{SyncStatus, WishSync};
 use self::tracker::TrackerCredential;
 use crate::app::SavedAppState;
@@ -97,6 +99,8 @@ pub(crate) struct WishView {
     key_rx: watch::Receiver<Option<WishKey>>,
     status_rx: watch::Receiver<SyncStatus>,
     seen_rx: watch::Receiver<Seen>,
+    /// "Save history": the whole history as a UIGF file.
+    pub(crate) save: HistorySave,
 }
 
 impl WishView {
@@ -236,6 +240,7 @@ pub(crate) fn channels(
     let repaint = ctx.clone();
     let notify: Notify = Arc::new(move || repaint.request_repaint());
     let (hub, receivers) = WishHub::new(notify);
+    let save = HistorySave::new(receivers.login_rx.clone());
     let sync = WishSync::new(
         receivers.trigger_rx,
         receivers.login_rx,
@@ -253,6 +258,7 @@ pub(crate) fn channels(
             key_rx,
             status_rx,
             seen_rx,
+            save,
         },
         sync,
     }
@@ -341,10 +347,12 @@ mod tests {
         let (key_tx, key_rx) = watch::channel(None);
         let (_status_tx, status_rx) = watch::channel(SyncStatus::default());
         let (_seen_tx, seen_rx) = watch::channel(Seen::default());
+        let (_login_tx, login_rx) = watch::channel(0_u64);
         let view = WishView {
             key_rx,
             status_rx,
             seen_rx,
+            save: HistorySave::new(login_rx),
         };
         let status = |at| view.status(at, GameStatus::Decoding, true).text;
         let now = Instant::now();
