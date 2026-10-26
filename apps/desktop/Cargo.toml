@@ -102,6 +102,8 @@ tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 tray-icon = { version = "0.24.1", default-features = false, features = [ "gtk" ] }
 image = "0.25.9"
 single-instance = "0.3.3"
+# The system's language (Windows, macOS, Linux), for the app's (src/i18n.rs).
+sys-locale = "0.3.2"
 
 # The tracker sign-in's refresh token lives in the OS credential store, never
 # in app.ron (src/signin.rs `KeyringStore`): Windows Credential Manager, the

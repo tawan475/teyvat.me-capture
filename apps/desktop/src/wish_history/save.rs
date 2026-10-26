@@ -18,6 +18,7 @@ use tokio::sync::watch;
 
 use super::Banner;
 use super::gacha_log::{ReqwestGet, TokioSleeper, WishKey};
+use crate::i18n::{tr, trf};
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -41,17 +42,18 @@ pub(crate) enum SaveState {
 /// The banner's name, as the game's wish screen says it.
 pub(crate) fn banner_name(banner: Banner) -> &'static str {
     match banner {
-        301 => "Character event",
-        302 => "Weapon event",
-        500 => "Chronicled",
-        200 => "Standard",
-        100 => "Beginners'",
-        _ => "Wishes",
+        301 => tr("Character event"),
+        302 => tr("Weapon event"),
+        500 => tr("Chronicled"),
+        200 => tr("Standard"),
+        100 => tr("Beginners'"),
+        _ => tr("Wishes"),
     }
 }
 
 impl SaveState {
     /// The wish card's line for it.
+    #[rustfmt::skip]
     pub(crate) fn line(&self) -> Option<String> {
         match self {
             SaveState::Idle => None,
@@ -59,13 +61,9 @@ impl SaveState {
                 banner,
                 page,
                 records,
-            } => Some(format!(
-                "Reading · {}, page {} · {records} wishes so far",
-                banner_name(*banner),
-                page + 1
-            )),
-            SaveState::Done { records, .. } => Some(format!("Saved {records} wishes")),
-            SaveState::Failed(why) => Some(format!("Save failed · {why}")),
+            } => Some(trf("Reading · {0}, page {1} · {2} wishes so far", &[&banner_name(*banner), &(page + 1), &records])),
+            SaveState::Done { records, .. } => Some(trf("Saved {0} wishes", &[&records])),
+            SaveState::Failed(why) => Some(trf("Save failed · {0}", &[&why])),
         }
     }
 }
@@ -110,7 +108,9 @@ impl HistorySave {
     /// Read every banner with `key` and write it to `path`.
     pub(crate) fn start(&self, key: WishKey, path: PathBuf, ctx: egui::Context) {
         let Some(uid) = key.uid() else {
-            self.set(SaveState::Failed("the account isn't known yet".to_owned()));
+            self.set(SaveState::Failed(
+                tr("the account isn't known yet").to_owned(),
+            ));
             return;
         };
         if self.reading() {
@@ -145,7 +145,7 @@ impl HistorySave {
                 ctx.request_repaint();
             });
         if let Err(e) = spawned {
-            self.set(SaveState::Failed(format!("could not start: {e}")));
+            self.set(SaveState::Failed(trf("could not start: {0}", &[&e])));
         }
     }
 
@@ -166,11 +166,11 @@ fn read_and_write(
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
-        .map_err(|e| failed(format!("could not start: {e}")))?;
+        .map_err(|e| failed(trf("could not start: {0}", &[&e])))?;
     let http = crate::http_client_builder()
         .timeout(REQUEST_TIMEOUT)
         .build()
-        .map_err(|e| failed(format!("could not start the HTTP client: {e}")))?;
+        .map_err(|e| failed(trf("could not start the HTTP client: {0}", &[&e])))?;
     let endpoint = key.endpoint().to_owned();
     let mut log = LogClient::new(
         ReqwestGet(http),
@@ -198,7 +198,7 @@ fn read_and_write(
         "Teyvat.me Capture",
         env!("CARGO_PKG_VERSION"),
     );
-    std::fs::write(path, json).map_err(|e| failed(format!("couldn't write the file: {e}")))?;
+    std::fs::write(path, json).map_err(|e| failed(trf("couldn't write the file: {0}", &[&e])))?;
     Ok(history.records.len())
 }
 

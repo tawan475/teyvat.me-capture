@@ -154,50 +154,35 @@ impl GameStatus {
     /// The short line shown next to "Capture:" and "Status:".
     pub fn label(self) -> &'static str {
         match self {
-            GameStatus::NotRunning => "Game: not running",
-            GameStatus::LaunchCaptured => "Game: running, launch captured",
-            GameStatus::Decoding => "Game: data decrypting",
-            GameStatus::CaptureOff => "Game: running, capture starting",
-            GameStatus::AwaitingLogin => "Game: running — enter the world to capture",
+            GameStatus::NotRunning => tr("Game: not running"),
+            GameStatus::LaunchCaptured => tr("Game: running, launch captured"),
+            GameStatus::Decoding => tr("Game: data decrypting"),
+            GameStatus::CaptureOff => tr("Game: running, capture starting"),
+            GameStatus::AwaitingLogin => tr("Game: running — enter the world to capture"),
             GameStatus::LaunchMissed(MissedLaunch::AlreadyRunning) => {
-                "Game: already running — restart Genshin to capture"
+                tr("Game: already running — restart Genshin to capture")
             }
             GameStatus::LaunchMissed(MissedLaunch::CaptureStopped) => {
-                "Game: capture was off — restart Genshin to capture"
+                tr("Game: capture was off — restart Genshin to capture")
             }
-            GameStatus::KeyLost => "Game: key not recovered — relog to capture",
+            GameStatus::KeyLost => tr("Game: key not recovered — relog to capture"),
         }
     }
 
     /// The long explanation, shown on hover so the line itself stays short.
+    #[rustfmt::skip]
     pub fn tooltip(self) -> &'static str {
         match self {
-            GameStatus::NotRunning => "Start Genshin while Teyvat.me is running.",
-            GameStatus::LaunchCaptured => {
-                "Genshin started while capture was running, so its login will be seen. Says \
-                 \"data decrypting\" once you enter the world and your data arrives."
+            GameStatus::NotRunning => tr("Start Genshin while Teyvat.me is running."),
+            GameStatus::LaunchCaptured => tr("Genshin started while capture was running, so its login will be seen. Says \"data decrypting\" once you enter the world and your data arrives."),
+            GameStatus::Decoding => tr("Reading this session. Inventory, characters and achievements arrive by themselves as you enter the world."),
+            GameStatus::CaptureOff => tr("Capture isn't running; it restarts itself within seconds. If this stays, run Teyvat.me as administrator and check the log."),
+            GameStatus::AwaitingLogin => {
+                tr("Fine if you're on the title screen: enter the world now.")
             }
-            GameStatus::Decoding => {
-                "Reading this session. Inventory, characters and achievements arrive by \
-                 themselves as you enter the world."
-            }
-            GameStatus::CaptureOff => {
-                "Capture isn't running; it restarts itself within seconds. If this stays, run \
-                 Teyvat.me as administrator and check the log."
-            }
-            GameStatus::AwaitingLogin => "Fine if you're on the title screen: enter the world now.",
-            GameStatus::LaunchMissed(MissedLaunch::AlreadyRunning) => {
-                "Teyvat.me started after you entered the world. Return to the title screen and \
-                 enter again, or restart Genshin."
-            }
-            GameStatus::LaunchMissed(MissedLaunch::CaptureStopped) => {
-                "Capture was off when you logged in. Return to the title screen and enter the \
-                 world again, or restart Genshin."
-            }
-            GameStatus::KeyLost => {
-                "Couldn't read this login. Return to the title screen and enter again. Data \
-                 captured before is kept."
-            }
+            GameStatus::LaunchMissed(MissedLaunch::AlreadyRunning) => tr("Teyvat.me started after you entered the world. Return to the title screen and enter again, or restart Genshin."),
+            GameStatus::LaunchMissed(MissedLaunch::CaptureStopped) => tr("Capture was off when you logged in. Return to the title screen and enter the world again, or restart Genshin."),
+            GameStatus::KeyLost => tr("Couldn't read this login. Return to the title screen and enter again. Data captured before is kept."),
         }
     }
 
@@ -221,6 +206,8 @@ pub trait ProcessDetector {
 }
 
 use std::time::{Duration, Instant};
+
+use crate::i18n::tr;
 
 /// How long a decoded batch keeps the line on "data decrypting".
 ///

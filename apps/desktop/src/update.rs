@@ -16,6 +16,7 @@ use serde::Deserialize;
 use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
 
+use crate::i18n::trf;
 use crate::{AppState, State};
 
 /// The user's answer to the "update available" prompt.
@@ -600,12 +601,11 @@ pub async fn check_for_app_update(
         // this hits, downloading by hand is the only way to get it -- but say
         // it once per release, not on every launch for the rest of its life.
         if should_report_manual_install(manual_notice_marker().as_deref(), &release.version) {
+            #[rustfmt::skip]
+            let text = trf("Teyvat.me {0} is out · install it by hand on this platform: {1}", &[&release.version, &RELEASES_URL]);
             let _ = toast_tx.send(crate::activity::Event::info(
                 crate::activity::Topic::App,
-                format!(
-                    "Teyvat.me {} is out · install it by hand on this platform: {RELEASES_URL}",
-                    release.version
-                ),
+                text,
             ));
         }
         return Ok(());
@@ -645,7 +645,7 @@ pub async fn check_for_app_update(
             // error instead of a bricked binary, so it is worth showing.
             let _ = toast_tx.send(crate::activity::Event::error(
                 crate::activity::Topic::App,
-                format!("Update failed: {e}"),
+                trf("Update failed: {0}", &[&e]),
             ));
             return Err(e);
         }

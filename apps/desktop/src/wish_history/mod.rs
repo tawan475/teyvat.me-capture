@@ -60,6 +60,7 @@ pub(crate) use self::sync::{SyncStatus, WishSync};
 use self::tracker::TrackerCredential;
 use crate::app::SavedAppState;
 use crate::game_watch::GameStatus;
+use crate::i18n::{tr, trf};
 use crate::signin::{TrackerAuth, UploadCredential};
 
 /// The API base and credential a sync uses, or `None` when it must not run.
@@ -140,9 +141,17 @@ impl WishView {
     /// say.
     pub(crate) fn sync_line(&self, now: Instant) -> Option<String> {
         if self.key(now).is_some_and(|key| key.uid().is_none()) {
-            return Some("Sync waits for the account's UID".to_owned());
+            return Some(tr("Sync waits for the account's UID").to_owned());
         }
         self.status_rx.borrow().line()
+    }
+
+    /// Whether the sync line tells of a failure (shown in red).
+    pub(crate) fn sync_problem(&self, now: Instant) -> bool {
+        if self.key(now).is_some_and(|key| key.uid().is_none()) {
+            return false;
+        }
+        self.status_rx.borrow().is_problem()
     }
 }
 
@@ -154,9 +163,10 @@ pub(crate) struct WishLine {
 }
 
 /// Where a key comes from, for the tooltips.
-const KEY_SOURCES: &str = "A wish key comes when the game opens its wish history page, and \
-     lasts about a day. Each login starts fresh: a new login (or another account) clears \
-     the key.";
+#[rustfmt::skip]
+fn key_sources() -> &'static str {
+    tr("A wish key comes when the game opens its wish history page, and lasts about a day. Each login starts fresh: a new login (or another account) clears the key.")
+}
 
 /// What the wish section says, by what is really the case:
 ///
@@ -170,28 +180,25 @@ pub(crate) fn status_line(key: Option<&WishKey>, now: Instant, game: GameStatus)
     if let Some(key) = key {
         let hours = key.remaining(now).as_secs().div_ceil(3600);
         let text = if hours <= 1 {
-            "Key valid < 1 h".to_owned()
+            tr("Key valid < 1 h").to_owned()
         } else {
-            format!("Key valid ~{hours} h")
+            trf("Key valid ~{0} h", &[&hours])
         };
         return WishLine {
             text,
-            tooltip: "The wish history key the game sent when its history page opened \
-                      in this login. It lasts about a day; until then Copy wish URL gives \
-                      the game's own link, and new wishes sync by themselves when the \
-                      Tracker is set up. A new login clears it."
+            tooltip: tr("The wish history key the game sent when its history page opened in this login. It lasts about a day; until then Copy wish URL gives the game's own link, and new wishes sync by themselves when the Tracker is set up. A new login clears it.")
                 .to_owned(),
         };
     }
     if game != GameStatus::Decoding {
         return WishLine {
-            text: "Waiting for the game's login".to_owned(),
-            tooltip: format!("{}\n{}\n\n{KEY_SOURCES}", game.label(), game.tooltip()),
+            text: tr("Waiting for the game's login").to_owned(),
+            tooltip: format!("{}\n{}\n\n{}", game.label(), game.tooltip(), key_sources()),
         };
     }
     WishLine {
-        text: "No wish key yet".to_owned(),
-        tooltip: KEY_SOURCES.to_owned(),
+        text: tr("No wish key yet").to_owned(),
+        tooltip: key_sources().to_owned(),
     }
 }
 
@@ -206,18 +213,18 @@ pub(crate) fn seen_summary(seen: &Seen, uid_known: bool) -> String {
     use crate::wish_history::marks::{ICON_CHECK, ICON_CLOSE};
     let mark = |yes: bool| if yes { ICON_CHECK } else { ICON_CLOSE };
     let mut lines = vec![
-        "Seen this session:".to_owned(),
-        format!("{} banner list (Wish screen)", mark(seen.banner_list)),
-        format!("{} wish key from the game", mark(seen.wish_key)),
-        format!("{} client version", mark(seen.client_version)),
-        format!("{} UID", mark(uid_known)),
+        tr("Seen this session:").to_owned(),
+        trf("{0} banner list (Wish screen)", &[&mark(seen.banner_list)]),
+        trf("{0} wish key from the game", &[&mark(seen.wish_key)]),
+        trf("{0} client version", &[&mark(seen.client_version)]),
+        trf("{0} UID", &[&mark(uid_known)]),
     ];
     if seen.other_keys > 0 {
-        lines.push(format!(
-            "{} other web key{} ignored",
-            seen.other_keys,
-            if seen.other_keys == 1 { "" } else { "s" }
-        ));
+        lines.push(if seen.other_keys == 1 {
+            trf("{0} other web key ignored", &[&seen.other_keys])
+        } else {
+            trf("{0} other web keys ignored", &[&seen.other_keys])
+        });
     }
     lines.join("\n")
 }

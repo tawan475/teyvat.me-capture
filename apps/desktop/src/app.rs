@@ -20,6 +20,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::autostart::Startup;
 use crate::capture;
+use crate::i18n::{tr, trf};
 use crate::monitor::TrackerAccount;
 use crate::signin::{
     self, AuthStatus, TrackerAuth, TrackerRequest, UploadCredential, UploadScope, Whoami,
@@ -162,6 +163,9 @@ pub struct SavedAppState {
     pub onboarded: bool,
     #[serde(default)]
     pub theme: ThemeChoice,
+    /// Settings › App › Language; None follows the system's.
+    #[serde(default)]
+    pub language: Option<crate::i18n::Lang>,
     /// Send the wish history to the linked tracker account (the wish card's
     /// switch). On by default; needs a sign-in or a verified import key.
     #[serde(default = "default_true")]
@@ -302,6 +306,7 @@ impl Default for SavedAppState {
             minimize_to_tray: None,
             onboarded: false,
             theme: ThemeChoice::System,
+            language: None,
             send_wishes: true,
         }
     }
@@ -453,7 +458,7 @@ fn whoami_account(whoami: &Whoami) -> Option<TrackerAccount> {
         name: whoami
             .account_name
             .clone()
-            .unwrap_or_else(|| "the account".to_string()),
+            .unwrap_or_else(|| tr("the account").to_string()),
         uid: whoami.uid.clone().unwrap_or_else(|| "N/A".to_string()),
         server: whoami.server.clone().unwrap_or_else(|| "N/A".to_string()),
         dashboard_url: whoami.dashboard_url.clone(),
@@ -498,7 +503,7 @@ pub(crate) fn export_data_classes(
 
     if settings.include_characters {
         classes.push(ExportDataClass {
-            name: "character data",
+            name: tr("character data"),
             captured_at: updated.characters_updated,
         });
     }
@@ -507,7 +512,7 @@ pub(crate) fn export_data_classes(
     // that stamps `items_updated`.
     if settings.include_artifacts || settings.include_weapons || settings.include_materials {
         classes.push(ExportDataClass {
-            name: "inventory data (artifacts, weapons and materials)",
+            name: tr("inventory data (artifacts, weapons and materials)"),
             captured_at: updated.items_updated,
         });
     }
@@ -540,11 +545,21 @@ pub(crate) fn missing_export_data(
 }
 
 /// Name what is missing instead of the old catch-all "Data not found".
+#[rustfmt::skip]
 fn missing_export_data_toast(missing: &[&'static str]) -> String {
-    format!(
-        "No {} captured yet. Log in to the game with the account you want to export.",
-        missing.join(" or ")
-    )
+    let what = missing
+        .iter()
+        .map(|name| (*name).to_owned())
+        .reduce(|first, next| trf("{0} or {1}", &[&first, &next]))
+        .unwrap_or_default();
+    trf("No {0} captured yet. Log in to the game with the account you want to export.", &[&what])
+}
+
+/// An export's counts for a toast: "1,684 characters, …".
+#[rustfmt::skip]
+pub(crate) fn counts_line(counts: &ExportCounts) -> String {
+    use crate::ui::widgets::group_thousands;
+    trf("{0} characters, {1} artifacts, {2} weapons, {3} materials, {4} achievements", &[&group_thousands(counts.characters), &group_thousands(counts.artifacts), &group_thousands(counts.weapons), &group_thousands(counts.materials), &group_thousands(counts.achievements)])
 }
 
 /// The captured UID, when uploads go to one account and it has another.
@@ -559,13 +574,9 @@ fn uid_mismatch(account: &TrackerAccount, captured: Option<u32>) -> Option<u32> 
 }
 
 /// What the UID warning says, in its toast and its tooltip.
+#[rustfmt::skip]
 fn uid_mismatch_message(account: &TrackerAccount, captured: u32) -> String {
-    format!(
-        "This capture is UID {captured}, but uploads go to {} (UID {}). Uploads still go to \
-         that account: log in with it, or change where uploads go.",
-        account.name,
-        account.uid.trim()
-    )
+    trf("This capture is UID {0}, but uploads go to {1} (UID {2}). Uploads still go to that account: log in with it, or change where uploads go.", &[&captured, &account.name, &account.uid.trim()])
 }
 
 pub struct TeyvatmeApp {
@@ -1053,7 +1064,6 @@ impl TeyvatmeApp {
         start_window: StartWindow,
     ) -> Self {
         egui_extras::install_image_loaders(&cc.egui_ctx);
-        crate::ui::theme::install(&cc.egui_ctx);
 
         let mut saved_state: SavedAppState = if let Some(storage) = cc.storage {
             eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
@@ -1061,6 +1071,9 @@ impl TeyvatmeApp {
             Default::default()
         };
         saved_state.migrate();
+        let lang = crate::i18n::set(saved_state.language);
+        tracing::info!("language: {}", lang.code());
+        crate::ui::theme::install(&cc.egui_ctx, lang);
 
         tracing::info!("Tracker API URL: {}", saved_state.tracker_api_url);
 
@@ -1132,8 +1145,8 @@ impl TeyvatmeApp {
         #[cfg(not(target_os = "linux"))]
         if let Some(icon) = load_tray_icon() {
             let tray_menu = Menu::new();
-            let restore_i = MenuItem::new("Restore", true, None);
-            let quit_i = MenuItem::new("Quit", true, None);
+            let restore_i = MenuItem::new(tr("Restore"), true, None);
+            let quit_i = MenuItem::new(tr("Quit"), true, None);
             let restore_id = restore_i.id().clone();
             let quit_id = quit_i.id().clone();
             let menu_populated = tray_menu.append_items(&[&restore_i, &quit_i]).is_ok();
@@ -1196,8 +1209,8 @@ impl TeyvatmeApp {
                 };
 
                 let tray_menu = Menu::new();
-                let restore_i = MenuItem::new("Restore", true, None);
-                let quit_i = MenuItem::new("Quit", true, None);
+                let restore_i = MenuItem::new(tr("Restore"), true, None);
+                let quit_i = MenuItem::new(tr("Quit"), true, None);
                 let restore_id = restore_i.id().clone();
                 let quit_id = quit_i.id().clone();
                 if let Err(e) = tray_menu.append_items(&[&restore_i, &quit_i]) {
@@ -1381,14 +1394,14 @@ impl TeyvatmeApp {
             Polled::Pending => return,
             Polled::Ready(result) => result,
             Polled::Dropped => {
-                Err("the upload request was dropped before it completed".to_string())
+                Err(tr("the upload request was dropped before it completed").to_string())
             }
         };
 
         match result {
             Ok(()) => {
                 let host = self.tracker_host();
-                self.toasts.success(format!("Uploaded to {host}"));
+                self.toasts.success(trf("Uploaded to {0}", &[&host]));
             }
             Err(e) => {
                 // A refused key is re-verified; a refused sign-in is the
@@ -1402,7 +1415,7 @@ impl TeyvatmeApp {
                 }
                 let host = self.tracker_host();
                 self.toasts
-                    .error(format!("{host} upload failed · {e}"))
+                    .error(trf("{0} upload failed · {1}", &[&host, &e]))
                     .action(crate::ui::toast::Action::RetryUpload);
             }
         }
@@ -1483,7 +1496,7 @@ impl TeyvatmeApp {
                 self.tracker_account = None;
                 self.saved_state.tracker_verified = false;
                 tracing::warn!("could not verify the import key: {e}");
-                self.toasts.error("Couldn't verify the import key");
+                self.toasts.error(tr("Couldn't verify the import key"));
             }
         }
     }
@@ -1650,7 +1663,8 @@ impl TeyvatmeApp {
             Polled::Dropped => {
                 self.optimizer_export_target = OptimizerExportTarget::None;
                 return Err(anyhow!(
-                    "the export request was dropped before it completed"
+                    "{}",
+                    tr("the export request was dropped before it completed")
                 ));
             }
         };
@@ -1692,13 +1706,14 @@ impl TeyvatmeApp {
                     }
                     self.tracker_upload_json(json, counts, credential);
                 } else if self.saved_state.tracker_sign_in == TrackerSignIn::Unknown {
-                    self.toasts
-                        .error("Still reading the tracker sign-in. Try again in a moment.");
+                    #[rustfmt::skip]
+                    let wait = tr("Still reading the tracker sign-in. Try again in a moment.");
+                    self.toasts.error(wait);
                 } else if !self.saved_state.tracker_import_key.is_empty() {
                     self.toasts
-                        .error("Tracker key not verified. Open settings to re-link.");
+                        .error(tr("Tracker key not verified. Open settings to re-link."));
                 } else {
-                    self.toasts.error("Not signed in to the tracker.");
+                    self.toasts.error(tr("Not signed in to the tracker."));
                 }
             }
         }
@@ -1709,7 +1724,7 @@ impl TeyvatmeApp {
 
     fn optimizer_save_to_clipboard(&mut self, ctx: &Context, json: String) -> Result<()> {
         ctx.copy_text(json);
-        self.toasts.info("GOOD JSON copied");
+        self.toasts.info(tr("GOOD JSON copied"));
         Ok(())
     }
 
@@ -1717,9 +1732,10 @@ impl TeyvatmeApp {
         let path = self
             .optimizer_save_path
             .take()
-            .ok_or_else(|| anyhow!("No save file path set"))?;
+            .ok_or_else(|| anyhow!("{}", tr("No save file path set")))?;
 
-        let file = File::create(&path).with_context(|| format!("Unable to open file {path:?}"))?;
+        let file = File::create(&path)
+            .with_context(|| trf("Unable to open file {0}", &[&format!("{path:?}")]))?;
         let mut writer = BufWriter::new(file);
         writer.write_all(json.as_bytes())?;
 
@@ -1728,7 +1744,7 @@ impl TeyvatmeApp {
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_default();
         self.toasts
-            .success(format!("Saved {name}"))
+            .success(trf("Saved {0}", &[&name]))
             .saved()
             .action(crate::ui::toast::Action::Show(path.clone()));
         Ok(())
@@ -1741,7 +1757,9 @@ impl TeyvatmeApp {
         credential: UploadCredential,
     ) {
         let host = self.tracker_host();
-        self.toasts.info(format!("Uploading to {host} · {counts}"));
+        let counts = counts_line(&counts);
+        self.toasts
+            .info(trf("Uploading to {0} · {1}", &[&host, &counts]));
 
         let (tx, rx) = oneshot::channel();
         let _ = self
@@ -1765,13 +1783,13 @@ impl TeyvatmeApp {
                 let json = serde_json::json!({ "gi_achievements": achievements }).to_string();
                 ctx.copy_text(json);
                 self.toasts
-                    .info(format!("{} achievements copied", achievements.len()));
+                    .info(trf("{0} achievements copied", &[&achievements.len()]));
                 if let Some(url) = open {
                     ctx.open_url(egui::OpenUrl::new_tab(url));
                 }
             }
             None => {
-                let toast = self.toasts.error("Achievements not found");
+                let toast = self.toasts.error(tr("Achievements not found"));
                 if let Some(url) = open {
                     toast.action(crate::ui::toast::Action::OpenAnyway(url));
                 }

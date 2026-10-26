@@ -36,6 +36,7 @@ use std::time::{Duration, Instant};
 
 use egui::{Button, Color32, Context, Id, Label, Modal, RichText, Ui};
 
+use crate::i18n::{tr, trf};
 use crate::ui::toast::Toasts;
 
 /// The task's name in Task Scheduler's root folder.
@@ -364,8 +365,8 @@ pub enum StartupWarning {
 impl StartupWarning {
     pub fn title(self) -> &'static str {
         match self {
-            StartupWarning::OtherCopy => "Startup opens another copy",
-            StartupWarning::MissingFile => "Startup points to a file that no longer exists",
+            StartupWarning::OtherCopy => tr("Startup opens another copy"),
+            StartupWarning::MissingFile => tr("Startup points to a file that no longer exists"),
         }
     }
 }
@@ -551,18 +552,18 @@ impl Startup {
             ),
             (Job::Migrate, Err(e)) => {
                 tracing::error!("could not move Start on startup to Task Scheduler: {e}");
-                toasts.error("Could not move Start on startup to Task Scheduler");
+                toasts.error(tr("Could not move Start on startup to Task Scheduler"));
             }
             (Job::Enable { .. } | Job::Disable, Err(e)) => {
                 tracing::error!("Unable to update startup behavior: {e}");
-                toasts.error("Unable to update startup behavior");
+                toasts.error(tr("Unable to update startup behavior"));
             }
             (Job::Repoint { .. }, Ok(_)) => {
-                toasts.success("Startup now opens this copy");
+                toasts.success(tr("Startup now opens this copy"));
             }
             (Job::Repoint { .. }, Err(e)) => {
                 tracing::error!("could not point startup at this copy: {e}");
-                toasts.error("Could not point startup at this copy");
+                toasts.error(tr("Could not point startup at this copy"));
             }
             (Job::Refresh, Err(e)) => tracing::warn!("could not read the startup task: {e}"),
             (Job::Migrate | Job::Refresh | Job::Enable { .. } | Job::Disable, Ok(_)) => {}
@@ -628,9 +629,9 @@ impl Startup {
         // Locked in an `--isolated` run, which must not register tasks.
         let changing = self.changing() || crate::isolated();
         let title = if cfg!(windows) {
-            "Start with Windows"
+            tr("Start with Windows")
         } else {
-            "Start at sign-in"
+            tr("Start at sign-in")
         };
         let warning = self.warning(*saved_on);
         let mut toggled = false;
@@ -666,9 +667,9 @@ impl Startup {
         let before = minimized;
         widgets::switch_row(
             ui,
-            "Start minimized",
+            tr("Start minimized"),
             Some(widgets::secondary_text(
-                "To the tray or the taskbar",
+                tr("To the tray or the taskbar"),
                 pal.tx2,
             )),
             &mut minimized,
@@ -704,38 +705,38 @@ impl Startup {
             ui.heading(warning.title());
             ui.separator();
 
-            ui.label("At sign-in Windows starts:");
+            ui.label(tr("At sign-in Windows starts:"));
             path_label(ui, "registered", snapshot.registered.as_deref());
             if warning == StartupWarning::OtherCopy
                 && let Some(modified) = &snapshot.registered_modified
             {
                 ui.indent("registered_modified", |ui| {
                     ui.label(
-                        RichText::new(format!("modified {modified}"))
+                        RichText::new(trf("modified {0}", &[&modified]))
                             .small()
                             .color(Color32::GRAY),
                     );
                 });
             }
             ui.add_space(4.0);
-            ui.label("You are running:");
+            ui.label(tr("You are running:"));
             path_label(ui, "current", snapshot.current.as_deref());
             ui.separator();
 
             ui.horizontal(|ui| {
                 if ui
-                    .add_enabled(!changing, Button::new("Start this copy instead"))
+                    .add_enabled(!changing, Button::new(tr("Start this copy instead")))
                     .clicked()
                 {
                     choice = Some(Choice::Repoint);
                 }
                 if warning == StartupWarning::OtherCopy
                     && let Some(registered) = &snapshot.registered
-                    && ui.button("Open its folder").clicked()
+                    && ui.button(tr("Open its folder")).clicked()
                 {
                     choice = Some(Choice::Reveal(registered.clone()));
                 }
-                if ui.button("Close").clicked() {
+                if ui.button(tr("Close")).clicked() {
                     choice = Some(Choice::Close);
                 }
             });
@@ -761,7 +762,9 @@ impl Startup {
 /// A path on its own indented line, selectable so it can be copied.
 fn path_label(ui: &mut Ui, id: &str, path: Option<&str>) {
     ui.indent(id, |ui| {
-        ui.add(Label::new(RichText::new(path.unwrap_or("unknown")).monospace()).selectable(true));
+        ui.add(
+            Label::new(RichText::new(path.unwrap_or(tr("unknown"))).monospace()).selectable(true),
+        );
     });
 }
 

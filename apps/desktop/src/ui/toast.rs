@@ -17,6 +17,7 @@ use egui::{Align2, Area, Context, CornerRadius, Frame, Id, Margin, Order, RichTe
 use super::icons;
 use super::theme::{self, style, weight};
 use crate::activity::Kind;
+use crate::i18n::tr;
 
 const MAX_SHOWN: usize = 3;
 const MAX_WIDTH: f32 = 400.0;
@@ -42,9 +43,9 @@ pub enum Action {
 impl Action {
     fn label(&self) -> &'static str {
         match self {
-            Action::Show(_) => "Show",
-            Action::OpenAnyway(_) => "Open anyway",
-            Action::RetryUpload => "Retry",
+            Action::Show(_) => tr("Show"),
+            Action::OpenAnyway(_) => tr("Open anyway"),
+            Action::RetryUpload => tr("Retry"),
         }
     }
 }
@@ -260,7 +261,7 @@ impl Toasts {
                                 pal.snack_tx.gamma_multiply(0.7),
                             ))
                             .frame(false);
-                            if ui.add(close).on_hover_text("Dismiss").clicked() {
+                            if ui.add(close).on_hover_text(tr("Dismiss")).clicked() {
                                 dismissed = Some(index);
                             }
                         });

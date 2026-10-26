@@ -12,6 +12,8 @@ use egui::{
     TextStyle, Theme, Visuals,
 };
 
+use crate::i18n::Lang;
+
 /// Every colour role the design uses, for one theme.
 #[derive(Clone, Copy, Debug)]
 pub struct Palette {
@@ -197,8 +199,8 @@ pub mod radius {
 }
 
 /// Install the fonts, text styles and both themes' visuals. Called once.
-pub fn install(ctx: &Context) {
-    ctx.set_fonts(fonts());
+pub fn install(ctx: &Context, lang: Lang) {
+    ctx.set_fonts(fonts(lang));
     for theme in [Theme::Light, Theme::Dark] {
         let palette = match theme {
             Theme::Light => LIGHT,
@@ -219,7 +221,85 @@ pub fn install(ctx: &Context) {
     }
 }
 
-fn fonts() -> FontDefinitions {
+/// The fonts again after a language change (a script font in or out).
+pub fn set_language(ctx: &Context, lang: Lang) {
+    ctx.set_fonts(fonts(lang));
+}
+
+/// The system's font for a script Outfit and egui's fonts lack, as
+/// (path, face in the collection): read from disk only for the language
+/// that needs it, so English pays nothing. The first file found is used.
+fn script_font_candidates(lang: Lang) -> &'static [(&'static str, u32)] {
+    #[cfg(windows)]
+    {
+        match lang {
+            Lang::ZhCn => &[("msyh.ttc", 0), ("simsun.ttc", 0)],
+            Lang::ZhTw => &[("msjh.ttc", 0), ("mingliu.ttc", 0)],
+            Lang::Ja => &[("YuGothM.ttc", 0), ("meiryo.ttc", 0), ("msgothic.ttc", 0)],
+            Lang::Ko => &[("malgun.ttf", 0), ("gulim.ttc", 0)],
+            Lang::Th => &[("LeelawUI.ttf", 0), ("leelawad.ttf", 0), ("tahoma.ttf", 0)],
+            Lang::Vi | Lang::Ru => &[("segoeui.ttf", 0)],
+            _ => &[],
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        match lang {
+            Lang::ZhCn | Lang::ZhTw => &[
+                ("/System/Library/Fonts/PingFang.ttc", 0),
+                ("/System/Library/Fonts/STHeiti Light.ttc", 0),
+            ],
+            Lang::Ja => &[("/System/Library/Fonts/Hiragino Sans GB.ttc", 0)],
+            Lang::Ko => &[("/System/Library/Fonts/AppleSDGothicNeo.ttc", 0)],
+            Lang::Th => &[("/System/Library/Fonts/Thonburi.ttc", 0)],
+            _ => &[],
+        }
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
+    {
+        // Noto Sans CJK's collection order: JP, KR, SC, TC, HK.
+        const CJK: [&str; 4] = [
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/OTF/NotoSansCJK-Regular.ttc",
+        ];
+        match lang {
+            Lang::Ja => &[(CJK[0], 0), (CJK[1], 0), (CJK[2], 0), (CJK[3], 0)],
+            Lang::Ko => &[(CJK[0], 1), (CJK[1], 1), (CJK[2], 1), (CJK[3], 1)],
+            Lang::ZhCn => &[(CJK[0], 2), (CJK[1], 2), (CJK[2], 2), (CJK[3], 2)],
+            Lang::ZhTw => &[(CJK[0], 3), (CJK[1], 3), (CJK[2], 3), (CJK[3], 3)],
+            Lang::Th => &[
+                ("/usr/share/fonts/truetype/noto/NotoSansThai-Regular.ttf", 0),
+                ("/usr/share/fonts/noto/NotoSansThai-Regular.ttf", 0),
+                ("/usr/share/fonts/google-noto/NotoSansThai-Regular.ttf", 0),
+                ("/usr/share/fonts/truetype/tlwg/Loma.ttf", 0),
+            ],
+            _ => &[],
+        }
+    }
+}
+
+fn script_font(lang: Lang) -> Option<FontData> {
+    for &(path, index) in script_font_candidates(lang) {
+        #[cfg(windows)]
+        let path =
+            std::path::Path::new(&std::env::var("WINDIR").unwrap_or_else(|_| "C:\\Windows".into()))
+                .join("Fonts")
+                .join(path);
+        #[cfg(not(windows))]
+        let path = std::path::PathBuf::from(path);
+        if let Ok(bytes) = std::fs::read(&path) {
+            tracing::info!("font for {}: {}", lang.code(), path.display());
+            let mut data = FontData::from_owned(bytes);
+            data.index = index;
+            return Some(data);
+        }
+    }
+    None
+}
+
+fn fonts(lang: Lang) -> FontDefinitions {
     let mut fonts = FontDefinitions::default();
     for (name, bytes) in [
         (
@@ -239,15 +319,30 @@ fn fonts() -> FontDefinitions {
             .font_data
             .insert(name.to_owned(), FontData::from_static(bytes).into());
     }
-    // egui's own fonts stay behind Outfit, for the glyphs it lacks (✦, CJK
-    // names, symbols).
-    let fallbacks = fonts
+    // egui's own fonts stay behind Outfit, for the glyphs it lacks (✦,
+    // symbols), and the language's script font right after Outfit (before
+    // it for Vietnamese, whose stacked accents Outfit lacks).
+    let mut fallbacks = fonts
         .families
         .get(&FontFamily::Proportional)
         .cloned()
         .unwrap_or_default();
+    let script = script_font(lang).map(|data| {
+        fonts.font_data.insert("script".to_owned(), data.into());
+        "script".to_owned()
+    });
+    let script_first = lang == Lang::Vi;
+    if let Some(name) = &script
+        && !script_first
+    {
+        fallbacks.insert(0, name.clone());
+    }
     let family = |first: &str| {
-        let mut list = vec![first.to_owned()];
+        let mut list = Vec::new();
+        if script_first && let Some(name) = &script {
+            list.push(name.clone());
+        }
+        list.push(first.to_owned());
         list.extend(fallbacks.iter().cloned());
         list
     };

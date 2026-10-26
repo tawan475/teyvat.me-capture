@@ -11,6 +11,7 @@ use egui::{
 
 use super::icons;
 use super::theme::{self, Palette, radius, style, weight};
+use crate::i18n::{tr, trf};
 
 /// The palette of the theme `ui` is drawing in.
 pub fn p(ui: &Ui) -> Palette {
@@ -277,11 +278,12 @@ pub fn stepper(ui: &mut Ui, steps: [Step; 3]) {
     let width = (ui.available_width() - 2.0 * gap) / 3.0;
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = gap;
-        for (step, label) in steps
-            .into_iter()
-            .zip(["Capture", "Open Genshin", "Enter world"])
-        {
-            let id = egui::Id::new("stepper").with(label);
+        for (step, (key, label)) in steps.into_iter().zip([
+            ("Capture", tr("Capture")),
+            ("Open Genshin", tr("Open Genshin")),
+            ("Enter world", tr("Enter world")),
+        ]) {
+            let id = egui::Id::new("stepper").with(key);
             let color = match step {
                 Step::Pending => pal.line2,
                 Step::Now => pal.ac_tx,
@@ -677,10 +679,10 @@ pub fn group_thousands(n: usize) -> String {
 /// "just now", "4 min ago", "1 h ago", "2 d ago".
 pub fn ago(seconds: i64) -> String {
     match seconds {
-        s if s < 60 => "just now".to_string(),
-        s if s < 3600 => format!("{} min ago", s / 60),
-        s if s < 86_400 => format!("{} h ago", s / 3600),
-        s => format!("{} d ago", s / 86_400),
+        s if s < 60 => tr("just now").to_string(),
+        s if s < 3600 => trf("{0} min ago", &[&(s / 60)]),
+        s if s < 86_400 => trf("{0} h ago", &[&(s / 3600)]),
+        s => trf("{0} d ago", &[&(s / 86_400)]),
     }
 }
 
