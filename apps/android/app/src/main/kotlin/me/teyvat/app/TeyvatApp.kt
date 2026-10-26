@@ -11,6 +11,7 @@ import java.util.Locale
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /** The process: native logging and decoder, settings, the capture state. */
 class TeyvatApp : Application() {
@@ -39,6 +40,8 @@ class TeyvatApp : Application() {
             tracker.tick(summary)
         }
         updater = Updater(this, prefs, scope) { capture.vpn.value != VpnState.Off }
+        // The Quick Settings tile follows capture, however it was started or stopped.
+        scope.launch { capture.vpn.collect { CaptureTile.update(this@TeyvatApp) } }
     }
 
     /**

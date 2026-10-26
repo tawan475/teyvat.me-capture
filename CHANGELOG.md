@@ -4,6 +4,10 @@ Each release's section is its GitHub release notes (`.github/workflows/release.y
 
 ## 1.2.1
 
+- Android: a **Quick Settings tile**. Add "Teyvat.me" to your quick settings;
+  a tap starts capture and opens Genshin once it is ready, another tap stops
+  capture. (If Genshin was already running, close it first: it has to log in
+  after capture starts.)
 - Android: self-updating behaves.
   - **Install now** opens Android's update screen right away.
   - A downloaded update is kept when the app restarts, instead of being
