@@ -1,0 +1,230 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="about_fan_project">非公式ファンプロジェクト。HoYoverse とは関係ありません</string>
+
+    <!-- Common -->
+    <string name="back">戻る</string>
+    <string name="settings">設定</string>
+    <string name="more">その他</string>
+    <string name="try_again">再試行</string>
+    <string name="open">開く</string>
+    <string name="open_anyway">それでも開く</string>
+    <string name="cancel">キャンセル</string>
+    <string name="just_now">たった今</string>
+    <string name="minutes_ago">%d 分前</string>
+    <string name="hours_ago">%d 時間前</string>
+
+    <!-- Hero -->
+    <string name="home_capture_off_title">キャプチャ停止中</string>
+    <string name="home_capture_off_line">ゲームより先に開始してください</string>
+    <string name="home_start_capture">キャプチャを開始</string>
+    <string name="home_starting_title">キャプチャを開始中</string>
+    <string name="home_starting_line">数秒で戻ります</string>
+    <string name="home_open_activity">アクティビティを開く</string>
+    <string name="home_waiting_title">ゲームを待機中</string>
+    <string name="home_waiting_line">原神が起動していません · 今すぐ起動</string>
+    <string name="home_detected_title">ゲームを検出</string>
+    <string name="home_detected_line">起動をキャプチャ · ワールドに入ってください</string>
+    <string name="home_already_open_line">起動済み · ワールドに入ってください</string>
+    <string name="home_open_before">ゲームより先に開く</string>
+    <string name="home_open_genshin">原神を開く</string>
+    <string name="home_login_seen_title">ログインを検出</string>
+    <string name="home_login_seen_line">セッションキーを検索中</string>
+    <string name="home_decrypting_title">データ復号中</string>
+    <string name="home_decrypting_line">セッションキー取得 · %s</string>
+    <string name="home_missed_title">起動を取り逃しました</string>
+    <string name="home_missed_running_line">原神が Teyvat.me より先に起動しました</string>
+    <string name="home_missed_stopped_line">ログイン時にキャプチャが停止していました</string>
+    <string name="home_reenter">タイトル画面に戻って再度ログイン</string>
+    <string name="home_force_stop">原神を強制停止</string>
+    <string name="home_or_restart">または原神を再起動</string>
+    <string name="home_key_lost_title">ログインを読み取れません</string>
+    <string name="home_key_lost_line">セッションキーが見つかりません</string>
+    <string name="home_data_kept">キャプチャしたデータは保持されます</string>
+    <string name="step_vpn">キャプチャ</string>
+    <string name="step_login">ログイン</string>
+    <string name="step_key">キー</string>
+    <string name="vpn_not_allowed">VPN が許可されていません</string>
+    <string name="game_data_failed">ゲームデータを読み込めませんでした</string>
+
+    <!-- Captured -->
+    <string name="captured">キャプチャ済み</string>
+    <string name="captured_nothing">まだありません</string>
+    <string name="captured_ar">AR %1$d · %2$s</string>
+    <string name="captured_ar_only">AR %d</string>
+    <string name="tile_characters">キャラクター</string>
+    <string name="tile_weapons">武器</string>
+    <string name="tile_artifacts">聖遺物</string>
+    <string name="tile_materials">素材</string>
+    <string name="tile_achievements">アチーブメント</string>
+
+    <!-- Wish history -->
+    <string name="wish_title">祈願履歴</string>
+    <string name="wish_open_in_game">先にゲーム内で祈願履歴を開いてください</string>
+    <string name="wish_expired">キーの期限切れ · ゲーム内で祈願履歴を開き直してください</string>
+    <string name="wish_ready">URL 準備完了：paimon.moe、StarDB…</string>
+    <string name="wish_reading">読み取り中 · %1$s、%2$d ページ · 祈願 %3$s 回</string>
+    <string name="wish_read_done">✓ %1$s を読み取り · 祈願 %2$s 回</string>
+    <string name="wish_read_failed">読み取り失敗 · %s</string>
+    <string name="wish_copy_url">URL をコピー</string>
+    <string name="wish_save">履歴を保存</string>
+    <string name="wish_save_description">UIGF v4 JSON 形式の祈願履歴。paimon.moe、StarDB などの祈願トラッカーで読み込めます</string>
+    <string name="wish_share">履歴を共有</string>
+    <string name="wish_open_paimon">paimon.moe を開く</string>
+    <string name="wish_open_stardb">StarDB を開く</string>
+    <string name="wish_url_copied">祈願 URL をコピーしました</string>
+    <string name="wish_no_key">祈願キーがありません · ゲーム内で祈願履歴を開いてください</string>
+    <string name="wish_waiting_uid">アカウントの UID を待機中</string>
+    <string name="wish_busy">読み取り中です</string>
+    <string name="wish_saved">%s を保存しました</string>
+    <string name="banner_301">イベント祈願·キャラクター</string>
+    <string name="banner_302">イベント祈願·武器</string>
+    <string name="banner_500">集録祈願</string>
+    <string name="banner_200">通常祈願</string>
+    <string name="banner_100">初心者向け祈願</string>
+
+    <!-- Export -->
+    <string name="export_title">エクスポート</string>
+    <string name="export_open_folder">エクスポート先フォルダを開く</string>
+    <string name="export_no_folder">エクスポート先フォルダがまだありません</string>
+    <string name="export_more">その他のエクスポート</string>
+    <string name="export_save">GOOD JSON を保存</string>
+    <string name="export_save_description">GOOD JSON。Genshin Optimizer、teyvat.me など GOOD 対応ツールで読み込めます</string>
+    <string name="export_share">共有</string>
+    <string name="export_copy">コピー</string>
+    <string name="export_auto">自動エクスポート</string>
+    <string name="export_auto_saved">✓ %1$s を保存 · %2$s</string>
+    <string name="export_auto_on">オン · %s</string>
+    <string name="export_auto_off">オフ · フォルダを選択</string>
+    <string name="export_saved">%s を保存しました</string>
+    <string name="export_save_failed">保存に失敗しました</string>
+    <string name="export_copied">GOOD JSON をコピーしました</string>
+    <string name="export_too_big">大きすぎてコピーできません · 保存か共有を使ってください</string>
+    <string name="export_not_captured">未キャプチャ：%s</string>
+    <string name="export_nothing">まだ何もキャプチャしていません</string>
+    <string name="export_copy_achievements">アチーブメントをコピー</string>
+    <string name="export_stardb">アチーブメントを StarDB へ</string>
+    <string name="export_seelie">アチーブメントを Seelie.me へ</string>
+    <string name="export_filters">フィルターと自動エクスポート</string>
+    <string name="achievements_copied">アチーブメント %d 件をコピーしました</string>
+    <string name="achievements_not_found">アチーブメントが見つかりません</string>
+
+    <!-- Tracker -->
+    <string name="tracker">トラッカー</string>
+    <string name="optional">任意</string>
+    <string name="tracker_sign_in">ログイン</string>
+    <string name="tracker_signed_out_line">ログインするとキャプチャごとにアップロード</string>
+    <string name="tracker_signing_in">ログイン中 · ブラウザで完了してください</string>
+    <string name="tracker_signed_in_as">%s としてログイン中</string>
+    <string name="tracker_target_uid">キャプチャの UID と一致するアカウントにアップロード</string>
+    <string name="tracker_target_account">アップロード先：%s</string>
+    <string name="tracker_upload_now">今すぐアップロード</string>
+    <string name="tracker_uploading">アップロード中…</string>
+    <string name="tracker_uploaded">✓ %s にアップロード</string>
+    <string name="tracker_upload_failed">アップロード失敗 · %s</string>
+    <string name="tracker_upload_switch">キャプチャごとにアップロード</string>
+    <string name="tracker_upload_switch_line">アカウント全体、フィルターはすべてオフ</string>
+    <string name="tracker_upload_off">アップロードはオフ</string>
+    <string name="tracker_configure">アップロード先を選択</string>
+    <string name="tracker_configure_line">ウェブサイトの 設定 › デバイス で</string>
+    <string name="tracker_dashboard">ダッシュボードを開く</string>
+    <string name="tracker_sign_out">ログアウト</string>
+    <string name="tracker_signed_in_toast">%s にログインしました</string>
+    <string name="tracker_sign_in_failed">ログイン失敗 · %s</string>
+    <string name="tracker_nothing_to_upload">まだ何もキャプチャしていません</string>
+    <string name="tracker_page_done">ログインしました。Teyvat.me に戻ります…</string>
+    <string name="tracker_page_cancelled">ログインをキャンセルしました。このタブは閉じてかまいません。</string>
+    <string name="tracker_page_wrong">このリンクはこのログインのものではありません。</string>
+
+    <!-- Footer / Activity -->
+    <string name="footer_idle">準備完了</string>
+    <string name="activity">アクティビティ</string>
+    <string name="share_log">ログを共有</string>
+    <string name="activity_footnote">メモリ内にのみ保持 · ログを共有で latest.log を送信</string>
+    <string name="activity_empty">まだありません</string>
+    <string name="event_started">開始 · ゲームデータ %s</string>
+    <string name="event_stopped">キャプチャ停止</string>
+    <string name="no_log">ログはまだありません</string>
+
+    <!-- First run -->
+    <string name="welcome_tagline">ゲーム自身の通信から原神のアカウントを読み取り、GOOD JSON として保存</string>
+    <string name="welcome_only_genshin">原神だけ</string>
+    <string name="welcome_only_genshin_line">ほかのアプリは VPN を通りません</string>
+    <string name="welcome_read_only">読み取り専用</string>
+    <string name="welcome_read_only_line">パケットはそのまま通過します</string>
+    <string name="welcome_on_phone">この端末の中だけ</string>
+    <string name="welcome_on_phone_line">共有しない限り何もアップロードされません</string>
+    <string name="welcome_before_game">ゲームより先に開く</string>
+    <string name="welcome_before_game_line">原神のログインを見る必要があります</string>
+    <string name="get_started">はじめる</string>
+    <string name="setup_title">プレイの前に</string>
+    <string name="setup_choose_folder">フォルダを選択</string>
+    <string name="setup_choose_folder_line">キャプチャごとに GOOD JSON ファイルを 1 つ</string>
+    <string name="always_on_vpn">常時接続 VPN</string>
+    <string name="always_on_vpn_line">ゲームより先にキャプチャが動きます</string>
+    <string name="always_on_vpn_path">設定 › ネットワーク › VPN › Teyvat.me Capture</string>
+    <string name="open_vpn_settings">VPN 設定を開く</string>
+    <string name="notifications">通知</string>
+    <string name="notifications_line">プレイ中のキャプチャ状況</string>
+    <string name="allow">許可</string>
+    <string name="setup_vpn_dialog">Android から VPN の許可を求められます：アプリがほかのアプリの通信を読むための仕組みです</string>
+
+    <!-- Settings -->
+    <string name="section_app">アプリ</string>
+    <string name="theme">テーマ</string>
+    <string name="theme_system">システム</string>
+    <string name="theme_light">ライト</string>
+    <string name="theme_dark">ダーク</string>
+    <string name="section_export">エクスポート</string>
+    <string name="section_tracker">トラッカー</string>
+    <string name="section_diagnostics">診断</string>
+    <string name="record_capture">キャプチャを記録</string>
+    <string name="record_capture_line">ゲームのパケット、不具合報告用</string>
+    <string name="about">このアプリについて</string>
+
+    <!-- Settings › Export -->
+    <string name="export_auto_section">自動エクスポート</string>
+    <string name="export_auto_switch">キャプチャごとにフォルダへ保存</string>
+    <string name="export_auto_switch_line">GOOD JSON、キャプチャごとに 1 ファイル</string>
+    <string name="export_choose_another">別のフォルダを選択</string>
+    <string name="export_use_downloads">Download/Teyvat.me を使う</string>
+    <string name="filters">フィルター</string>
+    <string name="filter_4th_line">5★ の3オプション聖遺物の4つ目を埋める</string>
+    <string name="filter_4th_line_line">Genshin Optimizer 向け</string>
+    <string name="filters_footnote">トラッカーへのアップロードは常にすべてを含みます</string>
+    <string name="filter_all">すべて</string>
+    <string name="min_level">最低レベル</string>
+    <string name="min_ascension">最低突破</string>
+    <string name="min_constellation">最低命ノ星座</string>
+    <string name="min_refinement">最低精錬</string>
+    <string name="min_rarity">最低レア度</string>
+    <string name="decrease">減らす</string>
+    <string name="increase">増やす</string>
+
+    <!-- teyvat.me page -->
+    <string name="teyvat_not_connected">ログインしていません</string>
+    <string name="teyvat_browser_line">ブラウザでログインします</string>
+
+    <!-- About -->
+    <string name="about_version">%1$s · ゲームデータ %2$s</string>
+    <string name="source_code">ソースコード</string>
+    <string name="teyvat_site_line">トラッカーのウェブサイト</string>
+    <string name="report_bug">不具合を報告</string>
+    <string name="report_bug_line">新しい issue に latest.log を添付</string>
+    <string name="thanks_and_licences">謝辞とライセンス</string>
+    <string name="thanks">謝辞</string>
+    <string name="licences">オープンソースライセンス</string>
+    <string name="third_party_notices">サードパーティ通知</string>
+    <string name="hoyoverse_names">原神およびその名称は HoYoverse に帰属します</string>
+
+    <!-- Notification -->
+    <string name="channel_capture">キャプチャ</string>
+    <string name="channel_capture_line">Teyvat.me がゲームをキャプチャしている間に表示</string>
+    <string name="channel_alerts">アラート</string>
+    <string name="channel_alerts_line">対応が必要な問題</string>
+    <string name="stop_capture">キャプチャを停止</string>
+    <string name="stop">停止</string>
+    <string name="share_good">GOOD JSON を共有</string>
+    <string name="alert_capture_stopped">キャプチャ停止</string>
+    <string name="alert_vpn_taken">別の VPN に切り替わりました</string>
+</resources>

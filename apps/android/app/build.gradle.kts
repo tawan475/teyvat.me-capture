@@ -23,6 +23,12 @@ android {
     compileSdk = 36
     ndkVersion = ndkVersionName
 
+    // The app's languages (every one the game ships) in Android 13+'s
+    // per-app language setting; res/resources.properties names the default.
+    androidResources {
+        generateLocaleConfig = true
+    }
+
     defaultConfig {
         applicationId = "me.teyvat.app"
         minSdk = 29

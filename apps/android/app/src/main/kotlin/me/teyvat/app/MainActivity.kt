@@ -55,7 +55,9 @@ import me.teyvat.app.ui.SettingsActions
 import me.teyvat.app.ui.SettingsScreen
 import me.teyvat.app.ui.SetUpActions
 import me.teyvat.app.ui.SetUpScreen
+import me.teyvat.app.ui.TeyvatActions
 import me.teyvat.app.ui.TeyvatScreen
+import me.teyvat.app.ui.TrackerView
 import me.teyvat.app.ui.TeyvatTheme
 import me.teyvat.app.ui.ThanksScreen
 import me.teyvat.app.ui.Tm
@@ -66,10 +68,12 @@ import me.teyvat.app.ui.WelcomeScreen
 enum class Screen { Welcome, SetUp, Home, Settings, ExportSettings, Teyvat, Activity, About, Thanks, Licences, Notices }
 
 /** The one activity: first run, Home and the pushed screens (spec section 3). */
-class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsActions, ExportSettingsActions {
+class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsActions, ExportSettingsActions, TeyvatActions {
     private val app get() = application as TeyvatApp
     private val prefs get() = app.prefs
     private val capture get() = app.capture
+    private val tracker get() = app.tracker
+    private var whoAt = 0L
     private val snackbars = SnackbarHostState()
     private val stack = mutableStateListOf<Screen>()
     private var notificationsGranted by mutableStateOf(true)
@@ -158,6 +162,11 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
         super.onResume()
         notificationsGranted = notificationsAllowed()
         capture.refresh()
+        // The upload target is changed on the website: read it again on return.
+        if (System.currentTimeMillis() - whoAt > 10_000) {
+            whoAt = System.currentTimeMillis()
+            tracker.refreshWho()
+        }
     }
 
     /** The notification's actions and the alert's Start capture. */
@@ -191,6 +200,10 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
         androidx.compose.runtime.LaunchedEffect(summary.wish.read) { onWishRead(summary.wish.read) }
         val hero = hero(vpn, summary)
         val folder = Exports.folderLabel(this, settings)
+        val trackerState by tracker.state.collectAsState()
+        val lastUpload by tracker.lastUpload.collectAsState()
+        val uploading by tracker.uploading.collectAsState()
+        val trackerView = TrackerView(trackerState, lastUpload, uploading, settings.trackerUpload)
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
             topBar = {
@@ -206,7 +219,7 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
                         }
                         Screen.Settings -> TmTopBar(stringResource(R.string.settings), ::pop)
                         Screen.ExportSettings -> TmTopBar(stringResource(R.string.export_title), ::pop)
-                        Screen.Teyvat -> TmTopBar(Links.trackerHost, ::pop)
+                        Screen.Teyvat -> TmTopBar(stringResource(R.string.tracker), ::pop)
                         Screen.About -> TmTopBar(stringResource(R.string.about), ::pop)
                         Screen.Thanks -> TmTopBar(stringResource(R.string.thanks), ::pop)
                         Screen.Licences -> TmTopBar(stringResource(R.string.licences), ::pop)
@@ -240,10 +253,10 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
             when (screen) {
                 Screen.Welcome -> WelcomeScreen(bottomOnly) { push(Screen.SetUp) }
                 Screen.SetUp -> SetUpScreen(bottomOnly, settings, folder, notificationsGranted, this)
-                Screen.Home -> HomeContent(hero, summary, settings, capture.startingSince, folder, this, padding)
-                Screen.Settings -> SettingsScreen(padding, settings, this)
+                Screen.Home -> HomeContent(hero, summary, settings, capture.startingSince, folder, trackerView, this, padding)
+                Screen.Settings -> SettingsScreen(padding, settings, trackerView, this)
                 Screen.ExportSettings -> ExportSettingsScreen(padding, settings, folder, this)
-                Screen.Teyvat -> TeyvatScreen(padding) { openUrl(Links.trackerSite) }
+                Screen.Teyvat -> TeyvatScreen(padding, trackerView, summary.captured, this)
                 Screen.Activity -> ActivityScreen(padding, summary.events)
                 Screen.About -> AboutScreen(padding, BuildConfig.VERSION_NAME, gameDataLabel(summary), ::openUrl) { push(Screen.Thanks) }
                 Screen.Thanks -> ThanksScreen(padding) { push(Screen.Licences) }
@@ -328,6 +341,36 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
         }
     }
 
+    // -- tracker ------------------------------------------------------------
+
+    override fun trackerSignIn() {
+        tracker.signIn(::openUrl) { error ->
+            // Back from the browser: closes the Custom Tab above this activity.
+            startActivity(
+                Intent(this, MainActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            )
+            if (error == null) {
+                snack(getString(R.string.tracker_signed_in_toast, Links.trackerHost))
+                tracker.uploadNow(capture.summary.value)
+            } else {
+                snack(getString(R.string.tracker_sign_in_failed, error))
+            }
+        }
+    }
+
+    override fun trackerCancelSignIn() = tracker.cancelSignIn()
+
+    override fun trackerUploadNow() {
+        if (!tracker.uploadNow(capture.summary.value)) snack(getString(R.string.tracker_nothing_to_upload))
+    }
+
+    override fun setTrackerUpload(on: Boolean) {
+        prefs.update { it.copy(trackerUpload = on) }
+    }
+
+    override fun trackerSignOut() = tracker.signOut()
+
     // -- export -------------------------------------------------------------
 
     /** The GOOD JSON for a user action, or a snackbar saying why not. */
@@ -335,7 +378,7 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
         val settings = prefs.value
         when (val problem = Exports.problem(capture.summary.value, settings.filters)) {
             ExportProblem.NothingYet -> return snack(getString(R.string.export_nothing))
-            is ExportProblem.Missing -> return snack(getString(R.string.export_not_captured, problem.what))
+            is ExportProblem.Missing -> return snack(getString(R.string.export_not_captured, problem.what.joinToString(", ") { getString(it) }))
             null -> {}
         }
         lifecycleScope.launch {

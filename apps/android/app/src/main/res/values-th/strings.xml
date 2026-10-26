@@ -1,0 +1,230 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="about_fan_project">โปรเจกต์แฟนเมดอย่างไม่เป็นทางการ ไม่มีส่วนเกี่ยวข้องกับ HoYoverse</string>
+
+    <!-- Common -->
+    <string name="back">กลับ</string>
+    <string name="settings">ตั้งค่า</string>
+    <string name="more">เพิ่มเติม</string>
+    <string name="try_again">ลองอีกครั้ง</string>
+    <string name="open">เปิด</string>
+    <string name="open_anyway">เปิดต่อไป</string>
+    <string name="cancel">ยกเลิก</string>
+    <string name="just_now">เมื่อสักครู่</string>
+    <string name="minutes_ago">%d นาทีที่แล้ว</string>
+    <string name="hours_ago">%d ชม. ที่แล้ว</string>
+
+    <!-- Hero -->
+    <string name="home_capture_off_title">ปิดการสแกนอยู่</string>
+    <string name="home_capture_off_line">เริ่มก่อนเปิดเกม</string>
+    <string name="home_start_capture">เริ่มสแกน</string>
+    <string name="home_starting_title">กำลังเริ่มสแกน</string>
+    <string name="home_starting_line">อีกไม่กี่วินาทีจะกลับมา</string>
+    <string name="home_open_activity">เปิดบันทึกกิจกรรม</string>
+    <string name="home_waiting_title">กำลังรอเกม</string>
+    <string name="home_waiting_line">Genshin Impact ไม่ได้ทำงาน · เปิดเกมได้เลย</string>
+    <string name="home_detected_title">ตรวจพบเกม</string>
+    <string name="home_detected_line">สแกนการเปิดเกมแล้ว · เข้าสู่โลกได้เลย</string>
+    <string name="home_already_open_line">เปิดเกมอยู่แล้ว · เข้าสู่โลกได้เลย</string>
+    <string name="home_open_before">เปิดก่อนเกม</string>
+    <string name="home_open_genshin">เปิด Genshin Impact</string>
+    <string name="home_login_seen_title">พบการล็อกอิน</string>
+    <string name="home_login_seen_line">กำลังหาคีย์เซสชัน</string>
+    <string name="home_decrypting_title">กำลังถอดรหัสข้อมูล</string>
+    <string name="home_decrypting_line">พบคีย์เซสชันแล้ว · %s</string>
+    <string name="home_missed_title">พลาดการเปิดเกม</string>
+    <string name="home_missed_running_line">Genshin Impact เปิดก่อน Teyvat.me</string>
+    <string name="home_missed_stopped_line">การสแกนปิดอยู่ตอนที่คุณล็อกอิน</string>
+    <string name="home_reenter">กลับไปหน้าจอไตเติลแล้วเข้าใหม่</string>
+    <string name="home_force_stop">บังคับหยุด Genshin Impact</string>
+    <string name="home_or_restart">หรือรีสตาร์ท Genshin Impact</string>
+    <string name="home_key_lost_title">อ่านการล็อกอินไม่ได้</string>
+    <string name="home_key_lost_line">ไม่พบคีย์เซสชัน</string>
+    <string name="home_data_kept">ข้อมูลที่สแกนแล้วยังเก็บไว้</string>
+    <string name="step_vpn">สแกน</string>
+    <string name="step_login">ล็อกอิน</string>
+    <string name="step_key">คีย์</string>
+    <string name="vpn_not_allowed">ไม่ได้อนุญาต VPN</string>
+    <string name="game_data_failed">โหลดข้อมูลเกมไม่สำเร็จ</string>
+
+    <!-- Captured -->
+    <string name="captured">สแกนแล้ว</string>
+    <string name="captured_nothing">ยังไม่มี</string>
+    <string name="captured_ar">AR %1$d · %2$s</string>
+    <string name="captured_ar_only">AR %d</string>
+    <string name="tile_characters">ตัวละคร</string>
+    <string name="tile_weapons">อาวุธ</string>
+    <string name="tile_artifacts">อาร์ติแฟกต์</string>
+    <string name="tile_materials">วัสดุ</string>
+    <string name="tile_achievements">ความสำเร็จ</string>
+
+    <!-- Wish history -->
+    <string name="wish_title">ประวัติการอธิษฐาน</string>
+    <string name="wish_open_in_game">เปิดประวัติการอธิษฐานในเกมก่อน</string>
+    <string name="wish_expired">คีย์หมดอายุ · เปิดประวัติการอธิษฐานในเกมอีกครั้ง</string>
+    <string name="wish_ready">URL พร้อมสำหรับ paimon.moe, StarDB…</string>
+    <string name="wish_reading">กำลังอ่าน · %1$s หน้า %2$d · %3$s ครั้ง</string>
+    <string name="wish_read_done">✓ อ่าน %1$s แล้ว · %2$s ครั้ง</string>
+    <string name="wish_read_failed">อ่านไม่สำเร็จ · %s</string>
+    <string name="wish_copy_url">คัดลอก URL</string>
+    <string name="wish_save">บันทึกประวัติ</string>
+    <string name="wish_save_description">ประวัติการอธิษฐานเป็น UIGF v4 JSON ใช้กับ paimon.moe, StarDB และตัวติดตามการอธิษฐานอื่น ๆ ได้</string>
+    <string name="wish_share">แชร์ประวัติ</string>
+    <string name="wish_open_paimon">เปิด paimon.moe</string>
+    <string name="wish_open_stardb">เปิด StarDB</string>
+    <string name="wish_url_copied">คัดลอก URL การอธิษฐานแล้ว</string>
+    <string name="wish_no_key">ไม่มีคีย์การอธิษฐาน · เปิดประวัติการอธิษฐานในเกม</string>
+    <string name="wish_waiting_uid">กำลังรอ UID ของบัญชี</string>
+    <string name="wish_busy">กำลังอ่านอยู่แล้ว</string>
+    <string name="wish_saved">บันทึก %s แล้ว</string>
+    <string name="banner_301">กิจกรรมอธิษฐานตัวละคร</string>
+    <string name="banner_302">กิจกรรมอธิษฐานอาวุธ</string>
+    <string name="banner_500">การอธิษฐานรวมปรารถนา</string>
+    <string name="banner_200">อธิษฐานถาวร</string>
+    <string name="banner_100">อธิษฐานมือใหม่</string>
+
+    <!-- Export -->
+    <string name="export_title">ส่งออก</string>
+    <string name="export_open_folder">เปิดโฟลเดอร์ส่งออก</string>
+    <string name="export_no_folder">ยังไม่มีโฟลเดอร์ส่งออก</string>
+    <string name="export_more">การส่งออกอื่น ๆ</string>
+    <string name="export_save">บันทึก GOOD JSON</string>
+    <string name="export_save_description">GOOD JSON ใช้กับ Genshin Optimizer, teyvat.me และโปรแกรมที่อ่าน GOOD ได้ทุกตัว</string>
+    <string name="export_share">แชร์</string>
+    <string name="export_copy">คัดลอก</string>
+    <string name="export_auto">ส่งออกอัตโนมัติ</string>
+    <string name="export_auto_saved">✓ บันทึก %1$s แล้ว · %2$s</string>
+    <string name="export_auto_on">เปิด · %s</string>
+    <string name="export_auto_off">ปิด · เลือกโฟลเดอร์</string>
+    <string name="export_saved">บันทึก %s แล้ว</string>
+    <string name="export_save_failed">บันทึกไม่สำเร็จ</string>
+    <string name="export_copied">คัดลอก GOOD JSON แล้ว</string>
+    <string name="export_too_big">ใหญ่เกินกว่าจะคัดลอก · ใช้บันทึกหรือแชร์</string>
+    <string name="export_not_captured">ยังไม่ได้สแกน: %s</string>
+    <string name="export_nothing">ยังไม่ได้สแกนอะไร</string>
+    <string name="export_copy_achievements">คัดลอกความสำเร็จ</string>
+    <string name="export_stardb">ความสำเร็จไปยัง StarDB</string>
+    <string name="export_seelie">ความสำเร็จไปยัง Seelie.me</string>
+    <string name="export_filters">ตัวกรองและการส่งออกอัตโนมัติ</string>
+    <string name="achievements_copied">คัดลอกความสำเร็จ %d รายการแล้ว</string>
+    <string name="achievements_not_found">ไม่พบความสำเร็จ</string>
+
+    <!-- Tracker -->
+    <string name="tracker">Tracker</string>
+    <string name="optional">ไม่บังคับ</string>
+    <string name="tracker_sign_in">เข้าสู่ระบบ</string>
+    <string name="tracker_signed_out_line">เข้าสู่ระบบเพื่ออัปโหลดทุกครั้งที่สแกน</string>
+    <string name="tracker_signing_in">กำลังเข้าสู่ระบบ · ทำต่อในเบราว์เซอร์</string>
+    <string name="tracker_signed_in_as">เข้าสู่ระบบเป็น %s</string>
+    <string name="tracker_target_uid">อัปโหลดไปยังบัญชีที่ตรงกับ UID ในการสแกน</string>
+    <string name="tracker_target_account">อัปโหลดไปที่ %s</string>
+    <string name="tracker_upload_now">อัปโหลดตอนนี้</string>
+    <string name="tracker_uploading">กำลังอัปโหลด…</string>
+    <string name="tracker_uploaded">✓ อัปโหลดแล้ว %s</string>
+    <string name="tracker_upload_failed">อัปโหลดไม่สำเร็จ · %s</string>
+    <string name="tracker_upload_switch">อัปโหลดทุกครั้งที่สแกน</string>
+    <string name="tracker_upload_switch_line">ทั้งบัญชี ไม่ใช้ตัวกรองใด ๆ</string>
+    <string name="tracker_upload_off">ปิดการอัปโหลด</string>
+    <string name="tracker_configure">เลือกปลายทางการอัปโหลด</string>
+    <string name="tracker_configure_line">บนเว็บไซต์ ที่ ตั้งค่า › อุปกรณ์</string>
+    <string name="tracker_dashboard">เปิดแดชบอร์ด</string>
+    <string name="tracker_sign_out">ออกจากระบบ</string>
+    <string name="tracker_signed_in_toast">เข้าสู่ระบบ %s แล้ว</string>
+    <string name="tracker_sign_in_failed">เข้าสู่ระบบไม่สำเร็จ · %s</string>
+    <string name="tracker_nothing_to_upload">ยังไม่ได้สแกนอะไร</string>
+    <string name="tracker_page_done">เข้าสู่ระบบแล้ว กำลังกลับไปที่ Teyvat.me…</string>
+    <string name="tracker_page_cancelled">ยกเลิกการเข้าสู่ระบบแล้ว ปิดแท็บนี้ได้เลย</string>
+    <string name="tracker_page_wrong">ลิงก์นี้ไม่ได้มาจากการเข้าสู่ระบบครั้งนี้</string>
+
+    <!-- Footer / Activity -->
+    <string name="footer_idle">พร้อม</string>
+    <string name="activity">บันทึกกิจกรรม</string>
+    <string name="share_log">แชร์ล็อก</string>
+    <string name="activity_footnote">เก็บไว้ในหน่วยความจำ · แชร์ล็อกจะส่ง latest.log</string>
+    <string name="activity_empty">ยังไม่มี</string>
+    <string name="event_started">เริ่มแล้ว · ข้อมูลเกม %s</string>
+    <string name="event_stopped">หยุดสแกนแล้ว</string>
+    <string name="no_log">ยังไม่มีล็อก</string>
+
+    <!-- First run -->
+    <string name="welcome_tagline">บัญชี Genshin Impact ของคุณ อ่านจากการรับส่งข้อมูลของเกมเอง แล้วบันทึกเป็น GOOD JSON</string>
+    <string name="welcome_only_genshin">เฉพาะ Genshin Impact</string>
+    <string name="welcome_only_genshin_line">แอปอื่นไม่ผ่าน VPN</string>
+    <string name="welcome_read_only">อ่านอย่างเดียว</string>
+    <string name="welcome_read_only_line">แพ็กเก็ตของเกมผ่านไปโดยไม่ถูกแก้ไข</string>
+    <string name="welcome_on_phone">อยู่ในโทรศัพท์เครื่องนี้</string>
+    <string name="welcome_on_phone_line">ไม่มีอะไรถูกอัปโหลดเว้นแต่คุณจะแชร์</string>
+    <string name="welcome_before_game">เปิดก่อนเกม</string>
+    <string name="welcome_before_game_line">ต้องเห็นการล็อกอินของ Genshin Impact</string>
+    <string name="get_started">เริ่มต้นใช้งาน</string>
+    <string name="setup_title">ก่อนเล่น</string>
+    <string name="setup_choose_folder">เลือกโฟลเดอร์</string>
+    <string name="setup_choose_folder_line">ไฟล์ GOOD JSON หนึ่งไฟล์ต่อการสแกน</string>
+    <string name="always_on_vpn">VPN แบบเปิดตลอดเวลา</string>
+    <string name="always_on_vpn_line">การสแกนพร้อมก่อนเปิดเกม</string>
+    <string name="always_on_vpn_path">การตั้งค่า › เครือข่าย › VPN › Teyvat.me Capture</string>
+    <string name="open_vpn_settings">เปิดการตั้งค่า VPN</string>
+    <string name="notifications">การแจ้งเตือน</string>
+    <string name="notifications_line">สถานะการสแกนระหว่างเล่น</string>
+    <string name="allow">อนุญาต</string>
+    <string name="setup_vpn_dialog">Android จะขอให้คุณอนุญาต VPN: เป็นวิธีที่แอปหนึ่งอ่านการรับส่งข้อมูลของอีกแอปได้</string>
+
+    <!-- Settings -->
+    <string name="section_app">แอป</string>
+    <string name="theme">ธีม</string>
+    <string name="theme_system">ตามระบบ</string>
+    <string name="theme_light">สว่าง</string>
+    <string name="theme_dark">มืด</string>
+    <string name="section_export">ส่งออก</string>
+    <string name="section_tracker">Tracker</string>
+    <string name="section_diagnostics">การวินิจฉัย</string>
+    <string name="record_capture">บันทึกแพ็กเก็ต</string>
+    <string name="record_capture_line">แพ็กเก็ตของเกม สำหรับรายงานบั๊ก</string>
+    <string name="about">เกี่ยวกับ</string>
+
+    <!-- Settings › Export -->
+    <string name="export_auto_section">ส่งออกอัตโนมัติ</string>
+    <string name="export_auto_switch">บันทึกการสแกนแต่ละครั้งลงโฟลเดอร์</string>
+    <string name="export_auto_switch_line">GOOD JSON หนึ่งไฟล์ต่อการสแกน</string>
+    <string name="export_choose_another">เลือกโฟลเดอร์อื่น</string>
+    <string name="export_use_downloads">ใช้ Download/Teyvat.me</string>
+    <string name="filters">ตัวกรอง</string>
+    <string name="filter_4th_line">เติมค่าสถานะรองตัวที่ 4 ของอาร์ติแฟกต์ 5★ ที่มี 3 ค่า</string>
+    <string name="filter_4th_line_line">สำหรับ Genshin Optimizer</string>
+    <string name="filters_footnote">การอัปโหลดไปยัง Tracker รวมทุกอย่างเสมอ</string>
+    <string name="filter_all">ทั้งหมด</string>
+    <string name="min_level">เลเวลขั้นต่ำ</string>
+    <string name="min_ascension">เลื่อนขั้นขั้นต่ำ</string>
+    <string name="min_constellation">กลุ่มดาวขั้นต่ำ</string>
+    <string name="min_refinement">ขัดเกลาขั้นต่ำ</string>
+    <string name="min_rarity">ความหายากขั้นต่ำ</string>
+    <string name="decrease">ลด</string>
+    <string name="increase">เพิ่ม</string>
+
+    <!-- teyvat.me page -->
+    <string name="teyvat_not_connected">ยังไม่ได้เข้าสู่ระบบ</string>
+    <string name="teyvat_browser_line">เข้าสู่ระบบในเบราว์เซอร์ของคุณ</string>
+
+    <!-- About -->
+    <string name="about_version">%1$s · ข้อมูลเกม %2$s</string>
+    <string name="source_code">ซอร์สโค้ด</string>
+    <string name="teyvat_site_line">เว็บไซต์ Tracker</string>
+    <string name="report_bug">รายงานบั๊ก</string>
+    <string name="report_bug_line">issue ใหม่ แนบ latest.log</string>
+    <string name="thanks_and_licences">ขอบคุณและสัญญาอนุญาต</string>
+    <string name="thanks">ขอบคุณ</string>
+    <string name="licences">สัญญาอนุญาตโอเพนซอร์ส</string>
+    <string name="third_party_notices">ประกาศของบุคคลที่สาม</string>
+    <string name="hoyoverse_names">Genshin Impact และชื่อต่าง ๆ ในเกมเป็นของ HoYoverse</string>
+
+    <!-- Notification -->
+    <string name="channel_capture">สแกน</string>
+    <string name="channel_capture_line">แสดงขณะที่ Teyvat.me สแกนเกม</string>
+    <string name="channel_alerts">การแจ้งเตือนปัญหา</string>
+    <string name="channel_alerts_line">ปัญหาที่ต้องให้คุณจัดการ</string>
+    <string name="stop_capture">หยุดสแกน</string>
+    <string name="stop">หยุด</string>
+    <string name="share_good">แชร์ GOOD JSON</string>
+    <string name="alert_capture_stopped">หยุดสแกนแล้ว</string>
+    <string name="alert_vpn_taken">VPN อื่นเข้ามาแทนที่</string>
+</resources>
