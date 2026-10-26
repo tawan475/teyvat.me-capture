@@ -39,6 +39,10 @@ pub struct Artifact {
     /// camelCase: Teyvat.me's own keys keep their `gi_` names.
     #[serde(rename = "gi_guid", skip_serializing_if = "Option::is_none", default)]
     pub gi_guid: Option<String>,
+    /// EXP toward the next level, as the game holds it (0 at +0 and at the
+    /// cap). Tracker uploads only, like `gi_guid`.
+    #[serde(rename = "gi_exp", skip_serializing_if = "Option::is_none", default)]
+    pub gi_exp: Option<u32>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -52,6 +56,9 @@ pub struct Weapon {
     /// The game's id of this weapon; see [`Artifact::gi_guid`].
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub gi_guid: Option<String>,
+    /// EXP toward the next level; see [`Artifact::gi_exp`].
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub gi_exp: Option<u32>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -198,6 +205,12 @@ pub struct GiCharacter {
     /// When the character joined the account, in unix seconds.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub obtained_at: Option<u32>,
+    /// EXP toward the next level (0 at the level cap).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exp: Option<u32>,
+    /// Friendship EXP toward the next friendship level (0 at 10).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub friendship_exp: Option<u32>,
 }
 
 /// `gi_anecdotes`: the Travel Accounts book. The contract with the tracker is
@@ -455,6 +468,7 @@ mod tests {
             elixer_crafted: false,
             unactivated_substats: unactivated,
             gi_guid: Some("3488998120056947072".to_string()),
+            gi_exp: Some(1_250),
         }
     }
 
@@ -522,6 +536,7 @@ mod tests {
                 location: "HuTao".to_string(),
                 lock: true,
                 gi_guid: Some("3488998120056947188".to_string()),
+                gi_exp: Some(0),
             }],
             materials: HashMap::from([("ChilledMeat".to_string(), 12)]),
             gi_achievements: Some(vec![80001]),
@@ -543,6 +558,8 @@ mod tests {
                 GiCharacter {
                     friendship: Some(10),
                     obtained_at: Some(1_646_092_800),
+                    exp: Some(0),
+                    friendship_exp: Some(0),
                 },
             )])),
             gi_anecdotes: Some(GiAnecdotes {
@@ -658,6 +675,7 @@ mod tests {
             keys(&json["weapons"][0]),
             [
                 "ascension",
+                "gi_exp",
                 "gi_guid",
                 "key",
                 "level",
@@ -676,6 +694,7 @@ mod tests {
             [
                 "astralMark",
                 "elixerCrafted",
+                "gi_exp",
                 "gi_guid",
                 "level",
                 "location",
@@ -732,7 +751,7 @@ mod tests {
         assert_eq!(keys(&json["gi_characters"]), ["HuTao"]);
         assert_eq!(
             keys(&json["gi_characters"]["HuTao"]),
-            ["friendship", "obtainedAt"]
+            ["exp", "friendship", "friendshipExp", "obtainedAt"]
         );
 
         // `GI_ANECDOTES.md`: anecdote ids are object keys (strings); the

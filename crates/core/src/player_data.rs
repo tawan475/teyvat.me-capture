@@ -116,6 +116,19 @@ fn plausible_time(secs: u64, now_secs: u64) -> bool {
 /// is only distrusted when most characters fail it.
 const FRIENDSHIP_RANGE: RangeInclusive<u32> = 1..=10;
 
+/// Above any EXP a weapon or artifact can hold toward its next level (a 5★
+/// weapon's 89 → 90 step is about 1.1 million), so a bigger value is misread.
+const MAX_ITEM_EXP: u32 = 5_000_000;
+
+/// Above any EXP a character can hold toward their next level (89 → 90 is
+/// 683,525; the steps past 90 are not in the game data), and above any
+/// friendship step (a level is at most a few tens of thousands).
+const MAX_CHARACTER_EXP: u32 = 20_000_000;
+const MAX_FRIENDSHIP_EXP: u32 = 1_000_000;
+
+/// `AvatarInfo.prop_map`: EXP toward the next level.
+const PROP_CHARACTER_EXP: u32 = 1001;
+
 /// How one `gi_characters` field fared across an export's characters.
 #[derive(Debug, Default)]
 struct FieldTally {
@@ -1617,6 +1630,8 @@ impl PlayerData {
 
         let mut friendship = FieldTally::default();
         let mut obtained_at = FieldTally::default();
+        let mut exp = FieldTally::default();
+        let mut friendship_exp = FieldTally::default();
         let mut extras: BTreeMap<String, good::GiCharacter> = BTreeMap::new();
         for (character, avatar) in exported {
             let level = avatar
@@ -1624,6 +1639,15 @@ impl PlayerData {
                 .as_ref()
                 .map_or(0, |fetter| fetter.exp_level);
             let born = avatar.born_time;
+            let character_exp = avatar
+                .prop_map
+                .get(&PROP_CHARACTER_EXP)
+                .and_then(teyvatme_protocol::prop_value_any)
+                .and_then(|raw| u32::try_from(raw).ok());
+            let fetter_exp = avatar
+                .fetter_info
+                .as_ref()
+                .map_or(0, |fetter| fetter.exp_number);
             extras.insert(
                 character.key.clone(),
                 good::GiCharacter {
@@ -1637,18 +1661,39 @@ impl PlayerData {
                         born,
                         plausible_time(u64::from(born), now_secs),
                     ),
+                    exp: character_exp
+                        .and_then(|raw| exp.check(&character.key, raw, raw <= MAX_CHARACTER_EXP)),
+                    // Only beside a friendship level (the Traveler has none).
+                    friendship_exp: FRIENDSHIP_RANGE
+                        .contains(&level)
+                        .then(|| {
+                            friendship_exp.check(
+                                &character.key,
+                                fetter_exp,
+                                fetter_exp <= MAX_FRIENDSHIP_EXP,
+                            )
+                        })
+                        .flatten(),
                 },
             );
         }
 
         let keep_friendship = friendship.trusted();
         let keep_obtained_at = obtained_at.trusted();
+        let keep_exp = exp.trusted();
+        let keep_friendship_exp = keep_friendship && friendship_exp.trusted();
         for extra in extras.values_mut() {
             if !keep_friendship {
                 extra.friendship = None;
             }
             if !keep_obtained_at {
                 extra.obtained_at = None;
+            }
+            if !keep_exp {
+                extra.exp = None;
+            }
+            if !keep_friendship_exp {
+                extra.friendship_exp = None;
             }
         }
         extras.retain(|_, extra| *extra != good::GiCharacter::default());
@@ -1659,9 +1704,11 @@ impl PlayerData {
             .map(|(key, extra)| describe_character_extras(key, extra))
             .unwrap_or_else(|| "none".to_string());
         tracing::info!(
-            "character extras: {}, {}; sample {sample}",
+            "character extras: {}, {}, {}, {}; sample {sample}",
             friendship.describe("friendship"),
             obtained_at.describe("obtainedAt"),
+            exp.describe("exp"),
+            friendship_exp.describe("friendshipExp"),
         );
 
         (!extras.is_empty()).then_some(extras)
@@ -1810,6 +1857,10 @@ impl PlayerData {
                     elixer_crafted,
                     unactivated_substats,
                     gi_guid: (settings.item_guids && item.guid != 0).then(|| item.guid.to_string()),
+                    // Beside the guid it belongs to.
+                    gi_exp: (settings.item_guids && item.guid != 0)
+                        .then_some(equip.reliquary().exp)
+                        .filter(|exp| *exp <= MAX_ITEM_EXP),
                 })
             })
             .collect()
@@ -1883,6 +1934,10 @@ impl PlayerData {
                     location,
                     lock: equip.is_locked,
                     gi_guid: (settings.item_guids && item.guid != 0).then(|| item.guid.to_string()),
+                    // Beside the guid it belongs to.
+                    gi_exp: (settings.item_guids && item.guid != 0)
+                        .then_some(equip.weapon().exp)
+                        .filter(|exp| *exp <= MAX_ITEM_EXP),
                 })
             })
             .collect()
@@ -2964,7 +3019,7 @@ mod tests {
         r#""storyKeys":3,"maxStamina":24000,"#,
         r#""gameData":"792978e5503ecfba73dcb3562ed44a0d35a2abe2"},"#,
         r#""gi_achievement_times":{"80014":1650000000},"#,
-        r#""gi_characters":{"HuTao":{"friendship":10,"obtainedAt":1646092800}},"#,
+        r#""gi_characters":{"HuTao":{"friendship":10,"obtainedAt":1646092800,"friendshipExp":0}},"#,
         r#""gi_anecdotes":{"anecdotes":{"100001":{"state":3,"finishCount":1},"#,
         r#""101604":{"state":0,"finishCount":3}},"unlockedAreas":[1,2],"#,
         r#""reward":{"index":0,"progress":1,"target":10}},"#,
@@ -3002,9 +3057,16 @@ mod tests {
         let optimizer = data.build_good(&ExportSettings::default(), &mut report, 0);
         assert!(optimizer.weapons.iter().all(|w| w.gi_guid.is_none()));
         assert!(optimizer.artifacts.iter().all(|a| a.gi_guid.is_none()));
+        // A Genshin Optimizer export has no item EXP either.
+        assert!(optimizer.weapons.iter().all(|w| w.gi_exp.is_none()));
+        assert!(optimizer.artifacts.iter().all(|a| a.gi_exp.is_none()));
         // Without them, byte for byte the golden export.
-        good.artifacts.iter_mut().for_each(|a| a.gi_guid = None);
-        good.weapons.iter_mut().for_each(|w| w.gi_guid = None);
+        good.artifacts
+            .iter_mut()
+            .for_each(|a| (a.gi_guid, a.gi_exp) = (None, None));
+        good.weapons
+            .iter_mut()
+            .for_each(|w| (w.gi_guid, w.gi_exp) = (None, None));
         assert_eq!(serde_json::to_string(&good).unwrap(), GOLDEN_GOOD);
     }
 
@@ -3336,6 +3398,9 @@ mod tests {
         good::GiCharacter {
             friendship,
             obtained_at,
+            // The test avatars' friendship EXP is 0.
+            friendship_exp: friendship.map(|_| 0),
+            ..Default::default()
         }
     }
 
@@ -3354,6 +3419,32 @@ mod tests {
                 ("Jean".to_string(), extra(Some(7), Some(1_601_510_400))),
             ]))
         );
+    }
+
+    #[test]
+    fn character_and_friendship_exp_are_exported_beside_their_levels() {
+        let mut data = roster_data();
+        let mut hutao = befriended(10000046, 9, 1_646_092_800);
+        hutao.fetter_info.mut_or_insert_default().exp_number = 3_150;
+        hutao
+            .prop_map
+            .insert(PROP_CHARACTER_EXP, prop_ival(120_000));
+        // A misread EXP is left out, the rest of the character kept.
+        let mut jean = befriended(10000003, 7, 1_601_510_400);
+        jean.prop_map.insert(
+            PROP_CHARACTER_EXP,
+            prop_ival(i64::from(MAX_CHARACTER_EXP) + 1),
+        );
+        let mut lisa = befriended(10000006, 4, 1_601_510_400);
+        lisa.prop_map.insert(PROP_CHARACTER_EXP, prop_ival(0));
+        data.process_characters(&[hutao, jean, lisa]);
+
+        let extras = character_extras(&data).unwrap();
+        assert_eq!(extras["HuTao"].exp, Some(120_000));
+        assert_eq!(extras["HuTao"].friendship_exp, Some(3_150));
+        assert_eq!(extras["Jean"].exp, None);
+        assert_eq!(extras["Jean"].friendship, Some(7));
+        assert_eq!(extras["Lisa"].exp, Some(0));
     }
 
     #[test]
