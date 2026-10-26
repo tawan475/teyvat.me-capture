@@ -99,6 +99,13 @@ The Discord mark (`apps/desktop/assets/icons/discord.svg`,
 (https://simpleicons.org), CC0 1.0. Discord is a trademark of Discord Inc.;
 the mark only links to this project's community server.
 
+## Android libraries
+
+The Android app is built with AndroidX, Jetpack Compose and OkHttp
+(`okhttp`, `okhttp-dnsoverhttps`; Copyright Square, Inc.), all under the
+[Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0), and links
+them into the APK unmodified.
+
 ## Gradle wrapper
 
 `apps/android/gradlew`, `gradlew.bat` and `gradle/wrapper/gradle-wrapper.jar`
