@@ -127,6 +127,7 @@
   "Genshin started while capture was running, so its login will be seen. Says \"data decrypting\" once you enter the world and your data arrives.": "キャプチャ中に原神が起動したため、ログインを確認できます。ワールドに入ってデータが届くと「データ復号中」と表示されます。",
   "Genshin was already in the world": "原神はすでにワールドに入っていました",
   "Get started": "はじめる",
+  "Help, news and feedback": "ヘルプ・お知らせ・フィードバック",
   "Import key": "インポートキー",
   "Import key not verified": "インポートキー未確認",
   "Install": "インストール",

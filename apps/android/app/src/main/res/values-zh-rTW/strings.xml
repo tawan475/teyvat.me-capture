@@ -303,4 +303,5 @@
     <string name="key_warning">以純文字保存，永不過期。登入更安全。</string>
     <string name="key_signed_out_only">僅在未登入時使用</string>
     <string name="clear">清除</string>
+    <string name="discord_line">說明、消息與意見回饋</string>
 </resources>

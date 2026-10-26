@@ -303,4 +303,5 @@
     <string name="key_warning">平文で保存され、期限切れになりません。ログインのほうが安全です。</string>
     <string name="key_signed_out_only">ログアウト中のみ使用</string>
     <string name="clear">クリア</string>
+    <string name="discord_line">ヘルプ・お知らせ・フィードバック</string>
 </resources>

@@ -127,6 +127,7 @@
   "Genshin started while capture was running, so its login will be seen. Says \"data decrypting\" once you enter the world and your data arrives.": "Genshin запущен при работающем захвате, поэтому вход будет замечен. Когда вы войдёте в мир и придут данные, статус сменится на «расшифровка данных».",
   "Genshin was already in the world": "Genshin уже был в мире",
   "Get started": "Начать",
+  "Help, news and feedback": "Помощь, новости и отзывы",
   "Import key": "Ключ импорта",
   "Import key not verified": "Ключ импорта не проверен",
   "Install": "Установить",

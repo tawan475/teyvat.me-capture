@@ -303,4 +303,5 @@
     <string name="key_warning">Teks biasa, tidak pernah kedaluwarsa. Masuk lebih aman.</string>
     <string name="key_signed_out_only">Hanya dipakai saat belum masuk</string>
     <string name="clear">Hapus</string>
+    <string name="discord_line">Bantuan, kabar, dan masukan</string>
 </resources>

@@ -43,6 +43,9 @@ mod ui;
 mod update;
 mod wish_history;
 
+/// The community server (Settings › About and the quick bar).
+pub(crate) const DISCORD_URL: &str = "https://discord.gg/W6GUY3UtAx";
+
 /// The app id: where eframe keeps `app.ron`, and the data directory of a
 /// release build. One name for both, so settings and logs never part.
 const APP_ID: &str = "Teyvat.me";

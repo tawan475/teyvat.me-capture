@@ -303,4 +303,5 @@
     <string name="key_warning">Открытый текст, без срока действия. Вход безопаснее.</string>
     <string name="key_signed_out_only">Используется, только пока вход не выполнен</string>
     <string name="clear">Очистить</string>
+    <string name="discord_line">Помощь, новости и отзывы</string>
 </resources>

@@ -2,6 +2,29 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.1.4
+
+- Desktop: switching between light and dark changes the whole window at
+  once. The capture card faded on its own while the rest had already
+  changed.
+- Desktop: the Activity list uses its full width; lines were cut off
+  halfway with the scrollbar in the middle.
+- A Discord button: the desktop's bottom bar and Settings › About, and
+  Android's Settings and About (https://discord.gg/W6GUY3UtAx).
+
+Everything in 1.1.3 below still applies.
+
+| Platform | File |
+|---|---|
+| Windows 10/11 | `teyvatme-windows.exe` (built-in packet capture; asks for administrator rights) |
+| Windows with Npcap | `teyvatme-windows-pcap.exe` |
+| Linux x86_64 | `teyvatme-linux-x86_64.tar.gz` |
+| macOS (Apple silicon) | `Teyvatme-macos-arm64.app.tar.gz` |
+| Android 10+ | `teyvatme-android.apk` |
+
+Check a download against `SHA256SUMS.txt`. Unofficial fan project, not
+affiliated with HoYoverse.
+
 ## 1.1.3
 
 - Android: wish history syncs to teyvat.me by itself, like the desktop.
