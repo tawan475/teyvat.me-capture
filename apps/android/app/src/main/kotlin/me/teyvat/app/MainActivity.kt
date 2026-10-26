@@ -18,6 +18,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.browser.customtabs.CustomTabsIntent
+import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -73,6 +74,7 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
     private val prefs get() = app.prefs
     private val capture get() = app.capture
     private val tracker get() = app.tracker
+    private val updater get() = app.updater
     private var whoAt = 0L
     private val snackbars = SnackbarHostState()
     private val stack = mutableStateListOf<Screen>()
@@ -153,6 +155,12 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
         }
     }
 
+    override fun onPause() {
+        super.onPause()
+        Updater.foreground = false
+        updater.installWhenFree()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handle(intent)
@@ -160,6 +168,11 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
 
     override fun onResume() {
         super.onResume()
+        Updater.foreground = true
+        // Back from Settings › Install unknown apps: carry on.
+        if (updater.state.value is UpdateState.NeedsPermission && packageManager.canRequestPackageInstalls()) {
+            updater.installNow()
+        }
         notificationsGranted = notificationsAllowed()
         capture.refresh()
         // The upload target is changed on the website: read it again on return.
@@ -204,10 +217,13 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
         val lastUpload by tracker.lastUpload.collectAsState()
         val uploading by tracker.uploading.collectAsState()
         val trackerView = TrackerView(trackerState, lastUpload, uploading, settings.trackerUpload)
+        val update by updater.state.collectAsState()
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
             topBar = {
-                Box(Modifier.windowInsetsPadding(WindowInsets.statusBars)) {
+                // Opaque: a list scrolled up passes under the bar, not through it
+                // (a short window, a pop-up view, a big font).
+                Box(Modifier.background(MaterialTheme.colorScheme.background).windowInsetsPadding(WindowInsets.statusBars)) {
                     when (screen) {
                         Screen.Welcome -> {}
                         Screen.SetUp -> TmTopBar(onBack = ::pop, title = "")
@@ -253,8 +269,8 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
             when (screen) {
                 Screen.Welcome -> WelcomeScreen(bottomOnly) { push(Screen.SetUp) }
                 Screen.SetUp -> SetUpScreen(bottomOnly, settings, folder, notificationsGranted, this)
-                Screen.Home -> HomeContent(hero, summary, settings, capture.startingSince, folder, trackerView, this, padding)
-                Screen.Settings -> SettingsScreen(padding, settings, trackerView, this)
+                Screen.Home -> HomeContent(hero, summary, settings, capture.startingSince, folder, trackerView, update, vpn != VpnState.Off, this, padding)
+                Screen.Settings -> SettingsScreen(padding, settings, trackerView, update, this)
                 Screen.ExportSettings -> ExportSettingsScreen(padding, settings, folder, this)
                 Screen.Teyvat -> TeyvatScreen(padding, trackerView, summary.captured, this)
                 Screen.Activity -> ActivityScreen(padding, summary.events)
@@ -340,6 +356,27 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
             runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
         }
     }
+
+    // -- updates ------------------------------------------------------------
+
+    override fun updateInstallNow() {
+        when (updater.state.value) {
+            is UpdateState.Failed -> updater.check()
+            is UpdateState.NeedsPermission -> updateAllow()
+            else -> updater.installNow()
+        }
+    }
+
+    override fun updateAllow() {
+        runCatching { startActivity(updater.permissionIntent()) }
+    }
+
+    override fun setAutoUpdate(on: Boolean) {
+        prefs.update { it.copy(autoUpdate = on) }
+        if (on) updater.check(manual = false)
+    }
+
+    override fun checkForUpdates() = updater.check()
 
     // -- tracker ------------------------------------------------------------
 

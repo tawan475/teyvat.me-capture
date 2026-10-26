@@ -227,4 +227,21 @@
     <string name="share_good">Compartir GOOD JSON</string>
     <string name="alert_capture_stopped">Captura detenida</string>
     <string name="alert_vpn_taken">Otra VPN tomó el control</string>
+    <!-- Updates -->
+    <string name="section_updates">Actualizaciones</string>
+    <string name="update_auto">Actualizar automáticamente</string>
+    <string name="update_auto_line">Versiones nuevas de GitHub, verificadas con sus sumas de comprobación</string>
+    <string name="update_check">Buscar actualizaciones</string>
+    <string name="update_checking">Buscando…</string>
+    <string name="update_up_to_date">Al día · %s</string>
+    <string name="update_ready">Actualización %s lista</string>
+    <string name="update_waits_capture">Se instala al detener la captura</string>
+    <string name="update_waits_app">Se instala al salir de la app</string>
+    <string name="update_install_now">Instalar ahora</string>
+    <string name="update_tap_to_install">Toca para instalar</string>
+    <string name="update_downloading">Descargando %1$s · %2$d%%</string>
+    <string name="update_installing">Instalando %s…</string>
+    <string name="update_allow">Permitir instalaciones</string>
+    <string name="update_allow_line">Android pregunta una vez: Instalar aplicaciones desconocidas</string>
+    <string name="update_failed">Error al actualizar · %s</string>
 </resources>

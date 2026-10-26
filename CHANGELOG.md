@@ -20,6 +20,21 @@ as the teyvat.me site and the game's own names for its terms.
 - Each capture uploads by itself. "Upload now" sends one whenever you want.
 - Choose where uploads go on the website, open your dashboard, or sign out.
 
+**Android: updates itself**, like the desktop.
+
+- New releases download by themselves and are checked against
+  `SHA256SUMS.txt`.
+- They install through Android's own installer. Android asks once to
+  allow "Install unknown apps", then shows a one-tap Update screen, or no
+  screen at all on Android 12+ once the app has updated itself.
+- An update never interrupts a capture: it waits until capture stops, or
+  you tap "Install now".
+- Settings › Updates turns this off, or checks right away.
+
+**Android: fixes**
+
+- The top bar no longer overlaps the page in a small or pop-up window.
+
 **Both:** the tracker's Devices list names this app "Teyvat.me on <device>"
 instead of "Irminsul".
 

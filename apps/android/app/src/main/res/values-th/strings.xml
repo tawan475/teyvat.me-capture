@@ -227,4 +227,21 @@
     <string name="share_good">แชร์ GOOD JSON</string>
     <string name="alert_capture_stopped">หยุดสแกนแล้ว</string>
     <string name="alert_vpn_taken">VPN อื่นเข้ามาแทนที่</string>
+    <!-- Updates -->
+    <string name="section_updates">อัปเดต</string>
+    <string name="update_auto">อัปเดตอัตโนมัติ</string>
+    <string name="update_auto_line">รุ่นใหม่จาก GitHub ตรวจสอบกับ checksum แล้ว</string>
+    <string name="update_check">ตรวจหาอัปเดต</string>
+    <string name="update_checking">กำลังตรวจ…</string>
+    <string name="update_up_to_date">เป็นรุ่นล่าสุด · %s</string>
+    <string name="update_ready">อัปเดต %s พร้อมแล้ว</string>
+    <string name="update_waits_capture">ติดตั้งเมื่อหยุดสแกน</string>
+    <string name="update_waits_app">ติดตั้งเมื่อออกจากแอป</string>
+    <string name="update_install_now">ติดตั้งเลย</string>
+    <string name="update_tap_to_install">แตะเพื่อติดตั้ง</string>
+    <string name="update_downloading">กำลังดาวน์โหลด %1$s · %2$d%%</string>
+    <string name="update_installing">กำลังติดตั้ง %s…</string>
+    <string name="update_allow">อนุญาตการติดตั้ง</string>
+    <string name="update_allow_line">Android ถามครั้งเดียว: ติดตั้งแอปที่ไม่รู้จัก</string>
+    <string name="update_failed">อัปเดตไม่สำเร็จ · %s</string>
 </resources>

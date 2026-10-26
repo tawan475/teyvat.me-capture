@@ -227,4 +227,21 @@
     <string name="share_good">Bagikan GOOD JSON</string>
     <string name="alert_capture_stopped">Penangkapan berhenti</string>
     <string name="alert_vpn_taken">VPN lain mengambil alih</string>
+    <!-- Updates -->
+    <string name="section_updates">Pembaruan</string>
+    <string name="update_auto">Perbarui otomatis</string>
+    <string name="update_auto_line">Rilis baru dari GitHub, dicek dengan checksum-nya</string>
+    <string name="update_check">Periksa pembaruan</string>
+    <string name="update_checking">Memeriksa…</string>
+    <string name="update_up_to_date">Sudah terbaru · %s</string>
+    <string name="update_ready">Pembaruan %s siap</string>
+    <string name="update_waits_capture">Dipasang saat penangkapan berhenti</string>
+    <string name="update_waits_app">Dipasang saat kamu keluar dari aplikasi</string>
+    <string name="update_install_now">Pasang sekarang</string>
+    <string name="update_tap_to_install">Ketuk untuk memasang</string>
+    <string name="update_downloading">Mengunduh %1$s · %2$d%%</string>
+    <string name="update_installing">Memasang %s…</string>
+    <string name="update_allow">Izinkan pemasangan</string>
+    <string name="update_allow_line">Android bertanya sekali: Instal aplikasi tidak dikenal</string>
+    <string name="update_failed">Pembaruan gagal · %s</string>
 </resources>

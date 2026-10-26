@@ -41,6 +41,7 @@ import me.teyvat.app.R
 import me.teyvat.app.Settings
 import me.teyvat.app.ThemeMode
 import me.teyvat.app.TrackerState
+import me.teyvat.app.UpdateState
 import me.teyvat.app.hhmm
 
 @Composable
@@ -74,10 +75,12 @@ interface SettingsActions {
     fun openActivity()
     fun setRecordCapture(on: Boolean)
     fun openAbout()
+    fun setAutoUpdate(on: Boolean)
+    fun checkForUpdates()
 }
 
 @Composable
-fun SettingsScreen(padding: PaddingValues, settings: Settings, tracker: TrackerView, actions: SettingsActions) = Scrolling(padding) {
+fun SettingsScreen(padding: PaddingValues, settings: Settings, tracker: TrackerView, update: UpdateState, actions: SettingsActions) = Scrolling(padding) {
     SectionLabel(stringResource(R.string.section_app))
     Group {
         ListRow(stringResource(R.string.always_on_vpn), stringResource(R.string.always_on_vpn_line), R.drawable.ic_power, onClick = actions::openAlwaysOnVpn) { External() }
@@ -117,6 +120,25 @@ fun SettingsScreen(padding: PaddingValues, settings: Settings, tracker: TrackerV
             is TrackerState.SignedIn -> stringResource(R.string.tracker_signed_in_as, state.who.user)
         }
         ListRow(Links.trackerHost, line, R.drawable.ic_cloud_upload, onClick = actions::openTeyvat) { Chevron() }
+    }
+    SectionLabel(stringResource(R.string.section_updates))
+    Group {
+        SwitchRow(
+            stringResource(R.string.update_auto), stringResource(R.string.update_auto_line), settings.autoUpdate,
+            actions::setAutoUpdate, icon = R.drawable.ic_download,
+        )
+        CardDivider()
+        val line = when (update) {
+            UpdateState.Checking -> stringResource(R.string.update_checking)
+            UpdateState.UpToDate -> stringResource(R.string.update_up_to_date, me.teyvat.app.BuildConfig.VERSION_NAME)
+            is UpdateState.Downloading -> stringResource(R.string.update_downloading, update.version, update.percent)
+            is UpdateState.Ready -> stringResource(R.string.update_ready, update.version)
+            is UpdateState.NeedsPermission -> stringResource(R.string.update_allow_line)
+            is UpdateState.Installing -> stringResource(R.string.update_installing, update.version)
+            is UpdateState.Failed -> stringResource(R.string.update_failed, update.error)
+            UpdateState.Idle -> me.teyvat.app.BuildConfig.VERSION_NAME
+        }
+        ListRow(stringResource(R.string.update_check), line, R.drawable.ic_clock, onClick = actions::checkForUpdates)
     }
     SectionLabel(stringResource(R.string.section_diagnostics))
     Group {

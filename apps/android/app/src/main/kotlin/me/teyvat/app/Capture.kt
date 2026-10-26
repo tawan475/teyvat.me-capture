@@ -181,8 +181,10 @@ class Capture(private val scope: CoroutineScope, private val onRefresh: (Summary
 
     fun setVpn(state: VpnState) {
         if (state == VpnState.Starting && vpn.value != VpnState.Starting) startingSince = System.currentTimeMillis()
+        val was = vpn.value
         vpn.value = state
         refresh()
+        if (state == VpnState.Off && was != VpnState.Off) Updater.instance?.onCaptureStopped()
     }
 
     fun refresh() {

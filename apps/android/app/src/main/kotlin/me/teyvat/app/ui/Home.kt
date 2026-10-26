@@ -42,6 +42,7 @@ import me.teyvat.app.R
 import me.teyvat.app.Settings
 import me.teyvat.app.Summary
 import me.teyvat.app.TrackerState
+import me.teyvat.app.UpdateState
 import me.teyvat.app.UploadResult
 import me.teyvat.app.Whoami
 import me.teyvat.app.WishInfo
@@ -76,6 +77,8 @@ interface HomeActions {
     fun trackerCancelSignIn()
     fun trackerUploadNow()
     fun openTeyvat()
+    fun updateInstallNow()
+    fun updateAllow()
 }
 
 /** The tracker card's inputs: the sign-in and the last upload. */
@@ -107,6 +110,8 @@ fun HomeContent(
     startingSince: Long,
     folderLabel: String,
     tracker: TrackerView,
+    update: UpdateState,
+    capturing: Boolean,
     actions: HomeActions,
     padding: PaddingValues,
 ) {
@@ -118,6 +123,7 @@ fun HomeContent(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item { HeroCard(hero, summary, startingSince, now, actions) }
+        if (update.shown()) item { UpdateCard(update, capturing, actions) }
         item { CapturedCard(summary, now) }
         item { WishCard(summary.wish, actions) }
         item { ExportCard(summary, settings, folderLabel, actions) }
@@ -379,6 +385,66 @@ private fun TrackerCard(tracker: TrackerView, captured: Boolean, actions: HomeAc
                     stringResource(R.string.tracker_upload_now), actions::trackerUploadNow, kind = ButtonKind.Tonal,
                     enabled = captured && !tracker.uploading,
                 )
+            }
+        }
+    }
+}
+
+private fun UpdateState.shown() = when (this) {
+    is UpdateState.Downloading, is UpdateState.Ready, is UpdateState.Installing, is UpdateState.NeedsPermission -> true
+    is UpdateState.Failed -> version != null
+    else -> false
+}
+
+/** A new release on its way in: downloading, waiting, Allow installs, failed. */
+@Composable
+private fun UpdateCard(update: UpdateState, capturing: Boolean, actions: HomeActions) {
+    TmCard {
+        Row(
+            Modifier.fillMaxWidth().padding(start = 16.dp, end = 14.dp, top = 12.dp, bottom = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TmIcon(R.drawable.ic_download, null, tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(14.dp))
+            val (title, line, error) = when (update) {
+                is UpdateState.Downloading -> Triple(
+                    stringResource(R.string.update_downloading, update.version, update.percent), null, false,
+                )
+                is UpdateState.Ready -> Triple(
+                    stringResource(R.string.update_ready, update.version),
+                    stringResource(if (capturing) R.string.update_waits_capture else R.string.update_waits_app), false,
+                )
+                is UpdateState.Installing -> Triple(stringResource(R.string.update_installing, update.version), null, false)
+                is UpdateState.NeedsPermission -> Triple(
+                    stringResource(R.string.update_ready, update.version), stringResource(R.string.update_allow_line), false,
+                )
+                is UpdateState.Failed -> Triple(stringResource(R.string.update_failed, update.error), null, true)
+                else -> Triple("", null, false)
+            }
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (update is UpdateState.Downloading || update is UpdateState.Installing) {
+                        Spinner(size = 14.dp)
+                        Spacer(Modifier.width(6.dp))
+                    }
+                    Text(
+                        title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                        color = if (error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+                line?.let {
+                    Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            Spacer(Modifier.width(8.dp))
+            when (update) {
+                is UpdateState.Ready ->
+                    TmButton(stringResource(R.string.update_install_now), actions::updateInstallNow, kind = ButtonKind.Tonal)
+                is UpdateState.Failed ->
+                    TmButton(stringResource(R.string.try_again), actions::updateInstallNow, kind = ButtonKind.Tonal)
+                is UpdateState.NeedsPermission ->
+                    TmButton(stringResource(R.string.update_allow), actions::updateAllow, kind = ButtonKind.Tonal)
+                else -> {}
             }
         }
     }

@@ -98,6 +98,8 @@ data class Settings(
     val lastSave: String? = null,
     /** Signed in to the tracker: upload each capture. */
     val trackerUpload: Boolean = true,
+    /** Download and install new releases by themselves. */
+    val autoUpdate: Boolean = true,
 )
 
 /** The app's settings, in SharedPreferences, as one observable value. */
@@ -131,6 +133,7 @@ class Prefs(context: Context) {
             lastAutoExport = last,
             lastSave = store.getString("last_save", null),
             trackerUpload = store.getBoolean("tracker_upload", true),
+            autoUpdate = store.getBoolean("auto_update", true),
         )
     }
 
@@ -150,6 +153,7 @@ class Prefs(context: Context) {
             )
             .putString("last_save", s.lastSave)
             .putBoolean("tracker_upload", s.trackerUpload)
+            .putBoolean("auto_update", s.autoUpdate)
             .apply()
     }
 }

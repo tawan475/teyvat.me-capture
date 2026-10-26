@@ -227,4 +227,21 @@
     <string name="share_good">分享 GOOD JSON</string>
     <string name="alert_capture_stopped">抓取已停止</string>
     <string name="alert_vpn_taken">另一个 VPN 已接管</string>
+    <!-- Updates -->
+    <string name="section_updates">更新</string>
+    <string name="update_auto">自动更新</string>
+    <string name="update_auto_line">来自 GitHub 的新版本，已核对校验和</string>
+    <string name="update_check">检查更新</string>
+    <string name="update_checking">正在检查…</string>
+    <string name="update_up_to_date">已是最新 · %s</string>
+    <string name="update_ready">更新 %s 已就绪</string>
+    <string name="update_waits_capture">抓取停止后安装</string>
+    <string name="update_waits_app">离开应用后安装</string>
+    <string name="update_install_now">立即安装</string>
+    <string name="update_tap_to_install">点按即可安装</string>
+    <string name="update_downloading">正在下载 %1$s · %2$d%%</string>
+    <string name="update_installing">正在安装 %s…</string>
+    <string name="update_allow">允许安装</string>
+    <string name="update_allow_line">Android 只询问一次：安装未知应用</string>
+    <string name="update_failed">更新失败 · %s</string>
 </resources>

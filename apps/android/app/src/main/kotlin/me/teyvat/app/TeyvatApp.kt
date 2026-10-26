@@ -20,6 +20,8 @@ class TeyvatApp : Application() {
         private set
     lateinit var tracker: Tracker
         private set
+    lateinit var updater: Updater
+        private set
     private lateinit var autoExport: AutoExporter
 
     override fun onCreate() {
@@ -35,6 +37,7 @@ class TeyvatApp : Application() {
             autoExport.tick(summary)
             tracker.tick(summary)
         }
+        updater = Updater(this, prefs, scope) { capture.vpn.value != VpnState.Off }
     }
 
     /**
