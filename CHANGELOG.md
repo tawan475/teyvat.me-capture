@@ -16,8 +16,19 @@ Each release's section is its GitHub release notes (`.github/workflows/release.y
   export filters, so 1★ and 2★ artifacts and weapons were left out.
 - Android: a failed automatic upload is tried again after 30 s, then less
   often (up to every 10 min), instead of every second.
-- Android: a sign-in the tracker ended (signed out on the website) now
-  shows as signed out.
+- Android: a sign-in the tracker ended (signed out on the website) shows
+  "Signed out, sign in again".
+- Android, like the desktop:
+  - the tracker card names the upload account ("name (UID …)"), says when
+    the chosen account is gone, and warns when the capture is another UID
+    than the account uploads go to;
+  - the sign-in is checked again every 5 minutes while the app is open;
+  - Settings → Tracker → Advanced: the tracker address, and an import key
+    that uploads (snapshots, live sync, wishes) while signed out;
+  - a language picker (Settings → App), every language the game ships;
+  - "Export incomplete" in the activity list when an export leaves
+    something out, and the activity lines in your language;
+  - a "Crashed last time" card with Share log, and a Release notes link.
 
 Everything in 1.1.2 below still applies.
 

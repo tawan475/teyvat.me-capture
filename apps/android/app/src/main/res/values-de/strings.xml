@@ -267,4 +267,40 @@
     <string name="live_sync">Live-Sync</string>
     <string name="live_sync_line">Änderungen beim Spielen</string>
     <string name="live_changes_sent">Live-Sync · %1$s Änderungen an %2$s gesendet</string>
+    <!-- Parity with the desktop -->
+    <string name="event_key_lost">Sitzungsschlüssel nicht gefunden</string>
+    <string name="event_export_incomplete">Export unvollständig: %1$s</string>
+    <string name="tracker_revoked">Abgemeldet, melde dich erneut an</string>
+    <string name="tracker_uid_mismatch">Diese Erfassung hat UID %1$s, aber Uploads gehen an %2$s (UID %3$s). Uploads gehen weiter an dieses Konto: Melde dich damit an oder ändere das Ziel für Uploads.</string>
+    <string name="target_name_uid">%1$s (UID %2$s)</string>
+    <string name="target_uid">UID %1$s</string>
+    <string name="crash_title">Beim letzten Mal abgestürzt</string>
+    <string name="crash_line">Bericht und Log behalten</string>
+    <string name="dismiss">Schließen</string>
+    <string name="release_notes">Versionshinweise</string>
+    <string name="language">Sprache</string>
+    <string name="language_system">System</string>
+    <string name="event_game_connected">Spiel verbunden</string>
+    <string name="event_key_found">Sitzungsschlüssel gefunden</string>
+    <string name="event_data_captured">Kontodaten erfasst</string>
+    <string name="tracker_target_missing">Kein Upload-Ziel · wähle ein Konto unter „%1$s“</string>
+    <!-- Tracker › Advanced -->
+    <string name="advanced">Erweitert</string>
+    <string name="tracker_address">Tracker-Adresse</string>
+    <string name="tracker_address_hint">Die API-Adresse des Trackers. Eine Anmeldung gehört zu einer Adresse: Eine Änderung meldet dich ab.</string>
+    <string name="apply">Übernehmen</string>
+    <string name="default_address">Standardadresse</string>
+    <string name="not_http">Keine http(s)-Adresse</string>
+    <string name="default_x">Standard: %1$s</string>
+    <string name="signed_out_of">Du wirst von %1$s abgemeldet</string>
+    <string name="uploads_will_go">Uploads gehen an %1$s. Jeder Upload enthält das ganze Konto.</string>
+    <string name="import_key">Import-Schlüssel</string>
+    <string name="import_key_hint">Erstelle einen im Dashboard des Trackers und füge ihn hier ein.</string>
+    <string name="key_remove">Gespeicherten Schlüssel von diesem Rechner entfernen</string>
+    <string name="key_verifying">Schlüssel wird geprüft…</string>
+    <string name="key_valid">✓ Gültig: %1$s (UID %2$s)</string>
+    <string name="key_invalid">✗ Schlüssel ungültig oder nicht erreichbar</string>
+    <string name="key_warning">Klartext, läuft nie ab. Anmelden ist sicherer.</string>
+    <string name="key_signed_out_only">Nur im abgemeldeten Zustand genutzt</string>
+    <string name="clear">Leeren</string>
 </resources>

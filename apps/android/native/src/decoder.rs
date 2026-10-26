@@ -106,6 +106,8 @@ pub struct Player {
     pub wl: Option<u32>,
     /// `Asia`, `America`, `Europe`, `TW, HK, MO` or `China`.
     pub server: Option<&'static str>,
+    /// For the tracker card's UID check (never logged).
+    pub uid: Option<u32>,
 }
 
 /// What [`Decoder::summary`] answers, as JSON for Kotlin.
@@ -292,6 +294,7 @@ impl State {
                 ar: player.ar,
                 wl: player.wl,
                 server: player.uid.and_then(server_of),
+                uid: player.uid,
             }),
             game_data: embedded_game_data_sha(),
             events: self.events.iter().cloned().collect(),
@@ -416,7 +419,7 @@ impl Decoder {
         } else {
             serde_json::from_str(settings)?
         };
-        let state = self.state.lock().unwrap();
+        let mut state = self.state.lock().unwrap();
         let Some(data) = state
             .player_data
             .as_ref()
@@ -426,7 +429,7 @@ impl Decoder {
         };
         let (good, report) = data.export_at(&settings, now_ms());
         if !report.is_empty() {
-            log::warn!("export dropped entities: {}", report.summary());
+            note_gaps(&mut state, &report.summary());
         }
         Ok(Some(serde_json::to_string(&good)?))
     }
@@ -564,6 +567,13 @@ fn load_keys() -> Result<HashMap<u16, Vec<u8>>> {
         .collect()
 }
 
+/// An export left something out (a game patch the data does not know yet):
+/// the activity list says so, as the desktop's toast does.
+fn note_gaps(state: &mut State, summary: &str) {
+    log::warn!("export dropped entities: {summary}");
+    state.event("error", format!("Export incomplete: {summary}"));
+}
+
 /// The state, when the data is captured.
 fn state_ready(state: &Mutex<State>) -> Option<std::sync::MutexGuard<'_, State>> {
     let state = state.lock().unwrap();
@@ -576,7 +586,7 @@ fn snapshot(state: &mut State, reason: Reason, now: u64) -> Result<(u64, String)
     let data = state.player_data.as_ref().expect("state_ready checked it");
     let (mut good, report, keyed) = data.live_export(now);
     if !report.is_empty() {
-        log::warn!("export dropped entities: {}", report.summary());
+        note_gaps(state, &report.summary());
     }
     good.gi_capture = state.live.capture(reason);
     let json = serde_json::to_string(&good)?;

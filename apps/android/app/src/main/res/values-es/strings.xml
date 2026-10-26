@@ -267,4 +267,40 @@
     <string name="live_sync">Sincronización en vivo</string>
     <string name="live_sync_line">Cambios mientras juegas</string>
     <string name="live_changes_sent">Sincronización en vivo · %1$s cambios enviados a %2$s</string>
+    <!-- Parity with the desktop -->
+    <string name="event_key_lost">Clave de sesión no encontrada</string>
+    <string name="event_export_incomplete">Exportación incompleta: %1$s</string>
+    <string name="tracker_revoked">Sesión cerrada, vuelve a iniciar sesión</string>
+    <string name="tracker_uid_mismatch">Esta captura es del UID %1$s, pero las subidas van a %2$s (UID %3$s). Las subidas siguen yendo a esa cuenta: inicia sesión con ella o cambia adónde van las subidas.</string>
+    <string name="target_name_uid">%1$s (UID %2$s)</string>
+    <string name="target_uid">UID %1$s</string>
+    <string name="crash_title">Se cerró inesperadamente la última vez</string>
+    <string name="crash_line">Informe y registro conservados</string>
+    <string name="dismiss">Descartar</string>
+    <string name="release_notes">Notas de la versión</string>
+    <string name="language">Idioma</string>
+    <string name="language_system">Sistema</string>
+    <string name="event_game_connected">Juego conectado</string>
+    <string name="event_key_found">Clave de sesión encontrada</string>
+    <string name="event_data_captured">Datos de la cuenta capturados</string>
+    <string name="tracker_target_missing">Sin destino de subida · elige una cuenta en «%1$s»</string>
+    <!-- Tracker › Advanced -->
+    <string name="advanced">Avanzado</string>
+    <string name="tracker_address">Dirección del tracker</string>
+    <string name="tracker_address_hint">La dirección de la API del tracker. Una sesión pertenece a una sola dirección: cambiarla cierra la sesión.</string>
+    <string name="apply">Aplicar</string>
+    <string name="default_address">Dirección predeterminada</string>
+    <string name="not_http">No es una dirección http(s)</string>
+    <string name="default_x">Predeterminada: %1$s</string>
+    <string name="signed_out_of">Se cerrará tu sesión en %1$s</string>
+    <string name="uploads_will_go">Las subidas irán a %1$s. Cada subida lleva la cuenta entera.</string>
+    <string name="import_key">Clave de importación</string>
+    <string name="import_key_hint">Genera una en el panel del tracker y pégala aquí.</string>
+    <string name="key_remove">Quitar la clave guardada de este equipo</string>
+    <string name="key_verifying">Verificando clave…</string>
+    <string name="key_valid">✓ Válida: %1$s (UID %2$s)</string>
+    <string name="key_invalid">✗ Clave no válida o inaccesible</string>
+    <string name="key_warning">Texto plano, nunca caduca. Iniciar sesión es más seguro.</string>
+    <string name="key_signed_out_only">Solo se usa sin sesión iniciada</string>
+    <string name="clear">Borrar</string>
 </resources>

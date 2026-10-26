@@ -33,7 +33,7 @@ data class Counts(
     val achievements: Int = 0,
 )
 
-data class Player(val ar: Int?, val wl: Int?, val server: String?)
+data class Player(val ar: Int?, val wl: Int?, val server: String?, val uid: Long? = null)
 
 /** Reading the wish history into a UIGF file (native `wish::Read`). */
 data class WishRead(
@@ -135,7 +135,10 @@ data class Summary(
                     achievements = counts?.optInt("achievements") ?: 0,
                 ),
                 player = player?.let {
-                    Player(it.int("ar"), it.int("wl"), if (it.isNull("server")) null else it.optString("server"))
+                    Player(
+                        it.int("ar"), it.int("wl"), if (it.isNull("server")) null else it.optString("server"),
+                        if (it.isNull("uid") || !it.has("uid")) null else it.optLong("uid"),
+                    )
                 },
                 gameData = if (o.isNull("gameData")) null else o.optString("gameData"),
                 wish = WishInfo(
@@ -167,7 +170,7 @@ data class Summary(
                 events = buildList {
                     for (i in 0 until (events?.length() ?: 0)) {
                         val e = events!!.getJSONObject(i)
-                        add(ActivityEvent(e.optLong("at"), e.optString("kind"), e.optString("text")))
+                        add(ActivityEvent(e.optLong("at"), e.optString("kind"), nativeEventText(e.optString("text"))))
                     }
                 },
             )

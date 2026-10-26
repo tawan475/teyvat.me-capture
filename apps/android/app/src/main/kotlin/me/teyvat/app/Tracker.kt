@@ -48,6 +48,9 @@ data class Whoami(
     val accountName: String?,
     val dashboardUrl: String,
     val configUrl: String,
+    /** The upload account's id and UID (`scope == "account"`); no id = it was deleted. */
+    val accountId: String? = null,
+    val uid: String? = null,
 ) {
     companion object {
         fun parse(o: JSONObject?): Whoami? = o?.let {
@@ -57,12 +60,26 @@ data class Whoami(
                 accountName = if (it.isNull("accountName")) null else it.optString("accountName"),
                 dashboardUrl = it.optString("dashboardUrl"),
                 configUrl = it.optString("configUrl"),
+                accountId = it.opt("accountId")?.takeIf { v -> v != JSONObject.NULL }?.toString()?.takeIf { v -> v.isNotEmpty() },
+                uid = it.opt("uid")?.takeIf { v -> v != JSONObject.NULL }?.toString()?.trim()?.takeIf { v -> v.isNotEmpty() },
             )
         }
     }
 }
 
 /** The last upload, for the card's line. */
+/** The import key's account, as `verify-key` names it. */
+data class KeyAccount(val name: String, val uid: String)
+
+/** The import key (Settings › Tracker › Advanced), used only while signed out. */
+data class ImportKey(
+    val key: String? = null,
+    val checking: Boolean = false,
+    val account: KeyAccount? = null,
+) {
+    val verified get() = key != null && account != null
+}
+
 data class UploadResult(val at: Long, val ok: Boolean, val text: String)
 
 sealed class TrackerState {
@@ -85,6 +102,12 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
     val state: StateFlow<TrackerState> = stateFlow.asStateFlow()
     private val lastFlow = MutableStateFlow<UploadResult?>(null)
     val lastUpload: StateFlow<UploadResult?> = lastFlow.asStateFlow()
+    private val revokedFlow = MutableStateFlow(false)
+    /** The tracker ended this sign-in (signed out on the website): "Signed out, sign in again". */
+    val revoked: StateFlow<Boolean> = revokedFlow.asStateFlow()
+    private val keyFlow = MutableStateFlow(ImportKey())
+    /** The import key and whether the tracker accepted it. */
+    val importKey: StateFlow<ImportKey> = keyFlow.asStateFlow()
     private val uploadingFlow = MutableStateFlow(false)
     val uploading: StateFlow<Boolean> = uploadingFlow.asStateFlow()
 
@@ -97,6 +120,13 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
     init {
         Whoami.parse(store.getString("whoami", null)?.let { runCatching { JSONObject(it) }.getOrNull() })?.let { who ->
             if (readRefresh() != null) stateFlow.value = TrackerState.SignedIn(who)
+        }
+        revokedFlow.value = store.getBoolean("revoked", false) && readRefresh() == null
+        unseal("import_key")?.let { key ->
+            val account = store.getString("key_account", null)?.let { json ->
+                runCatching { JSONObject(json).let { KeyAccount(it.getString("name"), it.getString("uid")) } }.getOrNull()
+            }
+            keyFlow.value = ImportKey(key, account = account)
         }
         store.getString("last_upload", null)?.let { json ->
             runCatching {
@@ -210,8 +240,8 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
     private class Discovery(val authorize: String, val token: String, val revoke: String)
 
     private fun discover(): Discovery {
-        val o = getJson("${Links.TRACKER_API}/oauth/irminsul", null)
-        val api = URL(Links.TRACKER_API)
+        val o = getJson("${Links.trackerApi}/oauth/irminsul", null)
+        val api = URL(Links.trackerApi)
         val token = o.getString("token_url")
         val revoke = o.getString("revoke_url")
         // The token and revoke URLs must be the API's own (the contract's rule).
@@ -237,10 +267,15 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
     }
 
     private fun setWho(who: Whoami) {
+        if (revokedFlow.value) {
+            revokedFlow.value = false
+            store.edit().putBoolean("revoked", false).apply()
+        }
         store.edit().putString(
             "whoami",
             JSONObject().put("user", who.user).put("scope", who.scope).put("accountName", who.accountName)
-                .put("dashboardUrl", who.dashboardUrl).put("configUrl", who.configUrl).toString(),
+                .put("dashboardUrl", who.dashboardUrl).put("configUrl", who.configUrl)
+                .put("accountId", who.accountId).put("uid", who.uid).toString(),
         ).apply()
         stateFlow.value = TrackerState.SignedIn(who)
     }
@@ -249,7 +284,7 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
     private suspend fun accessToken(): String = lock.withLock {
         access?.takeIf { System.currentTimeMillis() < accessUntil }?.let { return it }
         val refresh = readRefresh() ?: throw SignedOut()
-        val tokenUrl = store.getString("token_url", null) ?: "${Links.TRACKER_API}/oauth/token"
+        val tokenUrl = store.getString("token_url", null) ?: "${Links.trackerApi}/oauth/token"
         val tokens = try {
             postJson(
                 tokenUrl,
@@ -258,7 +293,7 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
             )
         } catch (e: HttpError) {
             if (e.status == 400 || e.status == 401) {
-                forget()
+                forget(revoked = true)
                 throw SignedOut()
             }
             throw e
@@ -271,14 +306,14 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
     fun refreshWho() {
         if (stateFlow.value !is TrackerState.SignedIn) return
         scope.launch(Dispatchers.IO) {
-            runCatching { withBearer { token -> getJson("${Links.TRACKER_API}/irminsul/whoami", token) } }
+            runCatching { withBearer { token -> getJson("${Links.trackerApi}/irminsul/whoami", token) } }
                 .onSuccess { o -> Whoami.parse(o)?.let { withContext(Dispatchers.Main) { setWho(it) } } }
         }
     }
 
     fun signOut() {
         val refresh = readRefresh()
-        val revokeUrl = store.getString("revoke_url", null) ?: "${Links.TRACKER_API}/oauth/revoke"
+        val revokeUrl = store.getString("revoke_url", null) ?: "${Links.trackerApi}/oauth/revoke"
         forget()
         NativeBridge.note("info", "Signed out of ${Links.trackerHost}")
         if (refresh != null) {
@@ -288,11 +323,12 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
         }
     }
 
-    private fun forget() {
+    private fun forget(revoked: Boolean = false) {
         access = null
         accessUntil = 0
-        store.edit().remove("refresh").remove("whoami").apply()
+        store.edit().remove("refresh").remove("whoami").putBoolean("revoked", revoked).apply()
         stateFlow.value = TrackerState.SignedOut
+        revokedFlow.value = revoked
     }
 
     // -- uploads ------------------------------------------------------------------
@@ -312,7 +348,7 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
      */
     fun tick(summary: Summary) {
         val settings = prefs.value
-        val uploadsOn = stateFlow.value is TrackerState.SignedIn && settings.trackerUpload
+        val uploadsOn = canUpload() && settings.trackerUpload
         val live = uploadsOn && settings.liveSync
         NativeBridge.setWishSync(uploadsOn && settings.sendWishes)
         noteWishes(summary.wish.sync)
@@ -361,13 +397,13 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
      * `"<status>\n<body>"`. Blocks; never on the main thread.
      */
     fun wishCall(method: String, path: String, body: String): String = runBlocking(Dispatchers.IO) {
-        if (stateFlow.value !is TrackerState.SignedIn) return@runBlocking "-1\n"
+        if (!canUpload()) return@runBlocking "-1\n"
         try {
-            "200\n" + withBearer { token -> rawCall(method, "${Links.TRACKER_API}$path", body, token) }
+            "200\n" + withCredential { credential -> rawCall(method, "${Links.trackerApi}$path", body, credential) }
         } catch (e: SignedOut) {
             "-1\n"
         } catch (e: HttpError) {
-            if (e.status == 401 && e.code == "session_revoked") forget()
+            if (e.status == 401 && e.code == "session_revoked") forget(revoked = true)
             "${e.status}\n${e.body}"
         } catch (e: IOException) {
             "0\n" + (e.message ?: e.javaClass.simpleName)
@@ -391,7 +427,7 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
                         export.substringBefore('\n').toLong() to export.substringAfter('\n')
                     }
                     ticket = t
-                    withBearer { token -> postGood("${Links.TRACKER_API}/irminsul/import", token, json, capturedAt) }
+                    withCredential { credential -> postGood(credential, json, capturedAt) }
                 }
             }
             uploadingFlow.value = false
@@ -410,7 +446,7 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
                         backoff = if (backoff == 0L) FIRST_RETRY_MS else (backoff * 2).coerceAtMost(MAX_RETRY_MS)
                         retryAt = now + backoff
                     }
-                    if (e is HttpError && e.status == 401 && e.code == "session_revoked") forget()
+                    if (e is HttpError && e.status == 401 && e.code == "session_revoked") forget(revoked = true)
                     UploadResult(now, false, uploadError(e))
                 },
             )
@@ -443,11 +479,11 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
         scope.launch {
             val (status, body) = withContext(Dispatchers.IO) {
                 try {
-                    200 to withBearer { token -> rawCall("POST", "${Links.TRACKER_API}/irminsul/changes", delta, token) }
+                    200 to withCredential { credential -> rawCall("POST", "${Links.trackerApi}/irminsul/changes", delta, credential) }
                 } catch (e: SignedOut) {
                     -1 to ""
                 } catch (e: HttpError) {
-                    if (e.status == 401 && e.code == "session_revoked") forget()
+                    if (e.status == 401 && e.code == "session_revoked") forget(revoked = true)
                     e.status to e.body
                 } catch (e: IOException) {
                     0 to ""
@@ -469,6 +505,85 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
         else -> context.getString(R.string.tracker_upload_failed, e.message ?: e.javaClass.simpleName)
     }
 
+    // -- the import key and the address -------------------------------------------
+
+    /** Keep [key] (encrypted, like the refresh token) and ask the tracker whose it is. */
+    fun setImportKey(key: String) {
+        val trimmed = key.trim()
+        if (trimmed.isEmpty()) return clearImportKey()
+        seal("import_key", trimmed)
+        store.edit().remove("key_account").apply()
+        keyFlow.value = ImportKey(trimmed)
+        verifyKey()
+    }
+
+    fun clearImportKey() {
+        store.edit().remove("import_key").remove("key_account").apply()
+        keyFlow.value = ImportKey()
+    }
+
+    /** `GET /genshin-accounts-public/verify-key`: the key's account, or invalid. */
+    fun verifyKey() {
+        val key = keyFlow.value.key ?: return
+        keyFlow.value = keyFlow.value.copy(checking = true)
+        scope.launch {
+            val account = withContext(Dispatchers.IO) {
+                runCatching {
+                    val c = open("${Links.trackerApi}/genshin-accounts-public/verify-key", "GET", Credential.Key(key))
+                    try {
+                        val o = answer(c).let { it.optJSONObject("data") ?: it }
+                        KeyAccount(
+                            o.optString("accountName").ifEmpty { "?" },
+                            o.opt("uid")?.takeIf { it != JSONObject.NULL }?.toString() ?: "N/A",
+                        )
+                    } finally {
+                        c.disconnect()
+                    }
+                }.getOrNull()
+            }
+            if (keyFlow.value.key != key) return@launch
+            keyFlow.value = ImportKey(key, account = account)
+            store.edit().putString(
+                "key_account", account?.let { JSONObject().put("name", it.name).put("uid", it.uid).toString() },
+            ).apply()
+        }
+    }
+
+    /**
+     * Uploads go to [api] from now on. A sign-in belongs to one address, so
+     * it ends; the import key is checked again there.
+     */
+    fun setApi(api: String) {
+        val base = api.trim().trimEnd('/')
+        if (base == Links.trackerApi) return
+        if (stateFlow.value is TrackerState.SignedIn) signOut()
+        store.edit().putString("api", base.takeIf { it != Links.DEFAULT_TRACKER_API }).remove("token_url").remove("revoke_url").apply()
+        lastSignature = null
+        verifyKey()
+    }
+
+    /** How a request proves who it uploads for: the sign-in, else a verified import key (the desktop's `upload_credential`). */
+    private sealed class Credential {
+        class Bearer(val token: String) : Credential()
+        class Key(val key: String) : Credential()
+    }
+
+    /** Whether uploads can go anywhere: signed in, or a verified import key. */
+    fun canUpload() = stateFlow.value is TrackerState.SignedIn || keyFlow.value.verified
+
+    /** Runs [call] with the sign-in, else the verified import key. */
+    private suspend fun <T> withCredential(call: (Credential) -> T): T {
+        if (stateFlow.value is TrackerState.SignedIn) return withBearer { call(Credential.Bearer(it)) }
+        val key = keyFlow.value.takeIf { it.verified }?.key ?: throw SignedOut()
+        return try {
+            call(Credential.Key(key))
+        } catch (e: HttpError) {
+            // A key the tracker no longer takes: check it again.
+            if (e.status == 401 || e.status == 403) withContext(Dispatchers.Main) { verifyKey() }
+            throw e
+        }
+    }
+
     /** Runs [call] with an access token; a 401 refreshes once and tries again. */
     private suspend fun <T> withBearer(call: (String) -> T): T {
         val token = accessToken()
@@ -487,13 +602,20 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
     private class SignedOut : IOException("signed out")
 
     private fun open(url: String, method: String, bearer: String?): HttpURLConnection =
+        open(url, method, bearer?.let { Credential.Bearer(it) })
+
+    private fun open(url: String, method: String, credential: Credential?): HttpURLConnection =
         (URL(url).openConnection() as HttpURLConnection).apply {
             requestMethod = method
             connectTimeout = 15_000
             readTimeout = 60_000
             setRequestProperty("User-Agent", "Teyvatme-Android/${BuildConfig.VERSION_NAME}")
             setRequestProperty("Accept", "application/json")
-            bearer?.let { setRequestProperty("Authorization", "Bearer $it") }
+            when (credential) {
+                is Credential.Bearer -> setRequestProperty("Authorization", "Bearer ${credential.token}")
+                is Credential.Key -> setRequestProperty("x-import-key", credential.key)
+                null -> {}
+            }
         }
 
     private fun answer(connection: HttpURLConnection): JSONObject {
@@ -510,8 +632,8 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
     }
 
     /** A request with a JSON body (or none); the body of a success. */
-    private fun rawCall(method: String, url: String, body: String, bearer: String): String {
-        val c = open(url, method, bearer)
+    private fun rawCall(method: String, url: String, body: String, credential: Credential): String {
+        val c = open(url, method, credential)
         try {
             if (method != "GET") {
                 c.doOutput = true
@@ -554,7 +676,12 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
     }
 
     /** The desktop's `snapshot_form`: the capture time first, then the file. */
-    private fun postGood(url: String, bearer: String, json: String, capturedAt: Long): JSONObject {
+    private fun postGood(credential: Credential, json: String, capturedAt: Long): JSONObject {
+        // The import-key route is the old backend's, which irminsul's shipped binaries call.
+        val url = when (credential) {
+            is Credential.Bearer -> "${Links.trackerApi}/irminsul/import"
+            is Credential.Key -> "${Links.trackerApi}/genshin-accounts-public/import-by-key"
+        }
         val boundary = "teyvatme" + randomToken(16)
         val body = ByteArrayOutputStream()
         fun line(s: String) = body.write((s + "\r\n").toByteArray())
@@ -569,7 +696,7 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
         body.write(json.toByteArray())
         line("")
         line("--$boundary--")
-        val c = open(url, "POST", bearer)
+        val c = open(url, "POST", credential)
         try {
             c.doOutput = true
             c.readTimeout = 120_000
@@ -597,14 +724,19 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
         return generator.generateKey()
     }
 
-    private fun writeRefresh(token: String) {
+    private fun writeRefresh(token: String) = seal("refresh", token)
+
+    private fun readRefresh(): String? = unseal("refresh")
+
+    /** [value] encrypted under [name] with the keystore's key. */
+    private fun seal(name: String, value: String) {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, key()) }
-        val sealed = cipher.iv + cipher.doFinal(token.toByteArray())
-        store.edit().putString("refresh", Base64.encodeToString(sealed, Base64.NO_WRAP)).commit()
+        val sealed = cipher.iv + cipher.doFinal(value.toByteArray())
+        store.edit().putString(name, Base64.encodeToString(sealed, Base64.NO_WRAP)).commit()
     }
 
-    private fun readRefresh(): String? = runCatching {
-        val sealed = Base64.decode(store.getString("refresh", null) ?: return null, Base64.NO_WRAP)
+    private fun unseal(name: String): String? = runCatching {
+        val sealed = Base64.decode(store.getString(name, null) ?: return null, Base64.NO_WRAP)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, sealed, 0, 12))
         String(cipher.doFinal(sealed, 12, sealed.size - 12))

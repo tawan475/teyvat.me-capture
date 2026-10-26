@@ -267,4 +267,40 @@
     <string name="live_sync">即時同步</string>
     <string name="live_sync_line">邊玩邊同步變化</string>
     <string name="live_changes_sent">即時同步 · 已向 %2$s 傳送 %1$s 項變化</string>
+    <!-- Parity with the desktop -->
+    <string name="event_key_lost">未找到工作階段金鑰</string>
+    <string name="event_export_incomplete">匯出不完整：%1$s</string>
+    <string name="tracker_revoked">已登出，請重新登入</string>
+    <string name="tracker_uid_mismatch">此次擷取的 UID 為 %1$s，但上傳目標是 %2$s（UID %3$s）。上傳仍會傳送到該帳號：請用該帳號登入，或變更上傳目標。</string>
+    <string name="target_name_uid">%1$s（UID %2$s）</string>
+    <string name="target_uid">UID %1$s</string>
+    <string name="crash_title">上次當機了</string>
+    <string name="crash_line">報告和日誌已保留</string>
+    <string name="dismiss">忽略</string>
+    <string name="release_notes">版本資訊</string>
+    <string name="language">語言</string>
+    <string name="language_system">跟隨系統</string>
+    <string name="event_game_connected">遊戲已連線</string>
+    <string name="event_key_found">已找到工作階段金鑰</string>
+    <string name="event_data_captured">已擷取帳號資料</string>
+    <string name="tracker_target_missing">未選擇上傳目標 · 請透過「%1$s」選擇帳號</string>
+    <!-- Tracker › Advanced -->
+    <string name="advanced">進階</string>
+    <string name="tracker_address">追蹤器位址</string>
+    <string name="tracker_address_hint">追蹤器的 API 位址。登入只屬於一個位址：變更後會登出。</string>
+    <string name="apply">套用</string>
+    <string name="default_address">預設位址</string>
+    <string name="not_http">不是 http(s) 位址</string>
+    <string name="default_x">預設 %1$s</string>
+    <string name="signed_out_of">你將登出 %1$s</string>
+    <string name="uploads_will_go">上傳將傳送到 %1$s。每次上傳都包含整個帳號。</string>
+    <string name="import_key">匯入金鑰</string>
+    <string name="import_key_hint">請在追蹤器的儀表板中產生一個，並貼到這裡。</string>
+    <string name="key_remove">從此電腦移除已儲存的金鑰</string>
+    <string name="key_verifying">正在驗證金鑰…</string>
+    <string name="key_valid">✓ 有效：%1$s（UID %2$s）</string>
+    <string name="key_invalid">✗ 金鑰無效或無法連線</string>
+    <string name="key_warning">以純文字保存，永不過期。登入更安全。</string>
+    <string name="key_signed_out_only">僅在未登入時使用</string>
+    <string name="clear">清除</string>
 </resources>

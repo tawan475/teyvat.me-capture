@@ -267,4 +267,40 @@
     <string name="live_sync">实时同步</string>
     <string name="live_sync_line">边玩边同步变化</string>
     <string name="live_changes_sent">实时同步 · 已向 %2$s 发送 %1$s 项变化</string>
+    <!-- Parity with the desktop -->
+    <string name="event_key_lost">未找到会话密钥</string>
+    <string name="event_export_incomplete">导出不完整：%1$s</string>
+    <string name="tracker_revoked">已退出登录，请重新登录</string>
+    <string name="tracker_uid_mismatch">此次抓取的 UID 为 %1$s，但上传目标是 %2$s（UID %3$s）。上传仍会发送到该账号：请用该账号登录，或更改上传目标。</string>
+    <string name="target_name_uid">%1$s（UID %2$s）</string>
+    <string name="target_uid">UID %1$s</string>
+    <string name="crash_title">上次崩溃了</string>
+    <string name="crash_line">报告和日志已保留</string>
+    <string name="dismiss">忽略</string>
+    <string name="release_notes">更新说明</string>
+    <string name="language">语言</string>
+    <string name="language_system">跟随系统</string>
+    <string name="event_game_connected">游戏已连接</string>
+    <string name="event_key_found">已找到会话密钥</string>
+    <string name="event_data_captured">已捕获账号数据</string>
+    <string name="tracker_target_missing">未选择上传目标 · 请通过“%1$s”选择账号</string>
+    <!-- Tracker › Advanced -->
+    <string name="advanced">高级</string>
+    <string name="tracker_address">追踪器地址</string>
+    <string name="tracker_address_hint">追踪器的 API 地址。登录只属于一个地址：更改后会退出登录。</string>
+    <string name="apply">应用</string>
+    <string name="default_address">默认地址</string>
+    <string name="not_http">不是 http(s) 地址</string>
+    <string name="default_x">默认 %1$s</string>
+    <string name="signed_out_of">你将退出 %1$s 的登录</string>
+    <string name="uploads_will_go">上传将发送到 %1$s。每次上传都包含整个账号。</string>
+    <string name="import_key">导入密钥</string>
+    <string name="import_key_hint">请在追踪器的控制台中生成一个，并粘贴到这里。</string>
+    <string name="key_remove">从此电脑移除已保存的密钥</string>
+    <string name="key_verifying">正在验证密钥…</string>
+    <string name="key_valid">✓ 有效：%1$s（UID %2$s）</string>
+    <string name="key_invalid">✗ 密钥无效或无法连接</string>
+    <string name="key_warning">明文保存，永不过期。登录更安全。</string>
+    <string name="key_signed_out_only">仅在未登录时使用</string>
+    <string name="clear">清除</string>
 </resources>

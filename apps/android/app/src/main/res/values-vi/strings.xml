@@ -267,4 +267,40 @@
     <string name="live_sync">Đồng bộ trực tiếp</string>
     <string name="live_sync_line">Thay đổi khi bạn chơi</string>
     <string name="live_changes_sent">Đồng bộ trực tiếp · đã gửi %1$s thay đổi tới %2$s</string>
+    <!-- Parity with the desktop -->
+    <string name="event_key_lost">Không tìm thấy khóa phiên</string>
+    <string name="event_export_incomplete">Xuất chưa đủ: %1$s</string>
+    <string name="tracker_revoked">Đã đăng xuất, hãy đăng nhập lại</string>
+    <string name="tracker_uid_mismatch">Bản ghi này là UID %1$s, nhưng tải lên vào %2$s (UID %3$s). Tải lên vẫn vào tài khoản đó: hãy đăng nhập bằng tài khoản đó, hoặc đổi nơi tải lên.</string>
+    <string name="target_name_uid">%1$s (UID %2$s)</string>
+    <string name="target_uid">UID %1$s</string>
+    <string name="crash_title">Lần trước bị lỗi dừng</string>
+    <string name="crash_line">Đã giữ báo cáo và log</string>
+    <string name="dismiss">Bỏ qua</string>
+    <string name="release_notes">Ghi chú phát hành</string>
+    <string name="language">Ngôn Ngữ</string>
+    <string name="language_system">Theo hệ thống</string>
+    <string name="event_game_connected">Đã kết nối trò chơi</string>
+    <string name="event_key_found">Đã tìm thấy khóa phiên</string>
+    <string name="event_data_captured">Đã ghi dữ liệu tài khoản</string>
+    <string name="tracker_target_missing">Chưa chọn nơi tải lên · chọn tài khoản ở “%1$s”</string>
+    <!-- Tracker › Advanced -->
+    <string name="advanced">Nâng cao</string>
+    <string name="tracker_address">Địa chỉ tracker</string>
+    <string name="tracker_address_hint">Địa chỉ API của tracker. Mỗi lần đăng nhập gắn với một địa chỉ: đổi địa chỉ sẽ đăng xuất.</string>
+    <string name="apply">Áp dụng</string>
+    <string name="default_address">Địa chỉ mặc định</string>
+    <string name="not_http">Không phải địa chỉ http(s)</string>
+    <string name="default_x">Mặc định %1$s</string>
+    <string name="signed_out_of">Bạn sẽ bị đăng xuất khỏi %1$s</string>
+    <string name="uploads_will_go">Tải lên sẽ vào %1$s. Mỗi lần tải lên gồm toàn bộ tài khoản.</string>
+    <string name="import_key">Khóa nhập</string>
+    <string name="import_key_hint">Tạo khóa trên bảng điều khiển của tracker rồi dán vào đây.</string>
+    <string name="key_remove">Xóa khóa đã lưu khỏi máy này</string>
+    <string name="key_verifying">Đang xác minh khóa…</string>
+    <string name="key_valid">✓ Hợp lệ: %1$s (UID %2$s)</string>
+    <string name="key_invalid">✗ Khóa không hợp lệ hoặc không kết nối được</string>
+    <string name="key_warning">Văn bản thuần, không bao giờ hết hạn. Đăng nhập an toàn hơn.</string>
+    <string name="key_signed_out_only">Chỉ dùng khi chưa đăng nhập</string>
+    <string name="clear">Xóa</string>
 </resources>

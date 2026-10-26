@@ -272,4 +272,40 @@
     <string name="live_sync">Live sync</string>
     <string name="live_sync_line">Changes as you play</string>
     <string name="live_changes_sent">Live sync · %1$s changes sent to %2$s</string>
+    <!-- Parity with the desktop -->
+    <string name="event_key_lost">Session key not found</string>
+    <string name="event_export_incomplete">Export incomplete: %1$s</string>
+    <string name="tracker_revoked">Signed out, sign in again</string>
+    <string name="tracker_uid_mismatch">This capture is UID %1$s, but uploads go to %2$s (UID %3$s). Uploads still go to that account: log in with it, or change where uploads go.</string>
+    <string name="target_name_uid">%1$s (UID %2$s)</string>
+    <string name="target_uid">UID %1$s</string>
+    <string name="crash_title">Crashed last time</string>
+    <string name="crash_line">Report and log kept</string>
+    <string name="dismiss">Dismiss</string>
+    <string name="release_notes">Release notes</string>
+    <string name="language">Language</string>
+    <string name="language_system">System</string>
+    <string name="event_game_connected">Game connected</string>
+    <string name="event_key_found">Session key found</string>
+    <string name="event_data_captured">Account data captured</string>
+    <string name="tracker_target_missing">No upload target · choose an account with “%1$s”</string>
+    <!-- Tracker › Advanced -->
+    <string name="advanced">Advanced</string>
+    <string name="tracker_address">Tracker address</string>
+    <string name="tracker_address_hint">The tracker\'s API address. A sign-in belongs to one address: changing it signs out.</string>
+    <string name="apply">Apply</string>
+    <string name="default_address">Default address</string>
+    <string name="not_http">Not an http(s) address</string>
+    <string name="default_x">Default %1$s</string>
+    <string name="signed_out_of">You will be signed out of %1$s</string>
+    <string name="uploads_will_go">Uploads will go to %1$s. Every upload carries the whole account.</string>
+    <string name="import_key">Import key</string>
+    <string name="import_key_hint">Generate one on the tracker\'s dashboard and paste it here.</string>
+    <string name="key_remove">Remove the stored key from this machine</string>
+    <string name="key_verifying">Verifying key…</string>
+    <string name="key_valid">✓ Valid: %1$s (UID %2$s)</string>
+    <string name="key_invalid">✗ Key invalid or unreachable</string>
+    <string name="key_warning">Plain text, never expires. Signing in is safer.</string>
+    <string name="key_signed_out_only">Used only while signed out</string>
+    <string name="clear">Clear</string>
 </resources>
