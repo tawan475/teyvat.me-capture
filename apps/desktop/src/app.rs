@@ -482,6 +482,42 @@ pub(crate) fn want_tracker_upload(state: &SavedAppState) -> bool {
     state.auto_export_to_tracker && can_upload_to_tracker(state)
 }
 
+/// The last import-key check the monitor ran: the key, and whether the
+/// tracker accepted it.
+static KEY_CHECK: std::sync::Mutex<Option<(String, bool)>> = std::sync::Mutex::new(None);
+
+/// Records a key check (`verify-key`) for [`background_state`].
+pub(crate) fn note_key_check(key: &str, accepted: bool) {
+    if let Ok(mut check) = KEY_CHECK.lock() {
+        *check = Some((key.to_owned(), accepted));
+    }
+}
+
+/// The settings as the background judges uploads by: the UI's copy, with the
+/// sign-in's live status and the last key check laid over it.
+///
+/// The UI refreshes `tracker_sign_in` and `tracker_verified` only while it
+/// draws frames, and a window hidden in the tray, or started there, draws
+/// none. Read alone, the copy then said "sign-in still loading" for the whole
+/// session and nothing uploaded until the window was opened.
+pub(crate) fn background_state(state: &SavedAppState, auth: &AuthStatus) -> SavedAppState {
+    let mut state = state.clone();
+    // Still loading says nothing new: keep what the UI last saw.
+    if !matches!(auth, AuthStatus::Loading) {
+        state.tracker_sign_in = TrackerSignIn::from_status(auth);
+    }
+    // Only ever adds a check the UI hasn't seen yet. (Tests set the flag
+    // themselves, and this one is process-wide.)
+    if !cfg!(test)
+        && let Ok(check) = KEY_CHECK.lock()
+        && let Some((key, true)) = check.as_ref()
+        && *key == state.tracker_import_key
+    {
+        state.tracker_verified = true;
+    }
+    state
+}
+
 /// One captured data class a GOOD export writes, and when it last arrived.
 pub(crate) struct ExportDataClass {
     /// How the class is named in the toast that says what is missing.
@@ -1940,6 +1976,35 @@ mod tests {
             tracker_sign_in: TrackerSignIn::SignedOut,
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn uploads_follow_the_sign_in_while_no_frame_is_drawn() {
+        // The regression: started (or kept) hidden in the tray, the UI never
+        // refreshed its copy, which said "still loading", so nothing uploaded
+        // until the window was opened.
+        let state = SavedAppState {
+            auto_export_to_tracker: true,
+            tracker_sign_in: TrackerSignIn::Unknown,
+            ..Default::default()
+        };
+        assert!(!want_tracker_upload(&state));
+        let signed_in = AuthStatus::SignedIn {
+            whoami: None,
+            error: None,
+        };
+        assert!(want_tracker_upload(&background_state(&state, &signed_in)));
+        // Still loading changes nothing; signed out wins over a stale copy.
+        assert!(!want_tracker_upload(&background_state(
+            &state,
+            &AuthStatus::Loading
+        )));
+        let stale = SavedAppState {
+            tracker_sign_in: TrackerSignIn::SignedIn,
+            ..state
+        };
+        let out = AuthStatus::SignedOut { notice: None };
+        assert!(!want_tracker_upload(&background_state(&stale, &out)));
     }
 
     #[test]

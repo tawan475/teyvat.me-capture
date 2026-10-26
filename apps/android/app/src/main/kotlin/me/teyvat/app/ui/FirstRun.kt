@@ -71,11 +71,19 @@ interface SetUpActions {
     fun openVpnSettings()
     fun notificationsAllowed(): Boolean
     fun allowNotifications()
+    fun allowBackground()
     fun startCapture()
 }
 
 @Composable
-fun SetUpScreen(padding: PaddingValues, settings: Settings, folderLabel: String, notificationsAllowed: Boolean, actions: SetUpActions) {
+fun SetUpScreen(
+    padding: PaddingValues,
+    settings: Settings,
+    folderLabel: String,
+    notificationsAllowed: Boolean,
+    backgroundAllowed: Boolean,
+    actions: SetUpActions,
+) {
     Column(
         Modifier
             .fillMaxSize()
@@ -109,6 +117,14 @@ fun SetUpScreen(padding: PaddingValues, settings: Settings, folderLabel: String,
                 ListRow(stringResource(R.string.notifications), stringResource(R.string.notifications_line), R.drawable.ic_bell)
                 Row(Modifier.padding(start = 56.dp, bottom = 14.dp)) {
                     TmButton(stringResource(R.string.allow), actions::allowNotifications, kind = ButtonKind.Tonal)
+                }
+            }
+        }
+        if (!backgroundAllowed) {
+            TmCard {
+                ListRow(stringResource(R.string.battery_title), stringResource(R.string.battery_off_line), R.drawable.ic_power)
+                Row(Modifier.padding(start = 56.dp, bottom = 14.dp)) {
+                    TmButton(stringResource(R.string.allow), actions::allowBackground, kind = ButtonKind.Tonal)
                 }
             }
         }

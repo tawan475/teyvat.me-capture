@@ -227,6 +227,13 @@
     <string name="share_good">Chia sẻ GOOD JSON</string>
     <string name="alert_capture_stopped">Đã dừng ghi</string>
     <string name="alert_vpn_taken">Một VPN khác đã thay thế</string>
+    <!-- Background -->
+    <string name="battery_title">Chạy trong nền</string>
+    <string name="battery_off_line">Tiết kiệm pin có thể tạm dừng xuất và tải lên khi bạn chơi</string>
+    <string name="battery_on_line">Không hạn chế · xuất và tải lên vẫn tiếp tục</string>
+    <string name="battery_more">Thêm cho một số điện thoại</string>
+    <string name="battery_more_line">Xiaomi, Samsung, Huawei… có trình tiết kiệm pin riêng</string>
+
     <!-- Updates -->
     <string name="section_updates">Cập nhật</string>
     <string name="update_auto">Tự động cập nhật</string>

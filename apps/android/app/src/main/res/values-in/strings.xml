@@ -227,6 +227,13 @@
     <string name="share_good">Bagikan GOOD JSON</string>
     <string name="alert_capture_stopped">Penangkapan berhenti</string>
     <string name="alert_vpn_taken">VPN lain mengambil alih</string>
+    <!-- Background -->
+    <string name="battery_title">Jalankan di latar belakang</string>
+    <string name="battery_off_line">Penghemat baterai bisa menjeda ekspor dan unggahan saat kamu bermain</string>
+    <string name="battery_on_line">Tidak dibatasi · ekspor dan unggahan tetap berjalan</string>
+    <string name="battery_more">Lainnya untuk beberapa ponsel</string>
+    <string name="battery_more_line">Xiaomi, Samsung, Huawei… punya penghemat sendiri</string>
+
     <!-- Updates -->
     <string name="section_updates">Pembaruan</string>
     <string name="update_auto">Perbarui otomatis</string>

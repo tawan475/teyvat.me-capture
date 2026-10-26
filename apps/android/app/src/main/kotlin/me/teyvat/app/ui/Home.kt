@@ -79,6 +79,7 @@ interface HomeActions {
     fun openTeyvat()
     fun updateInstallNow()
     fun updateAllow()
+    fun allowBackground()
 }
 
 /** The tracker card's inputs: the sign-in and the last upload. */
@@ -112,6 +113,7 @@ fun HomeContent(
     tracker: TrackerView,
     update: UpdateState,
     capturing: Boolean,
+    backgroundAllowed: Boolean,
     actions: HomeActions,
     padding: PaddingValues,
 ) {
@@ -124,6 +126,7 @@ fun HomeContent(
     ) {
         item { HeroCard(hero, summary, startingSince, now, actions) }
         if (update.shown()) item { UpdateCard(update, capturing, actions) }
+        if (!backgroundAllowed) item { BackgroundCard(actions) }
         item { CapturedCard(summary, now) }
         item { WishCard(summary.wish, actions) }
         item { ExportCard(summary, settings, folderLabel, actions) }
@@ -386,6 +389,29 @@ private fun TrackerCard(tracker: TrackerView, captured: Boolean, actions: HomeAc
                     enabled = captured && !tracker.uploading,
                 )
             }
+        }
+    }
+}
+
+/** Battery saving may pause exports and uploads: one tap to allow running in the background. */
+@Composable
+private fun BackgroundCard(actions: HomeActions) {
+    TmCard {
+        Row(
+            Modifier.fillMaxWidth().padding(start = 16.dp, end = 14.dp, top = 12.dp, bottom = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TmIcon(R.drawable.ic_triangle_alert, null, tint = MaterialTheme.colorScheme.error)
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.battery_title), style = MaterialTheme.typography.titleSmall)
+                Text(
+                    stringResource(R.string.battery_off_line), style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            TmButton(stringResource(R.string.allow), actions::allowBackground, kind = ButtonKind.Tonal)
         }
     }
 }

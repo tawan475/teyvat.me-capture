@@ -227,6 +227,13 @@
     <string name="share_good">GOOD JSON 공유</string>
     <string name="alert_capture_stopped">캡처 중지됨</string>
     <string name="alert_vpn_taken">다른 VPN이 연결을 가져감</string>
+    <!-- Background -->
+    <string name="battery_title">백그라운드에서 실행</string>
+    <string name="battery_off_line">배터리 절약 기능이 플레이 중 내보내기와 업로드를 멈출 수 있습니다</string>
+    <string name="battery_on_line">제한 없음 · 내보내기와 업로드가 계속됩니다</string>
+    <string name="battery_more">일부 휴대폰용 추가 설정</string>
+    <string name="battery_more_line">Xiaomi, 삼성, Huawei 등은 자체 절전 기능이 있습니다</string>
+
     <!-- Updates -->
     <string name="section_updates">업데이트</string>
     <string name="update_auto">자동 업데이트</string>

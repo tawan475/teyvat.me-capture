@@ -227,6 +227,13 @@
     <string name="share_good">GOOD JSON teilen</string>
     <string name="alert_capture_stopped">Erfassung gestoppt</string>
     <string name="alert_vpn_taken">Ein anderes VPN hat übernommen</string>
+    <!-- Background -->
+    <string name="battery_title">Im Hintergrund ausführen</string>
+    <string name="battery_off_line">Der Energiesparmodus kann Exporte und Uploads beim Spielen anhalten</string>
+    <string name="battery_on_line">Uneingeschränkt · Exporte und Uploads laufen weiter</string>
+    <string name="battery_more">Mehr für manche Handys</string>
+    <string name="battery_more_line">Xiaomi, Samsung, Huawei… haben eigene Energiesparer</string>
+
     <!-- Updates -->
     <string name="section_updates">Updates</string>
     <string name="update_auto">Automatisch aktualisieren</string>

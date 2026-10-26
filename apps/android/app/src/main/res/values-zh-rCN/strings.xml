@@ -227,6 +227,13 @@
     <string name="share_good">分享 GOOD JSON</string>
     <string name="alert_capture_stopped">抓取已停止</string>
     <string name="alert_vpn_taken">另一个 VPN 已接管</string>
+    <!-- Background -->
+    <string name="battery_title">后台运行</string>
+    <string name="battery_off_line">省电模式可能会在你游戏时暂停导出和上传</string>
+    <string name="battery_on_line">不受限制 · 导出和上传持续进行</string>
+    <string name="battery_more">部分手机的更多设置</string>
+    <string name="battery_more_line">小米、三星、华为等有各自的省电机制</string>
+
     <!-- Updates -->
     <string name="section_updates">更新</string>
     <string name="update_auto">自动更新</string>

@@ -227,6 +227,13 @@
     <string name="share_good">แชร์ GOOD JSON</string>
     <string name="alert_capture_stopped">หยุดสแกนแล้ว</string>
     <string name="alert_vpn_taken">VPN อื่นเข้ามาแทนที่</string>
+    <!-- Background -->
+    <string name="battery_title">ทำงานเบื้องหลัง</string>
+    <string name="battery_off_line">การประหยัดแบตเตอรี่อาจหยุดการส่งออกและอัปโหลดระหว่างเล่น</string>
+    <string name="battery_on_line">ไม่จำกัด · ส่งออกและอัปโหลดต่อเนื่อง</string>
+    <string name="battery_more">เพิ่มเติมสำหรับบางรุ่น</string>
+    <string name="battery_more_line">Xiaomi, Samsung, Huawei… มีระบบประหยัดพลังงานของตัวเอง</string>
+
     <!-- Updates -->
     <string name="section_updates">อัปเดต</string>
     <string name="update_auto">อัปเดตอัตโนมัติ</string>

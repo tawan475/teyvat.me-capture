@@ -769,6 +769,9 @@ impl Monitor {
 
     pub async fn run(mut self) {
         self.app_state.update_app_state(State::Main);
+        // A sign-in that loads (or signs in) after data arrived: check the
+        // uploads again then, not only at the next new data.
+        let mut auth_rx = self.tracker_auth.status();
 
         loop {
             // Checked before the `select!` rather than only inside it. On the
@@ -813,6 +816,13 @@ impl Monitor {
                 }
                 _ = live_fut => {
                     self.live_tick();
+                }
+                Ok(()) = auth_rx.changed() => {
+                    if self.app_state.app_state.updated.items_updated.is_some()
+                        || self.app_state.app_state.updated.characters_updated.is_some()
+                    {
+                        self.check_automation_trigger();
+                    }
                 }
                 Some(event) = self.live_rx.recv() => {
                     self.handle_live_event(event);
@@ -906,7 +916,10 @@ impl Monitor {
                 let ctx = self.ctx.clone();
                 let client = self.http.clone();
                 tokio::spawn(async move {
-                    let _ = reply_tx.send(verify_tracker_key(&client, &url, &key).await);
+                    let result = verify_tracker_key(&client, &url, &key).await;
+                    // For uploads while no frame is drawn (hidden in the tray).
+                    crate::app::note_key_check(&key, result.is_ok());
+                    let _ = reply_tx.send(result);
                     ctx.request_repaint();
                 });
             }
@@ -1411,11 +1424,20 @@ impl Monitor {
         ));
     }
 
+    /// The settings with the live sign-in and key state; see
+    /// [`crate::app::background_state`].
+    fn upload_state(&self) -> crate::app::SavedAppState {
+        crate::app::background_state(
+            &self.saved_state_rx.borrow(),
+            &self.tracker_auth.status().borrow(),
+        )
+    }
+
     fn check_automation_trigger(&mut self) {
         if !uploads_allowed(&self.capture_source) {
             return;
         }
-        let saved_state = self.saved_state_rx.borrow().clone();
+        let saved_state = self.upload_state();
         // The tracker half uses the same predicate the manual upload button
         // does. This used to omit `tracker_verified`, so a key the dashboard
         // had revoked still got a POST on every login.
@@ -1480,7 +1502,7 @@ impl Monitor {
     async fn execute_automation_export(&mut self) {
         tracing::info!("Executing background automation export!");
         self.automation_pending_since = None;
-        let saved_state = self.saved_state_rx.borrow().clone();
+        let saved_state = self.upload_state();
         let plan = AutomationPlan::for_state(&saved_state);
 
         let signature = (
@@ -1723,7 +1745,7 @@ impl Monitor {
 impl Monitor {
     /// When live sync next has something to decide, in Unix ms.
     fn live_next_tick(&self) -> Option<u64> {
-        let state = self.saved_state_rx.borrow();
+        let state = self.upload_state();
         if !uploads_allowed(&self.capture_source) || !crate::app::want_tracker_upload(&state) {
             return None;
         }
@@ -1735,7 +1757,7 @@ impl Monitor {
         if !uploads_allowed(&self.capture_source) {
             return;
         }
-        let state = self.saved_state_rx.borrow().clone();
+        let state = self.upload_state();
         let Some(credential) = crate::app::upload_credential(&state) else {
             return;
         };
