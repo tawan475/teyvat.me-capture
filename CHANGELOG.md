@@ -2,6 +2,26 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.1.6
+
+- Windows: minimizing to the tray with the title bar's minimize button no
+  longer keeps one CPU core busy while the window is hidden. The button now
+  hides the window straight to the tray. Minimizing another way (Win+M)
+  leaves it on the taskbar.
+
+Everything in 1.1.5 below still applies.
+
+| Platform | File |
+|---|---|
+| Windows 10/11 | `teyvatme-windows.exe` (built-in packet capture; asks for administrator rights) |
+| Windows with Npcap | `teyvatme-windows-pcap.exe` |
+| Linux x86_64 | `teyvatme-linux-x86_64.tar.gz` |
+| macOS (Apple silicon) | `Teyvatme-macos-arm64.app.tar.gz` |
+| Android 10+ | `teyvatme-android.apk` |
+
+Check a download against `SHA256SUMS.txt`. Unofficial fan project, not
+affiliated with HoYoverse.
+
 ## 1.1.5
 
 - Android: signing in, the import key and uploads work on networks whose
