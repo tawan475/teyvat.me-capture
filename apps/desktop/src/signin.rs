@@ -47,8 +47,14 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{Mutex, mpsc, watch};
 use tokio_util::sync::CancellationToken;
 
+use crate::i18n::{tr, trf};
+
 /// The OAuth client id the tracker knows Teyvat.me by.
 pub const CLIENT_ID: &str = "irminsul";
+
+/// Which app of that client signs in: the tracker names the device "Teyvat.me
+/// on <PC>" for it (irminsul sends none and stays "Irminsul on <PC>").
+pub const CLIENT_APP: &str = "teyvatme";
 
 /// The credential store's service name; the entry's account is the tracker
 /// origin (`https://teyvat.me`).
@@ -84,7 +90,13 @@ const DEVICE_NAME_MAX_CHARS: usize = 64;
 
 /// What the UI says when the tracker ended this sign-in (revoked from its
 /// Devices page, a password change, "sign out everywhere", expiry).
+#[cfg(test)]
 pub const SIGNED_OUT_NOTICE: &str = "Signed out, sign in again";
+
+/// [`SIGNED_OUT_NOTICE`] in the current language.
+pub fn signed_out_notice() -> &'static str {
+    tr("Signed out, sign in again")
+}
 
 // ---------------------------------------------------------------------------
 // PKCE and state
@@ -121,7 +133,7 @@ pub(crate) fn s256_challenge(verifier: &str) -> String {
 /// `bytes` random bytes from the OS, base64url without padding.
 pub(crate) fn random_url_safe(bytes: usize) -> Result<String, String> {
     let mut buf = vec![0u8; bytes];
-    getrandom::fill(&mut buf).map_err(|e| format!("no randomness available: {e}"))?;
+    getrandom::fill(&mut buf).map_err(|e| trf("no randomness available: {0}", &[&e]))?;
     Ok(BASE64_URL_SAFE_NO_PAD.encode(buf))
 }
 
@@ -176,7 +188,7 @@ fn parse_web_url(url: &str) -> Option<Url> {
 pub(crate) fn origin_of(base: &str) -> Result<String, String> {
     parse_web_url(base)
         .map(|url| url.origin().ascii_serialization())
-        .ok_or_else(|| "the tracker address is not an http(s) URL".to_string())
+        .ok_or_else(|| tr("the tracker address is not an http(s) URL").to_string())
 }
 
 /// The host a tracker address points at, for "Uploads will now go to <host>".
@@ -219,14 +231,14 @@ pub(crate) struct Discovery {
 /// browser, carrying nothing secret, and just has to be http(s).
 pub(crate) fn parse_discovery(body: &str, base: &str) -> Result<Discovery, String> {
     let json: serde_json::Value = serde_json::from_str(body)
-        .map_err(|_| "the tracker's sign-in discovery is not JSON".to_string())?;
+        .map_err(|_| tr("the tracker's sign-in discovery is not JSON").to_string())?;
     let field = |name: &str| {
         json.get(name)
             .and_then(|v| v.as_str())
             .map(str::trim)
             .filter(|v| !v.is_empty())
             .map(str::to_owned)
-            .ok_or_else(|| format!("the tracker's sign-in discovery has no {name}"))
+            .ok_or_else(|| trf("the tracker's sign-in discovery has no {0}", &[&name]))
     };
     let authorize_url = field("authorize_url")?;
     let token_url = field("token_url")?;
@@ -234,13 +246,15 @@ pub(crate) fn parse_discovery(body: &str, base: &str) -> Result<Discovery, Strin
 
     let origin = origin_of(base)?;
     if parse_web_url(&authorize_url).is_none() {
-        return Err("the tracker's sign-in page is not an http(s) URL".to_string());
+        return Err(tr("the tracker's sign-in page is not an http(s) URL").to_string());
     }
     for url in [&token_url, &revoke_url] {
         let same_origin =
             parse_web_url(url).is_some_and(|url| url.origin().ascii_serialization() == origin);
         if !same_origin {
-            return Err("the tracker's sign-in endpoints are not on its own address".to_string());
+            return Err(
+                tr("the tracker's sign-in endpoints are not on its own address").to_string(),
+            );
         }
     }
     Ok(Discovery {
@@ -259,14 +273,15 @@ pub(crate) fn authorize_url(
     device: &str,
 ) -> Result<String, String> {
     let mut url = Url::parse(&discovery.authorize_url)
-        .map_err(|_| "the tracker's sign-in page is not a URL".to_string())?;
+        .map_err(|_| tr("the tracker's sign-in page is not a URL").to_string())?;
     url.query_pairs_mut()
         .append_pair("client_id", CLIENT_ID)
         .append_pair("redirect_uri", redirect_uri)
         .append_pair("state", state)
         .append_pair("code_challenge", challenge)
         .append_pair("code_challenge_method", "S256")
-        .append_pair("device", device);
+        .append_pair("device", device)
+        .append_pair("app", CLIENT_APP);
     Ok(url.into())
 }
 
@@ -295,18 +310,16 @@ pub(crate) enum Callback {
 
 impl Callback {
     /// The sentence the browser tab shows.
+    #[rustfmt::skip]
     fn page_message(&self) -> &'static str {
         match self {
-            Self::Code(_) => "You can close this tab and go back to Teyvat.me.",
-            Self::Denied => "Sign-in was cancelled. You can close this tab.",
+            Self::Code(_) => tr("You can close this tab and go back to Teyvat.me."),
+            Self::Denied => tr("Sign-in was cancelled. You can close this tab."),
             Self::Failed(_) | Self::Malformed => {
-                "The tracker did not sign you in. Try again from Teyvat.me."
+                tr("The tracker did not sign you in. Try again from Teyvat.me.")
             }
-            Self::StateMismatch => {
-                "This sign-in link does not belong to the sign-in Teyvat.me started. \
-                 Start again from Teyvat.me."
-            }
-            Self::Other => "Not found.",
+            Self::StateMismatch => tr("This sign-in link does not belong to the sign-in Teyvat.me started. Start again from Teyvat.me."),
+            Self::Other => tr("Not found."),
         }
     }
 }
@@ -384,9 +397,9 @@ fn html_escape(text: &str) -> String {
 /// scripts, no external resources, nothing from the request echoed back.
 pub(crate) fn callback_page(signed_in: bool, message: &str) -> String {
     let (title, colour) = if signed_in {
-        ("Signed in", "#00ab3f")
+        (tr("Signed in"), "#00ab3f")
     } else {
-        ("Not signed in", "#e05252")
+        (tr("Not signed in"), "#e05252")
     };
     let message = html_escape(message);
     format!(
@@ -519,7 +532,7 @@ impl Loopback {
         loop {
             tokio::select! {
                 _ = &mut deadline => {
-                    return Err("the browser did not come back in time".to_string());
+                    return Err(tr("the browser did not come back in time").to_string());
                 }
                 accepted = self.listener.accept() => {
                     let Ok((mut stream, peer)) = accepted else { continue };
@@ -583,19 +596,19 @@ impl Whoami {
     /// Where uploads go, in a few words.
     pub fn target_label(&self) -> String {
         match self.scope {
-            UploadScope::Uid => "Auto (by UID)".to_string(),
+            UploadScope::Uid => tr("Auto (by UID)").to_string(),
             // The chosen account was deleted on the tracker: nothing uploads
             // (409 `upload_target_missing`) until one is picked again.
             UploadScope::Account if self.account_id.is_none() && self.account_name.is_none() => {
-                "Not chosen".to_string()
+                tr("Not chosen").to_string()
             }
             // An account the tracker made for a new UID has no name; the
             // website calls it by its UID then, and so does this.
             UploadScope::Account => match (&self.account_name, &self.uid) {
-                (Some(name), Some(uid)) => format!("{name} (UID {uid})"),
+                (Some(name), Some(uid)) => trf("{0} (UID {1})", &[name, uid]),
                 (Some(name), None) => name.clone(),
-                (None, Some(uid)) => format!("UID {uid}"),
-                (None, None) => "an account".to_string(),
+                (None, Some(uid)) => trf("UID {0}", &[uid]),
+                (None, None) => tr("an account").to_string(),
             },
         }
     }
@@ -616,7 +629,7 @@ pub(crate) fn parse_whoami(json: &serde_json::Value) -> Result<Whoami, String> {
     let scope = match json.get("scope").and_then(|v| v.as_str()) {
         Some("uid") => UploadScope::Uid,
         Some("account") => UploadScope::Account,
-        _ => return Err("the tracker's whoami answer has no known scope".to_string()),
+        _ => return Err(tr("the tracker's whoami answer has no known scope").to_string()),
     };
     Ok(Whoami {
         scope,
@@ -654,19 +667,17 @@ pub(crate) enum TokenError {
     Malformed(String),
 }
 
+#[rustfmt::skip]
 impl fmt::Display for TokenError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::InvalidGrant => f.write_str(SIGNED_OUT_NOTICE),
-            Self::Suspended => f.write_str("This tracker account is suspended"),
-            Self::Rejected { status, error } => {
-                write!(
-                    f,
-                    "The tracker refused the sign-in (HTTP {status}, {error})"
-                )
+            Self::InvalidGrant => f.write_str(signed_out_notice()),
+            Self::Suspended => f.write_str(tr("This tracker account is suspended")),
+            Self::Rejected { status, error } => f.write_str(&trf("The tracker refused the sign-in (HTTP {0}, {1})", &[status, error])),
+            Self::Network(e) => f.write_str(&trf("Could not reach the tracker: {0}", &[e])),
+            Self::Malformed(e) => {
+                f.write_str(&trf("Unexpected answer from the tracker: {0}", &[e]))
             }
-            Self::Network(e) => write!(f, "Could not reach the tracker: {e}"),
-            Self::Malformed(e) => write!(f, "Unexpected answer from the tracker: {e}"),
         }
     }
 }
@@ -708,21 +719,21 @@ pub(crate) fn parse_token_response(status: u16, body: &str) -> Result<Tokens, To
         });
     }
     let json: serde_json::Value = serde_json::from_str(body)
-        .map_err(|_| TokenError::Malformed("the token answer is not JSON".to_string()))?;
+        .map_err(|_| TokenError::Malformed(tr("the token answer is not JSON").to_string()))?;
     let token = |name: &str| {
         json.get(name)
             .and_then(|v| v.as_str())
             .filter(|v| !v.is_empty())
             .map(str::to_owned)
-            .ok_or_else(|| TokenError::Malformed(format!("the token answer has no {name}")))
+            .ok_or_else(|| TokenError::Malformed(trf("the token answer has no {0}", &[&name])))
     };
     if let Some(kind) = json.get("token_type").and_then(|v| v.as_str())
         && !kind.eq_ignore_ascii_case("bearer")
     {
-        return Err(TokenError::Malformed(format!(
-            "unsupported token type {}",
-            sanitize_code(kind)
-        )));
+        let kind = sanitize_code(kind);
+        #[rustfmt::skip]
+        let error = trf("unsupported token type {0}", &[&kind]);
+        return Err(TokenError::Malformed(error));
     }
     let access_token = token("access_token")?;
     let refresh_token = token("refresh_token")?;
@@ -776,7 +787,7 @@ impl KeyringStore {
 
     fn entry(&self, origin: &str) -> Result<keyring::Entry, String> {
         keyring::Entry::new(self.service, origin)
-            .map_err(|e| format!("the credential store is unavailable: {e}"))
+            .map_err(|e| trf("the credential store is unavailable: {0}", &[&e]))
     }
 }
 
@@ -785,20 +796,20 @@ impl CredentialStore for KeyringStore {
         match self.entry(origin)?.get_password() {
             Ok(token) => Ok(Some(token)),
             Err(keyring::Error::NoEntry) => Ok(None),
-            Err(e) => Err(format!("could not read the saved sign-in: {e}")),
+            Err(e) => Err(trf("could not read the saved sign-in: {0}", &[&e])),
         }
     }
 
     fn save(&self, origin: &str, token: &str) -> Result<(), String> {
         self.entry(origin)?
             .set_password(token)
-            .map_err(|e| format!("could not save the sign-in: {e}"))
+            .map_err(|e| trf("could not save the sign-in: {0}", &[&e]))
     }
 
     fn delete(&self, origin: &str) -> Result<(), String> {
         match self.entry(origin)?.delete_credential() {
             Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-            Err(e) => Err(format!("could not remove the saved sign-in: {e}")),
+            Err(e) => Err(trf("could not remove the saved sign-in: {0}", &[&e])),
         }
     }
 }
@@ -923,7 +934,7 @@ async fn with_store<T: Send + 'static>(
     let store = Arc::clone(store);
     tokio::task::spawn_blocking(move || call(store.as_ref()))
         .await
-        .map_err(|e| format!("the credential store call failed: {e}"))?
+        .map_err(|e| trf("the credential store call failed: {0}", &[&e]))?
 }
 
 // ---------------------------------------------------------------------------
@@ -1051,7 +1062,7 @@ impl fmt::Display for AuthError {
     /// upload errors have (`app.rs::tracker_error_status`).
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::SignedOut => f.write_str(SIGNED_OUT_NOTICE),
+            Self::SignedOut => f.write_str(signed_out_notice()),
             Self::Network(e) | Self::Other(e) => f.write_str(e),
             Self::Http { status, body } => f.write_str(&http_failure(*status, body)),
             Self::Token(e) => write!(f, "{e}"),
@@ -1212,13 +1223,13 @@ impl TrackerAuth {
             .get(endpoint(&session.base, "oauth/irminsul"))
             .send()
             .await
-            .map_err(|e| format!("Could not reach the tracker: {}", network_error(e)))?;
+            .map_err(|e| trf("Could not reach the tracker: {0}", &[&network_error(e)]))?;
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
         if !status.is_success() {
-            return Err(format!(
-                "This tracker does not support signing in (HTTP {status})"
-            ));
+            #[rustfmt::skip]
+            let error = trf("This tracker does not support signing in (HTTP {0})", &[&status]);
+            return Err(error);
         }
         let discovery = parse_discovery(&body, &session.base)?;
         session.discovery = Some(discovery.clone());
@@ -1303,7 +1314,7 @@ impl TrackerAuth {
 
         let loopback = Loopback::bind()
             .await
-            .map_err(|e| format!("Could not open a local port for the sign-in: {e}"))?;
+            .map_err(|e| trf("Could not open a local port for the sign-in: {0}", &[&e]))?;
         let redirect_uri = loopback.redirect_uri();
         let pkce = Pkce::generate()?;
         let state = random_url_safe(32)?;
@@ -1333,12 +1344,12 @@ impl TrackerAuth {
             Callback::Code(code) => code.clone(),
             other => {
                 let error = match other {
-                    Callback::Denied => "Sign-in cancelled on the tracker".to_string(),
-                    Callback::Failed(code) => format!("The tracker did not sign you in ({code})"),
+                    Callback::Denied => tr("Sign-in cancelled on the tracker").to_string(),
+                    Callback::Failed(code) => trf("The tracker did not sign you in ({0})", &[code]),
                     Callback::StateMismatch => {
-                        "The browser answered for another sign-in; try again".to_string()
+                        tr("The browser answered for another sign-in; try again").to_string()
                     }
-                    _ => "The tracker's answer was not understood".to_string(),
+                    _ => tr("The tracker's answer was not understood").to_string(),
                 };
                 hit.answer(false).await;
                 return Err(error);
@@ -1349,6 +1360,7 @@ impl TrackerAuth {
         let body = serde_json::json!({
             "grant_type": "authorization_code",
             "client_id": CLIENT_ID,
+            "app": CLIENT_APP,
             "code": code,
             "code_verifier": pkce.verifier,
             "redirect_uri": redirect_uri,
@@ -1356,8 +1368,9 @@ impl TrackerAuth {
         let tokens = match post_token(client, &discovery.token_url, &body).await {
             Ok(tokens) => tokens,
             Err(e) => {
-                hit.answer_failed("The tracker did not sign you in. Try again from Teyvat.me.")
-                    .await;
+                #[rustfmt::skip]
+                let message = tr("The tracker did not sign you in. Try again from Teyvat.me.");
+                hit.answer_failed(message).await;
                 return Err(e.to_string());
             }
         };
@@ -1368,9 +1381,10 @@ impl TrackerAuth {
             // belong to the old one. Give them back and keep nothing.
             drop(session);
             revoke(client, &discovery, &tokens.refresh_token).await;
-            hit.answer_failed("The tracker address changed in Teyvat.me. Sign in again there.")
-                .await;
-            return Err("The tracker address changed during the sign-in".to_string());
+            #[rustfmt::skip]
+            let message = tr("The tracker address changed in Teyvat.me. Sign in again there.");
+            hit.answer_failed(message).await;
+            return Err(tr("The tracker address changed during the sign-in").to_string());
         }
         let has_whoami = tokens.whoami.is_some();
         self.adopt_tokens(&mut session, tokens).await;
@@ -1414,7 +1428,7 @@ impl TrackerAuth {
                 if let Err(e) = saved {
                     // Still signed in for this run; the next one asks again.
                     tracing::warn!("tracker sign-in: {e}");
-                    error = Some(format!("Signed in for this session only: {e}"));
+                    error = Some(trf("Signed in for this session only: {0}", &[&e]));
                 }
             }
             Err(e) => error = Some(e),
@@ -1464,7 +1478,7 @@ impl TrackerAuth {
             }
             Err(TokenError::InvalidGrant) => {
                 tracing::info!("tracker sign-in: the tracker ended this sign-in");
-                self.forget_locked(session, Some(SIGNED_OUT_NOTICE.to_string()))
+                self.forget_locked(session, Some(signed_out_notice().to_string()))
                     .await;
                 Err(AuthError::SignedOut)
             }
@@ -1533,7 +1547,7 @@ impl TrackerAuth {
         let mut session = self.inner.session.lock().await;
         if session.generation == grant.generation && session.refresh.is_some() {
             tracing::info!("tracker sign-in: the tracker revoked this session");
-            self.forget_locked(&mut session, Some(SIGNED_OUT_NOTICE.to_string()))
+            self.forget_locked(&mut session, Some(signed_out_notice().to_string()))
                 .await;
         }
     }
@@ -1602,7 +1616,7 @@ impl TrackerAuth {
                 let body = response.text().await.unwrap_or_default();
                 let parsed = if status.is_success() {
                     serde_json::from_str::<serde_json::Value>(&body)
-                        .map_err(|_| "the whoami answer is not JSON".to_string())
+                        .map_err(|_| tr("the whoami answer is not JSON").to_string())
                         .and_then(|json| parse_whoami(&json))
                 } else {
                     Err(http_failure(status, &body))
@@ -1644,7 +1658,7 @@ impl TrackerAuth {
         let expected_base = normalize_base(expected_base);
         self.authorized(client, |grant| {
             if grant.base != expected_base {
-                return Err("The tracker address changed".to_string());
+                return Err(tr("The tracker address changed").to_string());
             }
             Ok(build(&grant.token))
         })
@@ -1682,7 +1696,7 @@ impl TrackerAuth {
         let result = self
             .authorized(client, |grant| {
                 if grant.base != expected_base {
-                    return Err("The tracker address changed; upload again".to_string());
+                    return Err(tr("The tracker address changed; upload again").to_string());
                 }
                 let form = crate::monitor::snapshot_form(json.clone(), captured_at_ms)?;
                 Ok(client

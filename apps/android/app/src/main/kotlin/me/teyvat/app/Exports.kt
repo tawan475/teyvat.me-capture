@@ -31,8 +31,8 @@ import kotlinx.coroutines.withContext
 sealed class ExportProblem {
     data object NothingYet : ExportProblem()
 
-    /** Classes the filters need that were not captured, e.g. "characters, weapons". */
-    data class Missing(val what: String) : ExportProblem()
+    /** Classes the filters need that were not captured: their tiles' names. */
+    data class Missing(val what: List<Int>) : ExportProblem()
 }
 
 /** GOOD JSON out of the decoder and onto the phone: files, the share sheet, the clipboard. */
@@ -54,14 +54,14 @@ object Exports {
     fun problem(summary: Summary, filters: ExportFilters): ExportProblem? {
         if (!summary.captured) return ExportProblem.NothingYet
         val missing = buildList {
-            if (filters.includeCharacters && summary.updatedCharacters == null) add("characters")
+            if (filters.includeCharacters && summary.updatedCharacters == null) add(R.string.tile_characters)
             if (summary.updatedItems == null) {
-                if (filters.includeWeapons) add("weapons")
-                if (filters.includeArtifacts) add("artifacts")
-                if (filters.includeMaterials) add("materials")
+                if (filters.includeWeapons) add(R.string.tile_weapons)
+                if (filters.includeArtifacts) add(R.string.tile_artifacts)
+                if (filters.includeMaterials) add(R.string.tile_materials)
             }
         }
-        return if (missing.isEmpty()) null else ExportProblem.Missing(missing.joinToString(", "))
+        return if (missing.isEmpty()) null else ExportProblem.Missing(missing)
     }
 
     fun good(filters: ExportFilters): String? = NativeBridge.exportGood(filters.toJson())

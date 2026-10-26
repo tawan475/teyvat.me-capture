@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use super::Banner;
 use super::gacha_log::ApiRecord;
+use crate::i18n::{tr, trf};
 use crate::signin::{AuthError, TrackerAuth};
 
 /// Records per import request: the tracker's limit.
@@ -202,15 +203,15 @@ impl Tracker {
             .send(|| self.http.get(&url).query(&[("uid", uid)]))
             .await?;
         let answer: CursorAnswer = serde_json::from_str(&body)
-            .map_err(|e| format!("the tracker's wish cursor was unreadable: {e}"))?;
+            .map_err(|e| trf("the tracker's wish cursor was unreadable: {0}", &[&e]))?;
         let mut cursor = Cursor::default();
         for (banner, newest) in answer.newest {
             let (Ok(banner), Some(newest)) = (banner.parse::<Banner>(), newest) else {
                 continue;
             };
-            let newest = newest
-                .parse::<u64>()
-                .map_err(|_| format!("the tracker's wish cursor holds a bad id for {banner}"))?;
+            #[rustfmt::skip]
+            let bad_id = || trf("the tracker's wish cursor holds a bad id for {0}", &[&banner]);
+            let newest = newest.parse::<u64>().map_err(|_| bad_id())?;
             cursor.newest.insert(banner, newest);
         }
         if let serde_json::Value::Object(times) = answer.newest_time {
@@ -245,7 +246,7 @@ impl Tracker {
             let url = self.url("import");
             let answer = self.send(|| self.http.post(&url).json(&body)).await?;
             let answer: ImportAnswer = serde_json::from_str(&answer)
-                .map_err(|e| format!("the tracker's import answer was unreadable: {e}"))?;
+                .map_err(|e| trf("the tracker's import answer was unreadable: {0}", &[&e]))?;
             total.added += answer.added;
             total.known += answer.known;
         }
@@ -262,14 +263,14 @@ impl Tracker {
                     .header("x-import-key", key)
                     .send()
                     .await
-                    .map_err(|e| format!("could not reach the tracker: {}", e.without_url()))?,
+                    .map_err(|e| trf("could not reach the tracker: {0}", &[&e.without_url()]))?,
                 TrackerCredential::SignedIn { auth, base } => auth
                     .send_signed_in(&self.http, base, |token| build().bearer_auth(token))
                     .await
                     .map_err(|error| match error {
                         AuthError::SignedOut => describe_failure(401, "session_revoked", ""),
                         AuthError::Http { status, body } => failure(status.as_u16(), &body),
-                        other => format!("tracker: {other}"),
+                        other => trf("tracker: {0}", &[&other]),
                     })?,
             };
         let status = response.status();
@@ -292,32 +293,33 @@ fn failure(status: u16, body: &str) -> String {
 /// The status line's words for the tracker's error codes (the ones
 /// `/irminsul/import` uses, which the wish routes share), else the code and
 /// the tracker's own sentence.
+#[rustfmt::skip]
 fn describe_failure(status: u16, code: &str, message: &str) -> String {
     let known = match code {
         // Only after the refresh and retry did not help.
-        "token_expired" => "the sign-in expired; sign in again",
-        "session_revoked" => "signed out of the tracker; sign in again",
+        "token_expired" => tr("the sign-in expired; sign in again"),
+        "session_revoked" => tr("signed out of the tracker; sign in again"),
         "upload_target_missing" => {
-            "the upload target no longer exists; choose one with Configure on the tracker"
+            tr("the upload target no longer exists; choose one with Configure on the tracker")
         }
-        "uid_mismatch" => "the tracker account uploads go to has another UID",
-        "uploads_blocked" => "uploads are blocked for this tracker account",
-        "account_suspended" => "this tracker account is suspended",
-        "rate_limited" => "the tracker is busy; the next key or wish tries again",
-        "daily_upload_limit" => "today's upload limit on the tracker is reached",
-        "storage_quota" => "the tracker storage is full",
+        "uid_mismatch" => tr("the tracker account uploads go to has another UID"),
+        "uploads_blocked" => tr("uploads are blocked for this tracker account"),
+        "account_suspended" => tr("this tracker account is suspended"),
+        "rate_limited" => tr("the tracker is busy; the next key or wish tries again"),
+        "daily_upload_limit" => tr("today's upload limit on the tracker is reached"),
+        "storage_quota" => tr("the tracker storage is full"),
         _ => "",
     };
     if !known.is_empty() {
-        return format!("tracker: {known}");
+        return trf("tracker: {0}", &[&known]);
     }
     match (code.is_empty(), message.is_empty()) {
         (true, _) if status == 429 => {
-            "tracker: busy (HTTP 429); the next key or wish tries again".to_owned()
+            tr("tracker: busy (HTTP 429); the next key or wish tries again").to_owned()
         }
-        (true, _) => format!("tracker: HTTP {status}"),
-        (false, true) => format!("tracker: HTTP {status} {code}"),
-        (false, false) => format!("tracker: HTTP {status} {code} ({})", truncate(message, 160)),
+        (true, _) => trf("tracker: HTTP {0}", &[&status]),
+        (false, true) => trf("tracker: HTTP {0} {1}", &[&status, &code]),
+        (false, false) => trf("tracker: HTTP {0} {1} ({2})", &[&status, &code, &truncate(message, 160)]),
     }
 }
 

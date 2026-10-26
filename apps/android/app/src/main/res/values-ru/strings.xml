@@ -1,0 +1,247 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="about_fan_project">Неофициальный фан-проект, не связан с HoYoverse</string>
+
+    <!-- Common -->
+    <string name="back">Назад</string>
+    <string name="settings">Настройки</string>
+    <string name="more">Ещё</string>
+    <string name="try_again">Повторить</string>
+    <string name="open">Открыть</string>
+    <string name="open_anyway">Всё равно открыть</string>
+    <string name="cancel">Отмена</string>
+    <string name="just_now">только что</string>
+    <string name="minutes_ago">%d мин назад</string>
+    <string name="hours_ago">%d ч назад</string>
+
+    <!-- Hero -->
+    <string name="home_capture_off_title">Захват выключен</string>
+    <string name="home_capture_off_line">Включите его до игры</string>
+    <string name="home_start_capture">Начать захват</string>
+    <string name="home_starting_title">Запуск захвата</string>
+    <string name="home_starting_line">Через несколько секунд</string>
+    <string name="home_open_activity">Открыть журнал</string>
+    <string name="home_waiting_title">Ожидание игры</string>
+    <string name="home_waiting_line">Genshin не запущен · запустите его</string>
+    <string name="home_detected_title">Игра найдена</string>
+    <string name="home_detected_line">Запуск пойман · войдите в мир</string>
+    <string name="home_already_open_line">Уже открыта · войдите в мир</string>
+    <string name="home_open_before">Откройте до игры</string>
+    <string name="home_open_genshin">Открыть Genshin</string>
+    <string name="home_login_seen_title">Вход замечен</string>
+    <string name="home_login_seen_line">Поиск ключа сессии</string>
+    <string name="home_decrypting_title">Расшифровка данных</string>
+    <string name="home_decrypting_line">Ключ сессии найден · %s</string>
+    <string name="home_missed_title">Запуск пропущен</string>
+    <string name="home_missed_running_line">Genshin запущен раньше Teyvat.me</string>
+    <string name="home_missed_stopped_line">При входе захват был выключен</string>
+    <string name="home_reenter">Вернитесь на титульный экран и войдите снова</string>
+    <string name="home_force_stop">Остановить Genshin</string>
+    <string name="home_or_restart">или перезапустите Genshin</string>
+    <string name="home_key_lost_title">Вход не прочитан</string>
+    <string name="home_key_lost_line">Ключ сессии не найден</string>
+    <string name="home_data_kept">Захваченные данные сохранены</string>
+    <string name="step_vpn">Захват</string>
+    <string name="step_login">Вход</string>
+    <string name="step_key">Ключ</string>
+    <string name="vpn_not_allowed">VPN не разрешён</string>
+    <string name="game_data_failed">Не удалось загрузить данные игры</string>
+
+    <!-- Captured -->
+    <string name="captured">Захвачено</string>
+    <string name="captured_nothing">Пока ничего</string>
+    <string name="captured_ar">AR %1$d · %2$s</string>
+    <string name="captured_ar_only">AR %d</string>
+    <string name="tile_characters">Персонажи</string>
+    <string name="tile_weapons">Оружие</string>
+    <string name="tile_artifacts">Артефакты</string>
+    <string name="tile_materials">Материалы</string>
+    <string name="tile_achievements">Достижения</string>
+
+    <!-- Wish history -->
+    <string name="wish_title">История молитв</string>
+    <string name="wish_open_in_game">Сначала откройте историю молитв в игре</string>
+    <string name="wish_expired">Ключ истёк · снова откройте историю молитв в игре</string>
+    <string name="wish_ready">Ссылка готова для paimon.moe, StarDB…</string>
+    <string name="wish_reading">Чтение · %1$s, стр. %2$d · молитв: %3$s</string>
+    <string name="wish_read_done">✓ Прочитано в %1$s · молитв: %2$s</string>
+    <string name="wish_read_failed">Ошибка чтения · %s</string>
+    <string name="wish_copy_url">Копировать ссылку</string>
+    <string name="wish_save">Сохранить историю</string>
+    <string name="wish_save_description">История молитв в UIGF v4 JSON для paimon.moe, StarDB и других трекеров молитв</string>
+    <string name="wish_share">Поделиться историей</string>
+    <string name="wish_open_paimon">Открыть paimon.moe</string>
+    <string name="wish_open_stardb">Открыть StarDB</string>
+    <string name="wish_url_copied">Ссылка на молитвы скопирована</string>
+    <string name="wish_no_key">Нет ключа молитв · откройте историю молитв в игре</string>
+    <string name="wish_waiting_uid">Ожидание UID аккаунта</string>
+    <string name="wish_busy">Чтение уже идёт</string>
+    <string name="wish_saved">Сохранено: %s</string>
+    <string name="banner_301">Событие персонажа</string>
+    <string name="banner_302">Событие оружия</string>
+    <string name="banner_500">Хроники</string>
+    <string name="banner_200">Стандарт</string>
+    <string name="banner_100">Новичка</string>
+
+    <!-- Export -->
+    <string name="export_title">Экспорт</string>
+    <string name="export_open_folder">Открыть папку экспорта</string>
+    <string name="export_no_folder">Папки экспорта пока нет</string>
+    <string name="export_more">Другой экспорт</string>
+    <string name="export_save">Сохранить GOOD JSON</string>
+    <string name="export_save_description">GOOD JSON для Genshin Optimizer, teyvat.me и любых программ, читающих GOOD</string>
+    <string name="export_share">Поделиться</string>
+    <string name="export_copy">Копировать</string>
+    <string name="export_auto">Автоэкспорт</string>
+    <string name="export_auto_saved">✓ Сохранено в %1$s · %2$s</string>
+    <string name="export_auto_on">Вкл · %s</string>
+    <string name="export_auto_off">Выкл · выберите папку</string>
+    <string name="export_saved">Сохранено: %s</string>
+    <string name="export_save_failed">Не удалось сохранить</string>
+    <string name="export_copied">GOOD JSON скопирован</string>
+    <string name="export_too_big">Слишком большой · сохраните или поделитесь</string>
+    <string name="export_not_captured">Ещё не захвачено: %s</string>
+    <string name="export_nothing">Пока ничего не захвачено</string>
+    <string name="export_copy_achievements">Копировать достижения</string>
+    <string name="export_stardb">Достижения в StarDB</string>
+    <string name="export_seelie">Достижения в Seelie.me</string>
+    <string name="export_filters">Фильтры и автоэкспорт</string>
+    <string name="achievements_copied">Скопировано достижений: %d</string>
+    <string name="achievements_not_found">Достижения не найдены</string>
+
+    <!-- Tracker -->
+    <string name="tracker">Трекер</string>
+    <string name="optional">Необязательно</string>
+    <string name="tracker_sign_in">Войти</string>
+    <string name="tracker_signed_out_line">Войдите, чтобы загружать каждый захват</string>
+    <string name="tracker_signing_in">Вход · завершите в браузере</string>
+    <string name="tracker_signed_in_as">Вы вошли как %s</string>
+    <string name="tracker_target_uid">Загрузки идут в аккаунт с UID захвата</string>
+    <string name="tracker_target_account">Загрузки идут в %s</string>
+    <string name="tracker_upload_now">Загрузить сейчас</string>
+    <string name="tracker_uploading">Загрузка…</string>
+    <string name="tracker_uploaded">✓ Загружено в %s</string>
+    <string name="tracker_upload_failed">Загрузка не удалась · %s</string>
+    <string name="tracker_upload_switch">Загружать каждый захват</string>
+    <string name="tracker_upload_switch_line">Весь аккаунт, все фильтры выключены</string>
+    <string name="tracker_upload_off">Загрузки выключены</string>
+    <string name="tracker_configure">Выбрать, куда загружать</string>
+    <string name="tracker_configure_line">На сайте: Настройки › Устройства</string>
+    <string name="tracker_dashboard">Открыть панель</string>
+    <string name="tracker_sign_out">Выйти</string>
+    <string name="tracker_signed_in_toast">Вход в %s выполнен</string>
+    <string name="tracker_sign_in_failed">Не удалось войти · %s</string>
+    <string name="tracker_nothing_to_upload">Пока ничего не захвачено</string>
+    <string name="tracker_page_done">Вход выполнен. Возвращаемся в Teyvat.me…</string>
+    <string name="tracker_page_cancelled">Вход отменён. Эту вкладку можно закрыть.</string>
+    <string name="tracker_page_wrong">Эта ссылка не от этого входа.</string>
+
+    <!-- Footer / Activity -->
+    <string name="footer_idle">Готово</string>
+    <string name="activity">Журнал</string>
+    <string name="share_log">Поделиться логом</string>
+    <string name="activity_footnote">Хранится в памяти · «Поделиться логом» отправляет latest.log</string>
+    <string name="activity_empty">Пока ничего</string>
+    <string name="event_started">Запущено · данные игры %s</string>
+    <string name="event_stopped">Захват остановлен</string>
+    <string name="no_log">Лога пока нет</string>
+
+    <!-- First run -->
+    <string name="welcome_tagline">Ваш аккаунт Genshin, прочитанный из трафика самой игры и сохранённый в GOOD JSON</string>
+    <string name="welcome_only_genshin">Только Genshin</string>
+    <string name="welcome_only_genshin_line">Другие приложения идут мимо VPN</string>
+    <string name="welcome_read_only">Только чтение</string>
+    <string name="welcome_read_only_line">Пакеты игры проходят без изменений</string>
+    <string name="welcome_on_phone">Остаётся на телефоне</string>
+    <string name="welcome_on_phone_line">Ничего не загружается, пока вы этим не поделитесь</string>
+    <string name="welcome_before_game">Откройте до игры</string>
+    <string name="welcome_before_game_line">Приложение должно увидеть вход в Genshin</string>
+    <string name="get_started">Начать</string>
+    <string name="setup_title">Перед игрой</string>
+    <string name="setup_choose_folder">Выбрать папку</string>
+    <string name="setup_choose_folder_line">Один файл GOOD JSON на каждый захват</string>
+    <string name="always_on_vpn">Постоянная VPN</string>
+    <string name="always_on_vpn_line">Захват работает ещё до игры</string>
+    <string name="always_on_vpn_path">Настройки › Сеть › VPN › Teyvat.me Capture</string>
+    <string name="open_vpn_settings">Открыть настройки VPN</string>
+    <string name="notifications">Уведомления</string>
+    <string name="notifications_line">Статус захвата во время игры</string>
+    <string name="allow">Разрешить</string>
+    <string name="setup_vpn_dialog">Android попросит разрешить VPN: только так приложение может читать трафик другого приложения</string>
+
+    <!-- Settings -->
+    <string name="section_app">Приложение</string>
+    <string name="theme">Тема</string>
+    <string name="theme_system">Системная</string>
+    <string name="theme_light">Светлая</string>
+    <string name="theme_dark">Тёмная</string>
+    <string name="section_export">Экспорт</string>
+    <string name="section_tracker">Трекер</string>
+    <string name="section_diagnostics">Диагностика</string>
+    <string name="record_capture">Записывать захват</string>
+    <string name="record_capture_line">Пакеты игры для отчёта об ошибке</string>
+    <string name="about">О приложении</string>
+
+    <!-- Settings › Export -->
+    <string name="export_auto_section">Автоэкспорт</string>
+    <string name="export_auto_switch">Сохранять каждый захват в папку</string>
+    <string name="export_auto_switch_line">GOOD JSON, один файл на захват</string>
+    <string name="export_choose_another">Выбрать другую папку</string>
+    <string name="export_use_downloads">Использовать Download/Teyvat.me</string>
+    <string name="filters">Фильтры</string>
+    <string name="filter_4th_line">Заполнять 4-ю строку у 5★ с 3 статами</string>
+    <string name="filter_4th_line_line">Для Genshin Optimizer</string>
+    <string name="filters_footnote">В трекер всегда загружается всё</string>
+    <string name="filter_all">Все</string>
+    <string name="min_level">Мин. уровень</string>
+    <string name="min_ascension">Мин. возвышение</string>
+    <string name="min_constellation">Мин. созвездие</string>
+    <string name="min_refinement">Мин. пробуждение</string>
+    <string name="min_rarity">Мин. редкость</string>
+    <string name="decrease">Уменьшить</string>
+    <string name="increase">Увеличить</string>
+
+    <!-- teyvat.me page -->
+    <string name="teyvat_not_connected">Вход не выполнен</string>
+    <string name="teyvat_browser_line">Вход выполняется в браузере</string>
+
+    <!-- About -->
+    <string name="about_version">%1$s · данные игры %2$s</string>
+    <string name="source_code">Исходный код</string>
+    <string name="teyvat_site_line">Сайт трекера</string>
+    <string name="report_bug">Сообщить об ошибке</string>
+    <string name="report_bug_line">Новый issue, приложите latest.log</string>
+    <string name="thanks_and_licences">Благодарности и лицензии</string>
+    <string name="thanks">Благодарности</string>
+    <string name="licences">Лицензии открытого ПО</string>
+    <string name="third_party_notices">Сторонние компоненты</string>
+    <string name="hoyoverse_names">Genshin Impact и его названия принадлежат HoYoverse</string>
+
+    <!-- Notification -->
+    <string name="channel_capture">Захват</string>
+    <string name="channel_capture_line">Показывается, пока Teyvat.me захватывает игру</string>
+    <string name="channel_alerts">Предупреждения</string>
+    <string name="channel_alerts_line">Проблемы, которым нужно ваше внимание</string>
+    <string name="stop_capture">Остановить захват</string>
+    <string name="stop">Стоп</string>
+    <string name="share_good">Поделиться GOOD JSON</string>
+    <string name="alert_capture_stopped">Захват остановлен</string>
+    <string name="alert_vpn_taken">Включился другой VPN</string>
+    <!-- Updates -->
+    <string name="section_updates">Обновления</string>
+    <string name="update_auto">Обновлять автоматически</string>
+    <string name="update_auto_line">Новые релизы с GitHub, проверенные по контрольным суммам</string>
+    <string name="update_check">Проверить обновления</string>
+    <string name="update_checking">Проверка…</string>
+    <string name="update_up_to_date">Последняя версия · %s</string>
+    <string name="update_ready">Обновление %s готово</string>
+    <string name="update_waits_capture">Установится после остановки захвата</string>
+    <string name="update_waits_app">Установится, когда вы выйдете из приложения</string>
+    <string name="update_install_now">Установить сейчас</string>
+    <string name="update_tap_to_install">Нажмите, чтобы установить</string>
+    <string name="update_downloading">Загрузка %1$s · %2$d%%</string>
+    <string name="update_installing">Установка %s…</string>
+    <string name="update_allow">Разрешить установку</string>
+    <string name="update_allow_line">Android спросит один раз: Установка неизвестных приложений</string>
+    <string name="update_failed">Ошибка обновления · %s</string>
+</resources>

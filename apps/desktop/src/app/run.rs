@@ -15,6 +15,7 @@ use egui::{Context, Frame};
 use super::{HIDDEN_TO_TRAY, Onboarding, Page, StartWindow, TeyvatmeApp, View};
 use crate::activity::{Event, Kind, Topic};
 use crate::game_watch::{GameStatus, MissedLaunch};
+use crate::i18n::{tr, trf};
 use crate::ui::toast::Action;
 use crate::{Message, State};
 
@@ -201,12 +202,13 @@ impl TeyvatmeApp {
             && self.last_game_status != GameStatus::Decoding
         {
             self.decoding_since = Some(chrono::Local::now());
-            self.toasts.success("Session key found · reading your data");
+            self.toasts
+                .success(tr("Session key found · reading your data"));
         }
         if app_state.game_status == GameStatus::LaunchCaptured
             && self.last_game_status == GameStatus::NotRunning
         {
-            self.toasts.info("Genshin detected · enter the world");
+            self.toasts.info(tr("Genshin detected · enter the world"));
         }
         self.last_game_status = app_state.game_status;
 
@@ -214,19 +216,19 @@ impl TeyvatmeApp {
             match rx.try_recv() {
                 Ok(0) => {
                     self.game_kill_rx = None;
-                    self.toasts.info("No running Genshin to close");
+                    self.toasts.info(tr("No running Genshin to close"));
                 }
                 Ok(killed) => {
                     self.game_kill_rx = None;
                     self.toasts.success(if killed == 1 {
-                        "Genshin closed. Start it again to capture.".to_owned()
+                        tr("Genshin closed. Start it again to capture.").to_owned()
                     } else {
-                        format!("Closed {killed} Genshin processes. Start it again to capture.")
+                        closed_many(killed)
                     });
                 }
                 Err(tokio::sync::oneshot::error::TryRecvError::Closed) => {
                     self.game_kill_rx = None;
-                    self.toasts.error("Can't reach the capture backend");
+                    self.toasts.error(tr("Can't reach the capture backend"));
                 }
                 Err(tokio::sync::oneshot::error::TryRecvError::Empty) => {}
             }
@@ -237,10 +239,10 @@ impl TeyvatmeApp {
         let (tx, rx) = tokio::sync::oneshot::channel();
         if let Err(e) = self.ui_message_tx.send(Message::KillGame(tx)) {
             tracing::error!("Unable to send kill game message: {e}");
-            self.toasts.error("Can't reach the capture backend");
+            self.toasts.error(tr("Can't reach the capture backend"));
         } else {
             self.game_kill_rx = Some(rx);
-            self.toasts.info("Closing Genshin…");
+            self.toasts.info(tr("Closing Genshin…"));
         }
     }
 
@@ -294,7 +296,7 @@ impl TeyvatmeApp {
     /// The tracker's host, as the UI names it (`teyvat.me`).
     pub(super) fn tracker_host(&self) -> String {
         crate::signin::host_of(&self.saved_state.tracker_api_url)
-            .unwrap_or_else(|| "the tracker".to_owned())
+            .unwrap_or_else(|| tr("the tracker").to_owned())
     }
 
     /// The tracker's website: the API address without its `/api`.
@@ -315,4 +317,10 @@ impl TeyvatmeApp {
                 .and_then(|account| account.dashboard_url.clone()),
         }
     }
+}
+
+/// The toast after closing more than one Genshin process.
+#[rustfmt::skip]
+fn closed_many(killed: impl std::fmt::Display) -> String {
+    trf("Closed {0} Genshin processes. Start it again to capture.", &[&killed])
 }

@@ -1,0 +1,247 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="about_fan_project">Dự án fan không chính thức, không liên kết với HoYoverse</string>
+
+    <!-- Common -->
+    <string name="back">Quay lại</string>
+    <string name="settings">Thiết Lập</string>
+    <string name="more">Thêm</string>
+    <string name="try_again">Thử lại</string>
+    <string name="open">Mở</string>
+    <string name="open_anyway">Vẫn mở</string>
+    <string name="cancel">Hủy</string>
+    <string name="just_now">vừa xong</string>
+    <string name="minutes_ago">%d phút trước</string>
+    <string name="hours_ago">%d giờ trước</string>
+
+    <!-- Hero -->
+    <string name="home_capture_off_title">Đang tắt ghi</string>
+    <string name="home_capture_off_line">Bật trước khi vào game</string>
+    <string name="home_start_capture">Bắt đầu ghi</string>
+    <string name="home_starting_title">Đang bật ghi</string>
+    <string name="home_starting_line">Xong sau vài giây</string>
+    <string name="home_open_activity">Mở nhật ký</string>
+    <string name="home_waiting_title">Đang chờ game</string>
+    <string name="home_waiting_line">Genshin chưa chạy · mở game ngay</string>
+    <string name="home_detected_title">Đã thấy game</string>
+    <string name="home_detected_line">Đã ghi lúc khởi động · vào thế giới ngay</string>
+    <string name="home_already_open_line">Game đã mở · vào thế giới ngay</string>
+    <string name="home_open_before">Mở trước khi vào game</string>
+    <string name="home_open_genshin">Mở Genshin</string>
+    <string name="home_login_seen_title">Đã thấy đăng nhập</string>
+    <string name="home_login_seen_line">Đang tìm khóa phiên</string>
+    <string name="home_decrypting_title">Đang giải mã dữ liệu</string>
+    <string name="home_decrypting_line">Đã tìm thấy khóa phiên · %s</string>
+    <string name="home_missed_title">Lỡ lúc khởi động</string>
+    <string name="home_missed_running_line">Genshin mở trước Teyvat.me</string>
+    <string name="home_missed_stopped_line">Lúc bạn đăng nhập, ghi đang tắt</string>
+    <string name="home_reenter">Về màn hình chờ rồi vào lại</string>
+    <string name="home_force_stop">Buộc dừng Genshin</string>
+    <string name="home_or_restart">hoặc khởi động lại Genshin</string>
+    <string name="home_key_lost_title">Không đọc được đăng nhập</string>
+    <string name="home_key_lost_line">Không tìm thấy khóa phiên</string>
+    <string name="home_data_kept">Dữ liệu đã ghi vẫn được giữ</string>
+    <string name="step_vpn">Ghi</string>
+    <string name="step_login">Đăng nhập</string>
+    <string name="step_key">Khóa</string>
+    <string name="vpn_not_allowed">VPN chưa được cho phép</string>
+    <string name="game_data_failed">Không tải được dữ liệu game</string>
+
+    <!-- Captured -->
+    <string name="captured">Đã ghi</string>
+    <string name="captured_nothing">Chưa có gì</string>
+    <string name="captured_ar">AR %1$d · %2$s</string>
+    <string name="captured_ar_only">AR %d</string>
+    <string name="tile_characters">Nhân Vật</string>
+    <string name="tile_weapons">Vũ Khí</string>
+    <string name="tile_artifacts">Thánh Di Vật</string>
+    <string name="tile_materials">Nguyên Liệu</string>
+    <string name="tile_achievements">Thành Tựu</string>
+
+    <!-- Wish history -->
+    <string name="wish_title">Lịch sử cầu nguyện</string>
+    <string name="wish_open_in_game">Hãy mở lịch sử cầu nguyện trong game trước</string>
+    <string name="wish_expired">Khóa đã hết hạn · mở lại lịch sử cầu nguyện trong game</string>
+    <string name="wish_ready">URL sẵn sàng cho paimon.moe, StarDB…</string>
+    <string name="wish_reading">Đang đọc · %1$s, trang %2$d · %3$s lượt</string>
+    <string name="wish_read_done">✓ Đã đọc lúc %1$s · %2$s lượt</string>
+    <string name="wish_read_failed">Đọc thất bại · %s</string>
+    <string name="wish_copy_url">Sao chép URL</string>
+    <string name="wish_save">Lưu lịch sử</string>
+    <string name="wish_save_description">Lịch sử cầu nguyện dạng UIGF v4 JSON, đọc được bằng paimon.moe, StarDB và các trình theo dõi cầu nguyện khác</string>
+    <string name="wish_share">Chia sẻ lịch sử</string>
+    <string name="wish_open_paimon">Mở paimon.moe</string>
+    <string name="wish_open_stardb">Mở StarDB</string>
+    <string name="wish_url_copied">Đã sao chép URL cầu nguyện</string>
+    <string name="wish_no_key">Chưa có khóa cầu nguyện · mở lịch sử cầu nguyện trong game</string>
+    <string name="wish_waiting_uid">Đang chờ UID của tài khoản</string>
+    <string name="wish_busy">Đang đọc rồi</string>
+    <string name="wish_saved">Đã lưu %s</string>
+    <string name="banner_301">Cầu Nguyện Nhân Vật</string>
+    <string name="banner_302">Cầu Nguyện Vũ Khí</string>
+    <string name="banner_500">Sử Ký</string>
+    <string name="banner_200">Thường</string>
+    <string name="banner_100">Tân Thủ</string>
+
+    <!-- Export -->
+    <string name="export_title">Xuất</string>
+    <string name="export_open_folder">Mở thư mục xuất</string>
+    <string name="export_no_folder">Chưa có thư mục xuất</string>
+    <string name="export_more">Cách xuất khác</string>
+    <string name="export_save">Lưu GOOD JSON</string>
+    <string name="export_save_description">GOOD JSON, đọc được bằng Genshin Optimizer, teyvat.me và mọi trình đọc GOOD</string>
+    <string name="export_share">Chia sẻ</string>
+    <string name="export_copy">Sao chép</string>
+    <string name="export_auto">Tự động xuất</string>
+    <string name="export_auto_saved">✓ Đã lưu lúc %1$s · %2$s</string>
+    <string name="export_auto_on">Bật · %s</string>
+    <string name="export_auto_off">Tắt · chọn thư mục</string>
+    <string name="export_saved">Đã lưu %s</string>
+    <string name="export_save_failed">Lưu thất bại</string>
+    <string name="export_copied">Đã sao chép GOOD JSON</string>
+    <string name="export_too_big">Quá lớn để sao chép · hãy Lưu hoặc Chia sẻ</string>
+    <string name="export_not_captured">Chưa ghi được: %s</string>
+    <string name="export_nothing">Chưa ghi được gì</string>
+    <string name="export_copy_achievements">Sao chép thành tựu</string>
+    <string name="export_stardb">Thành tựu sang StarDB</string>
+    <string name="export_seelie">Thành tựu sang Seelie.me</string>
+    <string name="export_filters">Bộ lọc và tự động xuất</string>
+    <string name="achievements_copied">Đã sao chép %d thành tựu</string>
+    <string name="achievements_not_found">Không tìm thấy thành tựu</string>
+
+    <!-- Tracker -->
+    <string name="tracker">Tracker</string>
+    <string name="optional">Tùy chọn</string>
+    <string name="tracker_sign_in">Đăng nhập</string>
+    <string name="tracker_signed_out_line">Đăng nhập để tải lên mỗi bản ghi</string>
+    <string name="tracker_signing_in">Đang đăng nhập · hoàn tất trong trình duyệt</string>
+    <string name="tracker_signed_in_as">Đã đăng nhập là %s</string>
+    <string name="tracker_target_uid">Tải lên vào tài khoản có UID của bản ghi</string>
+    <string name="tracker_target_account">Tải lên vào %s</string>
+    <string name="tracker_upload_now">Tải lên ngay</string>
+    <string name="tracker_uploading">Đang tải lên…</string>
+    <string name="tracker_uploaded">✓ Đã tải lên lúc %s</string>
+    <string name="tracker_upload_failed">Tải lên thất bại · %s</string>
+    <string name="tracker_upload_switch">Tải lên mỗi bản ghi</string>
+    <string name="tracker_upload_switch_line">Toàn bộ tài khoản, tắt mọi bộ lọc</string>
+    <string name="tracker_upload_off">Đã tắt tải lên</string>
+    <string name="tracker_configure">Chọn nơi tải lên</string>
+    <string name="tracker_configure_line">Trên trang web, Thiết Lập › Thiết bị</string>
+    <string name="tracker_dashboard">Mở bảng điều khiển</string>
+    <string name="tracker_sign_out">Đăng xuất</string>
+    <string name="tracker_signed_in_toast">Đã đăng nhập vào %s</string>
+    <string name="tracker_sign_in_failed">Đăng nhập thất bại · %s</string>
+    <string name="tracker_nothing_to_upload">Chưa ghi được gì</string>
+    <string name="tracker_page_done">Đã đăng nhập. Đang quay lại Teyvat.me…</string>
+    <string name="tracker_page_cancelled">Đã hủy đăng nhập. Bạn có thể đóng tab này.</string>
+    <string name="tracker_page_wrong">Liên kết này không thuộc lần đăng nhập này.</string>
+
+    <!-- Footer / Activity -->
+    <string name="footer_idle">Sẵn sàng</string>
+    <string name="activity">Nhật ký</string>
+    <string name="share_log">Chia sẻ log</string>
+    <string name="activity_footnote">Lưu trong bộ nhớ · Chia sẻ log sẽ gửi latest.log</string>
+    <string name="activity_empty">Chưa có gì</string>
+    <string name="event_started">Đã bắt đầu · dữ liệu game %s</string>
+    <string name="event_stopped">Đã dừng ghi</string>
+    <string name="no_log">Chưa có log</string>
+
+    <!-- First run -->
+    <string name="welcome_tagline">Tài khoản Genshin của bạn, đọc từ chính lưu lượng của game và lưu thành GOOD JSON</string>
+    <string name="welcome_only_genshin">Chỉ Genshin</string>
+    <string name="welcome_only_genshin_line">Ứng dụng khác không đi qua VPN</string>
+    <string name="welcome_read_only">Chỉ đọc</string>
+    <string name="welcome_read_only_line">Gói tin của game đi qua nguyên vẹn</string>
+    <string name="welcome_on_phone">Chỉ ở trên điện thoại này</string>
+    <string name="welcome_on_phone_line">Không tải gì lên trừ khi bạn chia sẻ</string>
+    <string name="welcome_before_game">Mở trước khi vào game</string>
+    <string name="welcome_before_game_line">Ứng dụng phải thấy lúc Genshin đăng nhập</string>
+    <string name="get_started">Bắt đầu</string>
+    <string name="setup_title">Trước khi chơi</string>
+    <string name="setup_choose_folder">Chọn thư mục</string>
+    <string name="setup_choose_folder_line">Mỗi bản ghi một tệp GOOD JSON</string>
+    <string name="always_on_vpn">VPN luôn bật</string>
+    <string name="always_on_vpn_line">Ghi sẵn sàng trước khi vào game</string>
+    <string name="always_on_vpn_path">Cài đặt › Mạng › VPN › Teyvat.me Capture</string>
+    <string name="open_vpn_settings">Mở cài đặt VPN</string>
+    <string name="notifications">Thông báo</string>
+    <string name="notifications_line">Trạng thái ghi khi bạn chơi</string>
+    <string name="allow">Cho phép</string>
+    <string name="setup_vpn_dialog">Android sẽ hỏi cho phép VPN: đó là cách một ứng dụng được đọc lưu lượng của ứng dụng khác</string>
+
+    <!-- Settings -->
+    <string name="section_app">Ứng dụng</string>
+    <string name="theme">Chủ đề</string>
+    <string name="theme_system">Theo hệ thống</string>
+    <string name="theme_light">Sáng</string>
+    <string name="theme_dark">Tối</string>
+    <string name="section_export">Xuất</string>
+    <string name="section_tracker">Tracker</string>
+    <string name="section_diagnostics">Chẩn đoán</string>
+    <string name="record_capture">Lưu gói tin</string>
+    <string name="record_capture_line">Gói tin game, để báo lỗi</string>
+    <string name="about">Giới thiệu</string>
+
+    <!-- Settings › Export -->
+    <string name="export_auto_section">Tự động xuất</string>
+    <string name="export_auto_switch">Lưu mỗi bản ghi vào thư mục</string>
+    <string name="export_auto_switch_line">GOOD JSON, mỗi bản ghi một tệp</string>
+    <string name="export_choose_another">Chọn thư mục khác</string>
+    <string name="export_use_downloads">Dùng Download/Teyvat.me</string>
+    <string name="filters">Bộ lọc</string>
+    <string name="filter_4th_line">Điền dòng thứ 4 cho 5★ có 3 dòng</string>
+    <string name="filter_4th_line_line">Cho Genshin Optimizer</string>
+    <string name="filters_footnote">Tải lên tracker luôn gồm mọi thứ</string>
+    <string name="filter_all">Tất cả</string>
+    <string name="min_level">Cấp tối thiểu</string>
+    <string name="min_ascension">Đột Phá tối thiểu</string>
+    <string name="min_constellation">Cung Mệnh tối thiểu</string>
+    <string name="min_refinement">Tinh Luyện tối thiểu</string>
+    <string name="min_rarity">Độ Hiếm tối thiểu</string>
+    <string name="decrease">Giảm</string>
+    <string name="increase">Tăng</string>
+
+    <!-- teyvat.me page -->
+    <string name="teyvat_not_connected">Chưa đăng nhập</string>
+    <string name="teyvat_browser_line">Bạn đăng nhập trong trình duyệt</string>
+
+    <!-- About -->
+    <string name="about_version">%1$s · dữ liệu game %2$s</string>
+    <string name="source_code">Mã nguồn</string>
+    <string name="teyvat_site_line">Trang web tracker</string>
+    <string name="report_bug">Báo lỗi</string>
+    <string name="report_bug_line">Tạo issue mới, đính kèm latest.log</string>
+    <string name="thanks_and_licences">Cảm ơn và giấy phép</string>
+    <string name="thanks">Cảm ơn</string>
+    <string name="licences">Giấy phép mã nguồn mở</string>
+    <string name="third_party_notices">Thông báo bên thứ ba</string>
+    <string name="hoyoverse_names">Genshin Impact và các tên trong game thuộc về HoYoverse</string>
+
+    <!-- Notification -->
+    <string name="channel_capture">Ghi</string>
+    <string name="channel_capture_line">Hiện khi Teyvat.me đang ghi game</string>
+    <string name="channel_alerts">Cảnh báo</string>
+    <string name="channel_alerts_line">Sự cố cần bạn xử lý</string>
+    <string name="stop_capture">Dừng ghi</string>
+    <string name="stop">Dừng</string>
+    <string name="share_good">Chia sẻ GOOD JSON</string>
+    <string name="alert_capture_stopped">Đã dừng ghi</string>
+    <string name="alert_vpn_taken">Một VPN khác đã thay thế</string>
+    <!-- Updates -->
+    <string name="section_updates">Cập nhật</string>
+    <string name="update_auto">Tự động cập nhật</string>
+    <string name="update_auto_line">Bản phát hành mới từ GitHub, đã đối chiếu checksum</string>
+    <string name="update_check">Kiểm tra cập nhật</string>
+    <string name="update_checking">Đang kiểm tra…</string>
+    <string name="update_up_to_date">Đã là bản mới nhất · %s</string>
+    <string name="update_ready">Bản cập nhật %s đã sẵn sàng</string>
+    <string name="update_waits_capture">Cài đặt khi dừng ghi</string>
+    <string name="update_waits_app">Cài đặt khi bạn rời ứng dụng</string>
+    <string name="update_install_now">Cài đặt ngay</string>
+    <string name="update_tap_to_install">Chạm để cài đặt</string>
+    <string name="update_downloading">Đang tải xuống %1$s · %2$d%%</string>
+    <string name="update_installing">Đang cài đặt %s…</string>
+    <string name="update_allow">Cho phép cài đặt</string>
+    <string name="update_allow_line">Android hỏi một lần: Cài đặt ứng dụng không xác định</string>
+    <string name="update_failed">Cập nhật thất bại · %s</string>
+</resources>

@@ -17,7 +17,6 @@
     <string name="just_now">just now</string>
     <string name="minutes_ago">%d min ago</string>
     <string name="hours_ago">%d h ago</string>
-    <string name="not_in_this_version">Not in this version yet</string>
 
     <!-- Hero -->
     <string name="home_capture_off_title">Capture off</string>
@@ -114,12 +113,32 @@
     <string name="achievements_copied">%d achievements copied</string>
     <string name="achievements_not_found">Achievements not found</string>
 
-    <!-- Destinations -->
-    <string name="destinations">Destinations</string>
+    <!-- Tracker -->
+    <string name="tracker">Tracker</string>
     <string name="optional">Optional</string>
-    <string name="destination_line">Upload each capture · live sync</string>
-    <string name="connect">Connect</string>
-    <string name="teyvat_settings">teyvat.me settings</string>
+    <string name="tracker_sign_in">Sign in</string>
+    <string name="tracker_signed_out_line">Sign in to upload each capture</string>
+    <string name="tracker_signing_in">Signing in · finish in the browser</string>
+    <string name="tracker_signed_in_as">Signed in as %s</string>
+    <string name="tracker_target_uid">Uploads go to the account with the capture\'s UID</string>
+    <string name="tracker_target_account">Uploads go to %s</string>
+    <string name="tracker_upload_now">Upload now</string>
+    <string name="tracker_uploading">Uploading…</string>
+    <string name="tracker_uploaded">✓ Uploaded %s</string>
+    <string name="tracker_upload_failed">Upload failed · %s</string>
+    <string name="tracker_upload_switch">Upload each capture</string>
+    <string name="tracker_upload_switch_line">The whole account, every filter off</string>
+    <string name="tracker_upload_off">Uploads off</string>
+    <string name="tracker_configure">Choose where uploads go</string>
+    <string name="tracker_configure_line">On the website, Settings › Devices</string>
+    <string name="tracker_dashboard">Open dashboard</string>
+    <string name="tracker_sign_out">Sign out</string>
+    <string name="tracker_signed_in_toast">Signed in to %s</string>
+    <string name="tracker_sign_in_failed">Sign-in failed · %s</string>
+    <string name="tracker_nothing_to_upload">Nothing captured yet</string>
+    <string name="tracker_page_done">Signed in. Back to Teyvat.me…</string>
+    <string name="tracker_page_cancelled">Sign-in cancelled. You can close this tab.</string>
+    <string name="tracker_page_wrong">This link is not from this sign-in.</string>
 
     <!-- Footer / Activity -->
     <string name="footer_idle">Ready</string>
@@ -161,7 +180,7 @@
     <string name="theme_light">Light</string>
     <string name="theme_dark">Dark</string>
     <string name="section_export">Export</string>
-    <string name="section_destinations">Destinations</string>
+    <string name="section_tracker">Tracker</string>
     <string name="section_diagnostics">Diagnostics</string>
     <string name="record_capture">Record capture</string>
     <string name="record_capture_line">Game packets, for a bug report</string>
@@ -176,7 +195,7 @@
     <string name="filters">Filters</string>
     <string name="filter_4th_line">Fill the 4th line of 5★ 3-liners</string>
     <string name="filter_4th_line_line">For Genshin Optimizer</string>
-    <string name="filters_footnote">Destination uploads always include everything</string>
+    <string name="filters_footnote">Tracker uploads always include everything</string>
     <string name="filter_all">All</string>
     <string name="min_level">Min level</string>
     <string name="min_ascension">Min ascension</string>
@@ -187,16 +206,13 @@
     <string name="increase">Increase</string>
 
     <!-- teyvat.me page -->
-    <string name="teyvat_not_connected">Not connected</string>
+    <string name="teyvat_not_connected">Not signed in</string>
     <string name="teyvat_browser_line">You sign in in your browser</string>
-    <string name="teyvat_uploads_line">Uploads turn on when you connect</string>
-    <string name="advanced">Advanced</string>
-    <string name="server_address">Server address</string>
 
     <!-- About -->
     <string name="about_version">%1$s · game data %2$s</string>
     <string name="source_code">Source code</string>
-    <string name="teyvat_site_line">The tracker website, an optional destination</string>
+    <string name="teyvat_site_line">The tracker website</string>
     <string name="report_bug">Report a bug</string>
     <string name="report_bug_line">New issue, attach latest.log</string>
     <string name="thanks_and_licences">Thanks and licences</string>
@@ -215,4 +231,22 @@
     <string name="share_good">Share GOOD JSON</string>
     <string name="alert_capture_stopped">Capture stopped</string>
     <string name="alert_vpn_taken">Another VPN took over</string>
+
+    <!-- Updates -->
+    <string name="section_updates">Updates</string>
+    <string name="update_auto">Update automatically</string>
+    <string name="update_auto_line">New releases from GitHub, checked against their checksums</string>
+    <string name="update_check">Check for updates</string>
+    <string name="update_checking">Checking…</string>
+    <string name="update_up_to_date">Up to date · %s</string>
+    <string name="update_ready">Update %s ready</string>
+    <string name="update_waits_capture">Installs when capture stops</string>
+    <string name="update_waits_app">Installs when you leave the app</string>
+    <string name="update_install_now">Install now</string>
+    <string name="update_tap_to_install">Tap to install</string>
+    <string name="update_downloading">Downloading %1$s · %2$d%%</string>
+    <string name="update_installing">Installing %s…</string>
+    <string name="update_allow">Allow installs</string>
+    <string name="update_allow_line">Android asks once: Install unknown apps</string>
+    <string name="update_failed">Update failed · %s</string>
 </resources>

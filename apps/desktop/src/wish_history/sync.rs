@@ -14,6 +14,7 @@ use super::run::{PAGES_PER_RUN, Partial, Run, RunError, RunReport};
 use super::tracker::Tracker;
 use super::{BANNERS, Banner, Trigger, credential_for};
 use crate::app::SavedAppState;
+use crate::i18n::{tr, trf};
 use crate::signin::TrackerAuth;
 
 /// How long after a wish its banner is synced. The history shows a wish a
@@ -147,23 +148,33 @@ pub(crate) struct SyncStatus {
 
 impl SyncStatus {
     /// One compact line, or `None` before anything happened.
+    #[rustfmt::skip]
     pub(crate) fn line(&self) -> Option<String> {
         match &self.phase {
             Phase::Syncing { banner, page } => {
-                return Some(format!("Syncing wishes: banner {banner}, page {page}…"));
+                return Some(trf("Syncing wishes: banner {0}, page {1}…", &[&banner, &page]));
             }
-            Phase::Off(why) => return Some(format!("Not synced: {why}")),
+            Phase::Off(why) => return Some(trf("Not synced: {0}", &[why])),
             Phase::Idle => {}
         }
         let last = self.last.as_ref()?;
         let at = last.at.format("%H:%M");
         Some(match &last.outcome {
-            Outcome::Sent { added, .. } => format!("Synced {at} · added {added}"),
-            Outcome::UpToDate => format!("Synced {at} · up to date"),
-            Outcome::Unfinished => format!("Synced {at} · more to come"),
-            Outcome::KeyExpired => format!("Sync {at}: the key expired"),
-            Outcome::Failed(why) => format!("Sync failed {at}: {why}"),
+            Outcome::Sent { added, .. } => trf("Synced {0} · added {1}", &[&at, &added]),
+            Outcome::UpToDate => trf("Synced {0} · up to date", &[&at]),
+            Outcome::Unfinished => trf("Synced {0} · more to come", &[&at]),
+            Outcome::KeyExpired => trf("Sync {0}: the key expired", &[&at]),
+            Outcome::Failed(why) => trf("Sync failed {0}: {1}", &[&at, why]),
         })
+    }
+
+    /// Whether [`SyncStatus::line`] tells of a failure (an expired key or a
+    /// failed sync), which the wish card shows in red.
+    pub(crate) fn is_problem(&self) -> bool {
+        matches!(self.phase, Phase::Idle)
+            && self.last.as_ref().is_some_and(|last| {
+                matches!(last.outcome, Outcome::KeyExpired | Outcome::Failed(_))
+            })
     }
 }
 
@@ -299,10 +310,10 @@ impl WishSync {
     fn blocked(&self) -> Option<&'static str> {
         let state = self.saved_state_rx.borrow();
         if !state.send_wishes {
-            return Some("sending wishes is off");
+            return Some(tr("sending wishes is off"));
         }
         if !super::sync_enabled(&state) || credential_for(&state, &self.auth).is_none() {
-            return Some("no tracker sign-in or verified import key");
+            return Some(tr("no tracker sign-in or verified import key"));
         }
         None
     }
@@ -426,9 +437,11 @@ impl WishSync {
         };
         if report.imported.added > 0 {
             // Routine: the activity line, not a toast.
+            #[rustfmt::skip]
+            let text = trf("{0} new wishes sent to the tracker", &[&report.imported.added]);
             let _ = self.toast_tx.send(crate::activity::Event::ok(
                 crate::activity::Topic::Wishes,
-                format!("{} new wishes sent to the tracker", report.imported.added),
+                text,
             ));
         }
         self.status_tx.send_replace(SyncStatus {

@@ -176,6 +176,7 @@ pub fn ensure_admin() {
 
 #[cfg(unix)]
 fn show_packet_capture_permissions_missing_dialog() {
+    use crate::i18n::tr;
     use crate::ui::widgets::{self, ButtonKind, secondary_text, title_text};
 
     let options = eframe::NativeOptions {
@@ -192,27 +193,34 @@ fn show_packet_capture_permissions_missing_dialog() {
         .map(|mut path| path.as_mut_os_string().to_string_lossy().to_string())
         .unwrap_or("./teyvatme".to_owned());
 
+    // The system's language, before the texts below are picked.
+    let lang = crate::i18n::set(None);
+
     // Each way in: what it does, how often, and the command to copy.
     let mut ways: Vec<(&str, &str, String)> = Vec::new();
     #[cfg(target_os = "linux")]
     ways.push((
-        "Let Teyvat.me capture",
-        "Once, and again after every update",
+        tr("Let Teyvat.me capture"),
+        tr("Once, and again after every update"),
         format!("sudo setcap cap_net_raw=ep '{exe_path}' && '{exe_path}'"),
     ));
     #[cfg(target_os = "macos")]
     ways.push((
-        "Open the capture devices",
-        "Once, and again after every restart",
+        tr("Open the capture devices"),
+        tr("Once, and again after every restart"),
         "sudo chmod 644 /dev/bpf*".to_owned(),
     ));
-    ways.push(("Run it as root", "Every time", format!("sudo '{exe_path}'")));
+    ways.push((
+        tr("Run it as root"),
+        tr("Every time"),
+        format!("sudo '{exe_path}'"),
+    ));
 
     let mut themed = false;
     let _ = eframe::run_simple_native("Teyvat.me Capture", options, move |ctx, _frame| {
         if !themed {
             egui_extras::install_image_loaders(ctx);
-            crate::ui::theme::install(ctx);
+            crate::ui::theme::install(ctx, lang);
             themed = true;
         }
         let pal = crate::ui::theme::palette(ctx);
@@ -225,13 +233,12 @@ fn show_packet_capture_permissions_missing_dialog() {
             .show(ctx, |ui| {
                 ui.spacing_mut().item_spacing.y = 10.0;
                 ui.label(
-                    egui::RichText::new("Packet capture needs permission")
+                    egui::RichText::new(tr("Packet capture needs permission"))
                         .text_style(crate::ui::theme::style::dialog())
                         .color(pal.tx),
                 );
                 ui.label(secondary_text(
-                    "Teyvat.me reads the game's traffic, which this system lets only \
-                     privileged programs do. Pick one way in a terminal:",
+                    tr("Teyvat.me reads the game's traffic, which this system lets only privileged programs do. Pick one way in a terminal:"),
                     pal.tx2,
                 ));
                 for (title, when, command) in &ways {
@@ -249,7 +256,7 @@ fn show_packet_capture_permissions_missing_dialog() {
                                         ui,
                                         ButtonKind::Secondary,
                                         Some(crate::ui::icons::copy()),
-                                        "Copy",
+                                        tr("Copy"),
                                         false,
                                     )
                                     .clicked()
@@ -270,11 +277,11 @@ fn show_packet_capture_permissions_missing_dialog() {
                     });
                 }
                 ui.label(secondary_text(
-                    "Or start it with --no-admin to look around without capturing.",
+                    tr("Or start it with --no-admin to look around without capturing."),
                     pal.tx3,
                 ));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Max), |ui| {
-                    if widgets::button(ui, ButtonKind::Fill, None, "Quit", false).clicked() {
+                    if widgets::button(ui, ButtonKind::Fill, None, tr("Quit"), false).clicked() {
                         crate::crash::mark_clean_exit(PERMISSIONS_MISSING);
                         std::process::exit(1);
                     }

@@ -1,0 +1,247 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="about_fan_project">Resmî olmayan hayran projesi, HoYoverse ile bağlantısı yoktur</string>
+
+    <!-- Common -->
+    <string name="back">Geri</string>
+    <string name="settings">Ayarlar</string>
+    <string name="more">Daha fazla</string>
+    <string name="try_again">Tekrar dene</string>
+    <string name="open">Aç</string>
+    <string name="open_anyway">Yine de aç</string>
+    <string name="cancel">İptal</string>
+    <string name="just_now">az önce</string>
+    <string name="minutes_ago">%d dk önce</string>
+    <string name="hours_ago">%d sa önce</string>
+
+    <!-- Hero -->
+    <string name="home_capture_off_title">Tarama kapalı</string>
+    <string name="home_capture_off_line">Oyundan önce başlat</string>
+    <string name="home_start_capture">Taramayı başlat</string>
+    <string name="home_starting_title">Tarama başlıyor</string>
+    <string name="home_starting_line">Birkaç saniye içinde hazır</string>
+    <string name="home_open_activity">Günlüğü aç</string>
+    <string name="home_waiting_title">Oyun bekleniyor</string>
+    <string name="home_waiting_line">Genshin çalışmıyor · şimdi başlat</string>
+    <string name="home_detected_title">Oyun algılandı</string>
+    <string name="home_detected_line">Açılış yakalandı · şimdi dünyaya gir</string>
+    <string name="home_already_open_line">Zaten açık · şimdi dünyaya gir</string>
+    <string name="home_open_before">Oyundan önce aç</string>
+    <string name="home_open_genshin">Genshin\'i aç</string>
+    <string name="home_login_seen_title">Giriş görüldü</string>
+    <string name="home_login_seen_line">Oturum anahtarı aranıyor</string>
+    <string name="home_decrypting_title">Veri çözülüyor</string>
+    <string name="home_decrypting_line">Oturum anahtarı bulundu · %s</string>
+    <string name="home_missed_title">Açılış kaçırıldı</string>
+    <string name="home_missed_running_line">Genshin, Teyvat.me\'den önce açıldı</string>
+    <string name="home_missed_stopped_line">Giriş yaptığında tarama kapalıydı</string>
+    <string name="home_reenter">Başlık ekranına dön ve yeniden gir</string>
+    <string name="home_force_stop">Genshin\'i zorla durdur</string>
+    <string name="home_or_restart">ya da Genshin\'i yeniden başlat</string>
+    <string name="home_key_lost_title">Giriş okunamadı</string>
+    <string name="home_key_lost_line">Oturum anahtarı bulunamadı</string>
+    <string name="home_data_kept">Taranan veriler korunur</string>
+    <string name="step_vpn">Tarama</string>
+    <string name="step_login">Giriş</string>
+    <string name="step_key">Anahtar</string>
+    <string name="vpn_not_allowed">VPN\'e izin verilmedi</string>
+    <string name="game_data_failed">Oyun verisi yüklenemedi</string>
+
+    <!-- Captured -->
+    <string name="captured">Taranan</string>
+    <string name="captured_nothing">Henüz yok</string>
+    <string name="captured_ar">AR %1$d · %2$s</string>
+    <string name="captured_ar_only">AR %d</string>
+    <string name="tile_characters">Karakterler</string>
+    <string name="tile_weapons">Silahlar</string>
+    <string name="tile_artifacts">Yadigarlar</string>
+    <string name="tile_materials">Malzemeler</string>
+    <string name="tile_achievements">Başarımlar</string>
+
+    <!-- Wish history -->
+    <string name="wish_title">Dilek geçmişi</string>
+    <string name="wish_open_in_game">Önce oyunda dilek geçmişini aç</string>
+    <string name="wish_expired">Anahtarın süresi doldu · oyunda dilek geçmişini yeniden aç</string>
+    <string name="wish_ready">paimon.moe, StarDB… için URL hazır</string>
+    <string name="wish_reading">Okunuyor · %1$s, sayfa %2$d · %3$s dilek</string>
+    <string name="wish_read_done">✓ Okundu %1$s · %2$s dilek</string>
+    <string name="wish_read_failed">Okuma başarısız · %s</string>
+    <string name="wish_copy_url">URL\'yi kopyala</string>
+    <string name="wish_save">Geçmişi kaydet</string>
+    <string name="wish_save_description">UIGF v4 JSON olarak dilek geçmişi; paimon.moe, StarDB ve diğer dilek takipçileri okur</string>
+    <string name="wish_share">Geçmişi paylaş</string>
+    <string name="wish_open_paimon">paimon.moe\'yu aç</string>
+    <string name="wish_open_stardb">StarDB\'yi aç</string>
+    <string name="wish_url_copied">Dilek URL\'si kopyalandı</string>
+    <string name="wish_no_key">Dilek anahtarı yok · oyunda dilek geçmişini aç</string>
+    <string name="wish_waiting_uid">Hesabın UID\'si bekleniyor</string>
+    <string name="wish_busy">Zaten okunuyor</string>
+    <string name="wish_saved">Kaydedildi: %s</string>
+    <string name="banner_301">Karakter Etkinliği</string>
+    <string name="banner_302">Silah Etkinliği</string>
+    <string name="banner_500">Nostaljik</string>
+    <string name="banner_200">Standart</string>
+    <string name="banner_100">Başlangıç</string>
+
+    <!-- Export -->
+    <string name="export_title">Dışa aktar</string>
+    <string name="export_open_folder">Dışa aktarma klasörünü aç</string>
+    <string name="export_no_folder">Henüz dışa aktarma klasörü yok</string>
+    <string name="export_more">Diğer dışa aktarmalar</string>
+    <string name="export_save">GOOD JSON kaydet</string>
+    <string name="export_save_description">GOOD JSON; Genshin Optimizer, teyvat.me ve her GOOD okuyucu okur</string>
+    <string name="export_share">Paylaş</string>
+    <string name="export_copy">Kopyala</string>
+    <string name="export_auto">Otomatik dışa aktarma</string>
+    <string name="export_auto_saved">✓ Kaydedildi %1$s · %2$s</string>
+    <string name="export_auto_on">Açık · %s</string>
+    <string name="export_auto_off">Kapalı · klasör seç</string>
+    <string name="export_saved">Kaydedildi: %s</string>
+    <string name="export_save_failed">Kaydedilemedi</string>
+    <string name="export_copied">GOOD JSON kopyalandı</string>
+    <string name="export_too_big">Kopyalamak için çok büyük · Kaydet veya Paylaş kullan</string>
+    <string name="export_not_captured">Henüz taranmadı: %s</string>
+    <string name="export_nothing">Henüz bir şey taranmadı</string>
+    <string name="export_copy_achievements">Başarımları kopyala</string>
+    <string name="export_stardb">Başarımları StarDB\'ye aktar</string>
+    <string name="export_seelie">Başarımları Seelie.me\'ye aktar</string>
+    <string name="export_filters">Filtreler ve otomatik dışa aktarma</string>
+    <string name="achievements_copied">%d başarım kopyalandı</string>
+    <string name="achievements_not_found">Başarım bulunamadı</string>
+
+    <!-- Tracker -->
+    <string name="tracker">Tracker</string>
+    <string name="optional">İsteğe bağlı</string>
+    <string name="tracker_sign_in">Giriş yap</string>
+    <string name="tracker_signed_out_line">Her taramayı yüklemek için giriş yap</string>
+    <string name="tracker_signing_in">Giriş yapılıyor · tarayıcıda tamamla</string>
+    <string name="tracker_signed_in_as">%s olarak giriş yapıldı</string>
+    <string name="tracker_target_uid">Yüklemeler, taramanın UID\'sine sahip hesaba gider</string>
+    <string name="tracker_target_account">Yüklemeler şuraya gider: %s</string>
+    <string name="tracker_upload_now">Şimdi yükle</string>
+    <string name="tracker_uploading">Yükleniyor…</string>
+    <string name="tracker_uploaded">✓ Yüklendi %s</string>
+    <string name="tracker_upload_failed">Yükleme başarısız · %s</string>
+    <string name="tracker_upload_switch">Her taramayı yükle</string>
+    <string name="tracker_upload_switch_line">Tüm hesap, tüm filtreler kapalı</string>
+    <string name="tracker_upload_off">Yüklemeler kapalı</string>
+    <string name="tracker_configure">Yüklemelerin gideceği yeri seç</string>
+    <string name="tracker_configure_line">Sitede, Ayarlar › Cihazlar</string>
+    <string name="tracker_dashboard">Paneli aç</string>
+    <string name="tracker_sign_out">Çıkış yap</string>
+    <string name="tracker_signed_in_toast">Giriş yapıldı: %s</string>
+    <string name="tracker_sign_in_failed">Giriş başarısız · %s</string>
+    <string name="tracker_nothing_to_upload">Henüz bir şey taranmadı</string>
+    <string name="tracker_page_done">Giriş yapıldı. Teyvat.me\'ye dönülüyor…</string>
+    <string name="tracker_page_cancelled">Giriş iptal edildi. Bu sekmeyi kapatabilirsin.</string>
+    <string name="tracker_page_wrong">Bu bağlantı bu girişe ait değil.</string>
+
+    <!-- Footer / Activity -->
+    <string name="footer_idle">Hazır</string>
+    <string name="activity">Günlük</string>
+    <string name="share_log">Günlüğü paylaş</string>
+    <string name="activity_footnote">Bellekte tutulur · Günlüğü paylaş, latest.log gönderir</string>
+    <string name="activity_empty">Henüz yok</string>
+    <string name="event_started">Başladı · oyun verisi %s</string>
+    <string name="event_stopped">Tarama durdu</string>
+    <string name="no_log">Henüz günlük yok</string>
+
+    <!-- First run -->
+    <string name="welcome_tagline">Genshin hesabın, oyunun kendi trafiğinden okunur ve GOOD JSON olarak kaydedilir</string>
+    <string name="welcome_only_genshin">Yalnızca Genshin</string>
+    <string name="welcome_only_genshin_line">Diğer uygulamalar VPN\'i atlar</string>
+    <string name="welcome_read_only">Salt okunur</string>
+    <string name="welcome_read_only_line">Oyunun paketleri değişmeden geçer</string>
+    <string name="welcome_on_phone">Bu telefonda kalır</string>
+    <string name="welcome_on_phone_line">Sen paylaşmadıkça hiçbir şey yüklenmez</string>
+    <string name="welcome_before_game">Oyundan önce aç</string>
+    <string name="welcome_before_game_line">Genshin girişini görmesi gerekir</string>
+    <string name="get_started">Başla</string>
+    <string name="setup_title">Oynamadan önce</string>
+    <string name="setup_choose_folder">Klasör seç</string>
+    <string name="setup_choose_folder_line">Tarama başına bir GOOD JSON dosyası</string>
+    <string name="always_on_vpn">Her zaman açık VPN</string>
+    <string name="always_on_vpn_line">Tarama oyundan önce hazır olur</string>
+    <string name="always_on_vpn_path">Ayarlar › Ağ › VPN › Teyvat.me Capture</string>
+    <string name="open_vpn_settings">VPN ayarlarını aç</string>
+    <string name="notifications">Bildirimler</string>
+    <string name="notifications_line">Oynarken tarama durumu</string>
+    <string name="allow">İzin ver</string>
+    <string name="setup_vpn_dialog">Android bir VPN\'e izin vermeni ister: bir uygulama başka bir uygulamanın trafiğini ancak böyle okuyabilir</string>
+
+    <!-- Settings -->
+    <string name="section_app">Uygulama</string>
+    <string name="theme">Tema</string>
+    <string name="theme_system">Sistem</string>
+    <string name="theme_light">Açık</string>
+    <string name="theme_dark">Koyu</string>
+    <string name="section_export">Dışa aktarma</string>
+    <string name="section_tracker">Tracker</string>
+    <string name="section_diagnostics">Tanılama</string>
+    <string name="record_capture">Taramayı kaydet</string>
+    <string name="record_capture_line">Hata raporu için oyun paketleri</string>
+    <string name="about">Hakkında</string>
+
+    <!-- Settings › Export -->
+    <string name="export_auto_section">Otomatik dışa aktarma</string>
+    <string name="export_auto_switch">Her taramayı bir klasöre kaydet</string>
+    <string name="export_auto_switch_line">GOOD JSON, tarama başına bir dosya</string>
+    <string name="export_choose_another">Başka klasör seç</string>
+    <string name="export_use_downloads">Download/Teyvat.me kullan</string>
+    <string name="filters">Filtreler</string>
+    <string name="filter_4th_line">3 satırlı 5★\'ların 4. satırını doldur</string>
+    <string name="filter_4th_line_line">Genshin Optimizer için</string>
+    <string name="filters_footnote">Tracker yüklemeleri her zaman her şeyi içerir</string>
+    <string name="filter_all">Tümü</string>
+    <string name="min_level">En az seviye</string>
+    <string name="min_ascension">En az yükseltme</string>
+    <string name="min_constellation">En az takımyıldız</string>
+    <string name="min_refinement">En az saflaştırma</string>
+    <string name="min_rarity">En az nadirlik</string>
+    <string name="decrease">Azalt</string>
+    <string name="increase">Artır</string>
+
+    <!-- teyvat.me page -->
+    <string name="teyvat_not_connected">Giriş yapılmadı</string>
+    <string name="teyvat_browser_line">Girişi tarayıcında yaparsın</string>
+
+    <!-- About -->
+    <string name="about_version">%1$s · oyun verisi %2$s</string>
+    <string name="source_code">Kaynak kodu</string>
+    <string name="teyvat_site_line">Tracker sitesi</string>
+    <string name="report_bug">Hata bildir</string>
+    <string name="report_bug_line">Yeni issue, latest.log ekle</string>
+    <string name="thanks_and_licences">Teşekkürler ve lisanslar</string>
+    <string name="thanks">Teşekkürler</string>
+    <string name="licences">Açık kaynak lisansları</string>
+    <string name="third_party_notices">Üçüncü taraf bildirimleri</string>
+    <string name="hoyoverse_names">Genshin Impact ve içindeki adlar HoYoverse\'e aittir</string>
+
+    <!-- Notification -->
+    <string name="channel_capture">Tarama</string>
+    <string name="channel_capture_line">Teyvat.me oyunu tararken gösterilir</string>
+    <string name="channel_alerts">Uyarılar</string>
+    <string name="channel_alerts_line">İlgilenmen gereken sorunlar</string>
+    <string name="stop_capture">Taramayı durdur</string>
+    <string name="stop">Durdur</string>
+    <string name="share_good">GOOD JSON paylaş</string>
+    <string name="alert_capture_stopped">Tarama durdu</string>
+    <string name="alert_vpn_taken">Başka bir VPN devraldı</string>
+    <!-- Updates -->
+    <string name="section_updates">Güncellemeler</string>
+    <string name="update_auto">Otomatik güncelle</string>
+    <string name="update_auto_line">GitHub\'daki yeni sürümler, sağlama toplamlarıyla doğrulanır</string>
+    <string name="update_check">Güncellemeleri denetle</string>
+    <string name="update_checking">Denetleniyor…</string>
+    <string name="update_up_to_date">Güncel · %s</string>
+    <string name="update_ready">%s güncellemesi hazır</string>
+    <string name="update_waits_capture">Tarama durunca yüklenir</string>
+    <string name="update_waits_app">Uygulamadan çıkınca yüklenir</string>
+    <string name="update_install_now">Şimdi yükle</string>
+    <string name="update_tap_to_install">Yüklemek için dokun</string>
+    <string name="update_downloading">%1$s indiriliyor · %2$d%%</string>
+    <string name="update_installing">%s yükleniyor…</string>
+    <string name="update_allow">Yüklemelere izin ver</string>
+    <string name="update_allow_line">Android bir kez sorar: Bilinmeyen uygulamaları yükle</string>
+    <string name="update_failed">Güncelleme başarısız · %s</string>
+</resources>

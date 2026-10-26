@@ -32,8 +32,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -43,6 +41,10 @@ import me.teyvat.app.Links
 import me.teyvat.app.R
 import me.teyvat.app.Settings
 import me.teyvat.app.Summary
+import me.teyvat.app.TrackerState
+import me.teyvat.app.UpdateState
+import me.teyvat.app.UploadResult
+import me.teyvat.app.Whoami
 import me.teyvat.app.WishInfo
 import me.teyvat.app.grouped
 import me.teyvat.app.hhmm
@@ -71,7 +73,21 @@ interface HomeActions {
     fun saveWishes()
     fun shareWishes()
     fun cancelWishes()
+    fun trackerSignIn()
+    fun trackerCancelSignIn()
+    fun trackerUploadNow()
+    fun openTeyvat()
+    fun updateInstallNow()
+    fun updateAllow()
 }
+
+/** The tracker card's inputs: the sign-in and the last upload. */
+data class TrackerView(
+    val state: TrackerState,
+    val last: UploadResult?,
+    val uploading: Boolean,
+    val uploadOn: Boolean,
+)
 
 /** Now, ticking once a second, for "just now" and Starting's 30 s. */
 @Composable
@@ -93,6 +109,9 @@ fun HomeContent(
     settings: Settings,
     startingSince: Long,
     folderLabel: String,
+    tracker: TrackerView,
+    update: UpdateState,
+    capturing: Boolean,
     actions: HomeActions,
     padding: PaddingValues,
 ) {
@@ -104,10 +123,11 @@ fun HomeContent(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item { HeroCard(hero, summary, startingSince, now, actions) }
+        if (update.shown()) item { UpdateCard(update, capturing, actions) }
         item { CapturedCard(summary, now) }
         item { WishCard(summary.wish, actions) }
         item { ExportCard(summary, settings, folderLabel, actions) }
-        item { DestinationsCard(actions) }
+        item { TrackerCard(tracker, summary.captured, actions) }
     }
 }
 
@@ -308,36 +328,124 @@ private fun ExportCard(summary: Summary, settings: Settings, folderLabel: String
     }
 }
 
+/** Where this sign-in's uploads go, as one line. */
 @Composable
-private fun DestinationsCard(actions: HomeActions) {
+fun targetLine(who: Whoami): String =
+    if (who.scope == "account" && who.accountName != null) stringResource(R.string.tracker_target_account, who.accountName)
+    else stringResource(R.string.tracker_target_uid)
+
+/** The last upload's line, or what uploads do now. */
+@Composable
+fun uploadLine(tracker: TrackerView, who: Whoami): String = when {
+    tracker.uploading -> stringResource(R.string.tracker_uploading)
+    tracker.last != null -> tracker.last.text
+    !tracker.uploadOn -> stringResource(R.string.tracker_upload_off)
+    else -> targetLine(who)
+}
+
+/** teyvat.me: Sign in, or who is signed in and the last upload (spec section 4.1.5). */
+@Composable
+private fun TrackerCard(tracker: TrackerView, captured: Boolean, actions: HomeActions) {
     TmCard {
-        CardHeader(stringResource(R.string.destinations), stringResource(R.string.optional))
+        CardHeader(stringResource(R.string.tracker), stringResource(R.string.optional))
         Row(
-            Modifier.fillMaxWidth().padding(start = 16.dp, end = 14.dp, bottom = 12.dp),
+            Modifier.fillMaxWidth().clickable(onClick = actions::openTeyvat).padding(start = 16.dp, end = 14.dp, bottom = 12.dp, top = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Avatar(icon = R.drawable.ic_cloud_upload)
             Spacer(Modifier.width(14.dp))
+            val state = tracker.state
             Column(Modifier.weight(1f)) {
-                Row(
-                    Modifier.clickable { actions.openUrl(Links.trackerSite) }.semantics { contentDescription = Links.trackerHost },
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        Links.trackerHost, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.primary,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false),
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    TmIcon(R.drawable.ic_external_link, null, tint = MaterialTheme.colorScheme.primary, size = 16.dp)
-                }
                 Text(
-                    stringResource(R.string.not_in_this_version),
-                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    if (state is TrackerState.SignedIn) stringResource(R.string.tracker_signed_in_as, state.who.user) else Links.trackerHost,
+                    style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
+                val (line, error) = when (state) {
+                    TrackerState.SignedOut -> stringResource(R.string.tracker_signed_out_line) to false
+                    TrackerState.SigningIn -> stringResource(R.string.tracker_signing_in) to false
+                    is TrackerState.SignedIn -> uploadLine(tracker, state.who) to (tracker.last?.ok == false && !tracker.uploading)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (state == TrackerState.SigningIn || tracker.uploading) {
+                        Spinner(size = 14.dp)
+                        Spacer(Modifier.width(6.dp))
+                    }
+                    Text(
+                        line, style = MaterialTheme.typography.bodyMedium,
+                        color = if (error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
             Spacer(Modifier.width(8.dp))
-            TmButton(stringResource(R.string.connect), {}, kind = ButtonKind.Tonal, enabled = false)
+            when (state) {
+                TrackerState.SignedOut -> TmButton(stringResource(R.string.tracker_sign_in), actions::trackerSignIn, kind = ButtonKind.Tonal)
+                TrackerState.SigningIn -> TmButton(stringResource(R.string.cancel), actions::trackerCancelSignIn, kind = ButtonKind.Text)
+                is TrackerState.SignedIn -> TmButton(
+                    stringResource(R.string.tracker_upload_now), actions::trackerUploadNow, kind = ButtonKind.Tonal,
+                    enabled = captured && !tracker.uploading,
+                )
+            }
+        }
+    }
+}
+
+private fun UpdateState.shown() = when (this) {
+    is UpdateState.Downloading, is UpdateState.Ready, is UpdateState.Installing, is UpdateState.NeedsPermission -> true
+    is UpdateState.Failed -> version != null
+    else -> false
+}
+
+/** A new release on its way in: downloading, waiting, Allow installs, failed. */
+@Composable
+private fun UpdateCard(update: UpdateState, capturing: Boolean, actions: HomeActions) {
+    TmCard {
+        Row(
+            Modifier.fillMaxWidth().padding(start = 16.dp, end = 14.dp, top = 12.dp, bottom = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TmIcon(R.drawable.ic_download, null, tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(14.dp))
+            val (title, line, error) = when (update) {
+                is UpdateState.Downloading -> Triple(
+                    stringResource(R.string.update_downloading, update.version, update.percent), null, false,
+                )
+                is UpdateState.Ready -> Triple(
+                    stringResource(R.string.update_ready, update.version),
+                    stringResource(if (capturing) R.string.update_waits_capture else R.string.update_waits_app), false,
+                )
+                is UpdateState.Installing -> Triple(stringResource(R.string.update_installing, update.version), null, false)
+                is UpdateState.NeedsPermission -> Triple(
+                    stringResource(R.string.update_ready, update.version), stringResource(R.string.update_allow_line), false,
+                )
+                is UpdateState.Failed -> Triple(stringResource(R.string.update_failed, update.error), null, true)
+                else -> Triple("", null, false)
+            }
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (update is UpdateState.Downloading || update is UpdateState.Installing) {
+                        Spinner(size = 14.dp)
+                        Spacer(Modifier.width(6.dp))
+                    }
+                    Text(
+                        title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                        color = if (error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+                line?.let {
+                    Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            Spacer(Modifier.width(8.dp))
+            when (update) {
+                is UpdateState.Ready ->
+                    TmButton(stringResource(R.string.update_install_now), actions::updateInstallNow, kind = ButtonKind.Tonal)
+                is UpdateState.Failed ->
+                    TmButton(stringResource(R.string.try_again), actions::updateInstallNow, kind = ButtonKind.Tonal)
+                is UpdateState.NeedsPermission ->
+                    TmButton(stringResource(R.string.update_allow), actions::updateAllow, kind = ButtonKind.Tonal)
+                else -> {}
+            }
         }
     }
 }

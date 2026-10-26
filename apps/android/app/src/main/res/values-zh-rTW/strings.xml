@@ -1,0 +1,247 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="about_fan_project">非官方粉絲專案，與 HoYoverse 無關</string>
+
+    <!-- Common -->
+    <string name="back">返回</string>
+    <string name="settings">設定</string>
+    <string name="more">更多</string>
+    <string name="try_again">重試</string>
+    <string name="open">開啟</string>
+    <string name="open_anyway">仍要開啟</string>
+    <string name="cancel">取消</string>
+    <string name="just_now">剛剛</string>
+    <string name="minutes_ago">%d 分鐘前</string>
+    <string name="hours_ago">%d 小時前</string>
+
+    <!-- Hero -->
+    <string name="home_capture_off_title">擷取已關閉</string>
+    <string name="home_capture_off_line">請在啟動遊戲前開啟</string>
+    <string name="home_start_capture">開始擷取</string>
+    <string name="home_starting_title">正在啟動擷取</string>
+    <string name="home_starting_line">幾秒後就好</string>
+    <string name="home_open_activity">開啟運作紀錄</string>
+    <string name="home_waiting_title">等待遊戲</string>
+    <string name="home_waiting_line">原神未執行 · 現在啟動</string>
+    <string name="home_detected_title">已偵測到遊戲</string>
+    <string name="home_detected_line">已擷取啟動 · 現在進入世界</string>
+    <string name="home_already_open_line">遊戲已開啟 · 現在進入世界</string>
+    <string name="home_open_before">先於遊戲開啟</string>
+    <string name="home_open_genshin">開啟原神</string>
+    <string name="home_login_seen_title">已偵測到登入</string>
+    <string name="home_login_seen_line">正在尋找工作階段金鑰</string>
+    <string name="home_decrypting_title">資料解密中</string>
+    <string name="home_decrypting_line">已找到工作階段金鑰 · %s</string>
+    <string name="home_missed_title">錯過了啟動</string>
+    <string name="home_missed_running_line">原神在 Teyvat.me 之前啟動</string>
+    <string name="home_missed_stopped_line">登入時擷取未開啟</string>
+    <string name="home_reenter">返回標題畫面並重新進入</string>
+    <string name="home_force_stop">強制停止原神</string>
+    <string name="home_or_restart">或重新啟動原神</string>
+    <string name="home_key_lost_title">未讀取到登入</string>
+    <string name="home_key_lost_line">未找到工作階段金鑰</string>
+    <string name="home_data_kept">已擷取的資料會保留</string>
+    <string name="step_vpn">擷取</string>
+    <string name="step_login">登入</string>
+    <string name="step_key">金鑰</string>
+    <string name="vpn_not_allowed">未允許 VPN</string>
+    <string name="game_data_failed">遊戲資料載入失敗</string>
+
+    <!-- Captured -->
+    <string name="captured">已擷取</string>
+    <string name="captured_nothing">尚無</string>
+    <string name="captured_ar">AR %1$d · %2$s</string>
+    <string name="captured_ar_only">AR %d</string>
+    <string name="tile_characters">角色</string>
+    <string name="tile_weapons">武器</string>
+    <string name="tile_artifacts">聖遺物</string>
+    <string name="tile_materials">素材</string>
+    <string name="tile_achievements">成就</string>
+
+    <!-- Wish history -->
+    <string name="wish_title">祈願紀錄</string>
+    <string name="wish_open_in_game">請先在遊戲內開啟祈願紀錄</string>
+    <string name="wish_expired">金鑰已過期 · 請在遊戲內重新開啟祈願紀錄</string>
+    <string name="wish_ready">URL 已就緒，可用於 paimon.moe、StarDB…</string>
+    <string name="wish_reading">正在讀取 · %1$s，第 %2$d 頁 · %3$s 次祈願</string>
+    <string name="wish_read_done">✓ 已讀取 %1$s · %2$s 次祈願</string>
+    <string name="wish_read_failed">讀取失敗 · %s</string>
+    <string name="wish_copy_url">複製 URL</string>
+    <string name="wish_save">儲存紀錄</string>
+    <string name="wish_save_description">UIGF v4 JSON 格式的祈願紀錄，可供 paimon.moe、StarDB 等祈願紀錄工具讀取</string>
+    <string name="wish_share">分享紀錄</string>
+    <string name="wish_open_paimon">開啟 paimon.moe</string>
+    <string name="wish_open_stardb">開啟 StarDB</string>
+    <string name="wish_url_copied">已複製祈願 URL</string>
+    <string name="wish_no_key">沒有祈願金鑰 · 請在遊戲內開啟祈願紀錄</string>
+    <string name="wish_waiting_uid">正在等待帳號的 UID</string>
+    <string name="wish_busy">正在讀取中</string>
+    <string name="wish_saved">已儲存 %s</string>
+    <string name="banner_301">角色活動祈願</string>
+    <string name="banner_302">武器活動祈願</string>
+    <string name="banner_500">集錄祈願</string>
+    <string name="banner_200">常駐祈願</string>
+    <string name="banner_100">新手祈願</string>
+
+    <!-- Export -->
+    <string name="export_title">匯出</string>
+    <string name="export_open_folder">開啟匯出資料夾</string>
+    <string name="export_no_folder">尚無匯出資料夾</string>
+    <string name="export_more">更多匯出</string>
+    <string name="export_save">儲存 GOOD JSON</string>
+    <string name="export_save_description">GOOD JSON，可供 Genshin Optimizer、teyvat.me 及任何 GOOD 讀取工具讀取</string>
+    <string name="export_share">分享</string>
+    <string name="export_copy">複製</string>
+    <string name="export_auto">自動匯出</string>
+    <string name="export_auto_saved">✓ 已儲存 %1$s · %2$s</string>
+    <string name="export_auto_on">已開啟 · %s</string>
+    <string name="export_auto_off">已關閉 · 選擇資料夾</string>
+    <string name="export_saved">已儲存 %s</string>
+    <string name="export_save_failed">儲存失敗</string>
+    <string name="export_copied">已複製 GOOD JSON</string>
+    <string name="export_too_big">內容過大，無法複製 · 請使用儲存或分享</string>
+    <string name="export_not_captured">尚未擷取：%s</string>
+    <string name="export_nothing">尚未擷取任何內容</string>
+    <string name="export_copy_achievements">複製成就</string>
+    <string name="export_stardb">成就匯出到 StarDB</string>
+    <string name="export_seelie">成就匯出到 Seelie.me</string>
+    <string name="export_filters">篩選與自動匯出</string>
+    <string name="achievements_copied">已複製 %d 個成就</string>
+    <string name="achievements_not_found">未找到成就</string>
+
+    <!-- Tracker -->
+    <string name="tracker">追蹤器</string>
+    <string name="optional">選用</string>
+    <string name="tracker_sign_in">登入</string>
+    <string name="tracker_signed_out_line">登入後可上傳每次擷取</string>
+    <string name="tracker_signing_in">正在登入 · 請在瀏覽器中完成</string>
+    <string name="tracker_signed_in_as">已登入：%s</string>
+    <string name="tracker_target_uid">上傳至與擷取資料 UID 相同的帳號</string>
+    <string name="tracker_target_account">上傳至 %s</string>
+    <string name="tracker_upload_now">立即上傳</string>
+    <string name="tracker_uploading">正在上傳…</string>
+    <string name="tracker_uploaded">✓ 已上傳 %s</string>
+    <string name="tracker_upload_failed">上傳失敗 · %s</string>
+    <string name="tracker_upload_switch">上傳每次擷取</string>
+    <string name="tracker_upload_switch_line">整個帳號，不套用任何篩選</string>
+    <string name="tracker_upload_off">上傳已關閉</string>
+    <string name="tracker_configure">選擇上傳目標</string>
+    <string name="tracker_configure_line">在網站的 設定 › 裝置 中</string>
+    <string name="tracker_dashboard">開啟儀表板</string>
+    <string name="tracker_sign_out">登出</string>
+    <string name="tracker_signed_in_toast">已登入 %s</string>
+    <string name="tracker_sign_in_failed">登入失敗 · %s</string>
+    <string name="tracker_nothing_to_upload">尚未擷取任何內容</string>
+    <string name="tracker_page_done">已登入。正在返回 Teyvat.me…</string>
+    <string name="tracker_page_cancelled">已取消登入。你可以關閉此分頁。</string>
+    <string name="tracker_page_wrong">此連結不屬於這次登入。</string>
+
+    <!-- Footer / Activity -->
+    <string name="footer_idle">就緒</string>
+    <string name="activity">運作紀錄</string>
+    <string name="share_log">分享日誌</string>
+    <string name="activity_footnote">僅保存在記憶體中 · 分享日誌會傳送 latest.log</string>
+    <string name="activity_empty">尚無</string>
+    <string name="event_started">已啟動 · 遊戲資料 %s</string>
+    <string name="event_stopped">擷取已停止</string>
+    <string name="no_log">尚無日誌</string>
+
+    <!-- First run -->
+    <string name="welcome_tagline">你的原神帳號，從遊戲本身的流量中讀取，並儲存為 GOOD JSON</string>
+    <string name="welcome_only_genshin">僅限原神</string>
+    <string name="welcome_only_genshin_line">其他應用程式不經過 VPN</string>
+    <string name="welcome_read_only">唯讀</string>
+    <string name="welcome_read_only_line">遊戲的封包原樣通過</string>
+    <string name="welcome_on_phone">只留在這支手機</string>
+    <string name="welcome_on_phone_line">除非你分享，否則不會上傳任何內容</string>
+    <string name="welcome_before_game">先於遊戲開啟</string>
+    <string name="welcome_before_game_line">它必須看到原神的登入</string>
+    <string name="get_started">開始使用</string>
+    <string name="setup_title">遊玩之前</string>
+    <string name="setup_choose_folder">選擇資料夾</string>
+    <string name="setup_choose_folder_line">每次擷取一個 GOOD JSON 檔案</string>
+    <string name="always_on_vpn">永久連線的 VPN</string>
+    <string name="always_on_vpn_line">擷取會在遊戲之前就緒</string>
+    <string name="always_on_vpn_path">設定 › 網路 › VPN › Teyvat.me Capture</string>
+    <string name="open_vpn_settings">開啟 VPN 設定</string>
+    <string name="notifications">通知</string>
+    <string name="notifications_line">遊玩時顯示擷取狀態</string>
+    <string name="allow">允許</string>
+    <string name="setup_vpn_dialog">Android 會請你允許 VPN：這是應用程式讀取其他應用程式流量的方式</string>
+
+    <!-- Settings -->
+    <string name="section_app">應用程式</string>
+    <string name="theme">主題</string>
+    <string name="theme_system">跟隨系統</string>
+    <string name="theme_light">淺色</string>
+    <string name="theme_dark">深色</string>
+    <string name="section_export">匯出</string>
+    <string name="section_tracker">追蹤器</string>
+    <string name="section_diagnostics">診斷</string>
+    <string name="record_capture">錄製擷取</string>
+    <string name="record_capture_line">遊戲封包，用於問題回報</string>
+    <string name="about">關於</string>
+
+    <!-- Settings › Export -->
+    <string name="export_auto_section">自動匯出</string>
+    <string name="export_auto_switch">將每次擷取儲存到資料夾</string>
+    <string name="export_auto_switch_line">GOOD JSON，每次擷取一個檔案</string>
+    <string name="export_choose_another">選擇其他資料夾</string>
+    <string name="export_use_downloads">使用 Download/Teyvat.me</string>
+    <string name="filters">篩選</string>
+    <string name="filter_4th_line">補齊 5★ 三詞條聖遺物的第 4 條副屬性</string>
+    <string name="filter_4th_line_line">用於 Genshin Optimizer</string>
+    <string name="filters_footnote">追蹤器上傳一律包含全部內容</string>
+    <string name="filter_all">全部</string>
+    <string name="min_level">最低等級</string>
+    <string name="min_ascension">最低突破</string>
+    <string name="min_constellation">最低命之座</string>
+    <string name="min_refinement">最低精煉</string>
+    <string name="min_rarity">最低稀有度</string>
+    <string name="decrease">減少</string>
+    <string name="increase">增加</string>
+
+    <!-- teyvat.me page -->
+    <string name="teyvat_not_connected">未登入</string>
+    <string name="teyvat_browser_line">在瀏覽器中登入</string>
+
+    <!-- About -->
+    <string name="about_version">%1$s · 遊戲資料 %2$s</string>
+    <string name="source_code">原始碼</string>
+    <string name="teyvat_site_line">追蹤器網站</string>
+    <string name="report_bug">回報問題</string>
+    <string name="report_bug_line">新增 issue，附上 latest.log</string>
+    <string name="thanks_and_licences">致謝與授權</string>
+    <string name="thanks">致謝</string>
+    <string name="licences">開放原始碼授權</string>
+    <string name="third_party_notices">第三方聲明</string>
+    <string name="hoyoverse_names">《原神》及其中的名稱歸 HoYoverse 所有</string>
+
+    <!-- Notification -->
+    <string name="channel_capture">擷取</string>
+    <string name="channel_capture_line">Teyvat.me 擷取遊戲時顯示</string>
+    <string name="channel_alerts">提醒</string>
+    <string name="channel_alerts_line">需要你處理的問題</string>
+    <string name="stop_capture">停止擷取</string>
+    <string name="stop">停止</string>
+    <string name="share_good">分享 GOOD JSON</string>
+    <string name="alert_capture_stopped">擷取已停止</string>
+    <string name="alert_vpn_taken">另一個 VPN 已接管</string>
+    <!-- Updates -->
+    <string name="section_updates">更新</string>
+    <string name="update_auto">自動更新</string>
+    <string name="update_auto_line">來自 GitHub 的新版本，已核對總和檢查碼</string>
+    <string name="update_check">檢查更新</string>
+    <string name="update_checking">正在檢查…</string>
+    <string name="update_up_to_date">已是最新版本 · %s</string>
+    <string name="update_ready">更新 %s 已就緒</string>
+    <string name="update_waits_capture">擷取停止後安裝</string>
+    <string name="update_waits_app">離開應用程式後安裝</string>
+    <string name="update_install_now">立即安裝</string>
+    <string name="update_tap_to_install">輕觸即可安裝</string>
+    <string name="update_downloading">正在下載 %1$s · %2$d%%</string>
+    <string name="update_installing">正在安裝 %s…</string>
+    <string name="update_allow">允許安裝</string>
+    <string name="update_allow_line">Android 只詢問一次：安裝不明的應用程式</string>
+    <string name="update_failed">更新失敗 · %s</string>
+</resources>

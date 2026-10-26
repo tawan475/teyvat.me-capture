@@ -31,6 +31,7 @@ pub(crate) use crate::decode::{
     SnifferStats, apply_commands, changes_in, classify_commands, decode_one_packet, full_send_in,
 };
 use crate::game_watch::{self, GameStatus, GameWatch, SystemProcessDetector};
+use crate::i18n::{tr, trf};
 use crate::live::{Action, BatchAnswer, ImportAnswer, LiveSync, Reason};
 use crate::player_data::{ExportReport, ExportSettings, PlayerData};
 use crate::signin::{TrackerAuth, UploadCredential};
@@ -108,7 +109,7 @@ const PACKET_LOG_RETENTION: usize = 6;
 
 /// The tracker's host as the activity line names it (`teyvat.me`).
 fn destination_host(state: &crate::app::SavedAppState) -> String {
-    crate::signin::host_of(&state.tracker_api_url).unwrap_or_else(|| "the tracker".to_string())
+    crate::signin::host_of(&state.tracker_api_url).unwrap_or_else(|| tr("the tracker").to_string())
 }
 
 /// A path's file name, for the activity line.
@@ -191,6 +192,14 @@ impl AppStateManager {
 /// supported way to inspect a recording; it never reaches this code at all.
 fn uploads_allowed(source: &CaptureSource) -> bool {
     !matches!(source, CaptureSource::File(_))
+}
+
+/// An automation export's `purpose`, as its toast names it.
+fn purpose_label(purpose: &str) -> &str {
+    match purpose {
+        "automation file" => tr("automation file"),
+        other => other,
+    }
 }
 
 /// What `spawn_tracker_upload` answers instead of uploading during a replay.
@@ -1034,7 +1043,7 @@ impl Monitor {
                 tracing::error!("Capture task encountered an error: {e}");
                 let _ = self.toast_tx.send(Event::error(
                     Topic::Capture,
-                    format!("Capture stopped: {e}"),
+                    trf("Capture stopped: {0}", &[&e]),
                 ));
                 self.set_capturing(false);
                 self.capture_cancel_token = None;
@@ -1065,14 +1074,14 @@ impl Monitor {
                 tracing::error!("capture task ended with an error: {e}");
                 let _ = self.toast_tx.send(Event::error(
                     Topic::Capture,
-                    format!("Capture stopped: {e}"),
+                    trf("Capture stopped: {0}", &[&e]),
                 ));
             }
             Err(e) => {
                 tracing::error!("capture task did not finish cleanly: {e}");
                 let _ = self.toast_tx.send(Event::error(
                     Topic::Capture,
-                    "Capture stopped unexpectedly · see the log",
+                    tr("Capture stopped unexpectedly · see the log"),
                 ));
             }
         }
@@ -1174,7 +1183,7 @@ impl Monitor {
             tracing::error!("the packet decoding thread is gone; no further data can be captured");
             let _ = self.toast_tx.send(Event::error(
                 Topic::Capture,
-                "Decoding stopped · restart Teyvat.me to capture again",
+                tr("Decoding stopped · restart Teyvat.me to capture again"),
             ));
             self.set_capturing(false);
             self.ctx.request_repaint();
@@ -1398,7 +1407,7 @@ impl Monitor {
         tracing::warn!("export dropped entities: {}", report.summary());
         let _ = self.toast_tx.send(Event::warn(
             Topic::Export,
-            format!("Export incomplete: {}", report.summary()),
+            trf("Export incomplete: {0}", &[&report.summary()]),
         ));
     }
 
@@ -1520,14 +1529,17 @@ impl Monitor {
             match self.save_to_automation_file(&saved_state, &json) {
                 Ok(path) => {
                     let _ = self.toast_tx.send(
-                        Event::ok(Topic::Export, format!("Auto-exported {}", file_name(&path)))
-                            .with_path(path),
+                        Event::ok(
+                            Topic::Export,
+                            trf("Auto-exported {0}", &[&file_name(&path)]),
+                        )
+                        .with_path(path),
                     );
                 }
                 Err(e) => {
                     let _ = self.toast_tx.send(Event::error(
                         Topic::Export,
-                        format!("Auto-export failed: {e}"),
+                        trf("Auto-export failed: {0}", &[&e]),
                     ));
                     self.release_automation_signature(signature);
                 }
@@ -1537,13 +1549,11 @@ impl Monitor {
         if let Some((json, report, ticket)) = tracker_export
             && let Some(credential) = crate::app::upload_credential(&saved_state)
         {
+            let host = destination_host(&saved_state);
+            let counts = crate::app::counts_line(&report.counts());
             let _ = self.toast_tx.send(Event::info(
                 Topic::Destination,
-                format!(
-                    "Uploading to {} · {}",
-                    destination_host(&saved_state),
-                    report.counts()
-                ),
+                trf("Uploading to {0} · {1}", &[&host, &counts]),
             ));
             self.spawn_tracker_upload(
                 credential,
@@ -1580,9 +1590,10 @@ impl Monitor {
                 Some((json, report))
             }
             Err(e) => {
+                let what = purpose_label(purpose);
                 let _ = self.toast_tx.send(Event::error(
                     Topic::Export,
-                    format!("Couldn't build the {purpose} export: {e}"),
+                    trf("Couldn't build the {0} export: {1}", &[&what, &e]),
                 ));
                 None
             }
@@ -1640,7 +1651,9 @@ impl Monitor {
         tokio::spawn(async move {
             let result = if !allowed {
                 tracing::warn!("{REPLAY_UPLOAD_REFUSED}");
-                Err(REPLAY_UPLOAD_REFUSED.to_string())
+                #[rustfmt::skip]
+                let refused = tr("Uploads are off while replaying a recording (-r); use --replay-export to inspect one");
+                Err(refused.to_string())
             } else {
                 match credential {
                     UploadCredential::ImportKey { url, key } => {
@@ -1674,13 +1687,13 @@ impl Monitor {
                     let _ = match result {
                         Ok(()) => toast_tx.send(Event::ok(
                             Topic::Destination,
-                            format!("Snapshot stored on {host}"),
+                            trf("Snapshot stored on {0}", &[&host]),
                         )),
                         Err(e) => {
                             let _ = retry_tx.send(signature);
                             toast_tx.send(Event::error(
                                 Topic::Destination,
-                                format!("{host} upload failed · {e}"),
+                                trf("{0} upload failed · {1}", &[&host, &e]),
                             ))
                         }
                     };
@@ -1690,11 +1703,11 @@ impl Monitor {
                         match result {
                             Ok(()) => Event::ok(
                                 Topic::Destination,
-                                format!("Live sync · snapshot stored on {host}"),
+                                trf("Live sync · snapshot stored on {0}", &[&host]),
                             ),
                             Err(e) => Event::error(
                                 Topic::Destination,
-                                format!("{host} upload failed · {e}"),
+                                trf("{0} upload failed · {1}", &[&host, &e]),
                             ),
                         }
                         // Live sync stores these by itself; a failure still toasts.
@@ -1812,7 +1825,7 @@ impl Monitor {
                     let _ = toast_tx.send(
                         Event::ok(
                             Topic::Destination,
-                            format!("Live sync · {changes} changes sent to {host}"),
+                            trf("Live sync · {0} changes sent to {1}", &[&changes, &host]),
                         )
                         .routine(),
                     );
@@ -2082,7 +2095,7 @@ fn parse_verify_response(body: &str) -> Result<TrackerAccount> {
     let name = inner
         .get("accountName")
         .and_then(|v| v.as_str())
-        .unwrap_or("Unknown")
+        .unwrap_or(tr("Unknown"))
         .to_string();
     let uid = inner
         .get("uid")

@@ -1,0 +1,247 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="about_fan_project">비공식 팬 프로젝트이며 HoYoverse와 관련이 없습니다</string>
+
+    <!-- Common -->
+    <string name="back">뒤로</string>
+    <string name="settings">설정</string>
+    <string name="more">더 보기</string>
+    <string name="try_again">다시 시도</string>
+    <string name="open">열기</string>
+    <string name="open_anyway">그래도 열기</string>
+    <string name="cancel">취소</string>
+    <string name="just_now">방금</string>
+    <string name="minutes_ago">%d분 전</string>
+    <string name="hours_ago">%d시간 전</string>
+
+    <!-- Hero -->
+    <string name="home_capture_off_title">캡처 꺼짐</string>
+    <string name="home_capture_off_line">게임보다 먼저 시작하세요</string>
+    <string name="home_start_capture">캡처 시작</string>
+    <string name="home_starting_title">캡처 시작 중</string>
+    <string name="home_starting_line">몇 초 후 돌아옵니다</string>
+    <string name="home_open_activity">활동 열기</string>
+    <string name="home_waiting_title">게임 대기 중</string>
+    <string name="home_waiting_line">원신이 실행 중이 아님 · 지금 실행하세요</string>
+    <string name="home_detected_title">게임 감지됨</string>
+    <string name="home_detected_line">실행 캡처됨 · 지금 월드에 입장하세요</string>
+    <string name="home_already_open_line">이미 실행 중 · 지금 월드에 입장하세요</string>
+    <string name="home_open_before">게임보다 먼저 열기</string>
+    <string name="home_open_genshin">원신 열기</string>
+    <string name="home_login_seen_title">로그인 감지됨</string>
+    <string name="home_login_seen_line">세션 키 찾는 중</string>
+    <string name="home_decrypting_title">데이터 복호화 중</string>
+    <string name="home_decrypting_line">세션 키 찾음 · %s</string>
+    <string name="home_missed_title">실행을 놓침</string>
+    <string name="home_missed_running_line">원신이 Teyvat.me보다 먼저 실행됨</string>
+    <string name="home_missed_stopped_line">로그인할 때 캡처가 꺼져 있었음</string>
+    <string name="home_reenter">타이틀 화면으로 돌아가 다시 입장하세요</string>
+    <string name="home_force_stop">원신 강제 종료</string>
+    <string name="home_or_restart">또는 원신 재시작</string>
+    <string name="home_key_lost_title">로그인을 읽지 못함</string>
+    <string name="home_key_lost_line">세션 키를 찾지 못함</string>
+    <string name="home_data_kept">캡처한 데이터는 유지됩니다</string>
+    <string name="step_vpn">캡처</string>
+    <string name="step_login">로그인</string>
+    <string name="step_key">키</string>
+    <string name="vpn_not_allowed">VPN이 허용되지 않음</string>
+    <string name="game_data_failed">게임 데이터를 불러오지 못함</string>
+
+    <!-- Captured -->
+    <string name="captured">캡처됨</string>
+    <string name="captured_nothing">아직 없음</string>
+    <string name="captured_ar">AR %1$d · %2$s</string>
+    <string name="captured_ar_only">AR %d</string>
+    <string name="tile_characters">캐릭터</string>
+    <string name="tile_weapons">무기</string>
+    <string name="tile_artifacts">성유물</string>
+    <string name="tile_materials">재료</string>
+    <string name="tile_achievements">업적</string>
+
+    <!-- Wish history -->
+    <string name="wish_title">기원 기록</string>
+    <string name="wish_open_in_game">먼저 게임에서 기원 기록을 여세요</string>
+    <string name="wish_expired">키 만료 · 게임에서 기원 기록을 다시 여세요</string>
+    <string name="wish_ready">paimon.moe, StarDB… 용 URL 준비됨</string>
+    <string name="wish_reading">읽는 중 · %1$s, %2$d페이지 · 기원 %3$s회</string>
+    <string name="wish_read_done">✓ %1$s 읽음 · 기원 %2$s회</string>
+    <string name="wish_read_failed">읽기 실패 · %s</string>
+    <string name="wish_copy_url">URL 복사</string>
+    <string name="wish_save">기록 저장</string>
+    <string name="wish_save_description">UIGF v4 JSON 형식의 기원 기록으로, paimon.moe, StarDB 등 기원 트래커에서 읽을 수 있습니다</string>
+    <string name="wish_share">기록 공유</string>
+    <string name="wish_open_paimon">paimon.moe 열기</string>
+    <string name="wish_open_stardb">StarDB 열기</string>
+    <string name="wish_url_copied">기원 URL 복사됨</string>
+    <string name="wish_no_key">기원 키 없음 · 게임에서 기원 기록을 여세요</string>
+    <string name="wish_waiting_uid">계정 UID 대기 중</string>
+    <string name="wish_busy">이미 읽는 중</string>
+    <string name="wish_saved">%s 저장됨</string>
+    <string name="banner_301">캐릭터 이벤트 기원</string>
+    <string name="banner_302">무기 이벤트 기원</string>
+    <string name="banner_500">묶음 기원</string>
+    <string name="banner_200">일반 기원</string>
+    <string name="banner_100">초심자 기원</string>
+
+    <!-- Export -->
+    <string name="export_title">내보내기</string>
+    <string name="export_open_folder">내보내기 폴더 열기</string>
+    <string name="export_no_folder">아직 내보내기 폴더 없음</string>
+    <string name="export_more">다른 내보내기</string>
+    <string name="export_save">GOOD JSON 저장</string>
+    <string name="export_save_description">GOOD JSON으로, Genshin Optimizer, teyvat.me 등 GOOD을 읽는 모든 도구에서 쓸 수 있습니다</string>
+    <string name="export_share">공유</string>
+    <string name="export_copy">복사</string>
+    <string name="export_auto">자동 내보내기</string>
+    <string name="export_auto_saved">✓ %1$s 저장됨 · %2$s</string>
+    <string name="export_auto_on">켜짐 · %s</string>
+    <string name="export_auto_off">꺼짐 · 폴더를 선택하세요</string>
+    <string name="export_saved">%s 저장됨</string>
+    <string name="export_save_failed">저장 실패</string>
+    <string name="export_copied">GOOD JSON 복사됨</string>
+    <string name="export_too_big">너무 커서 복사할 수 없음 · 저장이나 공유를 사용하세요</string>
+    <string name="export_not_captured">아직 캡처 안 됨: %s</string>
+    <string name="export_nothing">아직 캡처한 것이 없음</string>
+    <string name="export_copy_achievements">업적 복사</string>
+    <string name="export_stardb">업적을 StarDB로</string>
+    <string name="export_seelie">업적을 Seelie.me로</string>
+    <string name="export_filters">필터 및 자동 내보내기</string>
+    <string name="achievements_copied">업적 %d개 복사됨</string>
+    <string name="achievements_not_found">업적을 찾지 못함</string>
+
+    <!-- Tracker -->
+    <string name="tracker">트래커</string>
+    <string name="optional">선택 사항</string>
+    <string name="tracker_sign_in">로그인</string>
+    <string name="tracker_signed_out_line">로그인하면 캡처할 때마다 업로드</string>
+    <string name="tracker_signing_in">로그인 중 · 브라우저에서 완료하세요</string>
+    <string name="tracker_signed_in_as">%s(으)로 로그인됨</string>
+    <string name="tracker_target_uid">캡처의 UID와 같은 계정으로 업로드</string>
+    <string name="tracker_target_account">업로드 대상: %s</string>
+    <string name="tracker_upload_now">지금 업로드</string>
+    <string name="tracker_uploading">업로드 중…</string>
+    <string name="tracker_uploaded">✓ %s 업로드됨</string>
+    <string name="tracker_upload_failed">업로드 실패 · %s</string>
+    <string name="tracker_upload_switch">캡처할 때마다 업로드</string>
+    <string name="tracker_upload_switch_line">계정 전체, 모든 필터 꺼짐</string>
+    <string name="tracker_upload_off">업로드 꺼짐</string>
+    <string name="tracker_configure">업로드할 곳 선택</string>
+    <string name="tracker_configure_line">웹사이트의 설정 › 기기에서</string>
+    <string name="tracker_dashboard">대시보드 열기</string>
+    <string name="tracker_sign_out">로그아웃</string>
+    <string name="tracker_signed_in_toast">%s에 로그인됨</string>
+    <string name="tracker_sign_in_failed">로그인 실패 · %s</string>
+    <string name="tracker_nothing_to_upload">아직 캡처한 것이 없음</string>
+    <string name="tracker_page_done">로그인했습니다. Teyvat.me로 돌아가는 중…</string>
+    <string name="tracker_page_cancelled">로그인이 취소되었습니다. 이 탭을 닫아도 됩니다.</string>
+    <string name="tracker_page_wrong">이 링크는 이번 로그인의 링크가 아닙니다.</string>
+
+    <!-- Footer / Activity -->
+    <string name="footer_idle">준비됨</string>
+    <string name="activity">활동</string>
+    <string name="share_log">로그 공유</string>
+    <string name="activity_footnote">메모리에만 보관 · 로그 공유는 latest.log를 보냅니다</string>
+    <string name="activity_empty">아직 없음</string>
+    <string name="event_started">시작됨 · 게임 데이터 %s</string>
+    <string name="event_stopped">캡처 중지됨</string>
+    <string name="no_log">아직 로그 없음</string>
+
+    <!-- First run -->
+    <string name="welcome_tagline">게임 자체의 통신에서 원신 계정을 읽어 GOOD JSON으로 저장</string>
+    <string name="welcome_only_genshin">원신만</string>
+    <string name="welcome_only_genshin_line">다른 앱은 VPN을 거치지 않음</string>
+    <string name="welcome_read_only">읽기 전용</string>
+    <string name="welcome_read_only_line">게임의 패킷은 그대로 전달됨</string>
+    <string name="welcome_on_phone">이 휴대폰에만 저장</string>
+    <string name="welcome_on_phone_line">직접 공유하지 않으면 아무것도 업로드되지 않음</string>
+    <string name="welcome_before_game">게임보다 먼저 열기</string>
+    <string name="welcome_before_game_line">원신의 로그인을 봐야 합니다</string>
+    <string name="get_started">시작하기</string>
+    <string name="setup_title">플레이하기 전에</string>
+    <string name="setup_choose_folder">폴더 선택</string>
+    <string name="setup_choose_folder_line">캡처마다 GOOD JSON 파일 하나</string>
+    <string name="always_on_vpn">상시 접속 VPN</string>
+    <string name="always_on_vpn_line">게임보다 먼저 캡처가 켜짐</string>
+    <string name="always_on_vpn_path">설정 › 네트워크 › VPN › Teyvat.me Capture</string>
+    <string name="open_vpn_settings">VPN 설정 열기</string>
+    <string name="notifications">알림</string>
+    <string name="notifications_line">플레이 중 캡처 상태</string>
+    <string name="allow">허용</string>
+    <string name="setup_vpn_dialog">Android가 VPN 허용을 요청합니다: 앱이 다른 앱의 통신을 읽는 방법입니다</string>
+
+    <!-- Settings -->
+    <string name="section_app">앱</string>
+    <string name="theme">테마</string>
+    <string name="theme_system">시스템</string>
+    <string name="theme_light">밝게</string>
+    <string name="theme_dark">어둡게</string>
+    <string name="section_export">내보내기</string>
+    <string name="section_tracker">트래커</string>
+    <string name="section_diagnostics">진단</string>
+    <string name="record_capture">캡처 녹화</string>
+    <string name="record_capture_line">게임 패킷, 버그 신고용</string>
+    <string name="about">정보</string>
+
+    <!-- Settings › Export -->
+    <string name="export_auto_section">자동 내보내기</string>
+    <string name="export_auto_switch">캡처할 때마다 폴더에 저장</string>
+    <string name="export_auto_switch_line">GOOD JSON, 캡처마다 파일 하나</string>
+    <string name="export_choose_another">다른 폴더 선택</string>
+    <string name="export_use_downloads">Download/Teyvat.me 사용</string>
+    <string name="filters">필터</string>
+    <string name="filter_4th_line">5★ 3옵 성유물의 4번째 옵션 채우기</string>
+    <string name="filter_4th_line_line">Genshin Optimizer용</string>
+    <string name="filters_footnote">트래커 업로드에는 항상 모든 것이 포함됨</string>
+    <string name="filter_all">전체</string>
+    <string name="min_level">최소 레벨</string>
+    <string name="min_ascension">최소 돌파</string>
+    <string name="min_constellation">최소 운명의 자리</string>
+    <string name="min_refinement">최소 재련</string>
+    <string name="min_rarity">최소 희귀도</string>
+    <string name="decrease">감소</string>
+    <string name="increase">증가</string>
+
+    <!-- teyvat.me page -->
+    <string name="teyvat_not_connected">로그인 안 됨</string>
+    <string name="teyvat_browser_line">브라우저에서 로그인합니다</string>
+
+    <!-- About -->
+    <string name="about_version">%1$s · 게임 데이터 %2$s</string>
+    <string name="source_code">소스 코드</string>
+    <string name="teyvat_site_line">트래커 웹사이트</string>
+    <string name="report_bug">버그 신고</string>
+    <string name="report_bug_line">새 issue에 latest.log 첨부</string>
+    <string name="thanks_and_licences">감사의 말 및 라이선스</string>
+    <string name="thanks">감사의 말</string>
+    <string name="licences">오픈 소스 라이선스</string>
+    <string name="third_party_notices">타사 고지</string>
+    <string name="hoyoverse_names">원신과 그 명칭은 HoYoverse에 귀속됩니다</string>
+
+    <!-- Notification -->
+    <string name="channel_capture">캡처</string>
+    <string name="channel_capture_line">Teyvat.me가 게임을 캡처하는 동안 표시</string>
+    <string name="channel_alerts">경고</string>
+    <string name="channel_alerts_line">확인이 필요한 문제</string>
+    <string name="stop_capture">캡처 중지</string>
+    <string name="stop">중지</string>
+    <string name="share_good">GOOD JSON 공유</string>
+    <string name="alert_capture_stopped">캡처 중지됨</string>
+    <string name="alert_vpn_taken">다른 VPN이 연결을 가져감</string>
+    <!-- Updates -->
+    <string name="section_updates">업데이트</string>
+    <string name="update_auto">자동 업데이트</string>
+    <string name="update_auto_line">GitHub의 새 릴리스, 체크섬으로 확인</string>
+    <string name="update_check">업데이트 확인</string>
+    <string name="update_checking">확인 중…</string>
+    <string name="update_up_to_date">최신 버전 · %s</string>
+    <string name="update_ready">업데이트 %s 준비됨</string>
+    <string name="update_waits_capture">캡처가 중지되면 설치</string>
+    <string name="update_waits_app">앱을 나가면 설치</string>
+    <string name="update_install_now">지금 설치</string>
+    <string name="update_tap_to_install">탭하여 설치</string>
+    <string name="update_downloading">다운로드 중 %1$s · %2$d%%</string>
+    <string name="update_installing">%s 설치 중…</string>
+    <string name="update_allow">설치 허용</string>
+    <string name="update_allow_line">Android가 한 번만 묻습니다: 출처를 알 수 없는 앱 설치</string>
+    <string name="update_failed">업데이트 실패 · %s</string>
+</resources>

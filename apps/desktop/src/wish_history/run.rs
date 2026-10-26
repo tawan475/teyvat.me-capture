@@ -36,6 +36,7 @@ use std::collections::BTreeMap;
 use super::Banner;
 use super::gacha_log::{ApiRecord, FetchError, LogClient, Sleeper};
 use super::tracker::{Cursor, Imported, Known, Tracker};
+use crate::i18n::tr;
 
 /// Pages read per banner per run, beyond which the run stops that banner and
 /// a later one carries on.
@@ -91,8 +92,8 @@ pub(crate) enum RunError {
 impl std::fmt::Display for RunError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::KeyExpired => write!(f, "the wish key expired"),
-            Self::OtherAccount => write!(f, "the wish key belongs to another account"),
+            Self::KeyExpired => f.write_str(tr("the wish key expired")),
+            Self::OtherAccount => f.write_str(tr("the wish key belongs to another account")),
             Self::Api(why) | Self::Tracker(why) | Self::Data(why) => write!(f, "{why}"),
         }
     }

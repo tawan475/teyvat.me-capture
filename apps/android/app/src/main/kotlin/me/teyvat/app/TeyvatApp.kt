@@ -18,6 +18,10 @@ class TeyvatApp : Application() {
         private set
     lateinit var capture: Capture
         private set
+    lateinit var tracker: Tracker
+        private set
+    lateinit var updater: Updater
+        private set
     private lateinit var autoExport: AutoExporter
 
     override fun onCreate() {
@@ -28,7 +32,12 @@ class TeyvatApp : Application() {
         prefs = Prefs(this)
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
         autoExport = AutoExporter(this, prefs, scope)
-        capture = Capture(scope) { summary -> autoExport.tick(summary) }
+        tracker = Tracker(this, prefs, scope)
+        capture = Capture(scope) { summary ->
+            autoExport.tick(summary)
+            tracker.tick(summary)
+        }
+        updater = Updater(this, prefs, scope) { capture.vpn.value != VpnState.Off }
     }
 
     /**

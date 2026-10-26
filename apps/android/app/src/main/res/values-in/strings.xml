@@ -1,0 +1,247 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="about_fan_project">Proyek penggemar tidak resmi, tidak berafiliasi dengan HoYoverse</string>
+
+    <!-- Common -->
+    <string name="back">Kembali</string>
+    <string name="settings">Pengaturan</string>
+    <string name="more">Lainnya</string>
+    <string name="try_again">Coba lagi</string>
+    <string name="open">Buka</string>
+    <string name="open_anyway">Tetap buka</string>
+    <string name="cancel">Batal</string>
+    <string name="just_now">baru saja</string>
+    <string name="minutes_ago">%d mnt lalu</string>
+    <string name="hours_ago">%d jam lalu</string>
+
+    <!-- Hero -->
+    <string name="home_capture_off_title">Penangkapan mati</string>
+    <string name="home_capture_off_line">Nyalakan sebelum game</string>
+    <string name="home_start_capture">Mulai tangkap</string>
+    <string name="home_starting_title">Memulai penangkapan</string>
+    <string name="home_starting_line">Siap dalam beberapa detik</string>
+    <string name="home_open_activity">Buka Aktivitas</string>
+    <string name="home_waiting_title">Menunggu game</string>
+    <string name="home_waiting_line">Genshin belum berjalan · buka sekarang</string>
+    <string name="home_detected_title">Game terdeteksi</string>
+    <string name="home_detected_line">Peluncuran tertangkap · masuk ke dunia sekarang</string>
+    <string name="home_already_open_line">Sudah terbuka · masuk ke dunia sekarang</string>
+    <string name="home_open_before">Buka sebelum game</string>
+    <string name="home_open_genshin">Buka Genshin</string>
+    <string name="home_login_seen_title">Login terlihat</string>
+    <string name="home_login_seen_line">Mencari kunci sesi</string>
+    <string name="home_decrypting_title">Mendekripsi data</string>
+    <string name="home_decrypting_line">Kunci sesi ditemukan · %s</string>
+    <string name="home_missed_title">Peluncuran terlewat</string>
+    <string name="home_missed_running_line">Genshin dibuka sebelum Teyvat.me</string>
+    <string name="home_missed_stopped_line">Penangkapan mati saat kamu login</string>
+    <string name="home_reenter">Kembali ke layar judul lalu masuk lagi</string>
+    <string name="home_force_stop">Paksa berhenti Genshin</string>
+    <string name="home_or_restart">atau mulai ulang Genshin</string>
+    <string name="home_key_lost_title">Login tidak terbaca</string>
+    <string name="home_key_lost_line">Kunci sesi tidak ditemukan</string>
+    <string name="home_data_kept">Data tangkapan tetap disimpan</string>
+    <string name="step_vpn">Tangkap</string>
+    <string name="step_login">Login</string>
+    <string name="step_key">Kunci</string>
+    <string name="vpn_not_allowed">VPN tidak diizinkan</string>
+    <string name="game_data_failed">Data game gagal dimuat</string>
+
+    <!-- Captured -->
+    <string name="captured">Tertangkap</string>
+    <string name="captured_nothing">Belum ada</string>
+    <string name="captured_ar">AR %1$d · %2$s</string>
+    <string name="captured_ar_only">AR %d</string>
+    <string name="tile_characters">Karakter</string>
+    <string name="tile_weapons">Senjata</string>
+    <string name="tile_artifacts">Artefak</string>
+    <string name="tile_materials">Material</string>
+    <string name="tile_achievements">Achievement</string>
+
+    <!-- Wish history -->
+    <string name="wish_title">Riwayat Permohonan</string>
+    <string name="wish_open_in_game">Buka riwayat permohonan di game dulu</string>
+    <string name="wish_expired">Kunci kedaluwarsa · buka lagi riwayat permohonan di game</string>
+    <string name="wish_ready">URL siap untuk paimon.moe, StarDB…</string>
+    <string name="wish_reading">Membaca · %1$s, hal. %2$d · %3$s permohonan</string>
+    <string name="wish_read_done">✓ Terbaca %1$s · %2$s permohonan</string>
+    <string name="wish_read_failed">Gagal membaca · %s</string>
+    <string name="wish_copy_url">Salin URL</string>
+    <string name="wish_save">Simpan riwayat</string>
+    <string name="wish_save_description">Riwayat permohonan sebagai UIGF v4 JSON, dibaca oleh paimon.moe, StarDB, dan pelacak permohonan lain</string>
+    <string name="wish_share">Bagikan riwayat</string>
+    <string name="wish_open_paimon">Buka paimon.moe</string>
+    <string name="wish_open_stardb">Buka StarDB</string>
+    <string name="wish_url_copied">URL permohonan disalin</string>
+    <string name="wish_no_key">Tidak ada kunci permohonan · buka riwayat permohonan di game</string>
+    <string name="wish_waiting_uid">Menunggu UID akun</string>
+    <string name="wish_busy">Sedang membaca</string>
+    <string name="wish_saved">Tersimpan: %s</string>
+    <string name="banner_301">Event Karakter</string>
+    <string name="banner_302">Event Senjata</string>
+    <string name="banner_500">Chronicled</string>
+    <string name="banner_200">Standar</string>
+    <string name="banner_100">Pemula</string>
+
+    <!-- Export -->
+    <string name="export_title">Ekspor</string>
+    <string name="export_open_folder">Buka folder ekspor</string>
+    <string name="export_no_folder">Belum ada folder ekspor</string>
+    <string name="export_more">Ekspor lainnya</string>
+    <string name="export_save">Simpan GOOD JSON</string>
+    <string name="export_save_description">GOOD JSON, dibaca oleh Genshin Optimizer, teyvat.me, dan pembaca GOOD apa pun</string>
+    <string name="export_share">Bagikan</string>
+    <string name="export_copy">Salin</string>
+    <string name="export_auto">Ekspor otomatis</string>
+    <string name="export_auto_saved">✓ Tersimpan %1$s · %2$s</string>
+    <string name="export_auto_on">Aktif · %s</string>
+    <string name="export_auto_off">Mati · pilih folder</string>
+    <string name="export_saved">Tersimpan: %s</string>
+    <string name="export_save_failed">Gagal menyimpan</string>
+    <string name="export_copied">GOOD JSON disalin</string>
+    <string name="export_too_big">Terlalu besar untuk disalin · pakai Simpan atau Bagikan</string>
+    <string name="export_not_captured">Belum tertangkap: %s</string>
+    <string name="export_nothing">Belum ada yang tertangkap</string>
+    <string name="export_copy_achievements">Salin achievement</string>
+    <string name="export_stardb">Achievement ke StarDB</string>
+    <string name="export_seelie">Achievement ke Seelie.me</string>
+    <string name="export_filters">Filter dan ekspor otomatis</string>
+    <string name="achievements_copied">%d achievement disalin</string>
+    <string name="achievements_not_found">Achievement tidak ditemukan</string>
+
+    <!-- Tracker -->
+    <string name="tracker">Tracker</string>
+    <string name="optional">Opsional</string>
+    <string name="tracker_sign_in">Masuk</string>
+    <string name="tracker_signed_out_line">Masuk untuk mengunggah setiap tangkapan</string>
+    <string name="tracker_signing_in">Sedang masuk · selesaikan di browser</string>
+    <string name="tracker_signed_in_as">Masuk sebagai %s</string>
+    <string name="tracker_target_uid">Unggahan menuju akun dengan UID tangkapan</string>
+    <string name="tracker_target_account">Unggahan menuju %s</string>
+    <string name="tracker_upload_now">Unggah sekarang</string>
+    <string name="tracker_uploading">Mengunggah…</string>
+    <string name="tracker_uploaded">✓ Diunggah %s</string>
+    <string name="tracker_upload_failed">Unggahan gagal · %s</string>
+    <string name="tracker_upload_switch">Unggah setiap tangkapan</string>
+    <string name="tracker_upload_switch_line">Seluruh akun, semua filter mati</string>
+    <string name="tracker_upload_off">Unggahan mati</string>
+    <string name="tracker_configure">Pilih tujuan unggahan</string>
+    <string name="tracker_configure_line">Di situs web, Pengaturan › Perangkat</string>
+    <string name="tracker_dashboard">Buka dasbor</string>
+    <string name="tracker_sign_out">Keluar</string>
+    <string name="tracker_signed_in_toast">Berhasil masuk ke %s</string>
+    <string name="tracker_sign_in_failed">Gagal masuk · %s</string>
+    <string name="tracker_nothing_to_upload">Belum ada yang tertangkap</string>
+    <string name="tracker_page_done">Sudah masuk. Kembali ke Teyvat.me…</string>
+    <string name="tracker_page_cancelled">Masuk dibatalkan. Tab ini boleh ditutup.</string>
+    <string name="tracker_page_wrong">Tautan ini bukan dari proses masuk ini.</string>
+
+    <!-- Footer / Activity -->
+    <string name="footer_idle">Siap</string>
+    <string name="activity">Aktivitas</string>
+    <string name="share_log">Bagikan log</string>
+    <string name="activity_footnote">Disimpan di memori · Bagikan log mengirim latest.log</string>
+    <string name="activity_empty">Belum ada</string>
+    <string name="event_started">Dimulai · data game %s</string>
+    <string name="event_stopped">Penangkapan berhenti</string>
+    <string name="no_log">Belum ada log</string>
+
+    <!-- First run -->
+    <string name="welcome_tagline">Akun Genshin kamu, dibaca dari lalu lintas game itu sendiri dan disimpan sebagai GOOD JSON</string>
+    <string name="welcome_only_genshin">Hanya Genshin</string>
+    <string name="welcome_only_genshin_line">Aplikasi lain tidak lewat VPN</string>
+    <string name="welcome_read_only">Hanya baca</string>
+    <string name="welcome_read_only_line">Paket game diteruskan tanpa diubah</string>
+    <string name="welcome_on_phone">Tetap di ponsel ini</string>
+    <string name="welcome_on_phone_line">Tidak ada yang diunggah kecuali kamu membagikannya</string>
+    <string name="welcome_before_game">Buka sebelum game</string>
+    <string name="welcome_before_game_line">Aplikasi harus melihat login Genshin</string>
+    <string name="get_started">Mulai</string>
+    <string name="setup_title">Sebelum bermain</string>
+    <string name="setup_choose_folder">Pilih folder</string>
+    <string name="setup_choose_folder_line">Satu file GOOD JSON per tangkapan</string>
+    <string name="always_on_vpn">VPN selalu aktif</string>
+    <string name="always_on_vpn_line">Penangkapan siap sebelum game</string>
+    <string name="always_on_vpn_path">Setelan › Jaringan › VPN › Teyvat.me Capture</string>
+    <string name="open_vpn_settings">Buka setelan VPN</string>
+    <string name="notifications">Notifikasi</string>
+    <string name="notifications_line">Status penangkapan saat bermain</string>
+    <string name="allow">Izinkan</string>
+    <string name="setup_vpn_dialog">Android meminta izin VPN: hanya dengan cara itu aplikasi bisa membaca lalu lintas aplikasi lain</string>
+
+    <!-- Settings -->
+    <string name="section_app">Aplikasi</string>
+    <string name="theme">Tema</string>
+    <string name="theme_system">Sistem</string>
+    <string name="theme_light">Terang</string>
+    <string name="theme_dark">Gelap</string>
+    <string name="section_export">Ekspor</string>
+    <string name="section_tracker">Tracker</string>
+    <string name="section_diagnostics">Diagnostik</string>
+    <string name="record_capture">Rekam tangkapan</string>
+    <string name="record_capture_line">Paket game, untuk laporan bug</string>
+    <string name="about">Tentang</string>
+
+    <!-- Settings › Export -->
+    <string name="export_auto_section">Ekspor otomatis</string>
+    <string name="export_auto_switch">Simpan setiap tangkapan ke folder</string>
+    <string name="export_auto_switch_line">GOOD JSON, satu file per tangkapan</string>
+    <string name="export_choose_another">Pilih folder lain</string>
+    <string name="export_use_downloads">Pakai Download/Teyvat.me</string>
+    <string name="filters">Filter</string>
+    <string name="filter_4th_line">Isi baris ke-4 pada 5★ 3 baris</string>
+    <string name="filter_4th_line_line">Untuk Genshin Optimizer</string>
+    <string name="filters_footnote">Unggahan ke tracker selalu berisi semuanya</string>
+    <string name="filter_all">Semua</string>
+    <string name="min_level">Min. level</string>
+    <string name="min_ascension">Min. ascension</string>
+    <string name="min_constellation">Min. konstelasi</string>
+    <string name="min_refinement">Min. refinement</string>
+    <string name="min_rarity">Min. kelangkaan</string>
+    <string name="decrease">Kurangi</string>
+    <string name="increase">Tambah</string>
+
+    <!-- teyvat.me page -->
+    <string name="teyvat_not_connected">Belum masuk</string>
+    <string name="teyvat_browser_line">Kamu masuk lewat browser</string>
+
+    <!-- About -->
+    <string name="about_version">%1$s · data game %2$s</string>
+    <string name="source_code">Kode sumber</string>
+    <string name="teyvat_site_line">Situs web tracker</string>
+    <string name="report_bug">Laporkan bug</string>
+    <string name="report_bug_line">Issue baru, lampirkan latest.log</string>
+    <string name="thanks_and_licences">Terima kasih dan lisensi</string>
+    <string name="thanks">Terima kasih</string>
+    <string name="licences">Lisensi open source</string>
+    <string name="third_party_notices">Pemberitahuan pihak ketiga</string>
+    <string name="hoyoverse_names">Genshin Impact dan nama-namanya milik HoYoverse</string>
+
+    <!-- Notification -->
+    <string name="channel_capture">Penangkapan</string>
+    <string name="channel_capture_line">Tampil saat Teyvat.me menangkap game</string>
+    <string name="channel_alerts">Peringatan</string>
+    <string name="channel_alerts_line">Masalah yang perlu kamu tangani</string>
+    <string name="stop_capture">Hentikan penangkapan</string>
+    <string name="stop">Berhenti</string>
+    <string name="share_good">Bagikan GOOD JSON</string>
+    <string name="alert_capture_stopped">Penangkapan berhenti</string>
+    <string name="alert_vpn_taken">VPN lain mengambil alih</string>
+    <!-- Updates -->
+    <string name="section_updates">Pembaruan</string>
+    <string name="update_auto">Perbarui otomatis</string>
+    <string name="update_auto_line">Rilis baru dari GitHub, dicek dengan checksum-nya</string>
+    <string name="update_check">Periksa pembaruan</string>
+    <string name="update_checking">Memeriksa…</string>
+    <string name="update_up_to_date">Sudah terbaru · %s</string>
+    <string name="update_ready">Pembaruan %s siap</string>
+    <string name="update_waits_capture">Dipasang saat penangkapan berhenti</string>
+    <string name="update_waits_app">Dipasang saat kamu keluar dari aplikasi</string>
+    <string name="update_install_now">Pasang sekarang</string>
+    <string name="update_tap_to_install">Ketuk untuk memasang</string>
+    <string name="update_downloading">Mengunduh %1$s · %2$d%%</string>
+    <string name="update_installing">Memasang %s…</string>
+    <string name="update_allow">Izinkan pemasangan</string>
+    <string name="update_allow_line">Android bertanya sekali: Instal aplikasi tidak dikenal</string>
+    <string name="update_failed">Pembaruan gagal · %s</string>
+</resources>

@@ -1,0 +1,247 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="about_fan_project">Proyecto fan no oficial, sin relación con HoYoverse</string>
+
+    <!-- Common -->
+    <string name="back">Volver</string>
+    <string name="settings">Ajustes</string>
+    <string name="more">Más</string>
+    <string name="try_again">Reintentar</string>
+    <string name="open">Abrir</string>
+    <string name="open_anyway">Abrir igualmente</string>
+    <string name="cancel">Cancelar</string>
+    <string name="just_now">ahora mismo</string>
+    <string name="minutes_ago">hace %d min</string>
+    <string name="hours_ago">hace %d h</string>
+
+    <!-- Hero -->
+    <string name="home_capture_off_title">Captura desactivada</string>
+    <string name="home_capture_off_line">Iníciala antes del juego</string>
+    <string name="home_start_capture">Iniciar captura</string>
+    <string name="home_starting_title">Iniciando captura</string>
+    <string name="home_starting_line">Lista en unos segundos</string>
+    <string name="home_open_activity">Abrir Actividad</string>
+    <string name="home_waiting_title">Esperando al juego</string>
+    <string name="home_waiting_line">Genshin no está abierto · ábrelo ahora</string>
+    <string name="home_detected_title">Juego detectado</string>
+    <string name="home_detected_line">Inicio capturado · entra al mundo ahora</string>
+    <string name="home_already_open_line">Ya abierto · entra al mundo ahora</string>
+    <string name="home_open_before">Abrir antes del juego</string>
+    <string name="home_open_genshin">Abrir Genshin</string>
+    <string name="home_login_seen_title">Inicio de sesión visto</string>
+    <string name="home_login_seen_line">Buscando la clave de sesión</string>
+    <string name="home_decrypting_title">Descifrando datos</string>
+    <string name="home_decrypting_line">Clave de sesión encontrada · %s</string>
+    <string name="home_missed_title">Inicio perdido</string>
+    <string name="home_missed_running_line">Genshin se abrió antes que Teyvat.me</string>
+    <string name="home_missed_stopped_line">La captura estaba desactivada al iniciar sesión</string>
+    <string name="home_reenter">Vuelve a la pantalla de título y entra de nuevo</string>
+    <string name="home_force_stop">Forzar detención de Genshin</string>
+    <string name="home_or_restart">o reinicia Genshin</string>
+    <string name="home_key_lost_title">Inicio de sesión no leído</string>
+    <string name="home_key_lost_line">Clave de sesión no encontrada</string>
+    <string name="home_data_kept">Los datos capturados se conservan</string>
+    <string name="step_vpn">Captura</string>
+    <string name="step_login">Sesión</string>
+    <string name="step_key">Clave</string>
+    <string name="vpn_not_allowed">VPN no permitida</string>
+    <string name="game_data_failed">No se pudieron cargar los datos del juego</string>
+
+    <!-- Captured -->
+    <string name="captured">Capturado</string>
+    <string name="captured_nothing">Nada aún</string>
+    <string name="captured_ar">AR %1$d · %2$s</string>
+    <string name="captured_ar_only">AR %d</string>
+    <string name="tile_characters">Personajes</string>
+    <string name="tile_weapons">Armas</string>
+    <string name="tile_artifacts">Artefactos</string>
+    <string name="tile_materials">Materiales</string>
+    <string name="tile_achievements">Logros</string>
+
+    <!-- Wish history -->
+    <string name="wish_title">Historial de deseos</string>
+    <string name="wish_open_in_game">Abre antes el historial de deseos en el juego</string>
+    <string name="wish_expired">Clave caducada · vuelve a abrir el historial de deseos en el juego</string>
+    <string name="wish_ready">URL lista para paimon.moe, StarDB…</string>
+    <string name="wish_reading">Leyendo · %1$s, página %2$d · %3$s deseos</string>
+    <string name="wish_read_done">✓ Leído %1$s · %2$s deseos</string>
+    <string name="wish_read_failed">Error de lectura · %s</string>
+    <string name="wish_copy_url">Copiar URL</string>
+    <string name="wish_save">Guardar historial</string>
+    <string name="wish_save_description">Historial de deseos en UIGF v4 JSON, legible por paimon.moe, StarDB y otros trackers de deseos</string>
+    <string name="wish_share">Compartir historial</string>
+    <string name="wish_open_paimon">Abrir paimon.moe</string>
+    <string name="wish_open_stardb">Abrir StarDB</string>
+    <string name="wish_url_copied">URL de deseos copiada</string>
+    <string name="wish_no_key">Sin clave de deseos · abre el historial de deseos en el juego</string>
+    <string name="wish_waiting_uid">Esperando el UID de la cuenta</string>
+    <string name="wish_busy">Ya se está leyendo</string>
+    <string name="wish_saved">Guardado %s</string>
+    <string name="banner_301">Gachapón promocional de personaje</string>
+    <string name="banner_302">Gachapón promocional de arma</string>
+    <string name="banner_500">Recopilatorio</string>
+    <string name="banner_200">Permanente</string>
+    <string name="banner_100">Novato</string>
+
+    <!-- Export -->
+    <string name="export_title">Exportar</string>
+    <string name="export_open_folder">Abrir carpeta de exportación</string>
+    <string name="export_no_folder">Aún no hay carpeta de exportación</string>
+    <string name="export_more">Más exportaciones</string>
+    <string name="export_save">Guardar GOOD JSON</string>
+    <string name="export_save_description">GOOD JSON, legible por Genshin Optimizer, teyvat.me y cualquier lector GOOD</string>
+    <string name="export_share">Compartir</string>
+    <string name="export_copy">Copiar</string>
+    <string name="export_auto">Exportación automática</string>
+    <string name="export_auto_saved">✓ Guardado %1$s · %2$s</string>
+    <string name="export_auto_on">Activada · %s</string>
+    <string name="export_auto_off">Desactivada · elige una carpeta</string>
+    <string name="export_saved">Guardado %s</string>
+    <string name="export_save_failed">Error al guardar</string>
+    <string name="export_copied">GOOD JSON copiado</string>
+    <string name="export_too_big">Demasiado grande para copiar · usa Guardar o Compartir</string>
+    <string name="export_not_captured">Aún sin capturar: %s</string>
+    <string name="export_nothing">Aún no se ha capturado nada</string>
+    <string name="export_copy_achievements">Copiar logros</string>
+    <string name="export_stardb">Logros a StarDB</string>
+    <string name="export_seelie">Logros a Seelie.me</string>
+    <string name="export_filters">Filtros y exportación automática</string>
+    <string name="achievements_copied">%d logros copiados</string>
+    <string name="achievements_not_found">No se encontraron logros</string>
+
+    <!-- Tracker -->
+    <string name="tracker">Tracker</string>
+    <string name="optional">Opcional</string>
+    <string name="tracker_sign_in">Iniciar sesión</string>
+    <string name="tracker_signed_out_line">Inicia sesión para subir cada captura</string>
+    <string name="tracker_signing_in">Iniciando sesión · termina en el navegador</string>
+    <string name="tracker_signed_in_as">Sesión iniciada como %s</string>
+    <string name="tracker_target_uid">Las subidas van a la cuenta con el UID de la captura</string>
+    <string name="tracker_target_account">Las subidas van a %s</string>
+    <string name="tracker_upload_now">Subir ahora</string>
+    <string name="tracker_uploading">Subiendo…</string>
+    <string name="tracker_uploaded">✓ Subido %s</string>
+    <string name="tracker_upload_failed">Error al subir · %s</string>
+    <string name="tracker_upload_switch">Subir cada captura</string>
+    <string name="tracker_upload_switch_line">La cuenta entera, sin ningún filtro</string>
+    <string name="tracker_upload_off">Subidas desactivadas</string>
+    <string name="tracker_configure">Elegir adónde van las subidas</string>
+    <string name="tracker_configure_line">En el sitio web, Ajustes › Dispositivos</string>
+    <string name="tracker_dashboard">Abrir panel</string>
+    <string name="tracker_sign_out">Cerrar sesión</string>
+    <string name="tracker_signed_in_toast">Sesión iniciada en %s</string>
+    <string name="tracker_sign_in_failed">Error al iniciar sesión · %s</string>
+    <string name="tracker_nothing_to_upload">Aún no se ha capturado nada</string>
+    <string name="tracker_page_done">Sesión iniciada. Volviendo a Teyvat.me…</string>
+    <string name="tracker_page_cancelled">Inicio de sesión cancelado. Puedes cerrar esta pestaña.</string>
+    <string name="tracker_page_wrong">Este enlace no es de este inicio de sesión.</string>
+
+    <!-- Footer / Activity -->
+    <string name="footer_idle">Listo</string>
+    <string name="activity">Actividad</string>
+    <string name="share_log">Compartir registro</string>
+    <string name="activity_footnote">En memoria · Compartir registro envía latest.log</string>
+    <string name="activity_empty">Nada aún</string>
+    <string name="event_started">Iniciado · datos del juego %s</string>
+    <string name="event_stopped">Captura detenida</string>
+    <string name="no_log">Aún no hay registro</string>
+
+    <!-- First run -->
+    <string name="welcome_tagline">Tu cuenta de Genshin, leída del propio tráfico del juego y guardada como GOOD JSON</string>
+    <string name="welcome_only_genshin">Solo Genshin</string>
+    <string name="welcome_only_genshin_line">Las demás apps no pasan por la VPN</string>
+    <string name="welcome_read_only">Solo lectura</string>
+    <string name="welcome_read_only_line">Sus paquetes pasan sin cambios</string>
+    <string name="welcome_on_phone">Se queda en este teléfono</string>
+    <string name="welcome_on_phone_line">No se sube nada salvo que lo compartas</string>
+    <string name="welcome_before_game">Abrir antes del juego</string>
+    <string name="welcome_before_game_line">Debe ver el inicio de sesión de Genshin</string>
+    <string name="get_started">Empezar</string>
+    <string name="setup_title">Antes de jugar</string>
+    <string name="setup_choose_folder">Elegir carpeta</string>
+    <string name="setup_choose_folder_line">Un archivo GOOD JSON por captura</string>
+    <string name="always_on_vpn">VPN siempre activada</string>
+    <string name="always_on_vpn_line">La captura está lista antes del juego</string>
+    <string name="always_on_vpn_path">Ajustes › Red › VPN › Teyvat.me Capture</string>
+    <string name="open_vpn_settings">Abrir ajustes de VPN</string>
+    <string name="notifications">Notificaciones</string>
+    <string name="notifications_line">Estado de la captura mientras juegas</string>
+    <string name="allow">Permitir</string>
+    <string name="setup_vpn_dialog">Android te pide permitir una VPN: así es como una app puede leer el tráfico de otra</string>
+
+    <!-- Settings -->
+    <string name="section_app">App</string>
+    <string name="theme">Tema</string>
+    <string name="theme_system">Sistema</string>
+    <string name="theme_light">Claro</string>
+    <string name="theme_dark">Oscuro</string>
+    <string name="section_export">Exportar</string>
+    <string name="section_tracker">Tracker</string>
+    <string name="section_diagnostics">Diagnóstico</string>
+    <string name="record_capture">Grabar captura</string>
+    <string name="record_capture_line">Paquetes del juego, para informar de un error</string>
+    <string name="about">Acerca de</string>
+
+    <!-- Settings › Export -->
+    <string name="export_auto_section">Exportación automática</string>
+    <string name="export_auto_switch">Guardar cada captura en una carpeta</string>
+    <string name="export_auto_switch_line">GOOD JSON, un archivo por captura</string>
+    <string name="export_choose_another">Elegir otra carpeta</string>
+    <string name="export_use_downloads">Usar Download/Teyvat.me</string>
+    <string name="filters">Filtros</string>
+    <string name="filter_4th_line">Rellenar la 4.ª línea de los 5★ de 3 líneas</string>
+    <string name="filter_4th_line_line">Para Genshin Optimizer</string>
+    <string name="filters_footnote">Las subidas al tracker siempre lo incluyen todo</string>
+    <string name="filter_all">Todo</string>
+    <string name="min_level">Nivel mín.</string>
+    <string name="min_ascension">Ascensión mín.</string>
+    <string name="min_constellation">Constelación mín.</string>
+    <string name="min_refinement">Refinamiento mín.</string>
+    <string name="min_rarity">Rareza mín.</string>
+    <string name="decrease">Reducir</string>
+    <string name="increase">Aumentar</string>
+
+    <!-- teyvat.me page -->
+    <string name="teyvat_not_connected">Sesión no iniciada</string>
+    <string name="teyvat_browser_line">Inicias sesión en tu navegador</string>
+
+    <!-- About -->
+    <string name="about_version">%1$s · datos del juego %2$s</string>
+    <string name="source_code">Código fuente</string>
+    <string name="teyvat_site_line">El sitio web del tracker</string>
+    <string name="report_bug">Informar de un error</string>
+    <string name="report_bug_line">Nueva incidencia, adjunta latest.log</string>
+    <string name="thanks_and_licences">Agradecimientos y licencias</string>
+    <string name="thanks">Agradecimientos</string>
+    <string name="licences">Licencias de código abierto</string>
+    <string name="third_party_notices">Avisos de terceros</string>
+    <string name="hoyoverse_names">Genshin Impact y sus nombres pertenecen a HoYoverse</string>
+
+    <!-- Notification -->
+    <string name="channel_capture">Captura</string>
+    <string name="channel_capture_line">Se muestra mientras Teyvat.me captura el juego</string>
+    <string name="channel_alerts">Alertas</string>
+    <string name="channel_alerts_line">Problemas que te necesitan</string>
+    <string name="stop_capture">Detener captura</string>
+    <string name="stop">Detener</string>
+    <string name="share_good">Compartir GOOD JSON</string>
+    <string name="alert_capture_stopped">Captura detenida</string>
+    <string name="alert_vpn_taken">Otra VPN tomó el control</string>
+    <!-- Updates -->
+    <string name="section_updates">Actualizaciones</string>
+    <string name="update_auto">Actualizar automáticamente</string>
+    <string name="update_auto_line">Versiones nuevas de GitHub, verificadas con sus sumas de comprobación</string>
+    <string name="update_check">Buscar actualizaciones</string>
+    <string name="update_checking">Buscando…</string>
+    <string name="update_up_to_date">Al día · %s</string>
+    <string name="update_ready">Actualización %s lista</string>
+    <string name="update_waits_capture">Se instala al detener la captura</string>
+    <string name="update_waits_app">Se instala al salir de la app</string>
+    <string name="update_install_now">Instalar ahora</string>
+    <string name="update_tap_to_install">Toca para instalar</string>
+    <string name="update_downloading">Descargando %1$s · %2$d%%</string>
+    <string name="update_installing">Instalando %s…</string>
+    <string name="update_allow">Permitir instalaciones</string>
+    <string name="update_allow_line">Android pregunta una vez: Instalar aplicaciones desconocidas</string>
+    <string name="update_failed">Error al actualizar · %s</string>
+</resources>

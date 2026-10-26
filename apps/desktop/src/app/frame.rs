@@ -10,6 +10,7 @@ use egui::{Align, Align2, Context, CornerRadius, Frame, Id, Layout, Margin, Orde
 
 use super::{TeyvatmeApp, View};
 use crate::activity::Kind;
+use crate::i18n::{tr, trf};
 use crate::ui::widgets::{self, line, small_text};
 use crate::ui::{icons, theme};
 
@@ -48,8 +49,8 @@ impl TeyvatmeApp {
                         ui.horizontal(|ui| {
                             ui.spacing_mut().item_spacing.x = 2.0;
                             let hint = match self.activity.latest() {
-                                Some(event) => format!("Activity · {}", event.line()),
-                                None => "Activity".to_owned(),
+                                Some(event) => trf("Activity · {0}", &[&event.line()]),
+                                None => tr("Activity").to_owned(),
                             };
                             let history = widgets::icon_button(ui, icons::history(), &hint);
                             if self
@@ -68,9 +69,9 @@ impl TeyvatmeApp {
                             // Light ↔ dark in one click; Settings → App has System.
                             let dark = ui.visuals().dark_mode;
                             let (icon, name) = if dark {
-                                (icons::sun(), "Light theme")
+                                (icons::sun(), tr("Light theme"))
                             } else {
-                                (icons::moon(), "Dark theme")
+                                (icons::moon(), tr("Dark theme"))
                             };
                             if widgets::icon_button(ui, icon, name).clicked() {
                                 self.saved_state.theme = if dark {
@@ -79,7 +80,8 @@ impl TeyvatmeApp {
                                     super::ThemeChoice::Dark
                                 };
                             }
-                            if widgets::icon_button(ui, icons::settings(), "Settings").clicked() {
+                            if widgets::icon_button(ui, icons::settings(), tr("Settings")).clicked()
+                            {
                                 self.open_settings(super::Page::App);
                             }
                         });
@@ -108,13 +110,13 @@ impl TeyvatmeApp {
                     .show(ui, |ui| {
                         ui.set_width((ctx.screen_rect().width() - 48.0).min(460.0));
                         ui.horizontal(|ui| {
-                            ui.label(widgets::strong_text("Activity", pal.tx));
+                            ui.label(widgets::strong_text(tr("Activity"), pal.tx));
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                 if widgets::button(
                                     ui,
                                     widgets::ButtonKind::Ghost,
                                     Some(icons::folder_open()),
-                                    "Open log folder",
+                                    tr("Open log folder"),
                                     false,
                                 )
                                 .clicked()
@@ -130,7 +132,7 @@ impl TeyvatmeApp {
                             .max_height(320.0)
                             .show(ui, |ui| {
                                 if self.activity.is_empty() {
-                                    ui.label(small_text("Nothing yet", pal.tx3));
+                                    ui.label(small_text(tr("Nothing yet"), pal.tx3));
                                 }
                                 for event in self.activity.iter() {
                                     ui.horizontal(|ui| {

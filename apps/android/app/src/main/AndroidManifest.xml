@@ -10,6 +10,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" />
     <!-- The capture notification, asked for in Set up and at Start (13+). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- The self-update (Updater.kt): installs a newer release of this app. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!-- The VPN's allowed list names the game, which needs it visible (API 30+);
          also Open Genshin. -->
@@ -50,6 +52,11 @@
                 <action android:name="android.net.VpnService" />
             </intent-filter>
         </service>
+
+        <!-- PackageInstaller's answer about a self-update. -->
+        <receiver
+            android:name=".InstallResult"
+            android:exported="false" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

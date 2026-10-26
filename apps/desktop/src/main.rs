@@ -33,6 +33,7 @@ mod autostart;
 mod capture;
 mod crash;
 mod game_watch;
+mod i18n;
 mod migrate;
 mod monitor;
 mod replay;
