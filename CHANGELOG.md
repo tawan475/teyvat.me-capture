@@ -2,6 +2,38 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.1.0
+
+**Every language the game ships.** Teyvat.me speaks English, 简体中文,
+繁體中文, 日本語, 한국어, Español, Français, Русский, ภาษาไทย, Tiếng Việt,
+Deutsch, Bahasa Indonesia, Português, Italiano and Türkçe, the same words
+as the teyvat.me site and the game's own names for its terms.
+
+- It follows your system's language. On the desktop, Settings › App ›
+  Language picks another one. On Android 13+, so does the phone's own
+  per-app language setting.
+- Chinese, Japanese, Korean and Thai use your system's font for that script.
+
+**Android: the tracker works.** The "Destinations" card is now "Tracker".
+
+- Sign in with teyvat.me in your browser.
+- Each capture uploads by itself. "Upload now" sends one whenever you want.
+- Choose where uploads go on the website, open your dashboard, or sign out.
+
+**Both:** the tracker's Devices list names this app "Teyvat.me on <device>"
+instead of "Irminsul".
+
+| Platform | File |
+|---|---|
+| Windows 10/11 | `teyvatme-windows.exe` (built-in packet capture; asks for administrator rights) |
+| Windows with Npcap | `teyvatme-windows-pcap.exe` |
+| Linux x86_64 | `teyvatme-linux-x86_64.tar.gz` |
+| macOS (Apple silicon) | `Teyvatme-macos-arm64.app.tar.gz` |
+| Android 10+ | `teyvatme-android.apk` |
+
+Check a download against `SHA256SUMS.txt`. Unofficial fan project, not
+affiliated with HoYoverse.
+
 ## 1.0.1
 
 Fixes the 1.0.0 desktop downloads, which drew most text with letters missing:

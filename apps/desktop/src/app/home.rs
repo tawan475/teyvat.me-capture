@@ -779,7 +779,7 @@ impl TeyvatmeApp {
         let mut action = None;
         card(
             ui,
-            tr("Destinations"),
+            tr("Tracker"),
             Some(tr("Optional")),
             |_| {},
             |ui| {

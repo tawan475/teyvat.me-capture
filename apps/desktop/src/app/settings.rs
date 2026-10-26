@@ -23,7 +23,7 @@ fn pages() -> [(Page, &'static str); 5] {
     [
         (Page::App, tr("App")),
         (Page::Export, tr("Export")),
-        (Page::Destinations, tr("Destinations")),
+        (Page::Destinations, tr("Tracker")),
         (Page::Diagnostics, tr("Diagnostics")),
         (Page::About, tr("About")),
     ]
@@ -322,8 +322,7 @@ impl TeyvatmeApp {
             });
         });
 
-        overline(ui, tr("Filters"))
-            .on_hover_text(tr("Destination uploads always include everything"));
+        overline(ui, tr("Filters")).on_hover_text(tr("Tracker uploads always include everything"));
         card_frame(ui).show(ui, |ui| {
             ui.set_width(ui.available_width());
             let settings = &mut self.saved_state.export_settings;
@@ -391,7 +390,7 @@ impl TeyvatmeApp {
 
     fn destinations_page(&mut self, ui: &mut Ui) {
         let pal = widgets::p(ui);
-        overline(ui, tr("Destinations"));
+        overline(ui, tr("Tracker"));
         card_frame(ui).show(ui, |ui| {
             ui.set_width(ui.available_width());
             let host = self.tracker_host();
@@ -1005,7 +1004,7 @@ impl TeyvatmeApp {
                 (
                     icons::globe(),
                     "teyvat.me",
-                    tr("The tracker website, an optional destination"),
+                    tr("The tracker website"),
                     "https://teyvat.me",
                 ),
                 (

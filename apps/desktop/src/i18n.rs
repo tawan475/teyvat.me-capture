@@ -160,7 +160,15 @@ impl Lang {
 }
 
 /// The system's language, or English when the app doesn't speak it.
+/// `TEYVATME_LANG=<tag>` stands in for the system's (screenshots, tests).
 pub fn system() -> Lang {
+    if let Some(lang) = std::env::var("TEYVATME_LANG")
+        .ok()
+        .as_deref()
+        .and_then(Lang::from_tag)
+    {
+        return lang;
+    }
     sys_locale::get_locales()
         .find_map(|tag| Lang::from_tag(&tag))
         .unwrap_or(Lang::En)
