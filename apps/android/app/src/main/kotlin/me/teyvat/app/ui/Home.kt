@@ -527,7 +527,14 @@ private fun UpdateCard(update: UpdateState, capturing: Boolean, actions: HomeAct
                 )
                 is UpdateState.Ready -> Triple(
                     stringResource(R.string.update_ready, update.version),
-                    stringResource(if (capturing) R.string.update_waits_capture else R.string.update_waits_app), false,
+                    stringResource(
+                        when {
+                            !update.silent -> R.string.update_tap_to_install
+                            capturing -> R.string.update_waits_capture
+                            else -> R.string.update_waits_app
+                        },
+                    ),
+                    false,
                 )
                 is UpdateState.Installing -> Triple(stringResource(R.string.update_installing, update.version), null, false)
                 is UpdateState.NeedsPermission -> Triple(
