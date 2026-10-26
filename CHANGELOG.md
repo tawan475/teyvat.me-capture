@@ -2,6 +2,39 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.2.0
+
+New for the tracker (teyvat.me shows them; a GOOD file for Genshin Optimizer
+is unchanged):
+
+- EXP toward the next level for every character, weapon and artifact, and
+  friendship EXP. The tracker shows how far into a level each one is, and its
+  planner counts EXP you have already fed.
+- The weapon banner's Epitomized Path: the charted weapon and its Fate Points,
+  read when you open the Wish screen.
+- The resin clock: when your next Original Resin comes, so the tracker's resin
+  count follows the game's own timer.
+
+Also:
+
+- The export format is written down: [docs/export-format.md](https://github.com/tawan475/teyvat.me-capture/blob/main/docs/export-format.md),
+  with every field typed in `docs/teyvatme-export.ts`. Fields are only ever
+  added, so tools reading today's files keep working.
+- Releases build faster.
+
+Everything in 1.1.6 below still applies.
+
+| Platform | File |
+|---|---|
+| Windows 10/11 | `teyvatme-windows.exe` (built-in packet capture; asks for administrator rights) |
+| Windows with Npcap | `teyvatme-windows-pcap.exe` |
+| Linux x86_64 | `teyvatme-linux-x86_64.tar.gz` |
+| macOS (Apple silicon) | `Teyvatme-macos-arm64.app.tar.gz` |
+| Android 10+ | `teyvatme-android.apk` |
+
+Check a download against `SHA256SUMS.txt`. Unofficial fan project, not
+affiliated with HoYoverse.
+
 ## 1.1.6
 
 - Windows: minimizing to the tray with the title bar's minimize button no
