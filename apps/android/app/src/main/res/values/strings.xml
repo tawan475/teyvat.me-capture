@@ -256,4 +256,20 @@
     <string name="update_allow">Allow installs</string>
     <string name="update_allow_line">Android asks once: Install unknown apps</string>
     <string name="update_failed">Update failed · %s</string>
+    <!-- Wish sync -->
+    <string name="wish_send">Send wishes to %1$s</string>
+    <string name="wish_send_line">Sends new wishes as they appear</string>
+    <string name="wish_syncing">Syncing wishes: banner %1$s, page %2$s…</string>
+    <string name="wish_synced_added">Synced %1$s · added %2$s</string>
+    <string name="wish_synced_up_to_date">Synced %1$s · up to date</string>
+    <string name="wish_synced_more">Synced %1$s · more to come</string>
+    <string name="wish_sync_key_expired">Sync %1$s: the key expired</string>
+    <string name="wish_sync_failed">Sync failed %1$s: %2$s</string>
+    <string name="wish_not_synced">Not synced: %1$s</string>
+    <string name="wish_other_account">the wish key belongs to another account</string>
+    <string name="wish_new_sent">%1$s new wishes sent to the tracker</string>
+    <!-- Live sync -->
+    <string name="live_sync">Live sync</string>
+    <string name="live_sync_line">Changes as you play</string>
+    <string name="live_changes_sent">Live sync · %1$s changes sent to %2$s</string>
 </resources>

@@ -11,7 +11,7 @@
 use std::time::Duration;
 
 pub(crate) use teyvatme_core::wish::api::{
-    ApiRecord, FetchError, HttpError, HttpGet, HttpReply, Pacing, Sleeper,
+    ApiRecord, HttpError, HttpGet, HttpReply, Pacing, Sleeper,
 };
 #[cfg(test)]
 pub(crate) use teyvatme_core::wish::link::KEY_LIFETIME;

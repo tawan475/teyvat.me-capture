@@ -251,4 +251,20 @@
     <string name="update_allow">อนุญาตการติดตั้ง</string>
     <string name="update_allow_line">Android ถามครั้งเดียว: ติดตั้งแอปที่ไม่รู้จัก</string>
     <string name="update_failed">อัปเดตไม่สำเร็จ · %s</string>
+    <!-- Wish sync -->
+    <string name="wish_send">ส่งการอธิษฐานไปที่ %1$s</string>
+    <string name="wish_send_line">ส่งการอธิษฐานใหม่ทันทีที่มี</string>
+    <string name="wish_syncing">กำลังซิงก์การอธิษฐาน: แบนเนอร์ %1$s หน้า %2$s…</string>
+    <string name="wish_synced_added">ซิงก์ %1$s แล้ว · เพิ่ม %2$s</string>
+    <string name="wish_synced_up_to_date">ซิงก์ %1$s แล้ว · เป็นปัจจุบัน</string>
+    <string name="wish_synced_more">ซิงก์ %1$s แล้ว · ยังมีอีก</string>
+    <string name="wish_sync_key_expired">ซิงก์ %1$s: คีย์หมดอายุ</string>
+    <string name="wish_sync_failed">ซิงก์ไม่สำเร็จ %1$s: %2$s</string>
+    <string name="wish_not_synced">ยังไม่ได้ซิงก์: %1$s</string>
+    <string name="wish_other_account">คีย์การอธิษฐานเป็นของบัญชีอื่น</string>
+    <string name="wish_new_sent">ส่งการอธิษฐานใหม่ %1$s ครั้งไปยัง Tracker แล้ว</string>
+    <!-- Live sync -->
+    <string name="live_sync">ซิงก์สด</string>
+    <string name="live_sync_line">การเปลี่ยนแปลงระหว่างเล่น</string>
+    <string name="live_changes_sent">ซิงก์สด · ส่งการเปลี่ยนแปลง %1$s รายการไปที่ %2$s แล้ว</string>
 </resources>

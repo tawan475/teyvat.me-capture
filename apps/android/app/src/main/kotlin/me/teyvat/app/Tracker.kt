@@ -34,6 +34,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -296,21 +297,42 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
 
     // -- uploads ------------------------------------------------------------------
 
+    /** The automated upload's last signature that failed, and when it is tried again. */
+    private var retryAt = 0L
+    private var backoff = 0L
+    /** A live sync batch is on its way. */
+    @Volatile
+    private var batchInFlight = false
+
     /**
      * Like the auto-export: once characters and items are captured and 5 s
-     * after the last new data, the export goes to the tracker, once per
-     * change.
+     * after the last new data, the tracker's snapshot goes up, once per
+     * change (in live mode only at login and world changes: batches carry
+     * the rest). Then live sync sends what it decided (`teyvatme_core::live`).
      */
     fun tick(summary: Summary) {
         val settings = prefs.value
-        if (!settings.trackerUpload || stateFlow.value !is TrackerState.SignedIn) return
+        val uploadsOn = stateFlow.value is TrackerState.SignedIn && settings.trackerUpload
+        val live = uploadsOn && settings.liveSync
+        NativeBridge.setWishSync(uploadsOn && settings.sendWishes)
+        noteWishes(summary.wish.sync)
+        if (!uploadsOn) return
+        liveTick(live)
         val dataAt = summary.dataAt ?: return
         if (summary.updatedCharacters == null || summary.updatedItems == null) return
         val signature = listOf(summary.login, summary.updatedItems, summary.updatedCharacters, summary.updatedAchievements)
-        if (signature == lastSignature || uploadingFlow.value) return
-        if (System.currentTimeMillis() - dataAt < Exports.DEBOUNCE_MS) return
+        if (uploadingFlow.value) return
+        val now = System.currentTimeMillis()
+        if (signature == lastSignature) {
+            // A failed upload is tried again after a wait, not every second.
+            if (retryAt == 0L || now < retryAt) return
+        } else {
+            retryAt = 0L
+            backoff = 0L
+        }
+        if (now - dataAt < Exports.DEBOUNCE_MS) return
         lastSignature = signature
-        upload(dataAt)
+        upload(dataAt, manual = false, live = live)
     }
 
     /** Upload now (the card's button); false when nothing is captured. */
@@ -318,25 +340,77 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
         val dataAt = summary.dataAt ?: return false
         if (uploadingFlow.value) return true
         lastSignature = listOf(summary.login, summary.updatedItems, summary.updatedCharacters, summary.updatedAchievements)
-        upload(dataAt)
+        retryAt = 0L
+        val settings = prefs.value
+        upload(dataAt, manual = true, live = settings.trackerUpload && settings.liveSync)
         return true
     }
 
-    private fun upload(capturedAt: Long) {
+    private var notedWishSync = 0L
+
+    /** "N new wishes sent to the tracker", once per sync that added some. */
+    private fun noteWishes(sync: WishSync) {
+        val last = sync.last ?: return
+        if (last.at == notedWishSync) return
+        notedWishSync = last.at
+        if (last.added > 0) NativeBridge.note("ok", context.getString(R.string.wish_new_sent, grouped(last.added.toInt())))
+    }
+
+    /**
+     * One request of the native wish sync ([WishTrackerBridge]), signed in:
+     * `"<status>\n<body>"`. Blocks; never on the main thread.
+     */
+    fun wishCall(method: String, path: String, body: String): String = runBlocking(Dispatchers.IO) {
+        if (stateFlow.value !is TrackerState.SignedIn) return@runBlocking "-1\n"
+        try {
+            "200\n" + withBearer { token -> rawCall(method, "${Links.TRACKER_API}$path", body, token) }
+        } catch (e: SignedOut) {
+            "-1\n"
+        } catch (e: HttpError) {
+            if (e.status == 401 && e.code == "session_revoked") forget()
+            "${e.status}\n${e.body}"
+        } catch (e: IOException) {
+            "0\n" + (e.message ?: e.javaClass.simpleName)
+        }
+    }
+
+    /** A snapshot: the automated upload, Upload now, or one live sync asked for ([liveSnapshot]: its ticket and JSON). */
+    private fun upload(capturedAt: Long, manual: Boolean, live: Boolean, liveSnapshot: Pair<Long, String>? = null) {
         uploadingFlow.value = true
         scope.launch {
+            var ticket = 0L
+            var skipped = false
             val result = withContext(Dispatchers.IO) {
                 runCatching {
-                    val json = Exports.good(ExportFilters()) ?: throw IOException("Nothing to upload")
+                    val (t, json) = liveSnapshot ?: run {
+                        val export = NativeBridge.trackerExport(manual, live) ?: throw IOException("Nothing to upload")
+                        if (export.isEmpty()) {
+                            skipped = true
+                            return@runCatching JSONObject()
+                        }
+                        export.substringBefore('\n').toLong() to export.substringAfter('\n')
+                    }
+                    ticket = t
                     withBearer { token -> postGood("${Links.TRACKER_API}/irminsul/import", token, json, capturedAt) }
                 }
             }
             uploadingFlow.value = false
+            // In live mode the batches carry this change.
+            if (skipped) return@launch
+            NativeBridge.snapshotAnswered(ticket, result.getOrNull()?.toString())
             val now = System.currentTimeMillis()
             val done = result.fold(
-                onSuccess = { UploadResult(now, true, context.getString(R.string.tracker_uploaded, hhmm(now))) },
+                onSuccess = {
+                    retryAt = 0L
+                    backoff = 0L
+                    UploadResult(now, true, context.getString(R.string.tracker_uploaded, hhmm(now)))
+                },
                 onFailure = { e ->
-                    lastSignature = null
+                    if (liveSnapshot == null) {
+                        backoff = if (backoff == 0L) FIRST_RETRY_MS else (backoff * 2).coerceAtMost(MAX_RETRY_MS)
+                        retryAt = now + backoff
+                    }
+                    if (e is HttpError && e.status == 401 && e.code == "session_revoked") forget()
                     UploadResult(now, false, uploadError(e))
                 },
             )
@@ -345,6 +419,47 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
                 "last_upload", JSONObject().put("at", done.at).put("ok", done.ok).put("text", done.text).toString(),
             ).apply()
             NativeBridge.note(if (done.ok) "ok" else "error", done.text)
+        }
+    }
+
+    /** Send what live sync decided now: a batch, or a snapshot it asked for. */
+    private fun liveTick(live: Boolean) {
+        if (uploadingFlow.value || batchInFlight) return
+        val next = NativeBridge.liveNextTick(live)
+        if (next < 0 || System.currentTimeMillis() < next) return
+        val action = NativeBridge.liveTick(live) ?: return
+        when {
+            action.startsWith("S") -> {
+                val ticket = action.substring(1).substringBefore('\n').toLongOrNull() ?: return
+                upload(System.currentTimeMillis(), manual = false, live = live, liveSnapshot = ticket to action.substringAfter('\n'))
+            }
+            action.startsWith("B") -> sendBatch(action.substringAfter('\n'))
+        }
+    }
+
+    /** POST one GOOD-X batch to `/irminsul/changes`; the answer goes back to live sync. */
+    private fun sendBatch(delta: String) {
+        batchInFlight = true
+        scope.launch {
+            val (status, body) = withContext(Dispatchers.IO) {
+                try {
+                    200 to withBearer { token -> rawCall("POST", "${Links.TRACKER_API}/irminsul/changes", delta, token) }
+                } catch (e: SignedOut) {
+                    -1 to ""
+                } catch (e: HttpError) {
+                    if (e.status == 401 && e.code == "session_revoked") forget()
+                    e.status to e.body
+                } catch (e: IOException) {
+                    0 to ""
+                }
+            }
+            batchInFlight = false
+            NativeBridge.batchAnswered(status, body)
+            val stored = status in 200..299 && runCatching { JSONObject(body).optBoolean("ok") && !JSONObject(body).optBoolean("duplicate") }.getOrDefault(false)
+            if (stored) {
+                val changes = runCatching { JSONObject(delta).optJSONArray("changes")?.length() ?: 0 }.getOrDefault(0)
+                NativeBridge.note("ok", context.getString(R.string.live_changes_sent, grouped(changes), Links.trackerHost))
+            }
         }
     }
 
@@ -368,7 +483,7 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
 
     // -- HTTP ---------------------------------------------------------------------
 
-    private class HttpError(val status: Int, val code: String?, body: String) : IOException("HTTP $status $body")
+    private class HttpError(val status: Int, val code: String?, val body: String) : IOException("HTTP $status ${body.take(200)}")
     private class SignedOut : IOException("signed out")
 
     private fun open(url: String, method: String, bearer: String?): HttpURLConnection =
@@ -389,9 +504,32 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
             val o = runCatching { JSONObject(body) }.getOrNull()
             val code = o?.optJSONObject("error")?.optString("code")?.takeIf { it.isNotEmpty() }
                 ?: o?.optString("error")?.takeIf { it.isNotEmpty() }
-            throw HttpError(status, code, body.take(200))
+            throw HttpError(status, code, body)
         }
         return runCatching { JSONObject(body) }.getOrDefault(JSONObject())
+    }
+
+    /** A request with a JSON body (or none); the body of a success. */
+    private fun rawCall(method: String, url: String, body: String, bearer: String): String {
+        val c = open(url, method, bearer)
+        try {
+            if (method != "GET") {
+                c.doOutput = true
+                c.setRequestProperty("Content-Type", "application/json")
+                c.outputStream.use { it.write(body.toByteArray()) }
+            }
+            val status = c.responseCode
+            val stream = if (status in 200..299) c.inputStream else c.errorStream
+            val text = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+            if (status !in 200..299) {
+                val o = runCatching { JSONObject(text) }.getOrNull()
+                val code = o?.optJSONObject("error")?.optString("code")?.takeIf { it.isNotEmpty() }
+                throw HttpError(status, code, text)
+            }
+            return text
+        } finally {
+            c.disconnect()
+        }
     }
 
     private fun getJson(url: String, bearer: String?): JSONObject {
@@ -474,6 +612,9 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
 
     companion object {
         private const val TAG = "teyvatme"
+        /** A failed automated upload is tried again after this, doubling up to [MAX_RETRY_MS]. */
+        private const val FIRST_RETRY_MS = 30_000L
+        private const val MAX_RETRY_MS = 600_000L
         /** The OAuth client id the tracker knows Teyvat.me by (shared with irminsul). */
         const val CLIENT_ID = "irminsul"
         /** Names the device "Teyvat.me on <phone>" on the tracker. */

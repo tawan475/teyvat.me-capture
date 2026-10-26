@@ -251,4 +251,20 @@
     <string name="update_allow">Permitir instalações</string>
     <string name="update_allow_line">O Android pergunta uma vez: Instalar apps desconhecidos</string>
     <string name="update_failed">Falha na atualização · %s</string>
+    <!-- Wish sync -->
+    <string name="wish_send">Enviar orações ao %1$s</string>
+    <string name="wish_send_line">Envia as novas orações assim que aparecem</string>
+    <string name="wish_syncing">Sincronizando orações: banner %1$s, página %2$s…</string>
+    <string name="wish_synced_added">Sincronizado %1$s · %2$s adicionados</string>
+    <string name="wish_synced_up_to_date">Sincronizado %1$s · em dia</string>
+    <string name="wish_synced_more">Sincronizado %1$s · há mais por vir</string>
+    <string name="wish_sync_key_expired">Sincronização %1$s: a chave expirou</string>
+    <string name="wish_sync_failed">Falha na sincronização %1$s: %2$s</string>
+    <string name="wish_not_synced">Não sincronizado: %1$s</string>
+    <string name="wish_other_account">a chave de orações pertence a outra conta</string>
+    <string name="wish_new_sent">%1$s novas orações enviadas ao tracker</string>
+    <!-- Live sync -->
+    <string name="live_sync">Sincronização ao vivo</string>
+    <string name="live_sync_line">Mudanças enquanto você joga</string>
+    <string name="live_changes_sent">Sincronização ao vivo · %1$s mudanças enviadas ao %2$s</string>
 </resources>

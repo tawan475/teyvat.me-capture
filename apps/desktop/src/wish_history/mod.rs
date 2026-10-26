@@ -48,9 +48,9 @@ use std::sync::Arc;
 use std::time::Instant;
 
 #[cfg(test)]
-pub(crate) use teyvatme_core::wish::hub::WishEvent;
+pub(crate) use teyvatme_core::wish::hub::{BANNERS, WishEvent};
 pub(crate) use teyvatme_core::wish::hub::{
-    BANNERS, Banner, Notify, Seen, Trigger, WishHub, take_wish_events,
+    Banner, Notify, Seen, Trigger, WishHub, take_wish_events,
 };
 use tokio::sync::watch;
 

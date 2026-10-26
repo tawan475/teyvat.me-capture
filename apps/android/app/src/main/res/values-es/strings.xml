@@ -251,4 +251,20 @@
     <string name="update_allow">Permitir instalaciones</string>
     <string name="update_allow_line">Android pregunta una vez: Instalar aplicaciones desconocidas</string>
     <string name="update_failed">Error al actualizar · %s</string>
+    <!-- Wish sync -->
+    <string name="wish_send">Enviar deseos a %1$s</string>
+    <string name="wish_send_line">Envía los deseos nuevos en cuanto aparecen</string>
+    <string name="wish_syncing">Sincronizando deseos: gachapón %1$s, página %2$s…</string>
+    <string name="wish_synced_added">Sincronizado %1$s · %2$s añadidos</string>
+    <string name="wish_synced_up_to_date">Sincronizado %1$s · al día</string>
+    <string name="wish_synced_more">Sincronizado %1$s · faltan más</string>
+    <string name="wish_sync_key_expired">Sincronización %1$s: la clave caducó</string>
+    <string name="wish_sync_failed">Error de sincronización %1$s: %2$s</string>
+    <string name="wish_not_synced">Sin sincronizar: %1$s</string>
+    <string name="wish_other_account">la clave de deseos es de otra cuenta</string>
+    <string name="wish_new_sent">%1$s deseos nuevos enviados al tracker</string>
+    <!-- Live sync -->
+    <string name="live_sync">Sincronización en vivo</string>
+    <string name="live_sync_line">Cambios mientras juegas</string>
+    <string name="live_changes_sent">Sincronización en vivo · %1$s cambios enviados a %2$s</string>
 </resources>

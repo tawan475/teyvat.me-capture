@@ -251,4 +251,20 @@
     <string name="update_allow">Yüklemelere izin ver</string>
     <string name="update_allow_line">Android bir kez sorar: Bilinmeyen uygulamaları yükle</string>
     <string name="update_failed">Güncelleme başarısız · %s</string>
+    <!-- Wish sync -->
+    <string name="wish_send">Dilekleri gönder: %1$s</string>
+    <string name="wish_send_line">Yeni dilekleri geldikçe gönderir</string>
+    <string name="wish_syncing">Dilekler eşitleniyor: afiş %1$s, sayfa %2$s…</string>
+    <string name="wish_synced_added">Eşitlendi %1$s · eklenen: %2$s</string>
+    <string name="wish_synced_up_to_date">Eşitlendi %1$s · güncel</string>
+    <string name="wish_synced_more">Eşitlendi %1$s · devamı geliyor</string>
+    <string name="wish_sync_key_expired">Eşitleme %1$s: anahtarın süresi doldu</string>
+    <string name="wish_sync_failed">Eşitleme başarısız %1$s: %2$s</string>
+    <string name="wish_not_synced">Eşitlenmedi: %1$s</string>
+    <string name="wish_other_account">dilek anahtarı başka bir hesaba ait</string>
+    <string name="wish_new_sent">Tracker\'a %1$s yeni dilek gönderildi</string>
+    <!-- Live sync -->
+    <string name="live_sync">Canlı eşitleme</string>
+    <string name="live_sync_line">Oynarken değişiklikler</string>
+    <string name="live_changes_sent">Canlı eşitleme · gönderilen değişiklik: %1$s → %2$s</string>
 </resources>

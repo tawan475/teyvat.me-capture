@@ -11,10 +11,11 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
+use teyvatme_core::wish::sync::{Partial, Run};
 
 use super::Banner;
 use super::gacha_log::{LogClient, Pacing, ReqwestGet, Sleeper, WishKey};
-use super::run::{Partial, Run, RunError, RunReport};
+use super::run::{RunError, RunReport};
 use super::test_server::{Reply, Request, TestServer};
 use super::tracker::{Tracker, TrackerCredential};
 use crate::signin::{MemoryStore, TrackerAuth};
@@ -264,7 +265,7 @@ impl Fixture {
             server,
             sleeper: RecordingSleeper::default(),
             partials: BTreeMap::new(),
-            page_cap: super::run::PAGES_PER_RUN,
+            page_cap: teyvatme_core::wish::sync::PAGES_PER_RUN,
             credential: None,
         }
     }

@@ -266,6 +266,8 @@ interface TeyvatActions {
     fun trackerCancelSignIn()
     fun trackerUploadNow()
     fun setTrackerUpload(on: Boolean)
+    fun setSendWishes(on: Boolean)
+    fun setLiveSync(on: Boolean)
     fun trackerSignOut()
     fun openUrl(url: String)
 }
@@ -318,6 +320,16 @@ fun TeyvatScreen(padding: PaddingValues, tracker: TrackerView, captured: Boolean
             SwitchRow(
                 stringResource(R.string.tracker_upload_switch), stringResource(R.string.tracker_upload_switch_line), tracker.uploadOn,
                 actions::setTrackerUpload, icon = R.drawable.ic_cloud_upload,
+            )
+            CardDivider()
+            SwitchRow(
+                stringResource(R.string.live_sync), stringResource(R.string.live_sync_line), tracker.liveOn && tracker.uploadOn,
+                actions::setLiveSync, icon = R.drawable.ic_refresh, enabled = tracker.uploadOn,
+            )
+            CardDivider()
+            SwitchRow(
+                stringResource(R.string.wish_send, Links.trackerHost), stringResource(R.string.wish_send_line), tracker.wishesOn,
+                actions::setSendWishes, icon = R.drawable.ic_sparkles,
             )
             CardDivider()
             ListRow(

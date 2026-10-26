@@ -251,4 +251,20 @@
     <string name="update_allow">Autoriser les installations</string>
     <string name="update_allow_line">Android demande une fois : Installer des applis inconnues</string>
     <string name="update_failed">Échec de la mise à jour · %s</string>
+    <!-- Wish sync -->
+    <string name="wish_send">Envoyer les vœux vers %1$s</string>
+    <string name="wish_send_line">Envoie les nouveaux vœux dès qu\'ils apparaissent</string>
+    <string name="wish_syncing">Synchro des vœux : bannière %1$s, page %2$s…</string>
+    <string name="wish_synced_added">Synchronisé %1$s · %2$s ajoutés</string>
+    <string name="wish_synced_up_to_date">Synchronisé %1$s · à jour</string>
+    <string name="wish_synced_more">Synchronisé %1$s · d\'autres à venir</string>
+    <string name="wish_sync_key_expired">Synchro %1$s : la clé a expiré</string>
+    <string name="wish_sync_failed">Échec de la synchro %1$s : %2$s</string>
+    <string name="wish_not_synced">Non synchronisé : %1$s</string>
+    <string name="wish_other_account">la clé de vœux appartient à un autre compte</string>
+    <string name="wish_new_sent">%1$s nouveaux vœux envoyés au tracker</string>
+    <!-- Live sync -->
+    <string name="live_sync">Synchro en direct</string>
+    <string name="live_sync_line">Changements pendant que vous jouez</string>
+    <string name="live_changes_sent">Synchro en direct · %1$s changements envoyés à %2$s</string>
 </resources>

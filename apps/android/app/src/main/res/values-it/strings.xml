@@ -251,4 +251,20 @@
     <string name="update_allow">Consenti installazioni</string>
     <string name="update_allow_line">Android lo chiede una volta: Installa app sconosciute</string>
     <string name="update_failed">Aggiornamento non riuscito · %s</string>
+    <!-- Wish sync -->
+    <string name="wish_send">Invia i desideri a %1$s</string>
+    <string name="wish_send_line">Invia i nuovi desideri appena compaiono</string>
+    <string name="wish_syncing">Sincronizzazione desideri: banner %1$s, pagina %2$s…</string>
+    <string name="wish_synced_added">Sincronizzato %1$s · %2$s aggiunti</string>
+    <string name="wish_synced_up_to_date">Sincronizzato %1$s · aggiornato</string>
+    <string name="wish_synced_more">Sincronizzato %1$s · altri in arrivo</string>
+    <string name="wish_sync_key_expired">Sincronizzazione %1$s: la chiave è scaduta</string>
+    <string name="wish_sync_failed">Sincronizzazione non riuscita %1$s: %2$s</string>
+    <string name="wish_not_synced">Non sincronizzato: %1$s</string>
+    <string name="wish_other_account">la chiave dei desideri appartiene a un altro account</string>
+    <string name="wish_new_sent">%1$s nuovi desideri inviati al tracker</string>
+    <!-- Live sync -->
+    <string name="live_sync">Sincronizzazione live</string>
+    <string name="live_sync_line">Modifiche mentre giochi</string>
+    <string name="live_changes_sent">Sincronizzazione live · %1$s modifiche inviate a %2$s</string>
 </resources>

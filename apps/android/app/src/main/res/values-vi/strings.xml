@@ -251,4 +251,20 @@
     <string name="update_allow">Cho phép cài đặt</string>
     <string name="update_allow_line">Android hỏi một lần: Cài đặt ứng dụng không xác định</string>
     <string name="update_failed">Cập nhật thất bại · %s</string>
+    <!-- Wish sync -->
+    <string name="wish_send">Gửi lượt cầu nguyện tới %1$s</string>
+    <string name="wish_send_line">Gửi lượt cầu nguyện mới khi có</string>
+    <string name="wish_syncing">Đang đồng bộ cầu nguyện: banner %1$s, trang %2$s…</string>
+    <string name="wish_synced_added">Đã đồng bộ %1$s · thêm %2$s</string>
+    <string name="wish_synced_up_to_date">Đã đồng bộ %1$s · đã mới nhất</string>
+    <string name="wish_synced_more">Đã đồng bộ %1$s · còn nữa</string>
+    <string name="wish_sync_key_expired">Đồng bộ %1$s: khóa đã hết hạn</string>
+    <string name="wish_sync_failed">Đồng bộ thất bại %1$s: %2$s</string>
+    <string name="wish_not_synced">Chưa đồng bộ: %1$s</string>
+    <string name="wish_other_account">khóa cầu nguyện thuộc tài khoản khác</string>
+    <string name="wish_new_sent">Đã gửi %1$s lượt cầu nguyện mới tới tracker</string>
+    <!-- Live sync -->
+    <string name="live_sync">Đồng bộ trực tiếp</string>
+    <string name="live_sync_line">Thay đổi khi bạn chơi</string>
+    <string name="live_changes_sent">Đồng bộ trực tiếp · đã gửi %1$s thay đổi tới %2$s</string>
 </resources>

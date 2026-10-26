@@ -64,4 +64,29 @@ object NativeBridge {
 
     /** The last read's UIGF v4 JSON, or null. */
     external fun wishHistory(): String?
+
+    /**
+     * Whether a captured wish key is synced to the tracker (signed in, uploads
+     * and wishes on). The sync's requests come back through [WishTrackerBridge].
+     */
+    external fun setWishSync(on: Boolean)
+
+    /**
+     * The tracker's snapshot (the whole account, every filter off, with live
+     * sync's labels) as `"<ticket>\n<GOOD JSON>"`; "" when nothing is due
+     * ([live] mode: batches carry the changes); null before data is captured.
+     */
+    external fun trackerExport(manual: Boolean, live: Boolean): String?
+
+    /** When live sync next has something to do (Unix ms), or -1. */
+    external fun liveNextTick(live: Boolean): Long
+
+    /** `"S<ticket>\n<GOOD JSON>"` (a snapshot), `"B\n<delta JSON>"` (a batch), or null. */
+    external fun liveTick(live: Boolean): String?
+
+    /** A snapshot upload finished: the tracker's answer, or null when it failed. */
+    external fun snapshotAnswered(ticket: Long, body: String?)
+
+    /** A batch finished: its HTTP status (0: no answer, -1: signed out) and body. */
+    external fun batchAnswered(status: Int, body: String)
 }

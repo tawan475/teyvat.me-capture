@@ -219,7 +219,7 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
         val trackerState by tracker.state.collectAsState()
         val lastUpload by tracker.lastUpload.collectAsState()
         val uploading by tracker.uploading.collectAsState()
-        val trackerView = TrackerView(trackerState, lastUpload, uploading, settings.trackerUpload)
+        val trackerView = TrackerView(trackerState, lastUpload, uploading, settings.trackerUpload, settings.sendWishes, settings.liveSync)
         val update by updater.state.collectAsState()
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
@@ -407,6 +407,14 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
 
     override fun setTrackerUpload(on: Boolean) {
         prefs.update { it.copy(trackerUpload = on) }
+    }
+
+    override fun setLiveSync(on: Boolean) {
+        prefs.update { it.copy(liveSync = on) }
+    }
+
+    override fun setSendWishes(on: Boolean) {
+        prefs.update { it.copy(sendWishes = on) }
     }
 
     override fun trackerSignOut() = tracker.signOut()

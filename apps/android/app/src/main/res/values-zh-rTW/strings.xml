@@ -251,4 +251,20 @@
     <string name="update_allow">允許安裝</string>
     <string name="update_allow_line">Android 只詢問一次：安裝不明的應用程式</string>
     <string name="update_failed">更新失敗 · %s</string>
+    <!-- Wish sync -->
+    <string name="wish_send">將祈願傳送到 %1$s</string>
+    <string name="wish_send_line">有新祈願時立即傳送</string>
+    <string name="wish_syncing">正在同步祈願：卡池 %1$s，第 %2$s 頁…</string>
+    <string name="wish_synced_added">已同步 %1$s · 新增 %2$s</string>
+    <string name="wish_synced_up_to_date">已同步 %1$s · 已是最新</string>
+    <string name="wish_synced_more">已同步 %1$s · 還有更多</string>
+    <string name="wish_sync_key_expired">同步 %1$s：金鑰已過期</string>
+    <string name="wish_sync_failed">同步失敗 %1$s：%2$s</string>
+    <string name="wish_not_synced">未同步：%1$s</string>
+    <string name="wish_other_account">祈願金鑰屬於另一個帳號</string>
+    <string name="wish_new_sent">已向追蹤器傳送 %1$s 次新祈願</string>
+    <!-- Live sync -->
+    <string name="live_sync">即時同步</string>
+    <string name="live_sync_line">邊玩邊同步變化</string>
+    <string name="live_changes_sent">即時同步 · 已向 %2$s 傳送 %1$s 項變化</string>
 </resources>

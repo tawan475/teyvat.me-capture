@@ -251,4 +251,20 @@
     <string name="update_allow">インストールを許可</string>
     <string name="update_allow_line">Android が一度だけ確認: 不明なアプリのインストール</string>
     <string name="update_failed">アップデート失敗 · %s</string>
+    <!-- Wish sync -->
+    <string name="wish_send">祈願を %1$s に送信</string>
+    <string name="wish_send_line">新しい祈願が出るたびに送信</string>
+    <string name="wish_syncing">祈願を同期中：%1$s、%2$s ページ…</string>
+    <string name="wish_synced_added">%1$s を同期 · %2$s 件追加</string>
+    <string name="wish_synced_up_to_date">%1$s を同期 · 最新です</string>
+    <string name="wish_synced_more">%1$s を同期 · 続きあり</string>
+    <string name="wish_sync_key_expired">同期 %1$s：キーの期限切れ</string>
+    <string name="wish_sync_failed">同期失敗 %1$s：%2$s</string>
+    <string name="wish_not_synced">未同期：%1$s</string>
+    <string name="wish_other_account">祈願キーは別のアカウントのものです</string>
+    <string name="wish_new_sent">新しい祈願 %1$s 回をトラッカーに送信しました</string>
+    <!-- Live sync -->
+    <string name="live_sync">ライブ同期</string>
+    <string name="live_sync_line">プレイ中の変化</string>
+    <string name="live_changes_sent">ライブ同期 · %2$s に %1$s 件の変更を送信</string>
 </resources>

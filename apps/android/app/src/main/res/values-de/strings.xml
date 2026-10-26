@@ -251,4 +251,20 @@
     <string name="update_allow">Installationen erlauben</string>
     <string name="update_allow_line">Android fragt einmal: Unbekannte Apps installieren</string>
     <string name="update_failed">Update fehlgeschlagen · %s</string>
+    <!-- Wish sync -->
+    <string name="wish_send">Gebete an %1$s senden</string>
+    <string name="wish_send_line">Sendet neue Gebete, sobald sie erscheinen</string>
+    <string name="wish_syncing">Synchronisiere Gebete: Banner %1$s, Seite %2$s…</string>
+    <string name="wish_synced_added">Synchronisiert %1$s · %2$s hinzugefügt</string>
+    <string name="wish_synced_up_to_date">Synchronisiert %1$s · aktuell</string>
+    <string name="wish_synced_more">Synchronisiert %1$s · weitere folgen</string>
+    <string name="wish_sync_key_expired">Sync %1$s: Der Schlüssel ist abgelaufen</string>
+    <string name="wish_sync_failed">Sync fehlgeschlagen %1$s: %2$s</string>
+    <string name="wish_not_synced">Nicht synchronisiert: %1$s</string>
+    <string name="wish_other_account">der Gebetsschlüssel gehört zu einem anderen Konto</string>
+    <string name="wish_new_sent">%1$s neue Gebete an den Tracker gesendet</string>
+    <!-- Live sync -->
+    <string name="live_sync">Live-Sync</string>
+    <string name="live_sync_line">Änderungen beim Spielen</string>
+    <string name="live_changes_sent">Live-Sync · %1$s Änderungen an %2$s gesendet</string>
 </resources>

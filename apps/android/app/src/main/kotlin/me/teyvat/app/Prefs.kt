@@ -98,6 +98,10 @@ data class Settings(
     val lastSave: String? = null,
     /** Signed in to the tracker: upload each capture. */
     val trackerUpload: Boolean = true,
+    /** Signed in to the tracker: sync the wish history when the game sends its key. */
+    val sendWishes: Boolean = true,
+    /** Between snapshots, send what changed as you play (the tracker's switch decides too). */
+    val liveSync: Boolean = true,
     /** Download and install new releases by themselves. */
     val autoUpdate: Boolean = true,
 )
@@ -133,6 +137,8 @@ class Prefs(context: Context) {
             lastAutoExport = last,
             lastSave = store.getString("last_save", null),
             trackerUpload = store.getBoolean("tracker_upload", true),
+            sendWishes = store.getBoolean("send_wishes", true),
+            liveSync = store.getBoolean("live_sync", true),
             autoUpdate = store.getBoolean("auto_update", true),
         )
     }
@@ -153,6 +159,8 @@ class Prefs(context: Context) {
             )
             .putString("last_save", s.lastSave)
             .putBoolean("tracker_upload", s.trackerUpload)
+            .putBoolean("send_wishes", s.sendWishes)
+            .putBoolean("live_sync", s.liveSync)
             .putBoolean("auto_update", s.autoUpdate)
             .apply()
     }

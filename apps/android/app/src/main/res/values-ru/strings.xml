@@ -251,4 +251,20 @@
     <string name="update_allow">Разрешить установку</string>
     <string name="update_allow_line">Android спросит один раз: Установка неизвестных приложений</string>
     <string name="update_failed">Ошибка обновления · %s</string>
+    <!-- Wish sync -->
+    <string name="wish_send">Отправлять молитвы в %1$s</string>
+    <string name="wish_send_line">Отправляет новые молитвы по мере появления</string>
+    <string name="wish_syncing">Синхронизация молитв: баннер %1$s, стр. %2$s…</string>
+    <string name="wish_synced_added">Синхронизировано %1$s · добавлено: %2$s</string>
+    <string name="wish_synced_up_to_date">Синхронизировано %1$s · всё актуально</string>
+    <string name="wish_synced_more">Синхронизировано %1$s · будет ещё</string>
+    <string name="wish_sync_key_expired">Синхронизация %1$s: ключ истёк</string>
+    <string name="wish_sync_failed">Ошибка синхронизации %1$s: %2$s</string>
+    <string name="wish_not_synced">Не синхронизировано: %1$s</string>
+    <string name="wish_other_account">ключ молитв принадлежит другому аккаунту</string>
+    <string name="wish_new_sent">Новых молитв отправлено в трекер: %1$s</string>
+    <!-- Live sync -->
+    <string name="live_sync">Живая синхронизация</string>
+    <string name="live_sync_line">Изменения во время игры</string>
+    <string name="live_changes_sent">Живая синхронизация · изменений отправлено на %2$s: %1$s</string>
 </resources>

@@ -46,6 +46,7 @@ import me.teyvat.app.UpdateState
 import me.teyvat.app.UploadResult
 import me.teyvat.app.Whoami
 import me.teyvat.app.WishInfo
+import me.teyvat.app.WishSync
 import me.teyvat.app.grouped
 import me.teyvat.app.hhmm
 import me.teyvat.app.line
@@ -88,6 +89,8 @@ data class TrackerView(
     val last: UploadResult?,
     val uploading: Boolean,
     val uploadOn: Boolean,
+    val wishesOn: Boolean = true,
+    val liveOn: Boolean = true,
 )
 
 /** Now, ticking once a second, for "just now" and Starting's 30 s. */
@@ -128,7 +131,7 @@ fun HomeContent(
         if (update.shown()) item { UpdateCard(update, capturing, actions) }
         if (!backgroundAllowed) item { BackgroundCard(actions) }
         item { CapturedCard(summary, now) }
-        item { WishCard(summary.wish, actions) }
+        item { WishCard(summary.wish, tracker.state is TrackerState.SignedIn, actions) }
         item { ExportCard(summary, settings, folderLabel, actions) }
         item { TrackerCard(tracker, summary.captured, actions) }
     }
@@ -491,8 +494,28 @@ private fun bannerName(banner: Int): String = when (banner) {
  * (Wish → History in game); then Copy URL for paimon.moe or StarDB, and Save
  * or Share of the whole history as UIGF.
  */
+/** The wish sync's line (the desktop's `SyncStatus::line`), and whether it tells of a problem. */
 @Composable
-private fun WishCard(wish: WishInfo, actions: HomeActions) {
+private fun wishSyncLine(sync: WishSync, signedIn: Boolean): Pair<String, Boolean>? {
+    when (sync.phase) {
+        "syncing" -> return stringResource(R.string.wish_syncing, sync.banner.toString(), sync.page.toString()) to false
+        // Signed in, the switches are off by choice: nothing to say.
+        "off" -> return if (signedIn) null else stringResource(R.string.wish_not_synced, stringResource(R.string.teyvat_not_connected)) to false
+    }
+    val last = sync.last ?: return null
+    val at = hhmm(last.at)
+    return when (last.outcome) {
+        "sent" -> stringResource(R.string.wish_synced_added, at, grouped(last.added.toInt())) to false
+        "upToDate" -> stringResource(R.string.wish_synced_up_to_date, at) to false
+        "unfinished" -> stringResource(R.string.wish_synced_more, at) to false
+        "keyExpired" -> stringResource(R.string.wish_sync_key_expired, at) to true
+        "otherAccount" -> stringResource(R.string.wish_sync_failed, at, stringResource(R.string.wish_other_account)) to true
+        else -> stringResource(R.string.wish_sync_failed, at, last.error.orEmpty()) to true
+    }
+}
+
+@Composable
+private fun WishCard(wish: WishInfo, signedIn: Boolean, actions: HomeActions) {
     when (wish.key) {
         "none" -> return GreyCard(R.drawable.ic_sparkles, stringResource(R.string.wish_title), stringResource(R.string.wish_open_in_game))
         "expired" -> return GreyCard(R.drawable.ic_sparkles, stringResource(R.string.wish_title), stringResource(R.string.wish_expired))
@@ -525,6 +548,19 @@ private fun WishCard(wish: WishInfo, actions: HomeActions) {
                         color = if (error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 2, overflow = TextOverflow.Ellipsis,
                     )
+                }
+                wishSyncLine(wish.sync, signedIn)?.let { (line, problem) ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (wish.sync.phase == "syncing") {
+                            Spinner(size = 14.dp)
+                            Spacer(Modifier.width(6.dp))
+                        }
+                        Text(
+                            line, style = MaterialTheme.typography.bodySmall,
+                            color = if (problem) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outline,
+                            maxLines = 2, overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
             }
             Box {
