@@ -283,8 +283,10 @@ impl TeyvatmeApp {
 
     pub(super) fn leave_settings(&mut self) {
         // Leaving the destination page re-verifies an edited key.
-        if self.view == View::Settings(Page::Teyvatme)
-            && self.saved_state.tracker_sign_in != super::TrackerSignIn::SignedIn
+        if matches!(
+            self.view,
+            View::Settings(Page::Teyvatme | Page::Destinations)
+        ) && self.saved_state.tracker_sign_in != super::TrackerSignIn::SignedIn
             && !self.saved_state.tracker_import_key.is_empty()
             && !self.saved_state.tracker_verified
         {

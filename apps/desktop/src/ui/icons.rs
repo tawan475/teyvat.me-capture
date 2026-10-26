@@ -21,7 +21,6 @@ icons! {
     arrow_left => "arrow-left",
     bug => "bug",
     check => "check",
-    chevron_right => "chevron-right",
     circle_check => "circle-check",
     circle_x => "circle-x",
     cloud => "cloud",

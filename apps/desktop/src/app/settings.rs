@@ -8,7 +8,7 @@
 use egui::{Align, DragValue, Layout, RichText, Ui, vec2};
 
 use super::frame::BREAKPOINT;
-use super::{AddressChange, Page, TeyvatmeApp, ThemeChoice, TrackerSignIn, View};
+use super::{AddressChange, Page, TeyvatmeApp, ThemeChoice, TrackerSignIn};
 use crate::TracingLevel;
 use crate::i18n::{Lang, tr, trf};
 use crate::signin::{self, AuthStatus, TrackerRequest, UploadScope, Whoami};
@@ -173,8 +173,9 @@ impl TeyvatmeApp {
                         match page {
                             Page::App => self.app_page(ui),
                             Page::Export => self.export_page(ui),
-                            Page::Destinations => self.destinations_page(ui),
-                            Page::Teyvatme => self.teyvatme_page(ui),
+                            // The tab is the tracker page itself (no list
+                            // row to click through to it).
+                            Page::Destinations | Page::Teyvatme => self.teyvatme_page(ui),
                             Page::Diagnostics => self.diagnostics_page(ui),
                             Page::About => self.about_page(ui),
                         }
@@ -183,7 +184,8 @@ impl TeyvatmeApp {
         if back {
             self.leave_settings();
         } else if chosen != page {
-            self.view = View::Settings(chosen);
+            // Through open_settings, which readies the tracker page.
+            self.open_settings(chosen);
         }
     }
 
@@ -385,35 +387,6 @@ impl TeyvatmeApp {
             .on_hover_text(
                 tr("Genshin Optimizer still treats 5★ 3-liners like before 6.0, where the new stat is hidden. This activates that last line and sets the artifact to level 4, as if it had been levelled. The last line should be the unlockable 4th one."),
             );
-        });
-    }
-
-    fn destinations_page(&mut self, ui: &mut Ui) {
-        let pal = widgets::p(ui);
-        overline(ui, tr("Tracker"));
-        card_frame(ui).show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            let host = self.tracker_host();
-            let (line, problem) = self.destination_result_line();
-            let row = list_row(
-                ui,
-                Some((icons::cloud(), pal.tx2)),
-                title_text(&host, pal.tx),
-                Some(secondary_text(
-                    line,
-                    if problem { pal.bad } else { pal.tx2 },
-                )),
-                |ui| {
-                    ui.add(icons::image(icons::chevron_right(), 18.0, pal.tx3));
-                },
-            );
-            let open = ui.interact(row.0.rect, row.0.id.with("open"), egui::Sense::click());
-            if open
-                .on_hover_cursor(egui::CursorIcon::PointingHand)
-                .clicked()
-            {
-                self.view = View::Settings(Page::Teyvatme);
-            }
         });
     }
 
