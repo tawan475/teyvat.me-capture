@@ -2,6 +2,35 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.2.1
+
+- Android: self-updating behaves.
+  - **Install now** opens Android's update screen right away.
+  - A downloaded update is kept when the app restarts, instead of being
+    downloaded again.
+  - Leaving Android's update screen with Home no longer leaves the card on
+    "Installing"; it is ready again for Install now.
+  - While your phone still has a copy you installed yourself, every update
+    needs your tap, so it no longer pretends to install when you leave the
+    app: a notification says the update is ready instead. After one update
+    from inside the app, later ones install by themselves.
+
+Google Play Protect may still ask to scan the app the first time it sees a
+new version: it does that for any app installed outside the Play Store.
+
+Everything in 1.2.0 below still applies.
+
+| Platform | File |
+|---|---|
+| Windows 10/11 | `teyvatme-windows.exe` (built-in packet capture; asks for administrator rights) |
+| Windows with Npcap | `teyvatme-windows-pcap.exe` |
+| Linux x86_64 | `teyvatme-linux-x86_64.tar.gz` |
+| macOS (Apple silicon) | `Teyvatme-macos-arm64.app.tar.gz` |
+| Android 10+ | `teyvatme-android.apk` |
+
+Check a download against `SHA256SUMS.txt`. Unofficial fan project, not
+affiliated with HoYoverse.
+
 ## 1.2.0
 
 New for the tracker (teyvat.me shows them; a GOOD file for Genshin Optimizer

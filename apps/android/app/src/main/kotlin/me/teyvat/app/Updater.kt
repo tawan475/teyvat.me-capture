@@ -32,8 +32,12 @@ sealed class UpdateState {
     data object Idle : UpdateState()
     data object Checking : UpdateState()
     data class Downloading(val version: String, val percent: Int) : UpdateState()
-    /** Downloaded and checked; installs once capture is off (or on Install now). */
-    data class Ready(val version: String) : UpdateState()
+    /**
+     * Downloaded and checked. `silent`: Android installs it without asking
+     * (this app installed the running version), so it goes in once capture is
+     * off and the app is off screen; otherwise only on Install now.
+     */
+    data class Ready(val version: String, val silent: Boolean = false) : UpdateState()
     data class Installing(val version: String) : UpdateState()
     /** Android needs "Install unknown apps" allowed for this app first. */
     data class NeedsPermission(val version: String) : UpdateState()
@@ -63,8 +67,11 @@ class Updater(
 
     init {
         instance = this
-        // Leftovers of an update that installed (or of an older version).
-        dir.listFiles()?.filter { it.name != apkName(BuildConfig.VERSION_NAME) }?.forEach { it.delete() }
+        // Leftovers of an update that installed, or of an older version. A
+        // newer one stays: it was downloaded and checked, and is still to go in.
+        dir.listFiles()
+            ?.filter { file -> versionOf(file)?.let { !newer(it, BuildConfig.VERSION_NAME) } ?: true }
+            ?.forEach { it.delete() }
         scope.launch {
             delay(5_000)
             while (true) {
@@ -140,20 +147,72 @@ class Updater(
             NativeBridge.note("error", context.getString(R.string.update_failed, e.message ?: ""))
             return
         }
-        stateFlow.value = UpdateState.Ready(release.version)
+        stateFlow.value = UpdateState.Ready(release.version, installsSilently())
         NativeBridge.note("info", context.getString(R.string.update_ready, release.version))
         installWhenFree()
+    }
+
+    /**
+     * Whether Android installs an update from this app without asking: from
+     * Android 12, when this app installed the version that runs (after its
+     * first self-update). A copy installed from the browser or a file manager
+     * needs a tap every time, and a background app may not show that screen.
+     */
+    private fun installsSilently(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return false
+        return runCatching {
+            context.packageManager.getInstallSourceInfo(context.packageName).installingPackageName == context.packageName
+        }.getOrDefault(false)
     }
 
     /**
      * Installs a ready update when nothing is cut by it: capture off and the
      * app not on screen (installing ends this process). Otherwise the card's
      * Install now does it, and [onCaptureStopped] / the app leaving the
-     * screen try again.
+     * screen try again. An update Android would ask about can't be asked from
+     * the background, so then a notification says it is ready instead.
      */
     fun installWhenFree() {
         val ready = stateFlow.value as? UpdateState.Ready ?: return
-        if (prefs.value.autoUpdate && !capturing() && !foreground) install(ready.version)
+        if (!prefs.value.autoUpdate || capturing() || foreground) return
+        if (ready.silent) install(ready.version) else notifyReady(ready.version)
+    }
+
+    private var notifiedVersion: String? = null
+
+    /** "Update ready, tap to install": opens the app, which installs it. Once per version. */
+    private fun notifyReady(version: String) {
+        if (notifiedVersion == version) return
+        notifiedVersion = version
+        GameVpnService.createChannels(context)
+        val open = Intent(context, MainActivity::class.java)
+            .setAction(MainActivity.ACTION_INSTALL_UPDATE)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        val tap = PendingIntent.getActivity(
+            context, NOTIFICATION_UPDATE, open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val note = android.app.Notification.Builder(context, "alerts")
+            .setSmallIcon(R.drawable.ic_capture)
+            .setContentTitle(context.getString(R.string.update_ready, version))
+            .setContentText(context.getString(R.string.update_tap_to_install))
+            .setContentIntent(tap)
+            .setAutoCancel(true)
+            .build()
+        runCatching { context.getSystemService(android.app.NotificationManager::class.java).notify(NOTIFICATION_UPDATE, note) }
+    }
+
+    private var installStartedAt = 0L
+
+    /**
+     * The app is back on screen. An install still "in progress" whose screen
+     * was left with Home (Android then never answers) is ready again, for
+     * Install now to open a fresh one.
+     */
+    fun onResume() {
+        val installing = stateFlow.value as? UpdateState.Installing ?: return
+        if (System.currentTimeMillis() - installStartedAt > RESUME_GRACE_MS) {
+            stateFlow.value = UpdateState.Ready(installing.version, installsSilently())
+        }
     }
 
     /** Capture just stopped: a waiting update goes in now. */
@@ -179,9 +238,13 @@ class Updater(
             return
         }
         stateFlow.value = UpdateState.Installing(version)
+        installStartedAt = System.currentTimeMillis()
         scope.launch(Dispatchers.IO) {
             runCatching {
                 val installer = context.packageManager.packageInstaller
+                // One at a time: a screen left open earlier would otherwise
+                // come back later, beside this one.
+                installer.mySessions.forEach { runCatching { installer.abandonSession(it.sessionId) } }
                 val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
                     setAppPackageName(context.packageName)
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -233,7 +296,7 @@ class Updater(
                 val message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE) ?: "status $status"
                 // Cancelled on Android's screen: keep it ready for Install now.
                 stateFlow.value = if (status == PackageInstaller.STATUS_FAILURE_ABORTED && version != null) {
-                    UpdateState.Ready(version)
+                    UpdateState.Ready(version, installsSilently())
                 } else {
                     UpdateState.Failed(version, message)
                 }
@@ -339,6 +402,14 @@ class Updater(
             private set
 
         private fun apkName(version: String) = "teyvatme-$version.apk"
+
+        private val APK_NAME = Regex("teyvatme-([0-9][0-9A-Za-z.+-]*)\\.apk")
+
+        /** The version a download's file name holds, or `null` for any other file (a `.part`). */
+        internal fun versionOf(file: File): String? = APK_NAME.matchEntire(file.name)?.groupValues?.get(1)
+
+        /** How long after Install now a return to the app still counts as Android's screen opening. */
+        private const val RESUME_GRACE_MS = 3_000L
 
         private fun sha256(file: File): String {
             val digest = MessageDigest.getInstance("SHA-256")

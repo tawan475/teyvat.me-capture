@@ -173,6 +173,7 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
     override fun onResume() {
         super.onResume()
         Updater.foreground = true
+        updater.onResume()
         // Back from Settings › Install unknown apps: carry on.
         if (updater.state.value is UpdateState.NeedsPermission && packageManager.canRequestPackageInstalls()) {
             updater.installNow()
@@ -193,6 +194,7 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
         when (intent?.action) {
             ACTION_SHARE_GOOD -> shareGood()
             ACTION_START_CAPTURE -> startCapture()
+            ACTION_INSTALL_UPDATE -> updater.installNow()
             else -> return
         }
         intent.action = null
@@ -665,5 +667,6 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
     companion object {
         const val ACTION_SHARE_GOOD = "me.teyvat.app.SHARE_GOOD"
         const val ACTION_START_CAPTURE = "me.teyvat.app.START_CAPTURE"
+        const val ACTION_INSTALL_UPDATE = "me.teyvat.app.INSTALL_UPDATE"
     }
 }
