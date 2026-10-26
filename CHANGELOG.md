@@ -31,6 +31,11 @@ as the teyvat.me site and the game's own names for its terms.
   you tap "Install now".
 - Settings › Updates turns this off, or checks right away.
 
+**Desktop: fixes**
+
+- A left click on the tray icon brings the window back; the menu is on the
+  right click. Restore and Quit in that menu work again.
+
 **Android: fixes**
 
 - The top bar no longer overlaps the page in a small or pop-up window.
