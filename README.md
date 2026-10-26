@@ -91,6 +91,13 @@ add its section to [`CHANGELOG.md`](CHANGELOG.md)). The workflow builds the
 four desktop files and the signed APK (`.github/workflows/android.yml`) and
 publishes them with checksums.
 
+## Export format
+
+The file is GOOD JSON with a few keys of Teyvat.me's own beside it. What each
+holds, which export carries which, and the rules they keep:
+[docs/export-format.md](docs/export-format.md); every field typed in
+[docs/teyvatme-export.ts](docs/teyvatme-export.ts).
+
 ## Contracts with the tracker and with irminsul installs
 
 Some names keep irminsul's spelling on purpose:
