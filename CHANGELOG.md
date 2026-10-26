@@ -2,6 +2,26 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.1.1
+
+- Desktop: Settings › Tracker shows the teyvat.me settings directly
+  (sign-in, uploads, live sync, address and key), with no page to click
+  through.
+- Android: the first release that 1.1.0 installs by itself.
+
+Everything in 1.1.0 below still applies.
+
+| Platform | File |
+|---|---|
+| Windows 10/11 | `teyvatme-windows.exe` (built-in packet capture; asks for administrator rights) |
+| Windows with Npcap | `teyvatme-windows-pcap.exe` |
+| Linux x86_64 | `teyvatme-linux-x86_64.tar.gz` |
+| macOS (Apple silicon) | `Teyvatme-macos-arm64.app.tar.gz` |
+| Android 10+ | `teyvatme-android.apk` |
+
+Check a download against `SHA256SUMS.txt`. Unofficial fan project, not
+affiliated with HoYoverse.
+
 ## 1.1.0
 
 **Every language the game ships.** Teyvat.me speaks English, 简体中文,
