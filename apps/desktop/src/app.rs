@@ -906,14 +906,24 @@ fn trim_working_set() -> windows::core::Result<()> {
 /// titled "Teyvat.me" too, an Explorer window on a folder of that name for one.
 #[cfg(windows)]
 fn window_out_of_sight() -> bool {
+    use windows::Win32::UI::WindowsAndMessaging::{IsIconic, IsWindowVisible};
+
+    own_window()
+        .is_some_and(|hwnd| unsafe { !IsWindowVisible(hwnd).as_bool() || IsIconic(hwnd).as_bool() })
+}
+
+/// This process's main window, found by the title bar text it was given
+/// (`crate::window_title`). Only a window of this process counts: another
+/// top-level window can carry the same text, an Explorer window on a folder
+/// of that name for one.
+#[cfg(windows)]
+fn own_window() -> Option<windows::Win32::Foundation::HWND> {
     use std::os::windows::ffi::OsStrExt;
 
-    use windows::Win32::UI::WindowsAndMessaging::{
-        FindWindowExW, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
-    };
+    use windows::Win32::UI::WindowsAndMessaging::{FindWindowExW, GetWindowThreadProcessId};
     use windows::core::PCWSTR;
 
-    let title: Vec<u16> = std::ffi::OsStr::new("Teyvat.me")
+    let title: Vec<u16> = std::ffi::OsStr::new(&crate::window_title())
         .encode_wide()
         .chain(std::iter::once(0))
         .collect();
@@ -926,12 +936,12 @@ fn window_out_of_sight() -> bool {
             let mut pid = 0;
             GetWindowThreadProcessId(hwnd, Some(&mut pid));
             if pid == std::process::id() {
-                return !IsWindowVisible(hwnd).as_bool() || IsIconic(hwnd).as_bool();
+                return Some(hwnd);
             }
             after = Some(hwnd);
         }
     }
-    false
+    None
 }
 
 /// Bring a window hidden to the tray back.
@@ -1151,10 +1161,13 @@ impl TeyvatmeApp {
             let quit_id = quit_i.id().clone();
             let menu_populated = tray_menu.append_items(&[&restore_i, &quit_i]).is_ok();
 
+            // A left click brings the window back; the menu (Restore, Quit)
+            // is the right click's.
             tray_icon = TrayIconBuilder::new()
                 .with_tooltip("Teyvat.me")
                 .with_icon(icon)
                 .with_menu(Box::new(tray_menu))
+                .with_menu_on_left_click(false)
                 .build()
                 .ok();
 
@@ -1801,23 +1814,15 @@ impl TeyvatmeApp {
 
 #[cfg(windows)]
 fn show_window() {
-    use std::os::windows::ffi::OsStrExt;
-
     use windows::Win32::UI::WindowsAndMessaging::{
-        FindWindowW, SW_RESTORE, SetForegroundWindow, ShowWindow,
+        SW_RESTORE, SW_SHOW, SetForegroundWindow, ShowWindow,
     };
-    use windows::core::PCWSTR;
 
-    let title: Vec<u16> = std::ffi::OsStr::new("Teyvat.me")
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect();
-
-    unsafe {
-        let hwnd = FindWindowW(PCWSTR::null(), PCWSTR(title.as_ptr()));
-        if let Ok(hwnd) = hwnd
-            && !hwnd.0.is_null()
-        {
+    if let Some(hwnd) = own_window() {
+        unsafe {
+            // Hidden to the tray: show it first; then out of the taskbar's
+            // minimized state, and to the front.
+            let _ = ShowWindow(hwnd, SW_SHOW);
             let _ = ShowWindow(hwnd, SW_RESTORE);
             let _ = SetForegroundWindow(hwnd);
         }
@@ -1826,27 +1831,11 @@ fn show_window() {
 
 #[cfg(windows)]
 fn close_window() {
-    use std::os::windows::ffi::OsStrExt;
+    use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_CLOSE};
 
-    use windows::Win32::UI::WindowsAndMessaging::{FindWindowW, PostMessageW, WM_CLOSE};
-    use windows::core::PCWSTR;
-
-    let title: Vec<u16> = std::ffi::OsStr::new("Teyvat.me")
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect();
-
-    unsafe {
-        let hwnd = FindWindowW(PCWSTR::null(), PCWSTR(title.as_ptr()));
-        if let Ok(hwnd) = hwnd
-            && !hwnd.0.is_null()
-        {
-            let _ = PostMessageW(
-                Some(hwnd),
-                WM_CLOSE,
-                windows::Win32::Foundation::WPARAM(0),
-                windows::Win32::Foundation::LPARAM(0),
-            );
+    if let Some(hwnd) = own_window() {
+        unsafe {
+            let _ = PostMessageW(Some(hwnd), WM_CLOSE, Default::default(), Default::default());
         }
     }
 }
