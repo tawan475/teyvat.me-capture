@@ -74,6 +74,8 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
+          # Gradle's downloaded dependencies and wrapper, keyed on the build files.
+          cache: gradle
 
       - name: Android SDK packages
         run: |

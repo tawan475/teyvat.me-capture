@@ -14,8 +14,9 @@ use teyvatme_game_data::{AnimeGameData, Property, SkillType};
 pub use teyvatme_protocol::Achievement;
 pub use teyvatme_protocol::r#gen::protos::{AvatarInfo, Item, PropValue};
 use teyvatme_protocol::{
-    ANECDOTE_AREA_IDS, ANECDOTE_IDS, AbyssPeriod, AnecdoteData, DailyCommissions, Expedition,
-    HomeResources, MAX_ANECDOTE_FINISH_COUNT, MAX_ANECDOTE_STATE, MAX_ANECDOTES,
+    ANECDOTE_AREA_IDS, ANECDOTE_IDS, AbyssPeriod, AnecdoteData, DailyCommissions, EpitomizedPath,
+    Expedition, HomeResources, MAX_ANECDOTE_FINISH_COUNT, MAX_ANECDOTE_STATE, MAX_ANECDOTES,
+    ResinClock,
 };
 
 use crate::good::{self, fake_uninitialized_4th_line};
@@ -115,6 +116,26 @@ fn plausible_time(secs: u64, now_secs: u64) -> bool {
 /// friendship in game and is expected to fail this, which is one reason a field
 /// is only distrusted when most characters fail it.
 const FRIENDSHIP_RANGE: RangeInclusive<u32> = 1..=10;
+
+/// Above any EXP a weapon or artifact can hold toward its next level (a 5★
+/// weapon's 89 → 90 step is about 1.1 million), so a bigger value is misread.
+const MAX_ITEM_EXP: u32 = 5_000_000;
+
+/// Above any EXP a character can hold toward their next level (89 → 90 is
+/// 683,525; the steps past 90 are not in the game data), and above any
+/// friendship step (a level is at most a few tens of thousands).
+const MAX_CHARACTER_EXP: u32 = 20_000_000;
+const MAX_FRIENDSHIP_EXP: u32 = 1_000_000;
+
+/// One Original Resin comes back every 8 minutes.
+const RESIN_REGEN_SECS: u64 = 8 * 60;
+
+/// How far the resin clock may miss that window: the capture's clock against
+/// the server's. Tight, since a dozen other messages share its shape.
+const RESIN_CLOCK_SLACK_SECS: u64 = 120;
+
+/// `AvatarInfo.prop_map`: EXP toward the next level.
+const PROP_CHARACTER_EXP: u32 = 1001;
 
 /// How one `gi_characters` field fared across an export's characters.
 #[derive(Debug, Default)]
@@ -599,6 +620,10 @@ pub enum RoutinePart {
     Expeditions(Vec<Expedition>),
     Home(HomeResources),
     Welkin(u32),
+    /// The banner list's Epitomized Path (`GetGachaInfoRsp`).
+    WishPath(EpitomizedPath),
+    /// A resin clock candidate; kept only beside the resin held.
+    Resin(ResinClock),
 }
 
 /// The planner's routine as captured: each part `None` until its message
@@ -610,6 +635,9 @@ struct Routine {
     expeditions: Option<Vec<Expedition>>,
     home: Option<HomeResources>,
     welkin: Option<u32>,
+    wish_path: Option<EpitomizedPath>,
+    /// (resin, unix time of the next one).
+    resin: Option<(u32, u32)>,
 }
 
 pub struct PlayerData {
@@ -643,6 +671,13 @@ pub struct PlayerData {
 
     /// The dump commit `game_data` was built from, for `gi_player.gameData`.
     game_data_sha: Option<String>,
+
+    /// When the commands being applied arrived, in unix seconds: the
+    /// packet's capture time (`set_clock`). What a message's own times are
+    /// checked against; `None` until set.
+    clock_secs: Option<u64>,
+    /// A resin clock that came before any resin was held, waiting for it.
+    pending_resin: Option<ResinClock>,
 }
 
 impl PlayerData {
@@ -657,6 +692,8 @@ impl PlayerData {
             routine: Routine::default(),
             character_equip_guid_map: HashMap::new(),
             game_data_sha: None,
+            clock_secs: None,
+            pending_resin: None,
         }
     }
 
@@ -676,6 +713,11 @@ impl PlayerData {
     /// by [`remove_items`](Self::remove_items), but a stack whose count merely
     /// falls is only corrected by the next full inventory notify, which the
     /// game sends at login.
+    /// When the commands about to be applied arrived (unix seconds).
+    pub fn set_clock(&mut self, now_secs: u64) {
+        self.clock_secs = Some(now_secs);
+    }
+
     pub fn reset(&mut self) {
         self.achievements.clear();
         self.characters.clear();
@@ -683,6 +725,7 @@ impl PlayerData {
         self.properties.clear();
         self.anecdotes = None;
         self.routine = Routine::default();
+        self.pending_resin = None;
         self.character_equip_guid_map.clear();
     }
 
@@ -719,12 +762,48 @@ impl PlayerData {
             RoutinePart::Expeditions(found) => self.routine.expeditions = Some(found),
             RoutinePart::Home(found) => self.routine.home = Some(found),
             RoutinePart::Welkin(days) => self.routine.welkin = Some(days),
+            RoutinePart::WishPath(found) => self.routine.wish_path = Some(found),
+            RoutinePart::Resin(clock) => {
+                // A three-number shape a dozen messages share: believed only
+                // when its time is the next resin's, at most 8 minutes from
+                // when it came, and one of its numbers is exactly the resin
+                // held. Before the properties (the first copy comes before
+                // the login data) it waits for them.
+                let Some(arrived) = self.clock_secs else {
+                    return;
+                };
+                let at = u64::from(clock.next_at);
+                if at + RESIN_CLOCK_SLACK_SECS < arrived
+                    || at > arrived + RESIN_REGEN_SECS + RESIN_CLOCK_SLACK_SECS
+                {
+                    tracing::debug!("a resin clock candidate whose time is not the next resin's");
+                    return;
+                }
+                if self.properties.contains_key(&PROP_RESIN.id) {
+                    self.check_resin_clock(&clock);
+                } else {
+                    self.pending_resin = Some(clock);
+                }
+            }
         }
     }
 
     pub fn process_properties(&mut self, new_props: &HashMap<u32, u64>) {
         for (k, v) in new_props {
             self.properties.insert(*k, *v);
+        }
+        if let Some(clock) = self.pending_resin.take() {
+            self.check_resin_clock(&clock);
+        }
+    }
+
+    /// Keep a resin clock whose time already checked out, when one of its
+    /// numbers is exactly the resin held.
+    fn check_resin_clock(&mut self, clock: &ResinClock) {
+        let held = self.properties.get(&PROP_RESIN.id).copied();
+        match held.and_then(|held| clock.values.iter().find(|v| u64::from(**v) == held)) {
+            Some(value) => self.routine.resin = Some((*value, clock.next_at)),
+            None => tracing::debug!("a resin clock candidate beside no held resin"),
         }
     }
 
@@ -1033,12 +1112,39 @@ impl PlayerData {
             })
         });
         let welkin = routine.welkin.map(|days| good::GiWelkin { days });
+        let wish_path = routine.wish_path.and_then(|path| {
+            // The id must be a weapon the game data knows: see EpitomizedPath.
+            let Ok(weapon) = self.game_data.get_weapon(path.item_id) else {
+                tracing::warn!(
+                    item_id = path.item_id,
+                    "the Epitomized Path names no known weapon; left out"
+                );
+                return None;
+            };
+            Some(good::GiWishPath {
+                weapon: good::to_good_key(&weapon.name),
+                points: path.points,
+                max: path.max_points,
+            })
+        });
+        let resin = routine
+            .resin
+            // It points up to 8 minutes past the capture.
+            .filter(|(_, next_at)| {
+                plausible_time(
+                    u64::from(*next_at).saturating_sub(RESIN_REGEN_SECS),
+                    now_secs,
+                )
+            })
+            .map(|(value, next_at)| good::GiResin { value, next_at });
         let tasks = good::GiTasks {
             commissions,
             abyss,
             expeditions,
             realm,
             welkin,
+            wish_path,
+            resin,
         };
         (!tasks.is_empty()).then_some(tasks)
     }
@@ -1617,6 +1723,8 @@ impl PlayerData {
 
         let mut friendship = FieldTally::default();
         let mut obtained_at = FieldTally::default();
+        let mut exp = FieldTally::default();
+        let mut friendship_exp = FieldTally::default();
         let mut extras: BTreeMap<String, good::GiCharacter> = BTreeMap::new();
         for (character, avatar) in exported {
             let level = avatar
@@ -1624,6 +1732,15 @@ impl PlayerData {
                 .as_ref()
                 .map_or(0, |fetter| fetter.exp_level);
             let born = avatar.born_time;
+            let character_exp = avatar
+                .prop_map
+                .get(&PROP_CHARACTER_EXP)
+                .and_then(teyvatme_protocol::prop_value_any)
+                .and_then(|raw| u32::try_from(raw).ok());
+            let fetter_exp = avatar
+                .fetter_info
+                .as_ref()
+                .map_or(0, |fetter| fetter.exp_number);
             extras.insert(
                 character.key.clone(),
                 good::GiCharacter {
@@ -1637,18 +1754,39 @@ impl PlayerData {
                         born,
                         plausible_time(u64::from(born), now_secs),
                     ),
+                    exp: character_exp
+                        .and_then(|raw| exp.check(&character.key, raw, raw <= MAX_CHARACTER_EXP)),
+                    // Only beside a friendship level (the Traveler has none).
+                    friendship_exp: FRIENDSHIP_RANGE
+                        .contains(&level)
+                        .then(|| {
+                            friendship_exp.check(
+                                &character.key,
+                                fetter_exp,
+                                fetter_exp <= MAX_FRIENDSHIP_EXP,
+                            )
+                        })
+                        .flatten(),
                 },
             );
         }
 
         let keep_friendship = friendship.trusted();
         let keep_obtained_at = obtained_at.trusted();
+        let keep_exp = exp.trusted();
+        let keep_friendship_exp = keep_friendship && friendship_exp.trusted();
         for extra in extras.values_mut() {
             if !keep_friendship {
                 extra.friendship = None;
             }
             if !keep_obtained_at {
                 extra.obtained_at = None;
+            }
+            if !keep_exp {
+                extra.exp = None;
+            }
+            if !keep_friendship_exp {
+                extra.friendship_exp = None;
             }
         }
         extras.retain(|_, extra| *extra != good::GiCharacter::default());
@@ -1659,9 +1797,11 @@ impl PlayerData {
             .map(|(key, extra)| describe_character_extras(key, extra))
             .unwrap_or_else(|| "none".to_string());
         tracing::info!(
-            "character extras: {}, {}; sample {sample}",
+            "character extras: {}, {}, {}, {}; sample {sample}",
             friendship.describe("friendship"),
             obtained_at.describe("obtainedAt"),
+            exp.describe("exp"),
+            friendship_exp.describe("friendshipExp"),
         );
 
         (!extras.is_empty()).then_some(extras)
@@ -1810,6 +1950,10 @@ impl PlayerData {
                     elixer_crafted,
                     unactivated_substats,
                     gi_guid: (settings.item_guids && item.guid != 0).then(|| item.guid.to_string()),
+                    // Beside the guid it belongs to.
+                    gi_exp: (settings.item_guids && item.guid != 0)
+                        .then_some(equip.reliquary().exp)
+                        .filter(|exp| *exp <= MAX_ITEM_EXP),
                 })
             })
             .collect()
@@ -1883,6 +2027,10 @@ impl PlayerData {
                     location,
                     lock: equip.is_locked,
                     gi_guid: (settings.item_guids && item.guid != 0).then(|| item.guid.to_string()),
+                    // Beside the guid it belongs to.
+                    gi_exp: (settings.item_guids && item.guid != 0)
+                        .then_some(equip.weapon().exp)
+                        .filter(|exp| *exp <= MAX_ITEM_EXP),
                 })
             })
             .collect()
@@ -2964,7 +3112,7 @@ mod tests {
         r#""storyKeys":3,"maxStamina":24000,"#,
         r#""gameData":"792978e5503ecfba73dcb3562ed44a0d35a2abe2"},"#,
         r#""gi_achievement_times":{"80014":1650000000},"#,
-        r#""gi_characters":{"HuTao":{"friendship":10,"obtainedAt":1646092800}},"#,
+        r#""gi_characters":{"HuTao":{"friendship":10,"obtainedAt":1646092800,"friendshipExp":0}},"#,
         r#""gi_anecdotes":{"anecdotes":{"100001":{"state":3,"finishCount":1},"#,
         r#""101604":{"state":0,"finishCount":3}},"unlockedAreas":[1,2],"#,
         r#""reward":{"index":0,"progress":1,"target":10}},"#,
@@ -3002,9 +3150,16 @@ mod tests {
         let optimizer = data.build_good(&ExportSettings::default(), &mut report, 0);
         assert!(optimizer.weapons.iter().all(|w| w.gi_guid.is_none()));
         assert!(optimizer.artifacts.iter().all(|a| a.gi_guid.is_none()));
+        // A Genshin Optimizer export has no item EXP either.
+        assert!(optimizer.weapons.iter().all(|w| w.gi_exp.is_none()));
+        assert!(optimizer.artifacts.iter().all(|a| a.gi_exp.is_none()));
         // Without them, byte for byte the golden export.
-        good.artifacts.iter_mut().for_each(|a| a.gi_guid = None);
-        good.weapons.iter_mut().for_each(|w| w.gi_guid = None);
+        good.artifacts
+            .iter_mut()
+            .for_each(|a| (a.gi_guid, a.gi_exp) = (None, None));
+        good.weapons
+            .iter_mut()
+            .for_each(|w| (w.gi_guid, w.gi_exp) = (None, None));
         assert_eq!(serde_json::to_string(&good).unwrap(), GOLDEN_GOOD);
     }
 
@@ -3108,6 +3263,71 @@ mod tests {
         let tasks = data.export_tasks(NOW_SECS).unwrap();
         assert_eq!(tasks.abyss, None);
         assert_eq!(tasks.welkin, Some(good::GiWelkin { days: 12 }));
+    }
+
+    #[test]
+    fn a_resin_clock_is_kept_only_beside_the_resin_held() {
+        let mut data = player_data();
+        let clock = |values: Vec<u32>| {
+            RoutinePart::Resin(ResinClock {
+                next_at: (NOW_SECS + 200) as u32,
+                values,
+            })
+        };
+        data.set_clock(NOW_SECS);
+        // Before the player properties it waits for them, then counts.
+        data.process_routine(clock(vec![2, 124]));
+        assert_eq!(data.export_tasks(NOW_SECS), None);
+        data.process_properties(&HashMap::from([(PROP_RESIN.id, 124)]));
+        assert!(data.export_tasks(NOW_SECS).unwrap().resin.is_some());
+        data.reset();
+        data.process_properties(&HashMap::from([(PROP_RESIN.id, 124)]));
+        data.process_routine(clock(vec![7, 3]));
+        assert_eq!(data.export_tasks(NOW_SECS), None);
+        // A time that is not the next 8 minutes' is another message's.
+        data.process_routine(RoutinePart::Resin(ResinClock {
+            next_at: (NOW_SECS + 3_600) as u32,
+            values: vec![124, 2],
+        }));
+        assert_eq!(data.export_tasks(NOW_SECS), None);
+        // Either order: the number that is the resin held is the resin.
+        data.process_routine(clock(vec![2, 124]));
+        assert_eq!(
+            data.export_tasks(NOW_SECS).unwrap().resin,
+            Some(good::GiResin {
+                value: 124,
+                next_at: (NOW_SECS + 200) as u32,
+            })
+        );
+    }
+
+    #[test]
+    fn the_epitomized_path_names_its_weapon_by_good_key_or_is_left_out() {
+        let path = RoutinePart::WishPath(EpitomizedPath {
+            item_id: 13501,
+            points: 1,
+            max_points: 1,
+        });
+        let mut unknown = player_data();
+        unknown.process_routine(path.clone());
+        assert_eq!(unknown.export_tasks(NOW_SECS), None);
+
+        let mut data = PlayerData::new(
+            TestGameData {
+                weapon_map: r#""13501": {"name": "Staff of Homa", "rarity": 5}"#,
+                ..Default::default()
+            }
+            .build(),
+        );
+        data.process_routine(path);
+        assert_eq!(
+            data.export_tasks(NOW_SECS).unwrap().wish_path,
+            Some(good::GiWishPath {
+                weapon: "StaffOfHoma".to_string(),
+                points: 1,
+                max: 1,
+            })
+        );
     }
 
     #[test]
@@ -3336,6 +3556,9 @@ mod tests {
         good::GiCharacter {
             friendship,
             obtained_at,
+            // The test avatars' friendship EXP is 0.
+            friendship_exp: friendship.map(|_| 0),
+            ..Default::default()
         }
     }
 
@@ -3354,6 +3577,32 @@ mod tests {
                 ("Jean".to_string(), extra(Some(7), Some(1_601_510_400))),
             ]))
         );
+    }
+
+    #[test]
+    fn character_and_friendship_exp_are_exported_beside_their_levels() {
+        let mut data = roster_data();
+        let mut hutao = befriended(10000046, 9, 1_646_092_800);
+        hutao.fetter_info.mut_or_insert_default().exp_number = 3_150;
+        hutao
+            .prop_map
+            .insert(PROP_CHARACTER_EXP, prop_ival(120_000));
+        // A misread EXP is left out, the rest of the character kept.
+        let mut jean = befriended(10000003, 7, 1_601_510_400);
+        jean.prop_map.insert(
+            PROP_CHARACTER_EXP,
+            prop_ival(i64::from(MAX_CHARACTER_EXP) + 1),
+        );
+        let mut lisa = befriended(10000006, 4, 1_601_510_400);
+        lisa.prop_map.insert(PROP_CHARACTER_EXP, prop_ival(0));
+        data.process_characters(&[hutao, jean, lisa]);
+
+        let extras = character_extras(&data).unwrap();
+        assert_eq!(extras["HuTao"].exp, Some(120_000));
+        assert_eq!(extras["HuTao"].friendship_exp, Some(3_150));
+        assert_eq!(extras["Jean"].exp, None);
+        assert_eq!(extras["Jean"].friendship, Some(7));
+        assert_eq!(extras["Lisa"].exp, Some(0));
     }
 
     #[test]

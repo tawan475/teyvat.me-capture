@@ -339,7 +339,36 @@ pub struct GachaRecordLink {
     pub gacha_type: Option<u32>,
     /// The link's query, as the server sent it (no leading `?`).
     pub query: String,
+    /// The weapon banner's Epitomized Path, when one is charted.
+    pub epitomized: Option<EpitomizedPath>,
 }
+
+/// The weapon banner's Epitomized Path: the weapon charted and its Fate
+/// Points (`GachaInfo.wish_item_id` / `wish_progress` / `wish_max_progress`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct EpitomizedPath {
+    /// The charted weapon's id; the caller checks it against the game data.
+    pub item_id: u32,
+    pub points: u32,
+    pub max_points: u32,
+}
+
+/// The Epitomized Path's fields in 7.1's `GachaInfo`, by number.
+///
+/// The exception to this module's rule: the three are lone small numbers among
+/// a dozen others, with no shape to tell them apart. A renumbering patch moves
+/// the weapon id off field 1272, the path stops being read (the weapon field
+/// must hold a weapon id, and the caller checks it is a real one), and nothing
+/// wrong is exported.
+const WISH_ITEM_FIELD: u32 = 1272;
+const WISH_PROGRESS_FIELD: u32 = 590;
+const WISH_MAX_PROGRESS_FIELD: u32 = 586;
+
+/// Fate Points the path can need: 2 before 5.0, 1 since.
+const MAX_FATE_POINTS: u64 = 3;
+
+/// The weapon banner's type.
+const WEAPON_BANNER: u32 = 302;
 
 /// The query of a history page link, if `s` is one: an http(s) URL whose
 /// query names the wish web view and an `init_type` (the history category),
@@ -369,9 +398,16 @@ fn read_gacha_info(bytes: &[u8]) -> Option<GachaRecordLink> {
     let msg = Unk::parse_from_bytes(bytes).ok()?;
     let mut query = None;
     let mut types = Vec::new();
-    for (_, value) in msg.unknown_fields().iter() {
+    let mut numbered = BTreeMap::new();
+    for (tag, value) in msg.unknown_fields().iter() {
         match value {
             Varint(value) => {
+                if matches!(
+                    tag,
+                    WISH_ITEM_FIELD | WISH_PROGRESS_FIELD | WISH_MAX_PROGRESS_FIELD
+                ) {
+                    numbered.insert(tag, value);
+                }
                 if let Ok(value) = u32::try_from(value)
                     && GACHA_TYPES.contains(&value)
                     && !types.contains(&value)
@@ -391,12 +427,30 @@ fn read_gacha_info(bytes: &[u8]) -> Option<GachaRecordLink> {
             Fixed32(_) | Fixed64(_) => {}
         }
     }
+    let gacha_type = match types.as_slice() {
+        [one] => Some(*one),
+        _ => None,
+    };
+    let epitomized = (gacha_type == Some(WEAPON_BANNER))
+        .then(|| {
+            let item = *numbered.get(&WISH_ITEM_FIELD)?;
+            let max = *numbered.get(&WISH_MAX_PROGRESS_FIELD)?;
+            // Absent when 0, as every proto3 number is.
+            let points = numbered.get(&WISH_PROGRESS_FIELD).copied().unwrap_or(0);
+            (PULLED_WEAPON_IDS.contains(&item)
+                && (1..=MAX_FATE_POINTS).contains(&max)
+                && points <= max)
+                .then_some(EpitomizedPath {
+                    item_id: item as u32,
+                    points: points as u32,
+                    max_points: max as u32,
+                })
+        })
+        .flatten();
     Some(GachaRecordLink {
-        gacha_type: match types.as_slice() {
-            [one] => Some(*one),
-            _ => None,
-        },
+        gacha_type,
         query: query?,
+        epitomized,
     })
 }
 
@@ -970,6 +1024,56 @@ mod tests {
         assert_eq!(links[2].gacha_type, Some(400));
         assert!(links[2].query.contains("init_type=301&gacha_id=7654"));
         assert!(links[0].query.contains("init_type=200&"));
+    }
+
+    #[test]
+    fn the_weapon_banners_epitomized_path_is_read_and_checked() {
+        let path = |gacha_type: u64, extra: &[Vec<u8>]| {
+            let mut entry = gacha_info(gacha_type, 302, ID_301);
+            entry.extend(extra.concat());
+            matches_get_gacha_info_rsp(&gacha_info_rsp(&[entry])).unwrap()[0].epitomized
+        };
+        let charted = [
+            field_varint(1272, 15_502),
+            field_varint(590, 1),
+            field_varint(586, 1),
+        ];
+        assert_eq!(
+            path(302, &charted),
+            Some(EpitomizedPath {
+                item_id: 15_502,
+                points: 1,
+                max_points: 1
+            })
+        );
+        // No points yet: proto3 leaves the 0 out.
+        assert_eq!(
+            path(
+                302,
+                &charted[..1]
+                    .iter()
+                    .chain(&charted[2..])
+                    .cloned()
+                    .collect::<Vec<_>>()
+            ),
+            Some(EpitomizedPath {
+                item_id: 15_502,
+                points: 0,
+                max_points: 1
+            })
+        );
+        // Only the weapon banner has one, nothing charted is none, and a
+        // renumbered field (no weapon id there) is never read as a path.
+        assert_eq!(path(301, &charted), None);
+        assert_eq!(path(302, &[]), None);
+        assert_eq!(
+            path(302, &[field_varint(1272, 3923), field_varint(586, 1)]),
+            None
+        );
+        assert_eq!(
+            path(302, &[field_varint(1272, 15_502), field_varint(586, 9)]),
+            None
+        );
     }
 
     #[test]

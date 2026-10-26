@@ -744,14 +744,14 @@ fn note_key(state: &mut State, report: KeyReport, at: u64) {
 fn apply(
     state: &mut State,
     key: KeyState,
-    classified: Vec<(u16, teyvatme_protocol::CommandMatch)>,
+    mut classified: Vec<(u16, teyvatme_protocol::CommandMatch)>,
     at: u64,
     hub: &WishHub,
 ) {
     if classified.is_empty() {
         return;
     }
-    match state.replacement.verdict_for_batch(key, &classified) {
+    match state.replacement.verdict_for_batch(key, &mut classified) {
         DataVerdict::Apply => {}
         DataVerdict::ReplaceThenApply => {
             // A new login: its key, if any, is not the old one's.
@@ -770,6 +770,11 @@ fn apply(
     };
     let full_send = decode::full_send_in(&classified, data.item_count());
     let noted = decode::changes_in(&classified);
+    data.set_clock(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs()),
+    );
     let applied: AppliedData = decode::apply_commands(data, classified);
     if !applied.any() {
         return;

@@ -63,7 +63,14 @@ pub fn take_wish_events(classified: &mut Vec<(u16, CommandMatch)>) -> Vec<WishEv
         match found {
             CommandMatch::AuthKey(key) => events.push(WishEvent::Key(key)),
             CommandMatch::Wish(wish) => events.push(WishEvent::Wish(wish)),
-            CommandMatch::GachaInfo(links) => events.push(WishEvent::Banners(links)),
+            CommandMatch::GachaInfo(links) => {
+                // The banner list also carries the account's Epitomized Path,
+                // which `apply_commands` keeps: it stays in the batch for that.
+                if links.iter().any(|link| link.epitomized.is_some()) {
+                    rest.push((command_id, CommandMatch::GachaInfo(links.clone())));
+                }
+                events.push(WishEvent::Banners(links));
+            }
             CommandMatch::ClientVersion(version) => events.push(WishEvent::ClientVersion(version)),
             other => rest.push((command_id, other)),
         }
@@ -567,6 +574,7 @@ mod tests {
                 "win_mode=fullscreen&no_joypad_close=1&authkey_ver=1&sign_type=2\
                  &auth_appid=webview_gacha&init_type=301&gacha_id={gacha_id}&timestamp=1790000000"
             ),
+            epitomized: None,
         }
     }
 

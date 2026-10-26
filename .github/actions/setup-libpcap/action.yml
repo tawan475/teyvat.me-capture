@@ -5,43 +5,50 @@
 
 name: Setup libpcap
 description: >
-  Build and install libpcap from source without dbus or rdma support so that
-  statically linking libpcap.a does not pull in those dependencies.
+  Build and install libpcap from source without dbus, rdma or libnl support so that
+  statically linking libpcap.a does not pull in those dependencies. The built
+  install is cached, so later runs only copy it into place.
 
 runs:
   using: composite
   steps:
+    # Keyed on this file: changing the version or the configure flags builds
+    # it again. Holds the files `make install` wrote, under the same paths.
+    - name: Cache the built libpcap
+      id: cache
+      uses: actions/cache@v5
+      with:
+        path: /tmp/libpcap-install
+        key: libpcap-1.10.5-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/actions/setup-libpcap/action.yml') }}
     - name: Install libpcap build dependencies
+      if: steps.cache.outputs.cache-hit != 'true'
       shell: bash
       run: |
         # Ubuntu 22.04 uses the classic sources.list format with deb-src lines
         # commented out, rather than 24.04's deb822 ubuntu.sources.
-        cat /etc/apt/sources.list
         sudo sed -Ei 's/^#[[:space:]]*(deb-src[[:space:]])/\1/' /etc/apt/sources.list
-        cat /etc/apt/sources.list
         sudo apt-get update
         sudo apt-get build-dep -y libpcap0.8
-    - name: Cache libpcap tarball
-      uses: actions/cache@v5
-      with:
-        path: /tmp/libpcap-1.10.5.tar.gz
-        key: libpcap-1.10.5-tarball
-    - name: Build and install libpcap without dbus or rdma
+    - name: Build libpcap without dbus, rdma or libnl
+      if: steps.cache.outputs.cache-hit != 'true'
       shell: bash
       run: |
-        # Download if not cached
-        if [ ! -f /tmp/libpcap-1.10.5.tar.gz ]; then
-          curl -fsSL https://www.tcpdump.org/release/libpcap-1.10.5.tar.gz -o /tmp/libpcap-1.10.5.tar.gz
-        fi
-
-        # Verify SHA256 checksum
+        curl -fsSL https://www.tcpdump.org/release/libpcap-1.10.5.tar.gz -o /tmp/libpcap-1.10.5.tar.gz
         echo "37ced90a19a302a7f32e458224a00c365c117905c2cd35ac544b6880a81488f0  /tmp/libpcap-1.10.5.tar.gz" | sha256sum -c
 
-        # Extract, build, and install.  configure and make are run from the
-        # source directory since autotools uses the cwd as the build directory.
+        # configure and make run from the source directory since autotools
+        # uses the cwd as the build directory.
         tar xzf /tmp/libpcap-1.10.5.tar.gz -C /tmp
         cd /tmp/libpcap-1.10.5
-        ./configure --prefix=/usr --libdir=/usr/lib/x86_64-linux-gnu --disable-dbus --disable-rdma
+        # --without-libnl: whether libnl's headers happen to be installed must
+        # not change the library (a static link of it would then need libnl).
+        ./configure --prefix=/usr --libdir=/usr/lib/x86_64-linux-gnu --disable-dbus --disable-rdma --without-libnl
         make
-        sudo make install
+        make install DESTDIR=/tmp/libpcap-install
+    - name: Install libpcap
+      shell: bash
+      run: |
+        sudo cp -a /tmp/libpcap-install/. /
         sudo ldconfig
+        # What a static link of it needs besides libpcap.a itself.
+        pkg-config --static --libs libpcap
