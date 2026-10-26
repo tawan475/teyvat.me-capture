@@ -26,9 +26,15 @@ impl TeyvatmeApp {
         self.release_settled_memory();
 
         // The title bar's own minimize button: on to the tray, when that is
-        // where minimize goes.
+        // where minimize goes. On Windows the button is caught before the
+        // window minimizes (see `install_minimize_hook`).
+        #[cfg(windows)]
+        self.tray_minimize_hook(ctx);
         let minimized = ctx.input(|i| i.viewport().minimized) == Some(true);
-        if minimized
+        // Windows: minimized some other way (Win+M). It stays on the taskbar,
+        // since hiding a minimized window makes eframe spin a core.
+        if cfg!(not(windows))
+            && minimized
             && !self.was_minimized
             && self.saved_state.minimize_to_tray == Some(true)
             && !HIDDEN_TO_TRAY.load(Ordering::Relaxed)

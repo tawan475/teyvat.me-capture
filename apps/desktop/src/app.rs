@@ -709,6 +709,9 @@ pub struct TeyvatmeApp {
     /// The window was minimized last frame, to see the title bar's minimize
     /// button pressed.
     was_minimized: bool,
+    /// [`install_minimize_hook`] is in place.
+    #[cfg(windows)]
+    minimize_hook_installed: bool,
 
     /// "Start Teyvat.me on startup": the scheduled task's state, read in the
     /// background, and the warning when it starts another copy.
@@ -814,6 +817,19 @@ pub enum StartWindow {
 /// Set while the window is hidden to the tray: from [`TeyvatmeApp::minimize`]
 /// until [`restore_window`], which runs on the tray's thread.
 static HIDDEN_TO_TRAY: AtomicBool = AtomicBool::new(false);
+
+/// Whether the window's own minimize goes to the tray now; read by
+/// [`minimize_hook`].
+#[cfg(windows)]
+static MINIMIZE_TO_TRAY: AtomicBool = AtomicBool::new(false);
+
+/// A minimize [`minimize_hook`] turned into a hide, for the next frame.
+#[cfg(windows)]
+static TRAY_HIDE_ASKED: AtomicBool = AtomicBool::new(false);
+
+/// What [`minimize_hook`] wakes for that frame.
+#[cfg(windows)]
+static MINIMIZE_HOOK_CTX: std::sync::OnceLock<Context> = std::sync::OnceLock::new();
 
 trait ToastError<T> {
     fn toast_error(self, app: &mut TeyvatmeApp) -> Option<T>;
@@ -978,6 +994,55 @@ fn own_window() -> Option<windows::Win32::Foundation::HWND> {
         }
     }
     None
+}
+
+/// Turn the window's own minimize (title bar button, window menu) into a hide
+/// to the tray before Windows minimizes it. Returns whether it is in place.
+///
+/// A window both minimized and hidden made eframe spin a core: once a repaint
+/// is due it polls until a redraw arrives, and Windows never sends one to a
+/// minimized hidden window. Measured at ~99% of one core after the title bar's
+/// minimize, against ~1% for a window only hidden or only minimized.
+#[cfg(windows)]
+fn install_minimize_hook(ctx: &Context) -> bool {
+    use windows::Win32::UI::Shell::SetWindowSubclass;
+
+    let Some(hwnd) = own_window() else {
+        return false;
+    };
+    let _ = MINIMIZE_HOOK_CTX.set(ctx.clone());
+    // On the window's own thread, as subclassing requires: frames run there.
+    let installed = unsafe { SetWindowSubclass(hwnd, Some(minimize_hook), 1, 0) }.as_bool();
+    if !installed {
+        tracing::warn!("could not hook the minimize button; it minimizes to the taskbar");
+    }
+    installed
+}
+
+#[cfg(windows)]
+unsafe extern "system" fn minimize_hook(
+    hwnd: windows::Win32::Foundation::HWND,
+    msg: u32,
+    wparam: windows::Win32::Foundation::WPARAM,
+    lparam: windows::Win32::Foundation::LPARAM,
+    _id: usize,
+    _data: usize,
+) -> windows::Win32::Foundation::LRESULT {
+    use windows::Win32::UI::Shell::DefSubclassProc;
+    use windows::Win32::UI::WindowsAndMessaging::{SC_MINIMIZE, WM_SYSCOMMAND};
+
+    // The low four bits of a WM_SYSCOMMAND are the system's own.
+    if msg == WM_SYSCOMMAND
+        && wparam.0 & 0xFFF0 == SC_MINIMIZE as usize
+        && MINIMIZE_TO_TRAY.load(Ordering::Relaxed)
+    {
+        TRAY_HIDE_ASKED.store(true, Ordering::Relaxed);
+        if let Some(ctx) = MINIMIZE_HOOK_CTX.get() {
+            ctx.request_repaint();
+        }
+        return windows::Win32::Foundation::LRESULT(0);
+    }
+    unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) }
 }
 
 /// Bring a window hidden to the tray back.
@@ -1337,6 +1402,8 @@ impl TeyvatmeApp {
             state_rx,
             wishes,
             was_minimized: false,
+            #[cfg(windows)]
+            minimize_hook_installed: false,
             startup,
             previous_run_notice,
             start_window,
@@ -1501,6 +1568,23 @@ impl TeyvatmeApp {
             release_memory_after(RELEASE_SESSION_MEMORY_DELAY, "the game session's login");
         }
         self.memory_release_status = now;
+    }
+
+    /// Keep [`minimize_hook`] in place and up to date, and hide a minimize it
+    /// caught; cheap to call every frame.
+    #[cfg(windows)]
+    fn tray_minimize_hook(&mut self, ctx: &Context) {
+        if !self.minimize_hook_installed {
+            self.minimize_hook_installed = install_minimize_hook(ctx);
+        }
+        MINIMIZE_TO_TRAY.store(
+            self.saved_state.minimize_to_tray == Some(true)
+                && self.tray_menu_ready.load(Ordering::Relaxed),
+            Ordering::Relaxed,
+        );
+        if TRAY_HIDE_ASKED.swap(false, Ordering::Relaxed) {
+            self.minimize(ctx, true);
+        }
     }
 
     /// Hide to the tray, or fall back to the taskbar when there is no tray menu
