@@ -46,6 +46,7 @@ import me.teyvat.app.UpdateState
 import me.teyvat.app.UploadResult
 import me.teyvat.app.Whoami
 import me.teyvat.app.WishInfo
+import me.teyvat.app.WishSync
 import me.teyvat.app.grouped
 import me.teyvat.app.hhmm
 import me.teyvat.app.line
@@ -80,6 +81,8 @@ interface HomeActions {
     fun updateInstallNow()
     fun updateAllow()
     fun allowBackground()
+    fun dismissCrash()
+    fun shareLog()
 }
 
 /** The tracker card's inputs: the sign-in and the last upload. */
@@ -88,7 +91,18 @@ data class TrackerView(
     val last: UploadResult?,
     val uploading: Boolean,
     val uploadOn: Boolean,
-)
+    val wishesOn: Boolean = true,
+    val liveOn: Boolean = true,
+    /** The tracker ended the sign-in. */
+    val revoked: Boolean = false,
+    /** The captured account's UID, for the upload account check. */
+    val capturedUid: Long? = null,
+    val key: me.teyvat.app.ImportKey = me.teyvat.app.ImportKey(),
+    val api: String = Links.DEFAULT_TRACKER_API,
+) {
+    /** Signed in, or a verified import key: uploads can go. */
+    val canUpload get() = state is TrackerState.SignedIn || key.verified
+}
 
 /** Now, ticking once a second, for "just now" and Starting's 30 s. */
 @Composable
@@ -114,6 +128,7 @@ fun HomeContent(
     update: UpdateState,
     capturing: Boolean,
     backgroundAllowed: Boolean,
+    crashed: Boolean,
     actions: HomeActions,
     padding: PaddingValues,
 ) {
@@ -126,9 +141,10 @@ fun HomeContent(
     ) {
         item { HeroCard(hero, summary, startingSince, now, actions) }
         if (update.shown()) item { UpdateCard(update, capturing, actions) }
+        if (crashed) item { CrashCard(actions) }
         if (!backgroundAllowed) item { BackgroundCard(actions) }
         item { CapturedCard(summary, now) }
-        item { WishCard(summary.wish, actions) }
+        item { WishCard(summary.wish, tracker.canUpload, actions) }
         item { ExportCard(summary, settings, folderLabel, actions) }
         item { TrackerCard(tracker, summary.captured, actions) }
     }
@@ -331,11 +347,36 @@ private fun ExportCard(summary: Summary, settings: Settings, folderLabel: String
     }
 }
 
-/** Where this sign-in's uploads go, as one line. */
+/** Where this sign-in's uploads go, as one line (the desktop's `target_label`). */
 @Composable
-fun targetLine(who: Whoami): String =
-    if (who.scope == "account" && who.accountName != null) stringResource(R.string.tracker_target_account, who.accountName)
-    else stringResource(R.string.tracker_target_uid)
+fun targetLine(who: Whoami): String = when {
+    who.scope != "account" -> stringResource(R.string.tracker_target_uid)
+    // The chosen account was deleted on the tracker: nothing uploads until one is picked again.
+    targetMissing(who) -> stringResource(R.string.tracker_target_missing, stringResource(R.string.tracker_configure))
+    who.accountName != null && who.uid != null ->
+        stringResource(R.string.tracker_target_account, stringResource(R.string.target_name_uid, who.accountName, who.uid))
+    who.accountName != null -> stringResource(R.string.tracker_target_account, who.accountName)
+    else -> stringResource(R.string.tracker_target_account, stringResource(R.string.target_uid, who.uid.orEmpty()))
+}
+
+fun targetMissing(who: Whoami) = who.scope == "account" && who.accountId == null && who.accountName == null
+
+/** The warning when uploads go to one account and the capture is another UID's, or null. */
+@Composable
+fun uidMismatch(tracker: TrackerView): String? {
+    val captured = tracker.capturedUid ?: return null
+    // Signed in to one account, or an import key's account (the desktop's check).
+    val (name, uid) = when (val state = tracker.state) {
+        is TrackerState.SignedIn -> {
+            if (state.who.scope != "account") return null
+            (state.who.accountName ?: state.who.uid) to state.who.uid
+        }
+        else -> tracker.key.account?.takeIf { tracker.key.verified }?.let { it.name to it.uid } ?: return null
+    }
+    val linked = uid?.trim()?.toLongOrNull() ?: return null
+    if (linked == captured) return null
+    return stringResource(R.string.tracker_uid_mismatch, captured.toString(), name ?: uid, uid)
+}
 
 /** The last upload's line, or what uploads do now. */
 @Composable
@@ -363,10 +404,23 @@ private fun TrackerCard(tracker: TrackerView, captured: Boolean, actions: HomeAc
                     if (state is TrackerState.SignedIn) stringResource(R.string.tracker_signed_in_as, state.who.user) else Links.trackerHost,
                     style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
+                val mismatch = uidMismatch(tracker)
                 val (line, error) = when (state) {
-                    TrackerState.SignedOut -> stringResource(R.string.tracker_signed_out_line) to false
+                    TrackerState.SignedOut -> when {
+                        mismatch != null && !tracker.uploading -> mismatch to true
+                        tracker.revoked -> stringResource(R.string.tracker_revoked) to true
+                        tracker.key.verified -> (
+                            if (tracker.uploading) stringResource(R.string.tracker_uploading)
+                            else tracker.last?.text ?: stringResource(R.string.key_valid, tracker.key.account!!.name, tracker.key.account.uid)
+                            ) to (tracker.last?.ok == false && !tracker.uploading)
+                        else -> stringResource(R.string.tracker_signed_out_line) to false
+                    }
                     TrackerState.SigningIn -> stringResource(R.string.tracker_signing_in) to false
-                    is TrackerState.SignedIn -> uploadLine(tracker, state.who) to (tracker.last?.ok == false && !tracker.uploading)
+                    is TrackerState.SignedIn -> when {
+                        mismatch != null && !tracker.uploading -> mismatch to true
+                        else -> uploadLine(tracker, state.who) to
+                            ((tracker.last?.ok == false || targetMissing(state.who)) && !tracker.uploading)
+                    }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (state == TrackerState.SigningIn || tracker.uploading) {
@@ -376,19 +430,54 @@ private fun TrackerCard(tracker: TrackerView, captured: Boolean, actions: HomeAc
                     Text(
                         line, style = MaterialTheme.typography.bodyMedium,
                         color = if (error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2, overflow = TextOverflow.Ellipsis,
+                        maxLines = if (mismatch != null) 5 else 2, overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
             Spacer(Modifier.width(8.dp))
             when (state) {
-                TrackerState.SignedOut -> TmButton(stringResource(R.string.tracker_sign_in), actions::trackerSignIn, kind = ButtonKind.Tonal)
+                TrackerState.SignedOut -> if (tracker.key.verified) {
+                    TmButton(
+                        stringResource(R.string.tracker_upload_now), actions::trackerUploadNow, kind = ButtonKind.Tonal,
+                        enabled = captured && !tracker.uploading,
+                    )
+                } else {
+                    TmButton(stringResource(R.string.tracker_sign_in), actions::trackerSignIn, kind = ButtonKind.Tonal)
+                }
                 TrackerState.SigningIn -> TmButton(stringResource(R.string.cancel), actions::trackerCancelSignIn, kind = ButtonKind.Text)
                 is TrackerState.SignedIn -> TmButton(
                     stringResource(R.string.tracker_upload_now), actions::trackerUploadNow, kind = ButtonKind.Tonal,
                     enabled = captured && !tracker.uploading,
                 )
             }
+        }
+    }
+}
+
+/** The app crashed last time (files/crash.txt): Share log, or Dismiss. */
+@Composable
+private fun CrashCard(actions: HomeActions) {
+    TmCard {
+        Row(
+            Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TmIcon(R.drawable.ic_triangle_alert, null, tint = MaterialTheme.colorScheme.error)
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.crash_title), style = MaterialTheme.typography.titleSmall)
+                Text(
+                    stringResource(R.string.crash_line), style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        Row(
+            Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, bottom = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+        ) {
+            TmButton(stringResource(R.string.dismiss), actions::dismissCrash, kind = ButtonKind.Text)
+            TmButton(stringResource(R.string.share_log), actions::shareLog, kind = ButtonKind.Tonal, icon = R.drawable.ic_share)
         }
     }
 }
@@ -491,8 +580,28 @@ private fun bannerName(banner: Int): String = when (banner) {
  * (Wish → History in game); then Copy URL for paimon.moe or StarDB, and Save
  * or Share of the whole history as UIGF.
  */
+/** The wish sync's line (the desktop's `SyncStatus::line`), and whether it tells of a problem. */
 @Composable
-private fun WishCard(wish: WishInfo, actions: HomeActions) {
+private fun wishSyncLine(sync: WishSync, signedIn: Boolean): Pair<String, Boolean>? {
+    when (sync.phase) {
+        "syncing" -> return stringResource(R.string.wish_syncing, sync.banner.toString(), sync.page.toString()) to false
+        // Signed in, the switches are off by choice: nothing to say.
+        "off" -> return if (signedIn) null else stringResource(R.string.wish_not_synced, stringResource(R.string.teyvat_not_connected)) to false
+    }
+    val last = sync.last ?: return null
+    val at = hhmm(last.at)
+    return when (last.outcome) {
+        "sent" -> stringResource(R.string.wish_synced_added, at, grouped(last.added.toInt())) to false
+        "upToDate" -> stringResource(R.string.wish_synced_up_to_date, at) to false
+        "unfinished" -> stringResource(R.string.wish_synced_more, at) to false
+        "keyExpired" -> stringResource(R.string.wish_sync_key_expired, at) to true
+        "otherAccount" -> stringResource(R.string.wish_sync_failed, at, stringResource(R.string.wish_other_account)) to true
+        else -> stringResource(R.string.wish_sync_failed, at, last.error.orEmpty()) to true
+    }
+}
+
+@Composable
+private fun WishCard(wish: WishInfo, signedIn: Boolean, actions: HomeActions) {
     when (wish.key) {
         "none" -> return GreyCard(R.drawable.ic_sparkles, stringResource(R.string.wish_title), stringResource(R.string.wish_open_in_game))
         "expired" -> return GreyCard(R.drawable.ic_sparkles, stringResource(R.string.wish_title), stringResource(R.string.wish_expired))
@@ -525,6 +634,19 @@ private fun WishCard(wish: WishInfo, actions: HomeActions) {
                         color = if (error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 2, overflow = TextOverflow.Ellipsis,
                     )
+                }
+                wishSyncLine(wish.sync, signedIn)?.let { (line, problem) ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (wish.sync.phase == "syncing") {
+                            Spinner(size = 14.dp)
+                            Spacer(Modifier.width(6.dp))
+                        }
+                        Text(
+                            line, style = MaterialTheme.typography.bodySmall,
+                            color = if (problem) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outline,
+                            maxLines = 2, overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
             }
             Box {

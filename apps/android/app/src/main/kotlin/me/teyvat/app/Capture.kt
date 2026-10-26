@@ -33,7 +33,7 @@ data class Counts(
     val achievements: Int = 0,
 )
 
-data class Player(val ar: Int?, val wl: Int?, val server: String?)
+data class Player(val ar: Int?, val wl: Int?, val server: String?, val uid: Long? = null)
 
 /** Reading the wish history into a UIGF file (native `wish::Read`). */
 data class WishRead(
@@ -46,12 +46,32 @@ data class WishRead(
     val error: String? = null,
 )
 
+/** How the last wish sync ended (native `wish_sync::LastSync`). */
+data class WishSyncLast(
+    val at: Long,
+    /** `sent`, `upToDate`, `unfinished`, `keyExpired`, `otherAccount` or `failed`. */
+    val outcome: String,
+    val sent: Int,
+    val added: Long,
+    val error: String?,
+)
+
+/** The wish sync to the tracker (native `wish_sync::SyncSummary`). */
+data class WishSync(
+    /** `idle`, `syncing` or `off`. */
+    val phase: String = "idle",
+    val banner: Int = 0,
+    val page: Int = 0,
+    val last: WishSyncLast? = null,
+)
+
 /** The wish card (native `wish::WishSummary`). */
 data class WishInfo(
     /** `none`, `ready` or `expired`. */
     val key: String = "none",
     val uidKnown: Boolean = false,
     val read: WishRead = WishRead(),
+    val sync: WishSync = WishSync(),
 )
 
 data class ActivityEvent(val at: Long, val kind: String, val text: String) {
@@ -92,6 +112,8 @@ data class Summary(
             val events = o.optJSONArray("events")
             val wish = o.optJSONObject("wish")
             val read = wish?.optJSONObject("read")
+            val sync = wish?.optJSONObject("sync")
+            val last = sync?.optJSONObject("last")
             return Summary(
                 ready = o.optBoolean("ready"),
                 error = if (o.isNull("error")) null else o.optString("error"),
@@ -113,7 +135,10 @@ data class Summary(
                     achievements = counts?.optInt("achievements") ?: 0,
                 ),
                 player = player?.let {
-                    Player(it.int("ar"), it.int("wl"), if (it.isNull("server")) null else it.optString("server"))
+                    Player(
+                        it.int("ar"), it.int("wl"), if (it.isNull("server")) null else it.optString("server"),
+                        if (it.isNull("uid") || !it.has("uid")) null else it.optLong("uid"),
+                    )
                 },
                 gameData = if (o.isNull("gameData")) null else o.optString("gameData"),
                 wish = WishInfo(
@@ -127,11 +152,25 @@ data class Summary(
                         at = read?.optLong("at") ?: 0,
                         error = read?.takeIf { it.has("error") }?.optString("error"),
                     ),
+                    sync = WishSync(
+                        phase = sync?.optString("phase", "idle") ?: "idle",
+                        banner = sync?.optInt("banner") ?: 0,
+                        page = sync?.optInt("page") ?: 0,
+                        last = last?.let {
+                            WishSyncLast(
+                                at = it.optLong("at"),
+                                outcome = it.optString("outcome"),
+                                sent = it.optInt("sent"),
+                                added = it.optLong("added"),
+                                error = if (it.isNull("error")) null else it.optString("error"),
+                            )
+                        },
+                    ),
                 ),
                 events = buildList {
                     for (i in 0 until (events?.length() ?: 0)) {
                         val e = events!!.getJSONObject(i)
-                        add(ActivityEvent(e.optLong("at"), e.optString("kind"), e.optString("text")))
+                        add(ActivityEvent(e.optLong("at"), e.optString("kind"), nativeEventText(e.optString("text"))))
                     }
                 },
             )

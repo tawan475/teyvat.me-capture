@@ -24,6 +24,7 @@ use serde::Serialize;
 use teyvatme_core::decode::{
     self, AppliedData, DataReplacement, DataVerdict, KeyReport, SnifferEvent, SnifferStats,
 };
+use teyvatme_core::live::{Action, BatchAnswer, ImportAnswer, LiveSync, Reason};
 use teyvatme_core::player_data::{ExportSettings, PlayerData};
 use teyvatme_core::recording;
 use teyvatme_core::wish::hub::{WishHub, take_wish_events};
@@ -105,6 +106,8 @@ pub struct Player {
     pub wl: Option<u32>,
     /// `Asia`, `America`, `Europe`, `TW, HK, MO` or `China`.
     pub server: Option<&'static str>,
+    /// For the tracker card's UID check (never logged).
+    pub uid: Option<u32>,
 }
 
 /// What [`Decoder::summary`] answers, as JSON for Kotlin.
@@ -179,6 +182,9 @@ struct State {
     counts_version: u64,
     counts_at: u64,
     events: VecDeque<Event>,
+    /// Live sync's sender (`teyvatme_core::live`); the app sends what it
+    /// decides through the tracker sign-in.
+    live: LiveSync,
 }
 
 impl State {
@@ -201,6 +207,7 @@ impl State {
             counts_version: 0,
             counts_at: 0,
             events: VecDeque::new(),
+            live: LiveSync::new(),
         }
     }
 
@@ -287,6 +294,7 @@ impl State {
                 ar: player.ar,
                 wl: player.wl,
                 server: player.uid.and_then(server_of),
+                uid: player.uid,
             }),
             game_data: embedded_game_data_sha(),
             events: self.events.iter().cloned().collect(),
@@ -411,7 +419,7 @@ impl Decoder {
         } else {
             serde_json::from_str(settings)?
         };
-        let state = self.state.lock().unwrap();
+        let mut state = self.state.lock().unwrap();
         let Some(data) = state
             .player_data
             .as_ref()
@@ -421,9 +429,114 @@ impl Decoder {
         };
         let (good, report) = data.export_at(&settings, now_ms());
         if !report.is_empty() {
-            log::warn!("export dropped entities: {}", report.summary());
+            note_gaps(&mut state, &report.summary());
         }
         Ok(Some(serde_json::to_string(&good)?))
+    }
+
+    /// The tracker's snapshot (the whole account with item guids, the
+    /// desktop's `live_export`), tagged with its `gi_capture`: the automated
+    /// upload (`manual` false: in live mode only the game's full sends, else
+    /// every change) or the Upload now button. `Ok(None)`: nothing captured;
+    /// `Ok(Some(None))`: nothing to upload now (batches carry the changes).
+    /// The ticket (0: none) goes back with [`Self::snapshot_answered`].
+    pub fn tracker_export(
+        &self,
+        manual: bool,
+        live_enabled: bool,
+    ) -> Result<Option<Option<(u64, String)>>> {
+        let mut state = state_ready(&self.state);
+        let Some(state) = state.as_mut() else {
+            return Ok(None);
+        };
+        let now = now_ms();
+        let reason = if manual {
+            Reason::Manual
+        } else {
+            match state.live.automation_reason(live_enabled, now) {
+                Some(reason) => reason,
+                None => return Ok(Some(None)),
+            }
+        };
+        Ok(Some(Some(snapshot(state, reason, now)?)))
+    }
+
+    /// When live sync next has something to decide (Unix ms), if anything.
+    pub fn live_next_tick(&self, live_enabled: bool) -> Option<u64> {
+        self.state
+            .lock()
+            .unwrap()
+            .live
+            .next_tick_ms(live_enabled, now_ms())
+    }
+
+    /// What live sync sends now: a snapshot it asked for (`S`, a ticket and
+    /// the GOOD JSON) or a batch (`B` and the GOOD-X delta JSON).
+    pub fn live_tick(&self, live_enabled: bool) -> Result<Option<String>> {
+        let mut state = state_ready(&self.state);
+        let Some(state) = state.as_mut() else {
+            return Ok(None);
+        };
+        let now = now_ms();
+        let State {
+            live, player_data, ..
+        } = &mut **state;
+        let Some(data) = player_data.as_ref() else {
+            return Ok(None);
+        };
+        let action = live.tick(live_enabled, now, || {
+            let (good, _, keyed) = data.live_export(now);
+            Some((good, keyed))
+        });
+        Ok(match action {
+            Action::Nothing => None,
+            Action::Snapshot(reason) => {
+                log::info!("live sync: snapshot ({})", reason.as_str());
+                let (ticket, json) = snapshot(state, reason, now)?;
+                Some(format!("S{ticket}\n{json}"))
+            }
+            Action::Batch(delta) => {
+                log::info!(
+                    "live sync: sending batch {} ({} changes)",
+                    delta.seq,
+                    delta.changes.len()
+                );
+                Some(format!("B\n{}", serde_json::to_string(&delta)?))
+            }
+        })
+    }
+
+    /// The snapshot upload `ticket` finished: the tracker's answer when it
+    /// was stored.
+    pub fn snapshot_answered(&self, ticket: u64, body: Option<&str>) {
+        let answer = body.map(ImportAnswer::parse);
+        if let Some(answer) = &answer {
+            log::info!(
+                "live sync: snapshot stored (live {}, watching {})",
+                answer.base.is_some(),
+                answer.watching
+            );
+        }
+        self.state
+            .lock()
+            .unwrap()
+            .live
+            .snapshot_answered(ticket, answer, now_ms());
+    }
+
+    /// The batch request finished: its HTTP status (0: no answer, -1: signed
+    /// out) and body.
+    pub fn batch_answered(&self, status: i32, body: &str) {
+        let answer = match u16::try_from(status) {
+            Ok(status) => BatchAnswer::of(status, body),
+            Err(_) => BatchAnswer::Refused,
+        };
+        log::info!("live sync: batch answer {answer:?}");
+        self.state
+            .lock()
+            .unwrap()
+            .live
+            .batch_answered(answer, now_ms());
     }
 
     /// `{"gi_achievements": [...]}` as the desktop copies it for StarDB and
@@ -452,6 +565,38 @@ fn load_keys() -> Result<HashMap<u16, Vec<u8>>> {
     keys.iter()
         .map(|(id, key)| Ok((*id, BASE64_STANDARD.decode(key)?)))
         .collect()
+}
+
+/// An export left something out (a game patch the data does not know yet):
+/// the activity list says so, as the desktop's toast does.
+fn note_gaps(state: &mut State, summary: &str) {
+    log::warn!("export dropped entities: {summary}");
+    state.event("error", format!("Export incomplete: {summary}"));
+}
+
+/// The state, when the data is captured.
+fn state_ready(state: &Mutex<State>) -> Option<std::sync::MutexGuard<'_, State>> {
+    let state = state.lock().unwrap();
+    (state.player_data.is_some() && state.data_at.is_some()).then_some(state)
+}
+
+/// The tracker export for a snapshot taken for `reason`, labelled with its
+/// `gi_capture`, and the live sync ticket that follows its answer.
+fn snapshot(state: &mut State, reason: Reason, now: u64) -> Result<(u64, String)> {
+    let data = state.player_data.as_ref().expect("state_ready checked it");
+    let (mut good, report, keyed) = data.live_export(now);
+    if !report.is_empty() {
+        note_gaps(state, &report.summary());
+    }
+    good.gi_capture = state.live.capture(reason);
+    let json = serde_json::to_string(&good)?;
+    // A manual upload with no login yet carries no capture: nothing follows it.
+    let ticket = if good.gi_capture.is_some() {
+        state.live.snapshot_started(reason, keyed)
+    } else {
+        0
+    };
+    Ok((ticket, json))
 }
 
 /// The decoder thread: the game data is loaded first (packets queue
@@ -533,7 +678,12 @@ fn run(rx: mpsc::Receiver<Input>, state: Arc<Mutex<State>>, wishes: &Wishes) {
 fn handle(state: &mut State, event: SnifferEvent, at: u64, hub: &WishHub) {
     match event {
         SnifferEvent::SessionReset => {
-            state.replacement.connection_reset();
+            if state.replacement.connection_reset() {
+                // The login is over: a journal with anything in it ends on a
+                // snapshot of the data as it is, before a new login replaces
+                // it (the app's next live tick sends it).
+                state.live.note_connection_ended();
+            }
             state.connection = Some(Connection {
                 began_here: true,
                 ..Connection::default()
@@ -609,6 +759,7 @@ fn apply(
             if let Some(data) = &mut state.player_data {
                 data.reset();
             }
+            state.live.note_data_replaced();
             state.updated = Updated::default();
             state.login += 1;
         }
@@ -617,10 +768,16 @@ fn apply(
     let Some(data) = &mut state.player_data else {
         return;
     };
+    let full_send = decode::full_send_in(&classified, data.item_count());
+    let noted = decode::changes_in(&classified);
     let applied: AppliedData = decode::apply_commands(data, classified);
     if !applied.any() {
         return;
     }
+    if full_send {
+        state.live.note_full_send();
+    }
+    state.live.note_change(noted + applied.avatar_changes);
     let first = state.data_at.is_none() || state.updated == Updated::default();
     if applied.items {
         state.updated.items = Some(at);

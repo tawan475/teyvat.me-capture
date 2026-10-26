@@ -10,7 +10,7 @@
 //! only ever sent to the game's API. A new login clears it (the hub), and a
 //! read in flight stops when the login changes.
 //!
-//! There is no tracker sync here: the Android app has no tracker sign-in yet.
+//! Syncing the history to the tracker is [`crate::wish_sync`].
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -32,7 +32,7 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// The phone's HTTP client for the API: reqwest with rustls (Android has no
 /// OpenSSL), outside the VPN (the app is not in its allowed list).
-struct RustlsGet(reqwest::Client);
+pub(crate) struct RustlsGet(pub(crate) reqwest::Client);
 
 impl HttpGet for RustlsGet {
     async fn get(&self, url: &Url) -> Result<HttpReply, HttpError> {
@@ -55,7 +55,7 @@ impl HttpGet for RustlsGet {
     }
 }
 
-struct TokioSleeper;
+pub(crate) struct TokioSleeper;
 
 impl Sleeper for TokioSleeper {
     fn sleep(&self, duration: Duration) -> impl Future<Output = ()> + Send {
@@ -94,6 +94,7 @@ pub struct WishSummary {
     /// The key's login UID is known (reading needs it).
     pub uid_known: bool,
     pub read: Read,
+    pub sync: crate::wish_sync::SyncSummary,
 }
 
 /// Why a read did not start.
@@ -113,6 +114,7 @@ pub struct Wishes {
     /// The last finished file, until the next read.
     file: Arc<Mutex<Option<String>>>,
     cancel: Arc<Mutex<Option<Arc<AtomicBool>>>>,
+    pub sync: crate::wish_sync::WishSync,
 }
 
 impl Wishes {
@@ -121,10 +123,16 @@ impl Wishes {
         let (
             hub,
             HubReceivers {
-                key_rx, login_rx, ..
+                key_rx,
+                login_rx,
+                trigger_rx,
+                ..
             },
         ) = WishHub::new(Arc::new(|| {}));
+        let sync =
+            crate::wish_sync::WishSync::start(trigger_rx, login_rx.clone(), hub.key_sender());
         Self {
+            sync,
             hub,
             key_rx,
             login_rx,
@@ -158,6 +166,7 @@ impl Wishes {
             key,
             uid_known: held.and_then(|key| key.uid()).is_some(),
             read: self.read.lock().unwrap().clone(),
+            sync: self.sync.summary(),
         }
     }
 

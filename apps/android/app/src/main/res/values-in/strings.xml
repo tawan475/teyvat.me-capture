@@ -251,4 +251,56 @@
     <string name="update_allow">Izinkan pemasangan</string>
     <string name="update_allow_line">Android bertanya sekali: Instal aplikasi tidak dikenal</string>
     <string name="update_failed">Pembaruan gagal · %s</string>
+    <!-- Wish sync -->
+    <string name="wish_send">Kirim permohonan ke %1$s</string>
+    <string name="wish_send_line">Mengirim permohonan baru begitu muncul</string>
+    <string name="wish_syncing">Menyinkronkan permohonan: banner %1$s, hal. %2$s…</string>
+    <string name="wish_synced_added">Disinkronkan %1$s · ditambah %2$s</string>
+    <string name="wish_synced_up_to_date">Disinkronkan %1$s · sudah terbaru</string>
+    <string name="wish_synced_more">Disinkronkan %1$s · masih ada lagi</string>
+    <string name="wish_sync_key_expired">Sinkronisasi %1$s: kunci kedaluwarsa</string>
+    <string name="wish_sync_failed">Sinkronisasi gagal %1$s: %2$s</string>
+    <string name="wish_not_synced">Belum disinkronkan: %1$s</string>
+    <string name="wish_other_account">kunci permohonan milik akun lain</string>
+    <string name="wish_new_sent">%1$s permohonan baru dikirim ke tracker</string>
+    <!-- Live sync -->
+    <string name="live_sync">Sinkronisasi live</string>
+    <string name="live_sync_line">Perubahan selama bermain</string>
+    <string name="live_changes_sent">Sinkronisasi live · %1$s perubahan dikirim ke %2$s</string>
+    <!-- Parity with the desktop -->
+    <string name="event_key_lost">Kunci sesi tidak ditemukan</string>
+    <string name="event_export_incomplete">Ekspor tidak lengkap: %1$s</string>
+    <string name="tracker_revoked">Sudah keluar, masuk lagi</string>
+    <string name="tracker_uid_mismatch">Tangkapan ini UID %1$s, tetapi unggahan menuju %2$s (UID %3$s). Unggahan tetap menuju akun itu: login dengan akun itu, atau ganti tujuan unggahan.</string>
+    <string name="target_name_uid">%1$s (UID %2$s)</string>
+    <string name="target_uid">UID %1$s</string>
+    <string name="crash_title">Crash terakhir kali</string>
+    <string name="crash_line">Laporan dan log disimpan</string>
+    <string name="dismiss">Tutup</string>
+    <string name="release_notes">Catatan rilis</string>
+    <string name="language">Bahasa</string>
+    <string name="language_system">Sistem</string>
+    <string name="event_game_connected">Game terhubung</string>
+    <string name="event_key_found">Kunci sesi ditemukan</string>
+    <string name="event_data_captured">Data akun tertangkap</string>
+    <string name="tracker_target_missing">Tujuan unggahan belum dipilih · pilih akun di “%1$s”</string>
+    <!-- Tracker › Advanced -->
+    <string name="advanced">Lanjutan</string>
+    <string name="tracker_address">Alamat tracker</string>
+    <string name="tracker_address_hint">Alamat API tracker. Proses masuk terikat pada satu alamat: menggantinya akan mengeluarkanmu.</string>
+    <string name="apply">Terapkan</string>
+    <string name="default_address">Alamat bawaan</string>
+    <string name="not_http">Bukan alamat http(s)</string>
+    <string name="default_x">Bawaan %1$s</string>
+    <string name="signed_out_of">Kamu akan dikeluarkan dari %1$s</string>
+    <string name="uploads_will_go">Unggahan akan menuju %1$s. Setiap unggahan membawa seluruh akun.</string>
+    <string name="import_key">Kunci impor</string>
+    <string name="import_key_hint">Buat kunci di dasbor tracker lalu tempel di sini.</string>
+    <string name="key_remove">Hapus kunci tersimpan dari komputer ini</string>
+    <string name="key_verifying">Memverifikasi kunci…</string>
+    <string name="key_valid">✓ Valid: %1$s (UID %2$s)</string>
+    <string name="key_invalid">✗ Kunci tidak valid atau tidak terjangkau</string>
+    <string name="key_warning">Teks biasa, tidak pernah kedaluwarsa. Masuk lebih aman.</string>
+    <string name="key_signed_out_only">Hanya dipakai saat belum masuk</string>
+    <string name="clear">Hapus</string>
 </resources>

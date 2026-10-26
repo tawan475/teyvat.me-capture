@@ -4,23 +4,14 @@
 //! The tracker's wish routes (`/wishes/cursor`, `/wishes/import`) and the
 //! credential they are called with.
 
-use std::collections::BTreeMap;
 use std::fmt;
 
-use serde::{Deserialize, Serialize};
+pub(crate) use teyvatme_core::wish::sync::{Cursor, Imported};
+use teyvatme_core::wish::sync::{CursorError, WishTracker, error_code, import_bodies};
 
-use super::Banner;
 use super::gacha_log::ApiRecord;
 use crate::i18n::{tr, trf};
 use crate::signin::{AuthError, TrackerAuth};
-
-/// Records per import request: the tracker's limit.
-pub(crate) const MAX_RECORDS_PER_IMPORT: usize = 2_000;
-
-/// The language the records are fetched in (the URL's `lang`).
-pub(crate) use teyvatme_core::wish::uigf::RECORD_LANG;
-/// The UTC offset a region's record times are in: the UIGF table.
-pub(crate) use teyvatme_core::wish::uigf::region_timezone;
 
 /// How Teyvat.me proves who it uploads for: the same choice as a snapshot
 /// upload (`app::upload_credential`). Both routes accept either kind and
@@ -46,143 +37,6 @@ impl fmt::Debug for TrackerCredential {
     }
 }
 
-/// What the tracker holds per banner: its newest real record id, and the
-/// time of its newest wish (which a history imported from a paimon.moe
-/// backup has without real ids).
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct Cursor {
-    pub(crate) newest: BTreeMap<Banner, u64>,
-    /// `"YYYY-MM-DD HH:MM:SS"`, in the records' own clock (the server's).
-    pub(crate) newest_time: BTreeMap<Banner, String>,
-}
-
-impl Cursor {
-    pub(crate) fn newest(&self, banner: Banner) -> Option<u64> {
-        self.newest.get(&banner).copied()
-    }
-
-    /// Where a pass over `banner` meets what the tracker has.
-    pub(crate) fn known(&self, banner: Banner) -> Known {
-        Known {
-            id: self.newest(banner),
-            time: self.newest_time.get(&banner).cloned(),
-        }
-    }
-}
-
-/// What a banner's pass counts as already in the tracker: a record whose id
-/// is at most `id`, or whose time is before `time`. A record of the same
-/// second as `time` is not known (a ten-pull can straddle what the tracker
-/// has; the tracker dedupes it).
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct Known {
-    pub(crate) id: Option<u64>,
-    pub(crate) time: Option<String>,
-}
-
-impl Known {
-    pub(crate) fn by_id(id: Option<u64>) -> Self {
-        Self { id, time: None }
-    }
-
-    pub(crate) fn covers(&self, id: u64, time: &str) -> bool {
-        self.id.is_some_and(|newest| id <= newest)
-            || self
-                .time
-                .as_deref()
-                .is_some_and(|newest| is_record_time(time) && time < newest)
-    }
-}
-
-/// `YYYY-MM-DD HH:MM:SS`: what the wish history API and the tracker write,
-/// which compares as text in time order.
-pub(crate) fn is_record_time(text: &str) -> bool {
-    let bytes = text.as_bytes();
-    bytes.len() == 19
-        && bytes.iter().enumerate().all(|(at, &byte)| match at {
-            4 | 7 => byte == b'-',
-            10 => byte == b' ',
-            13 | 16 => byte == b':',
-            _ => byte.is_ascii_digit(),
-        })
-}
-
-/// What an import did.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct Imported {
-    pub(crate) added: u64,
-    pub(crate) known: u64,
-}
-
-#[derive(Deserialize)]
-struct CursorAnswer {
-    #[serde(default)]
-    newest: BTreeMap<String, Option<String>>,
-    /// Read leniently: missing, or anything but an object of banner →
-    /// time strings, is an older tracker (ids only).
-    #[serde(default, rename = "newestTime")]
-    newest_time: serde_json::Value,
-}
-
-#[derive(Deserialize)]
-struct ImportAnswer {
-    #[serde(default)]
-    added: u64,
-    #[serde(default)]
-    known: u64,
-}
-
-#[derive(Deserialize)]
-struct ErrorAnswer {
-    error: ErrorBody,
-}
-
-#[derive(Deserialize)]
-struct ErrorBody {
-    #[serde(default)]
-    code: String,
-    #[serde(default)]
-    message: String,
-}
-
-/// One record as the import takes it.
-#[derive(Debug, Serialize, PartialEq, Eq)]
-pub(crate) struct ImportRecord {
-    pub(crate) id: String,
-    pub(crate) gacha_type: String,
-    pub(crate) time: String,
-    pub(crate) name: String,
-    pub(crate) item_type: String,
-    pub(crate) rank_type: String,
-    pub(crate) item_id: String,
-}
-
-impl From<&ApiRecord> for ImportRecord {
-    fn from(record: &ApiRecord) -> Self {
-        Self {
-            id: record.id.clone(),
-            gacha_type: record.gacha_type.clone(),
-            time: record.time.clone(),
-            name: record.name.clone(),
-            item_type: record.item_type.clone(),
-            rank_type: record.rank_type.clone(),
-            item_id: record.item_id.clone(),
-        }
-    }
-}
-
-/// The body of `POST /wishes/import`.
-#[derive(Debug, Serialize)]
-pub(crate) struct ImportBody<'a> {
-    pub(crate) uid: &'a str,
-    pub(crate) region: &'a str,
-    pub(crate) lang: &'a str,
-    /// The UTC offset of the records' times (they are the server's local
-    /// time).
-    pub(crate) timezone: i32,
-    pub(crate) records: Vec<ImportRecord>,
-}
-
 /// Talks to one tracker with one credential.
 pub(crate) struct Tracker {
     pub(crate) http: reqwest::Client,
@@ -194,63 +48,6 @@ pub(crate) struct Tracker {
 impl Tracker {
     fn url(&self, path: &str) -> String {
         format!("{}/wishes/{path}", self.base_url.trim_end_matches('/'))
-    }
-
-    /// `GET /wishes/cursor?uid=`.
-    pub(crate) async fn cursor(&self, uid: &str) -> Result<Cursor, String> {
-        let url = self.url("cursor");
-        let body = self
-            .send(|| self.http.get(&url).query(&[("uid", uid)]))
-            .await?;
-        let answer: CursorAnswer = serde_json::from_str(&body)
-            .map_err(|e| trf("the tracker's wish cursor was unreadable: {0}", &[&e]))?;
-        let mut cursor = Cursor::default();
-        for (banner, newest) in answer.newest {
-            let (Ok(banner), Some(newest)) = (banner.parse::<Banner>(), newest) else {
-                continue;
-            };
-            #[rustfmt::skip]
-            let bad_id = || trf("the tracker's wish cursor holds a bad id for {0}", &[&banner]);
-            let newest = newest.parse::<u64>().map_err(|_| bad_id())?;
-            cursor.newest.insert(banner, newest);
-        }
-        if let serde_json::Value::Object(times) = answer.newest_time {
-            for (banner, time) in times {
-                if let (Ok(banner), Some(time)) = (banner.parse::<Banner>(), time.as_str())
-                    && is_record_time(time)
-                {
-                    cursor.newest_time.insert(banner, time.to_owned());
-                }
-            }
-        }
-        Ok(cursor)
-    }
-
-    /// `POST /wishes/import`, once per [`MAX_RECORDS_PER_IMPORT`] records,
-    /// in the order given.
-    pub(crate) async fn import(
-        &self,
-        uid: &str,
-        region: &str,
-        records: &[ApiRecord],
-    ) -> Result<Imported, String> {
-        let mut total = Imported::default();
-        for chunk in records.chunks(MAX_RECORDS_PER_IMPORT) {
-            let body = ImportBody {
-                uid,
-                region,
-                lang: RECORD_LANG,
-                timezone: region_timezone(region),
-                records: chunk.iter().map(ImportRecord::from).collect(),
-            };
-            let url = self.url("import");
-            let answer = self.send(|| self.http.post(&url).json(&body)).await?;
-            let answer: ImportAnswer = serde_json::from_str(&answer)
-                .map_err(|e| trf("the tracker's import answer was unreadable: {0}", &[&e]))?;
-            total.added += answer.added;
-            total.known += answer.known;
-        }
-        Ok(total)
     }
 
     /// Send the request `build` makes with the credential; the body of a
@@ -282,12 +79,48 @@ impl Tracker {
     }
 }
 
+impl WishTracker for Tracker {
+    type Error = String;
+
+    async fn cursor(&self, uid: &str) -> Result<Cursor, String> {
+        let url = self.url("cursor");
+        let body = self
+            .send(|| self.http.get(&url).query(&[("uid", uid)]))
+            .await?;
+        teyvatme_core::wish::sync::parse_cursor(&body).map_err(|error| match error {
+            CursorError::Unreadable(e) => {
+                trf("the tracker's wish cursor was unreadable: {0}", &[&e])
+            }
+            CursorError::BadId(banner) => trf(
+                "the tracker's wish cursor holds a bad id for {0}",
+                &[&banner],
+            ),
+        })
+    }
+
+    async fn import(
+        &self,
+        uid: &str,
+        region: &str,
+        records: &[ApiRecord],
+    ) -> Result<Imported, String> {
+        let mut total = Imported::default();
+        for body in import_bodies(uid, region, records) {
+            let url = self.url("import");
+            let answer = self.send(|| self.http.post(&url).json(&body)).await?;
+            let answer = teyvatme_core::wish::sync::parse_import(&answer)
+                .map_err(|e| trf("the tracker's import answer was unreadable: {0}", &[&e]))?;
+            total.added += answer.added;
+            total.known += answer.known;
+        }
+        Ok(total)
+    }
+}
+
 /// What to say about a refused tracker request.
 fn failure(status: u16, body: &str) -> String {
-    match serde_json::from_str::<ErrorAnswer>(body) {
-        Ok(ErrorAnswer { error }) => describe_failure(status, &error.code, &error.message),
-        Err(_) => describe_failure(status, "", ""),
-    }
+    let (code, message) = error_code(body);
+    describe_failure(status, &code, &message)
 }
 
 /// The status line's words for the tracker's error codes (the ones
@@ -333,59 +166,6 @@ fn truncate(text: &str, max: usize) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn a_record_is_known_by_id_or_by_an_earlier_time_but_not_the_same_second() {
-        let newest = "2026-10-01 09:44:55";
-        let by_time = Known {
-            id: None,
-            time: Some(newest.to_owned()),
-        };
-        assert!(by_time.covers(1, "2026-10-01 09:44:54"));
-        assert!(!by_time.covers(1, newest), "the same second is sent");
-        assert!(!by_time.covers(1, "2026-10-01 09:44:56"));
-        assert!(
-            !by_time.covers(1, "not a time"),
-            "an odd time is never known"
-        );
-
-        let by_id = Known::by_id(Some(100));
-        assert!(by_id.covers(100, "2030-01-01 00:00:00"));
-        assert!(!by_id.covers(101, "2000-01-01 00:00:00"));
-        assert!(!Known::default().covers(1, "2000-01-01 00:00:00"));
-
-        let both = Known {
-            id: Some(100),
-            time: Some(newest.to_owned()),
-        };
-        assert!(both.covers(100, "2030-01-01 00:00:00"));
-        assert!(both.covers(500, "2026-09-30 00:00:00"));
-        assert!(!both.covers(500, newest));
-    }
-
-    #[test]
-    fn record_times_are_the_apis_shape() {
-        assert!(is_record_time("2026-10-12 21:04:11"));
-        for odd in [
-            "",
-            "2026-10-12T21:04:11",
-            "2026-10-12 21:04",
-            "2026-10-12 21:04:11Z",
-            "2026/10/12 21:04:11",
-            "２026-10-12 21:04:1",
-        ] {
-            assert!(!is_record_time(odd), "{odd}");
-        }
-    }
-
-    #[test]
-    fn region_time_zones_follow_uigf() {
-        assert_eq!(region_timezone("os_usa"), -5);
-        assert_eq!(region_timezone("os_euro"), 1);
-        assert_eq!(region_timezone("os_asia"), 8);
-        assert_eq!(region_timezone("os_cht"), 8);
-        assert_eq!(region_timezone("cn_gf01"), 8);
-    }
 
     #[test]
     fn the_credential_never_shows_in_debug_output() {

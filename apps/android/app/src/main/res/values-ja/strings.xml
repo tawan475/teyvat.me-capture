@@ -251,4 +251,56 @@
     <string name="update_allow">インストールを許可</string>
     <string name="update_allow_line">Android が一度だけ確認: 不明なアプリのインストール</string>
     <string name="update_failed">アップデート失敗 · %s</string>
+    <!-- Wish sync -->
+    <string name="wish_send">祈願を %1$s に送信</string>
+    <string name="wish_send_line">新しい祈願が出るたびに送信</string>
+    <string name="wish_syncing">祈願を同期中：%1$s、%2$s ページ…</string>
+    <string name="wish_synced_added">%1$s を同期 · %2$s 件追加</string>
+    <string name="wish_synced_up_to_date">%1$s を同期 · 最新です</string>
+    <string name="wish_synced_more">%1$s を同期 · 続きあり</string>
+    <string name="wish_sync_key_expired">同期 %1$s：キーの期限切れ</string>
+    <string name="wish_sync_failed">同期失敗 %1$s：%2$s</string>
+    <string name="wish_not_synced">未同期：%1$s</string>
+    <string name="wish_other_account">祈願キーは別のアカウントのものです</string>
+    <string name="wish_new_sent">新しい祈願 %1$s 回をトラッカーに送信しました</string>
+    <!-- Live sync -->
+    <string name="live_sync">ライブ同期</string>
+    <string name="live_sync_line">プレイ中の変化</string>
+    <string name="live_changes_sent">ライブ同期 · %2$s に %1$s 件の変更を送信</string>
+    <!-- Parity with the desktop -->
+    <string name="event_key_lost">セッションキーが見つかりません</string>
+    <string name="event_export_incomplete">エクスポートが不完全：%1$s</string>
+    <string name="tracker_revoked">ログアウトしました。もう一度ログインしてください</string>
+    <string name="tracker_uid_mismatch">このキャプチャは UID %1$s ですが、アップロード先は %2$s（UID %3$s）です。アップロードは引き続きそのアカウントに送られます：そのアカウントでログインするか、アップロード先を変更してください。</string>
+    <string name="target_name_uid">%1$s（UID %2$s）</string>
+    <string name="target_uid">UID %1$s</string>
+    <string name="crash_title">前回クラッシュしました</string>
+    <string name="crash_line">レポートとログは保持</string>
+    <string name="dismiss">非表示</string>
+    <string name="release_notes">リリースノート</string>
+    <string name="language">言語</string>
+    <string name="language_system">システム</string>
+    <string name="event_game_connected">ゲームに接続しました</string>
+    <string name="event_key_found">セッションキーを取得しました</string>
+    <string name="event_data_captured">アカウントデータを取得しました</string>
+    <string name="tracker_target_missing">アップロード先が未選択です · 「%1$s」でアカウントを選んでください</string>
+    <!-- Tracker › Advanced -->
+    <string name="advanced">詳細設定</string>
+    <string name="tracker_address">トラッカーのアドレス</string>
+    <string name="tracker_address_hint">トラッカーの API アドレス。ログインは1つのアドレスに属します：変更するとログアウトします。</string>
+    <string name="apply">適用</string>
+    <string name="default_address">デフォルトのアドレス</string>
+    <string name="not_http">http(s) のアドレスではありません</string>
+    <string name="default_x">デフォルト %1$s</string>
+    <string name="signed_out_of">%1$s からログアウトします</string>
+    <string name="uploads_will_go">アップロード先は %1$s です。毎回アカウント全体をアップロードします。</string>
+    <string name="import_key">インポートキー</string>
+    <string name="import_key_hint">トラッカーのダッシュボードで作成し、ここに貼り付けてください。</string>
+    <string name="key_remove">このPCから保存済みのキーを削除</string>
+    <string name="key_verifying">キーを確認中…</string>
+    <string name="key_valid">✓ 有効：%1$s（UID %2$s）</string>
+    <string name="key_invalid">✗ キーが無効か接続できません</string>
+    <string name="key_warning">平文で保存され、期限切れになりません。ログインのほうが安全です。</string>
+    <string name="key_signed_out_only">ログアウト中のみ使用</string>
+    <string name="clear">クリア</string>
 </resources>

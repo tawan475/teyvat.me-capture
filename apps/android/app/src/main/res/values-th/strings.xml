@@ -251,4 +251,56 @@
     <string name="update_allow">อนุญาตการติดตั้ง</string>
     <string name="update_allow_line">Android ถามครั้งเดียว: ติดตั้งแอปที่ไม่รู้จัก</string>
     <string name="update_failed">อัปเดตไม่สำเร็จ · %s</string>
+    <!-- Wish sync -->
+    <string name="wish_send">ส่งการอธิษฐานไปที่ %1$s</string>
+    <string name="wish_send_line">ส่งการอธิษฐานใหม่ทันทีที่มี</string>
+    <string name="wish_syncing">กำลังซิงก์การอธิษฐาน: แบนเนอร์ %1$s หน้า %2$s…</string>
+    <string name="wish_synced_added">ซิงก์ %1$s แล้ว · เพิ่ม %2$s</string>
+    <string name="wish_synced_up_to_date">ซิงก์ %1$s แล้ว · เป็นปัจจุบัน</string>
+    <string name="wish_synced_more">ซิงก์ %1$s แล้ว · ยังมีอีก</string>
+    <string name="wish_sync_key_expired">ซิงก์ %1$s: คีย์หมดอายุ</string>
+    <string name="wish_sync_failed">ซิงก์ไม่สำเร็จ %1$s: %2$s</string>
+    <string name="wish_not_synced">ยังไม่ได้ซิงก์: %1$s</string>
+    <string name="wish_other_account">คีย์การอธิษฐานเป็นของบัญชีอื่น</string>
+    <string name="wish_new_sent">ส่งการอธิษฐานใหม่ %1$s ครั้งไปยัง Tracker แล้ว</string>
+    <!-- Live sync -->
+    <string name="live_sync">ซิงก์สด</string>
+    <string name="live_sync_line">การเปลี่ยนแปลงระหว่างเล่น</string>
+    <string name="live_changes_sent">ซิงก์สด · ส่งการเปลี่ยนแปลง %1$s รายการไปที่ %2$s แล้ว</string>
+    <!-- Parity with the desktop -->
+    <string name="event_key_lost">ไม่พบคีย์เซสชัน</string>
+    <string name="event_export_incomplete">ส่งออกไม่ครบ: %1$s</string>
+    <string name="tracker_revoked">ออกจากระบบแล้ว เข้าสู่ระบบอีกครั้ง</string>
+    <string name="tracker_uid_mismatch">การสแกนนี้เป็น UID %1$s แต่อัปโหลดไปที่ %2$s (UID %3$s) การอัปโหลดยังคงไปที่บัญชีนั้น: ล็อกอินด้วยบัญชีนั้น หรือเปลี่ยนปลายทางการอัปโหลด</string>
+    <string name="target_name_uid">%1$s (UID %2$s)</string>
+    <string name="target_uid">UID %1$s</string>
+    <string name="crash_title">ครั้งก่อนแครช</string>
+    <string name="crash_line">เก็บรายงานและล็อกไว้แล้ว</string>
+    <string name="dismiss">ซ่อน</string>
+    <string name="release_notes">บันทึกประจำรุ่น</string>
+    <string name="language">ภาษา</string>
+    <string name="language_system">ตามระบบ</string>
+    <string name="event_game_connected">เชื่อมต่อเกมแล้ว</string>
+    <string name="event_key_found">พบคีย์เซสชันแล้ว</string>
+    <string name="event_data_captured">บันทึกข้อมูลบัญชีแล้ว</string>
+    <string name="tracker_target_missing">ยังไม่ได้เลือกปลายทางการอัปโหลด · เลือกบัญชีที่ “%1$s”</string>
+    <!-- Tracker › Advanced -->
+    <string name="advanced">ขั้นสูง</string>
+    <string name="tracker_address">ที่อยู่ Tracker</string>
+    <string name="tracker_address_hint">ที่อยู่ API ของ Tracker การเข้าสู่ระบบผูกกับที่อยู่เดียว: เปลี่ยนแล้วจะออกจากระบบ</string>
+    <string name="apply">ใช้</string>
+    <string name="default_address">ที่อยู่เริ่มต้น</string>
+    <string name="not_http">ไม่ใช่ที่อยู่ http(s)</string>
+    <string name="default_x">ค่าเริ่มต้น %1$s</string>
+    <string name="signed_out_of">คุณจะออกจากระบบ %1$s</string>
+    <string name="uploads_will_go">จะอัปโหลดไปที่ %1$s ทุกการอัปโหลดมีข้อมูลทั้งบัญชี</string>
+    <string name="import_key">คีย์นำเข้า</string>
+    <string name="import_key_hint">สร้างคีย์ในแดชบอร์ดของ Tracker แล้ววางที่นี่</string>
+    <string name="key_remove">ลบคีย์ที่เก็บไว้ออกจากเครื่องนี้</string>
+    <string name="key_verifying">กำลังตรวจสอบคีย์…</string>
+    <string name="key_valid">✓ ใช้ได้: %1$s (UID %2$s)</string>
+    <string name="key_invalid">✗ คีย์ไม่ถูกต้องหรือเชื่อมต่อไม่ได้</string>
+    <string name="key_warning">เป็นข้อความธรรมดา ไม่มีวันหมดอายุ การเข้าสู่ระบบปลอดภัยกว่า</string>
+    <string name="key_signed_out_only">ใช้เฉพาะตอนที่ไม่ได้เข้าสู่ระบบ</string>
+    <string name="clear">ล้าง</string>
 </resources>

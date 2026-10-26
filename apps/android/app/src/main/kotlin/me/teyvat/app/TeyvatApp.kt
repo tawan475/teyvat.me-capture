@@ -33,6 +33,7 @@ class TeyvatApp : Application() {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
         autoExport = AutoExporter(this, prefs, scope)
         tracker = Tracker(this, prefs, scope)
+        WishTrackerBridge.tracker = tracker
         capture = Capture(scope) { summary ->
             autoExport.tick(summary)
             tracker.tick(summary)

@@ -2,6 +2,47 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.1.3
+
+- Android: wish history syncs to teyvat.me by itself, like the desktop.
+  Open Wish → History in game once per login; every banner's new wishes
+  go up, and a wish you make syncs its banner a little later. Switch:
+  Settings → Tracker → "Send wishes to teyvat.me".
+- Android: live sync. Between snapshots the phone sends what changed as
+  you play, so the tracker stays current without logging out (the
+  tracker's per-account switch decides too). Switch: Settings → Tracker →
+  "Live sync".
+- Android: tracker uploads hold the whole account. They went through the
+  export filters, so 1★ and 2★ artifacts and weapons were left out.
+- Android: a failed automatic upload is tried again after 30 s, then less
+  often (up to every 10 min), instead of every second.
+- Android: a sign-in the tracker ended (signed out on the website) shows
+  "Signed out, sign in again".
+- Android, like the desktop:
+  - the tracker card names the upload account ("name (UID …)"), says when
+    the chosen account is gone, and warns when the capture is another UID
+    than the account uploads go to;
+  - the sign-in is checked again every 5 minutes while the app is open;
+  - Settings → Tracker → Advanced: the tracker address, and an import key
+    that uploads (snapshots, live sync, wishes) while signed out;
+  - a language picker (Settings → App), every language the game ships;
+  - "Export incomplete" in the activity list when an export leaves
+    something out, and the activity lines in your language;
+  - a "Crashed last time" card with Share log, and a Release notes link.
+
+Everything in 1.1.2 below still applies.
+
+| Platform | File |
+|---|---|
+| Windows 10/11 | `teyvatme-windows.exe` (built-in packet capture; asks for administrator rights) |
+| Windows with Npcap | `teyvatme-windows-pcap.exe` |
+| Linux x86_64 | `teyvatme-linux-x86_64.tar.gz` |
+| macOS (Apple silicon) | `Teyvatme-macos-arm64.app.tar.gz` |
+| Android 10+ | `teyvatme-android.apk` |
+
+Check a download against `SHA256SUMS.txt`. Unofficial fan project, not
+affiliated with HoYoverse.
+
 ## 1.1.2
 
 - Desktop: uploads, live sync and wish history now go to teyvat.me while

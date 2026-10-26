@@ -55,6 +55,7 @@ use tokio::sync::{mpsc, oneshot, watch};
 mod decoder;
 mod logging;
 mod wish;
+mod wish_sync;
 
 /// The game server's KCP ports (Teyvat.me's `capture::PORT_RANGE`).
 const GAME_PORTS: (u16, u16) = (22101, 22102);
@@ -755,7 +756,118 @@ pub extern "system" fn Java_me_teyvat_app_NativeBridge_init(
     if let Some(dir) = java_string(&mut env, &log_dir) {
         logging::init(std::path::Path::new(&dir));
     }
+    // The wish sync's way to the app's tracker sign-in, found here: a thread
+    // of our own cannot find app classes.
+    match (
+        env.get_java_vm(),
+        env.find_class("me/teyvat/app/WishTrackerBridge")
+            .and_then(|class| env.new_global_ref(class)),
+    ) {
+        (Ok(vm), Ok(class)) => wish_sync::keep_bridge(vm, class),
+        (vm, class) => {
+            let _ = env.exception_clear();
+            log::error!(
+                "wish sync: no bridge to the app: {:?} {:?}",
+                vm.err(),
+                class.err()
+            );
+        }
+    }
     decoder::get();
+}
+
+/// `NativeBridge.trackerExport(manual, live)`: the tracker's snapshot as
+/// `"<ticket>\n<GOOD JSON>"`, "" when nothing is due (live mode: batches
+/// carry the changes), or null before anything is captured.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_me_teyvat_app_NativeBridge_trackerExport(
+    env: JNIEnv,
+    _class: JClass,
+    manual: jboolean,
+    live: jboolean,
+) -> jstring {
+    let export = match decoder::get().tracker_export(manual != 0, live != 0) {
+        Ok(Some(Some((ticket, json)))) => Some(format!("{ticket}\n{json}")),
+        Ok(Some(None)) => Some(String::new()),
+        Ok(None) => None,
+        Err(e) => {
+            log::error!("tracker export: {e:#}");
+            None
+        }
+    };
+    java_result(&env, export)
+}
+
+/// `NativeBridge.liveNextTick(live)`: when live sync next has something to
+/// do (Unix ms), or -1.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_me_teyvat_app_NativeBridge_liveNextTick(
+    _env: JNIEnv,
+    _class: JClass,
+    live: jboolean,
+) -> jni::sys::jlong {
+    decoder::get()
+        .live_next_tick(live != 0)
+        .and_then(|at| i64::try_from(at).ok())
+        .unwrap_or(-1)
+}
+
+/// `NativeBridge.liveTick(live)`: `"S<ticket>\n<GOOD JSON>"` (a snapshot),
+/// `"B\n<delta JSON>"` (a batch for `/irminsul/changes`), or null.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_me_teyvat_app_NativeBridge_liveTick(
+    env: JNIEnv,
+    _class: JClass,
+    live: jboolean,
+) -> jstring {
+    let action = decoder::get().live_tick(live != 0).unwrap_or_else(|e| {
+        log::error!("live sync: {e:#}");
+        None
+    });
+    java_result(&env, action)
+}
+
+/// `NativeBridge.snapshotAnswered(ticket, body)`: the snapshot upload
+/// finished; `body` is the tracker's answer, or null when it failed.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_me_teyvat_app_NativeBridge_snapshotAnswered(
+    mut env: JNIEnv,
+    _class: JClass,
+    ticket: jni::sys::jlong,
+    body: JString,
+) {
+    let body = (!body.is_null())
+        .then(|| java_string(&mut env, &body))
+        .flatten();
+    if let Ok(ticket) = u64::try_from(ticket)
+        && ticket > 0
+    {
+        decoder::get().snapshot_answered(ticket, body.as_deref());
+    }
+}
+
+/// `NativeBridge.batchAnswered(status, body)`: the batch request finished
+/// (status 0: no answer, -1: signed out).
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_me_teyvat_app_NativeBridge_batchAnswered(
+    mut env: JNIEnv,
+    _class: JClass,
+    status: jint,
+    body: JString,
+) {
+    let body = java_string(&mut env, &body).unwrap_or_default();
+    decoder::get().batch_answered(status, &body);
+}
+
+/// `NativeBridge.setWishSync(on)`: whether a captured wish key is synced to
+/// the tracker (signed in, uploads on, wishes on).
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_me_teyvat_app_NativeBridge_setWishSync(
+    _env: JNIEnv,
+    _class: JClass,
+    on: jboolean,
+) {
+    decoder::get().wishes.sync.set_enabled(on != 0);
 }
 
 /// `NativeBridge.start(fd, pcapPath, resolvers)`: 0 on success, -1 on

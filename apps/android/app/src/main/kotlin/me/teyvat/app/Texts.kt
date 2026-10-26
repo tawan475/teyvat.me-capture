@@ -45,6 +45,23 @@ fun activityLine(summary: Summary): ActivityEvent? = summary.events.lastOrNull()
 
 fun ActivityEvent.line() = "${hhmm(at)} · $text"
 
+/** The decoder's activity lines (written in English) in the app's language. */
+fun nativeEventText(text: String): String {
+    val context = runCatching { TeyvatApp.instance }.getOrNull() ?: return text
+    val id = when (text) {
+        "Game connected" -> R.string.event_game_connected
+        "Login seen" -> R.string.home_login_seen_title
+        "Session key found" -> R.string.event_key_found
+        "Session key not found" -> R.string.event_key_lost
+        "Account data captured" -> R.string.event_data_captured
+        else -> null
+    }
+    if (id != null) return context.getString(id)
+    val incomplete = "Export incomplete: "
+    if (text.startsWith(incomplete)) return context.getString(R.string.event_export_incomplete, text.removePrefix(incomplete))
+    return text
+}
+
 /** Thousands grouped: `1,684`. */
 fun grouped(n: Int): String = String.format(Locale.US, "%,d", n)
 
@@ -55,15 +72,21 @@ object Links {
     const val GAME_PACKAGE = GameVpnService.GAME_PACKAGE
     const val SOURCE = "https://github.com/tawan475/teyvat.me-capture"
     const val ISSUES = "https://github.com/tawan475/teyvat.me-capture/issues/new"
-    const val TRACKER_API = "https://teyvat.me/api"
+    const val DEFAULT_TRACKER_API = "https://teyvat.me/api"
     const val STARDB_ACHIEVEMENTS = "https://stardb.gg/import"
     const val SEELIE_ACHIEVEMENTS = "https://seelie.me/achievements"
     const val PAIMON_WISH_IMPORT = "https://paimon.moe/wish/import"
     const val STARDB_WISH_IMPORT = "https://stardb.gg/en/genshin/wish-import"
 
+    /** The tracker's API address (Settings › Tracker › Advanced; [Tracker.setApi]). */
+    val trackerApi: String
+        get() = runCatching {
+            TeyvatApp.instance.getSharedPreferences("tracker", Context.MODE_PRIVATE).getString("api", null)
+        }.getOrNull() ?: DEFAULT_TRACKER_API
+
     /** The tracker's site: the API address without `/api`. */
-    val trackerSite: String get() = TRACKER_API.removeSuffix("/api")
-    val trackerHost: String get() = Uri.parse(TRACKER_API).host ?: TRACKER_API
+    val trackerSite: String get() = trackerApi.removeSuffix("/api")
+    val trackerHost: String get() = Uri.parse(trackerApi).host ?: trackerApi
 
     fun gameLaunch(context: Context): Intent? = context.packageManager.getLaunchIntentForPackage(GAME_PACKAGE)
 

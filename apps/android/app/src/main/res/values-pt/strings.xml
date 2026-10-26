@@ -251,4 +251,56 @@
     <string name="update_allow">Permitir instalações</string>
     <string name="update_allow_line">O Android pergunta uma vez: Instalar apps desconhecidos</string>
     <string name="update_failed">Falha na atualização · %s</string>
+    <!-- Wish sync -->
+    <string name="wish_send">Enviar orações ao %1$s</string>
+    <string name="wish_send_line">Envia as novas orações assim que aparecem</string>
+    <string name="wish_syncing">Sincronizando orações: banner %1$s, página %2$s…</string>
+    <string name="wish_synced_added">Sincronizado %1$s · %2$s adicionados</string>
+    <string name="wish_synced_up_to_date">Sincronizado %1$s · em dia</string>
+    <string name="wish_synced_more">Sincronizado %1$s · há mais por vir</string>
+    <string name="wish_sync_key_expired">Sincronização %1$s: a chave expirou</string>
+    <string name="wish_sync_failed">Falha na sincronização %1$s: %2$s</string>
+    <string name="wish_not_synced">Não sincronizado: %1$s</string>
+    <string name="wish_other_account">a chave de orações pertence a outra conta</string>
+    <string name="wish_new_sent">%1$s novas orações enviadas ao tracker</string>
+    <!-- Live sync -->
+    <string name="live_sync">Sincronização ao vivo</string>
+    <string name="live_sync_line">Mudanças enquanto você joga</string>
+    <string name="live_changes_sent">Sincronização ao vivo · %1$s mudanças enviadas ao %2$s</string>
+    <!-- Parity with the desktop -->
+    <string name="event_key_lost">Chave da sessão não encontrada</string>
+    <string name="event_export_incomplete">Exportação incompleta: %1$s</string>
+    <string name="tracker_revoked">Desconectado, entre de novo</string>
+    <string name="tracker_uid_mismatch">Esta captura é do UID %1$s, mas os envios vão para %2$s (UID %3$s). Os envios continuam indo para essa conta: entre com ela ou mude para onde vão os envios.</string>
+    <string name="target_name_uid">%1$s (UID %2$s)</string>
+    <string name="target_uid">UID %1$s</string>
+    <string name="crash_title">Travou da última vez</string>
+    <string name="crash_line">Relatório e log mantidos</string>
+    <string name="dismiss">Dispensar</string>
+    <string name="release_notes">Notas da versão</string>
+    <string name="language">Idioma</string>
+    <string name="language_system">Sistema</string>
+    <string name="event_game_connected">Jogo conectado</string>
+    <string name="event_key_found">Chave de sessão encontrada</string>
+    <string name="event_data_captured">Dados da conta capturados</string>
+    <string name="tracker_target_missing">Sem destino de envio · escolha uma conta em “%1$s”</string>
+    <!-- Tracker › Advanced -->
+    <string name="advanced">Avançado</string>
+    <string name="tracker_address">Endereço do tracker</string>
+    <string name="tracker_address_hint">O endereço da API do tracker. Um login pertence a um endereço: mudar ele faz você sair.</string>
+    <string name="apply">Aplicar</string>
+    <string name="default_address">Endereço padrão</string>
+    <string name="not_http">Não é um endereço http(s)</string>
+    <string name="default_x">Padrão: %1$s</string>
+    <string name="signed_out_of">Você sairá do %1$s</string>
+    <string name="uploads_will_go">Os envios vão para %1$s. Cada envio leva a conta inteira.</string>
+    <string name="import_key">Chave de importação</string>
+    <string name="import_key_hint">Gere uma no painel do tracker e cole aqui.</string>
+    <string name="key_remove">Remover a chave salva deste computador</string>
+    <string name="key_verifying">Verificando chave…</string>
+    <string name="key_valid">✓ Válida: %1$s (UID %2$s)</string>
+    <string name="key_invalid">✗ Chave inválida ou inacessível</string>
+    <string name="key_warning">Texto puro, nunca expira. Entrar é mais seguro.</string>
+    <string name="key_signed_out_only">Usada só quando você não está conectado</string>
+    <string name="clear">Limpar</string>
 </resources>

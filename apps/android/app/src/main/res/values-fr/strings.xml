@@ -251,4 +251,56 @@
     <string name="update_allow">Autoriser les installations</string>
     <string name="update_allow_line">Android demande une fois : Installer des applis inconnues</string>
     <string name="update_failed">Échec de la mise à jour · %s</string>
+    <!-- Wish sync -->
+    <string name="wish_send">Envoyer les vœux vers %1$s</string>
+    <string name="wish_send_line">Envoie les nouveaux vœux dès qu\'ils apparaissent</string>
+    <string name="wish_syncing">Synchro des vœux : bannière %1$s, page %2$s…</string>
+    <string name="wish_synced_added">Synchronisé %1$s · %2$s ajoutés</string>
+    <string name="wish_synced_up_to_date">Synchronisé %1$s · à jour</string>
+    <string name="wish_synced_more">Synchronisé %1$s · d\'autres à venir</string>
+    <string name="wish_sync_key_expired">Synchro %1$s : la clé a expiré</string>
+    <string name="wish_sync_failed">Échec de la synchro %1$s : %2$s</string>
+    <string name="wish_not_synced">Non synchronisé : %1$s</string>
+    <string name="wish_other_account">la clé de vœux appartient à un autre compte</string>
+    <string name="wish_new_sent">%1$s nouveaux vœux envoyés au tracker</string>
+    <!-- Live sync -->
+    <string name="live_sync">Synchro en direct</string>
+    <string name="live_sync_line">Changements pendant que vous jouez</string>
+    <string name="live_changes_sent">Synchro en direct · %1$s changements envoyés à %2$s</string>
+    <!-- Parity with the desktop -->
+    <string name="event_key_lost">Clé de session introuvable</string>
+    <string name="event_export_incomplete">Export incomplet : %1$s</string>
+    <string name="tracker_revoked">Déconnecté, reconnectez-vous</string>
+    <string name="tracker_uid_mismatch">Cette capture est l\'UID %1$s, mais les envois vont vers %2$s (UID %3$s). Les envois vont toujours vers ce compte : connectez-vous avec lui, ou changez où vont les envois.</string>
+    <string name="target_name_uid">%1$s (UID %2$s)</string>
+    <string name="target_uid">UID %1$s</string>
+    <string name="crash_title">Plantage lors de la dernière session</string>
+    <string name="crash_line">Rapport et journal conservés</string>
+    <string name="dismiss">Ignorer</string>
+    <string name="release_notes">Notes de version</string>
+    <string name="language">Langue</string>
+    <string name="language_system">Système</string>
+    <string name="event_game_connected">Jeu connecté</string>
+    <string name="event_key_found">Clé de session trouvée</string>
+    <string name="event_data_captured">Données du compte capturées</string>
+    <string name="tracker_target_missing">Aucune destination d’envoi · choisissez un compte dans « %1$s »</string>
+    <!-- Tracker › Advanced -->
+    <string name="advanced">Avancé</string>
+    <string name="tracker_address">Adresse du tracker</string>
+    <string name="tracker_address_hint">L\'adresse de l\'API du tracker. Une connexion est liée à une adresse : la changer vous déconnecte.</string>
+    <string name="apply">Appliquer</string>
+    <string name="default_address">Adresse par défaut</string>
+    <string name="not_http">Pas une adresse http(s)</string>
+    <string name="default_x">Par défaut : %1$s</string>
+    <string name="signed_out_of">Vous serez déconnecté de %1$s</string>
+    <string name="uploads_will_go">Les envois iront vers %1$s. Chaque envoi contient le compte entier.</string>
+    <string name="import_key">Clé d\'import</string>
+    <string name="import_key_hint">Générez-en une sur le tableau de bord du tracker et collez-la ici.</string>
+    <string name="key_remove">Supprimer la clé enregistrée de cette machine</string>
+    <string name="key_verifying">Vérification de la clé…</string>
+    <string name="key_valid">✓ Valide : %1$s (UID %2$s)</string>
+    <string name="key_invalid">✗ Clé invalide ou injoignable</string>
+    <string name="key_warning">Texte en clair, n\'expire jamais. Se connecter est plus sûr.</string>
+    <string name="key_signed_out_only">Utilisée seulement hors connexion</string>
+    <string name="clear">Effacer</string>
 </resources>

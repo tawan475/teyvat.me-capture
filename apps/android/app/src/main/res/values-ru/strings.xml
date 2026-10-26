@@ -251,4 +251,56 @@
     <string name="update_allow">Разрешить установку</string>
     <string name="update_allow_line">Android спросит один раз: Установка неизвестных приложений</string>
     <string name="update_failed">Ошибка обновления · %s</string>
+    <!-- Wish sync -->
+    <string name="wish_send">Отправлять молитвы в %1$s</string>
+    <string name="wish_send_line">Отправляет новые молитвы по мере появления</string>
+    <string name="wish_syncing">Синхронизация молитв: баннер %1$s, стр. %2$s…</string>
+    <string name="wish_synced_added">Синхронизировано %1$s · добавлено: %2$s</string>
+    <string name="wish_synced_up_to_date">Синхронизировано %1$s · всё актуально</string>
+    <string name="wish_synced_more">Синхронизировано %1$s · будет ещё</string>
+    <string name="wish_sync_key_expired">Синхронизация %1$s: ключ истёк</string>
+    <string name="wish_sync_failed">Ошибка синхронизации %1$s: %2$s</string>
+    <string name="wish_not_synced">Не синхронизировано: %1$s</string>
+    <string name="wish_other_account">ключ молитв принадлежит другому аккаунту</string>
+    <string name="wish_new_sent">Новых молитв отправлено в трекер: %1$s</string>
+    <!-- Live sync -->
+    <string name="live_sync">Живая синхронизация</string>
+    <string name="live_sync_line">Изменения во время игры</string>
+    <string name="live_changes_sent">Живая синхронизация · изменений отправлено на %2$s: %1$s</string>
+    <!-- Parity with the desktop -->
+    <string name="event_key_lost">Ключ сессии не найден</string>
+    <string name="event_export_incomplete">Экспорт неполный: %1$s</string>
+    <string name="tracker_revoked">Выполнен выход, войдите снова</string>
+    <string name="tracker_uid_mismatch">Этот захват с UID %1$s, но загрузки идут в %2$s (UID %3$s). Загрузки по-прежнему идут в тот аккаунт: войдите с ним или измените, куда загружать.</string>
+    <string name="target_name_uid">%1$s (UID %2$s)</string>
+    <string name="target_uid">UID %1$s</string>
+    <string name="crash_title">В прошлый раз произошёл сбой</string>
+    <string name="crash_line">Отчёт и лог сохранены</string>
+    <string name="dismiss">Скрыть</string>
+    <string name="release_notes">Список изменений</string>
+    <string name="language">Язык</string>
+    <string name="language_system">Системная</string>
+    <string name="event_game_connected">Игра подключена</string>
+    <string name="event_key_found">Ключ сеанса найден</string>
+    <string name="event_data_captured">Данные аккаунта получены</string>
+    <string name="tracker_target_missing">Цель выгрузки не выбрана · выберите аккаунт в «%1$s»</string>
+    <!-- Tracker › Advanced -->
+    <string name="advanced">Дополнительно</string>
+    <string name="tracker_address">Адрес трекера</string>
+    <string name="tracker_address_hint">Адрес API трекера. Вход привязан к одному адресу: при его смене выполняется выход.</string>
+    <string name="apply">Применить</string>
+    <string name="default_address">Адрес по умолчанию</string>
+    <string name="not_http">Это не адрес http(s)</string>
+    <string name="default_x">По умолчанию %1$s</string>
+    <string name="signed_out_of">Будет выполнен выход из %1$s</string>
+    <string name="uploads_will_go">Загрузки пойдут в %1$s. Каждая загрузка содержит весь аккаунт.</string>
+    <string name="import_key">Ключ импорта</string>
+    <string name="import_key_hint">Создайте его в панели трекера и вставьте сюда.</string>
+    <string name="key_remove">Удалить сохранённый ключ с этого компьютера</string>
+    <string name="key_verifying">Проверка ключа…</string>
+    <string name="key_valid">✓ Действителен: %1$s (UID %2$s)</string>
+    <string name="key_invalid">✗ Ключ неверен или недоступен</string>
+    <string name="key_warning">Открытый текст, без срока действия. Вход безопаснее.</string>
+    <string name="key_signed_out_only">Используется, только пока вход не выполнен</string>
+    <string name="clear">Очистить</string>
 </resources>

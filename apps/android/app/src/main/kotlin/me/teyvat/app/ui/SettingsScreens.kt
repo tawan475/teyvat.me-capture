@@ -3,6 +3,7 @@
 
 package me.teyvat.app.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -79,6 +80,7 @@ interface SettingsActions {
     fun checkForUpdates()
     fun allowBackground()
     fun openUrl(url: String)
+    fun setLanguage(tag: String?)
 }
 
 @Composable
@@ -106,6 +108,8 @@ fun SettingsScreen(
             stringResource(R.string.battery_more), stringResource(R.string.battery_more_line), R.drawable.ic_info,
             onClick = { actions.openUrl(me.teyvat.app.Battery.DONT_KILL_MY_APP) },
         ) { External() }
+        CardDivider()
+        LanguageRow(actions)
         CardDivider()
         Column(Modifier.padding(16.dp)) {
             Text(stringResource(R.string.theme), style = MaterialTheme.typography.bodyLarge)
@@ -159,6 +163,11 @@ fun SettingsScreen(
             UpdateState.Idle -> me.teyvat.app.BuildConfig.VERSION_NAME
         }
         ListRow(stringResource(R.string.update_check), line, R.drawable.ic_clock, onClick = actions::checkForUpdates)
+        CardDivider()
+        ListRow(
+            stringResource(R.string.release_notes), me.teyvat.app.BuildConfig.VERSION_NAME, R.drawable.ic_info,
+            onClick = { actions.openUrl("${Links.SOURCE}/releases/tag/v${me.teyvat.app.BuildConfig.VERSION_NAME}") },
+        ) { External() }
     }
     SectionLabel(stringResource(R.string.section_diagnostics))
     Group {
@@ -170,6 +179,46 @@ fun SettingsScreen(
         )
         CardDivider()
         ListRow(stringResource(R.string.about), null, R.drawable.ic_info, onClick = actions::openAbout) { Chevron() }
+    }
+}
+
+/** The app's language: the system's, or one the game ships ([me.teyvat.app.AppLocale]). */
+@Composable
+private fun LanguageRow(actions: SettingsActions) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val current = remember { me.teyvat.app.AppLocale.current(context) }
+    var picking by remember { mutableStateOf(false) }
+    val system = stringResource(R.string.language_system)
+    val name = me.teyvat.app.AppLocale.LANGUAGES.firstOrNull { it.first == current }?.second ?: system
+    ListRow(stringResource(R.string.language), name, R.drawable.ic_globe, onClick = { picking = true }) { Chevron() }
+    if (picking) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { picking = false },
+            confirmButton = {},
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { picking = false }) { Text(stringResource(R.string.cancel)) }
+            },
+            title = { Text(stringResource(R.string.language)) },
+            text = {
+                androidx.compose.foundation.lazy.LazyColumn {
+                    val options = listOf<Pair<String?, String>>(null to system) + me.teyvat.app.AppLocale.LANGUAGES
+                    items(options.size) { i ->
+                        val (tag, label) = options[i]
+                        Row(
+                            Modifier.fillMaxWidth().clickable {
+                                picking = false
+                                if (tag != current) actions.setLanguage(tag)
+                            }.padding(vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            androidx.compose.material3.RadioButton(selected = tag == current, onClick = null)
+                            Spacer(Modifier.width(12.dp))
+                            Text(label, style = MaterialTheme.typography.bodyLarge)
+                        }
+                    }
+                }
+            },
+        )
     }
 }
 
@@ -266,8 +315,13 @@ interface TeyvatActions {
     fun trackerCancelSignIn()
     fun trackerUploadNow()
     fun setTrackerUpload(on: Boolean)
+    fun setSendWishes(on: Boolean)
+    fun setLiveSync(on: Boolean)
     fun trackerSignOut()
     fun openUrl(url: String)
+    fun setImportKey(key: String)
+    fun clearImportKey()
+    fun setTrackerApi(api: String)
 }
 
 /** teyvat.me: sign in, where uploads go, upload now, sign out. */
@@ -299,26 +353,39 @@ fun TeyvatScreen(padding: PaddingValues, tracker: TrackerView, captured: Boolean
             when (state) {
                 TrackerState.SignedOut -> TmButton(stringResource(R.string.tracker_sign_in), actions::trackerSignIn, large = true)
                 TrackerState.SigningIn -> TmButton(stringResource(R.string.cancel), actions::trackerCancelSignIn, kind = ButtonKind.Outlined, large = true)
-                is TrackerState.SignedIn -> {
-                    TmButton(
-                        stringResource(if (tracker.uploading) R.string.tracker_uploading else R.string.tracker_upload_now),
-                        actions::trackerUploadNow, large = true, enabled = captured && !tracker.uploading,
+                is TrackerState.SignedIn -> {}
+            }
+            if (tracker.canUpload) {
+                TmButton(
+                    stringResource(if (tracker.uploading) R.string.tracker_uploading else R.string.tracker_upload_now),
+                    actions::trackerUploadNow, large = true, enabled = captured && !tracker.uploading,
+                )
+                tracker.last?.let { last ->
+                    Text(
+                        last.text, style = MaterialTheme.typography.bodySmall,
+                        color = if (last.ok) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.error,
                     )
-                    tracker.last?.let { last ->
-                        Text(
-                            last.text, style = MaterialTheme.typography.bodySmall,
-                            color = if (last.ok) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.error,
-                        )
-                    }
                 }
             }
         }
-        if (state is TrackerState.SignedIn) {
+        if (tracker.canUpload) {
             CardDivider()
             SwitchRow(
                 stringResource(R.string.tracker_upload_switch), stringResource(R.string.tracker_upload_switch_line), tracker.uploadOn,
                 actions::setTrackerUpload, icon = R.drawable.ic_cloud_upload,
             )
+            CardDivider()
+            SwitchRow(
+                stringResource(R.string.live_sync), stringResource(R.string.live_sync_line), tracker.liveOn && tracker.uploadOn,
+                actions::setLiveSync, icon = R.drawable.ic_refresh, enabled = tracker.uploadOn,
+            )
+            CardDivider()
+            SwitchRow(
+                stringResource(R.string.wish_send, Links.trackerHost), stringResource(R.string.wish_send_line), tracker.wishesOn,
+                actions::setSendWishes, icon = R.drawable.ic_sparkles,
+            )
+        }
+        if (state is TrackerState.SignedIn) {
             CardDivider()
             ListRow(
                 stringResource(R.string.tracker_configure), stringResource(R.string.tracker_configure_line), R.drawable.ic_sliders,
@@ -331,6 +398,115 @@ fun TeyvatScreen(padding: PaddingValues, tracker: TrackerView, captured: Boolean
         } else {
             CardDivider()
             ListRow(Links.trackerHost, stringResource(R.string.teyvat_site_line), R.drawable.ic_globe, onClick = { actions.openUrl(Links.trackerSite) }) { External() }
+        }
+    }
+    AdvancedTracker(tracker, actions)
+}
+
+/** The desktop's Advanced: the tracker address, and the import key used while signed out. */
+@Composable
+private fun AdvancedTracker(tracker: TrackerView, actions: TeyvatActions) {
+    SectionLabel(stringResource(R.string.advanced))
+    Group {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(stringResource(R.string.tracker_address), style = MaterialTheme.typography.bodyLarge)
+            Text(
+                stringResource(R.string.tracker_address_hint), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            var address by remember(tracker.api) { mutableStateOf(tracker.api) }
+            var confirm by remember { mutableStateOf<String?>(null) }
+            val wanted = address.trim().trimEnd('/')
+            val valid = (wanted.startsWith("https://") || wanted.startsWith("http://")) &&
+                !android.net.Uri.parse(wanted).host.isNullOrEmpty()
+            androidx.compose.material3.OutlinedTextField(
+                address, { address = it }, Modifier.fillMaxWidth(), singleLine = true,
+                placeholder = { Text(Links.DEFAULT_TRACKER_API) },
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    keyboardType = androidx.compose.ui.text.input.KeyboardType.Uri,
+                ),
+            )
+            Text(
+                if (valid) stringResource(R.string.default_x, Links.DEFAULT_TRACKER_API) else stringResource(R.string.not_http),
+                style = MaterialTheme.typography.bodySmall,
+                color = if (valid) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.error,
+            )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
+                TmButton(stringResource(R.string.default_address), { address = Links.DEFAULT_TRACKER_API }, kind = ButtonKind.Text)
+                TmButton(stringResource(R.string.apply), { confirm = wanted }, kind = ButtonKind.Tonal, enabled = valid && wanted != tracker.api)
+            }
+            confirm?.let { to ->
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { confirm = null },
+                    title = { Text(stringResource(R.string.tracker_address)) },
+                    text = {
+                        Text(
+                            (if (tracker.state is TrackerState.SignedIn) stringResource(R.string.signed_out_of, Links.trackerHost) + "\n\n" else "") +
+                                stringResource(R.string.uploads_will_go, to),
+                        )
+                    },
+                    confirmButton = {
+                        androidx.compose.material3.TextButton(onClick = {
+                            confirm = null
+                            actions.setTrackerApi(to)
+                        }) { Text(stringResource(R.string.apply)) }
+                    },
+                    dismissButton = {
+                        androidx.compose.material3.TextButton(onClick = { confirm = null }) { Text(stringResource(R.string.cancel)) }
+                    },
+                )
+            }
+        }
+        CardDivider()
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(stringResource(R.string.import_key), style = MaterialTheme.typography.bodyLarge)
+            Text(
+                stringResource(R.string.import_key_hint), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            var key by remember(tracker.key.key) { mutableStateOf(tracker.key.key.orEmpty()) }
+            androidx.compose.material3.OutlinedTextField(
+                key, { key = it }, Modifier.fillMaxWidth(), singleLine = true,
+                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    keyboardType = androidx.compose.ui.text.input.KeyboardType.Password,
+                    imeAction = androidx.compose.ui.text.input.ImeAction.Done,
+                ),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { actions.setImportKey(key) }),
+            )
+            val k = tracker.key
+            val (status, ok) = when {
+                k.checking -> stringResource(R.string.key_verifying) to null
+                k.account != null -> stringResource(R.string.key_valid, k.account.name, k.account.uid) to true
+                k.key != null -> stringResource(R.string.key_invalid) to false
+                else -> null to null
+            }
+            status?.let {
+                Text(
+                    it, style = MaterialTheme.typography.bodySmall,
+                    color = when (ok) {
+                        true -> Tm.colors.success
+                        false -> MaterialTheme.colorScheme.error
+                        null -> MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
+            }
+            Text(
+                stringResource(R.string.key_warning) + " · " + stringResource(R.string.key_signed_out_only),
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline,
+            )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
+                if (k.key != null) {
+                    TmButton(stringResource(R.string.clear), {
+                        key = ""
+                        actions.clearImportKey()
+                    }, kind = ButtonKind.Text, contentDescription = stringResource(R.string.key_remove))
+                }
+                TmButton(
+                    stringResource(R.string.apply), { actions.setImportKey(key) }, kind = ButtonKind.Tonal,
+                    enabled = key.isNotBlank() && !k.checking && (key.trim() != k.key || k.account == null),
+                )
+            }
         }
     }
 }

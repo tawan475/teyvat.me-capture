@@ -251,4 +251,56 @@
     <string name="update_allow">Consenti installazioni</string>
     <string name="update_allow_line">Android lo chiede una volta: Installa app sconosciute</string>
     <string name="update_failed">Aggiornamento non riuscito · %s</string>
+    <!-- Wish sync -->
+    <string name="wish_send">Invia i desideri a %1$s</string>
+    <string name="wish_send_line">Invia i nuovi desideri appena compaiono</string>
+    <string name="wish_syncing">Sincronizzazione desideri: banner %1$s, pagina %2$s…</string>
+    <string name="wish_synced_added">Sincronizzato %1$s · %2$s aggiunti</string>
+    <string name="wish_synced_up_to_date">Sincronizzato %1$s · aggiornato</string>
+    <string name="wish_synced_more">Sincronizzato %1$s · altri in arrivo</string>
+    <string name="wish_sync_key_expired">Sincronizzazione %1$s: la chiave è scaduta</string>
+    <string name="wish_sync_failed">Sincronizzazione non riuscita %1$s: %2$s</string>
+    <string name="wish_not_synced">Non sincronizzato: %1$s</string>
+    <string name="wish_other_account">la chiave dei desideri appartiene a un altro account</string>
+    <string name="wish_new_sent">%1$s nuovi desideri inviati al tracker</string>
+    <!-- Live sync -->
+    <string name="live_sync">Sincronizzazione live</string>
+    <string name="live_sync_line">Modifiche mentre giochi</string>
+    <string name="live_changes_sent">Sincronizzazione live · %1$s modifiche inviate a %2$s</string>
+    <!-- Parity with the desktop -->
+    <string name="event_key_lost">Chiave di sessione non trovata</string>
+    <string name="event_export_incomplete">Esportazione incompleta: %1$s</string>
+    <string name="tracker_revoked">Disconnesso, accedi di nuovo</string>
+    <string name="tracker_uid_mismatch">Questa cattura è dell\'UID %1$s, ma i caricamenti vanno a %2$s (UID %3$s). I caricamenti vanno comunque a quell\'account: accedi con quello o cambia dove vanno i caricamenti.</string>
+    <string name="target_name_uid">%1$s (UID %2$s)</string>
+    <string name="target_uid">UID %1$s</string>
+    <string name="crash_title">Si è bloccato l\'ultima volta</string>
+    <string name="crash_line">Rapporto e log conservati</string>
+    <string name="dismiss">Ignora</string>
+    <string name="release_notes">Note di rilascio</string>
+    <string name="language">Lingua</string>
+    <string name="language_system">Sistema</string>
+    <string name="event_game_connected">Gioco connesso</string>
+    <string name="event_key_found">Chiave di sessione trovata</string>
+    <string name="event_data_captured">Dati dell\'account acquisiti</string>
+    <string name="tracker_target_missing">Nessuna destinazione di caricamento · scegli un account in «%1$s»</string>
+    <!-- Tracker › Advanced -->
+    <string name="advanced">Avanzate</string>
+    <string name="tracker_address">Indirizzo del tracker</string>
+    <string name="tracker_address_hint">L\'indirizzo API del tracker. Un accesso appartiene a un solo indirizzo: cambiarlo ti disconnette.</string>
+    <string name="apply">Applica</string>
+    <string name="default_address">Indirizzo predefinito</string>
+    <string name="not_http">Non è un indirizzo http(s)</string>
+    <string name="default_x">Predefinito: %1$s</string>
+    <string name="signed_out_of">Verrai disconnesso da %1$s</string>
+    <string name="uploads_will_go">I caricamenti andranno a %1$s. Ogni caricamento contiene l\'intero account.</string>
+    <string name="import_key">Chiave di importazione</string>
+    <string name="import_key_hint">Generane una nella dashboard del tracker e incollala qui.</string>
+    <string name="key_remove">Rimuovi la chiave salvata da questo computer</string>
+    <string name="key_verifying">Verifica della chiave…</string>
+    <string name="key_valid">✓ Valida: %1$s (UID %2$s)</string>
+    <string name="key_invalid">✗ Chiave non valida o irraggiungibile</string>
+    <string name="key_warning">Testo in chiaro, non scade mai. Accedere è più sicuro.</string>
+    <string name="key_signed_out_only">Usata solo senza accesso</string>
+    <string name="clear">Cancella</string>
 </resources>

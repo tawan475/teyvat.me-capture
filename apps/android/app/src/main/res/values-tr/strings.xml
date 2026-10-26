@@ -251,4 +251,56 @@
     <string name="update_allow">Yüklemelere izin ver</string>
     <string name="update_allow_line">Android bir kez sorar: Bilinmeyen uygulamaları yükle</string>
     <string name="update_failed">Güncelleme başarısız · %s</string>
+    <!-- Wish sync -->
+    <string name="wish_send">Dilekleri gönder: %1$s</string>
+    <string name="wish_send_line">Yeni dilekleri geldikçe gönderir</string>
+    <string name="wish_syncing">Dilekler eşitleniyor: afiş %1$s, sayfa %2$s…</string>
+    <string name="wish_synced_added">Eşitlendi %1$s · eklenen: %2$s</string>
+    <string name="wish_synced_up_to_date">Eşitlendi %1$s · güncel</string>
+    <string name="wish_synced_more">Eşitlendi %1$s · devamı geliyor</string>
+    <string name="wish_sync_key_expired">Eşitleme %1$s: anahtarın süresi doldu</string>
+    <string name="wish_sync_failed">Eşitleme başarısız %1$s: %2$s</string>
+    <string name="wish_not_synced">Eşitlenmedi: %1$s</string>
+    <string name="wish_other_account">dilek anahtarı başka bir hesaba ait</string>
+    <string name="wish_new_sent">Tracker\'a %1$s yeni dilek gönderildi</string>
+    <!-- Live sync -->
+    <string name="live_sync">Canlı eşitleme</string>
+    <string name="live_sync_line">Oynarken değişiklikler</string>
+    <string name="live_changes_sent">Canlı eşitleme · gönderilen değişiklik: %1$s → %2$s</string>
+    <!-- Parity with the desktop -->
+    <string name="event_key_lost">Oturum anahtarı bulunamadı</string>
+    <string name="event_export_incomplete">Dışa aktarma eksik: %1$s</string>
+    <string name="tracker_revoked">Çıkış yapıldı, yeniden giriş yap</string>
+    <string name="tracker_uid_mismatch">Bu tarama UID %1$s, ancak yüklemeler %2$s (UID %3$s) hesabına gidiyor. Yüklemeler yine o hesaba gider: onunla giriş yap ya da yüklemelerin gideceği yeri değiştir.</string>
+    <string name="target_name_uid">%1$s (UID %2$s)</string>
+    <string name="target_uid">UID %1$s</string>
+    <string name="crash_title">Geçen sefer çöktü</string>
+    <string name="crash_line">Rapor ve günlük korundu</string>
+    <string name="dismiss">Kapat</string>
+    <string name="release_notes">Sürüm notları</string>
+    <string name="language">Dil</string>
+    <string name="language_system">Sistem</string>
+    <string name="event_game_connected">Oyun bağlandı</string>
+    <string name="event_key_found">Oturum anahtarı bulundu</string>
+    <string name="event_data_captured">Hesap verileri yakalandı</string>
+    <string name="tracker_target_missing">Yükleme hedefi seçilmedi · “%1$s” ile bir hesap seçin</string>
+    <!-- Tracker › Advanced -->
+    <string name="advanced">Gelişmiş</string>
+    <string name="tracker_address">Tracker adresi</string>
+    <string name="tracker_address_hint">Tracker\'ın API adresi. Bir giriş tek bir adrese aittir: değiştirmek çıkış yaptırır.</string>
+    <string name="apply">Uygula</string>
+    <string name="default_address">Varsayılan adres</string>
+    <string name="not_http">http(s) adresi değil</string>
+    <string name="default_x">Varsayılan: %1$s</string>
+    <string name="signed_out_of">Şuradan çıkış yapılacak: %1$s</string>
+    <string name="uploads_will_go">Yüklemeler şuraya gidecek: %1$s. Her yükleme tüm hesabı taşır.</string>
+    <string name="import_key">İçe aktarma anahtarı</string>
+    <string name="import_key_hint">Tracker panelinde bir tane oluştur ve buraya yapıştır.</string>
+    <string name="key_remove">Kayıtlı anahtarı bu bilgisayardan kaldır</string>
+    <string name="key_verifying">Anahtar doğrulanıyor…</string>
+    <string name="key_valid">✓ Geçerli: %1$s (UID %2$s)</string>
+    <string name="key_invalid">✗ Anahtar geçersiz ya da ulaşılamıyor</string>
+    <string name="key_warning">Düz metin, süresi hiç dolmaz. Giriş yapmak daha güvenli.</string>
+    <string name="key_signed_out_only">Yalnızca çıkış yapılmışken kullanılır</string>
+    <string name="clear">Temizle</string>
 </resources>
