@@ -50,6 +50,10 @@ use tokio_util::sync::CancellationToken;
 /// The OAuth client id the tracker knows Teyvat.me by.
 pub const CLIENT_ID: &str = "irminsul";
 
+/// Which app of that client signs in: the tracker names the device "Teyvat.me
+/// on <PC>" for it (irminsul sends none and stays "Irminsul on <PC>").
+pub const CLIENT_APP: &str = "teyvatme";
+
 /// The credential store's service name; the entry's account is the tracker
 /// origin (`https://teyvat.me`).
 const KEYRING_SERVICE: &str = "teyvatme";
@@ -266,7 +270,8 @@ pub(crate) fn authorize_url(
         .append_pair("state", state)
         .append_pair("code_challenge", challenge)
         .append_pair("code_challenge_method", "S256")
-        .append_pair("device", device);
+        .append_pair("device", device)
+        .append_pair("app", CLIENT_APP);
     Ok(url.into())
 }
 
@@ -1349,6 +1354,7 @@ impl TrackerAuth {
         let body = serde_json::json!({
             "grant_type": "authorization_code",
             "client_id": CLIENT_ID,
+            "app": CLIENT_APP,
             "code": code,
             "code_verifier": pkce.verifier,
             "redirect_uri": redirect_uri,

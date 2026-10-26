@@ -95,6 +95,7 @@ fn the_authorize_url_carries_every_contract_parameter() {
     assert_eq!(query["code_challenge"], "challenge-xyz");
     assert_eq!(query["code_challenge_method"], "S256");
     assert_eq!(query["device"], "My PC");
+    assert_eq!(query["app"], "teyvatme");
 }
 
 #[test]
@@ -657,6 +658,7 @@ fn respond(
                     if s256_challenge(verifier) != challenge
                         || body["redirect_uri"].as_str() != Some(redirect.as_str())
                         || body["client_id"].as_str() != Some("irminsul")
+                        || body["app"].as_str() != Some("teyvatme")
                     {
                         return ("400 Bad Request", invalid_grant());
                     }
