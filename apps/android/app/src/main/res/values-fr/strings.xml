@@ -235,8 +235,8 @@
     <string name="update_checking">Recherche…</string>
     <string name="update_up_to_date">À jour · %s</string>
     <string name="update_ready">Mise à jour %s prête</string>
-    <string name="update_waits_capture">S'installe à l'arrêt de la capture</string>
-    <string name="update_waits_app">S'installe quand vous quittez l'appli</string>
+    <string name="update_waits_capture">S\'installe à l\'arrêt de la capture</string>
+    <string name="update_waits_app">S\'installe quand vous quittez l\'appli</string>
     <string name="update_install_now">Installer maintenant</string>
     <string name="update_tap_to_install">Touchez pour installer</string>
     <string name="update_downloading">Téléchargement de %1$s · %2$d%%</string>
