@@ -127,6 +127,7 @@
   "Genshin started while capture was running, so its login will be seen. Says \"data decrypting\" once you enter the world and your data arrives.": "캡처가 실행 중일 때 원신이 시작되어 로그인을 볼 수 있습니다. 월드에 입장해 데이터가 도착하면 \"데이터 복호화 중\"이 표시됩니다.",
   "Genshin was already in the world": "원신이 이미 월드에 입장한 상태였음",
   "Get started": "시작하기",
+  "Help, news and feedback": "도움말, 소식, 피드백",
   "Import key": "가져오기 키",
   "Import key not verified": "가져오기 키 미확인",
   "Install": "설치",

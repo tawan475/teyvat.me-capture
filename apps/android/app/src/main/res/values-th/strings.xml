@@ -303,4 +303,5 @@
     <string name="key_warning">เป็นข้อความธรรมดา ไม่มีวันหมดอายุ การเข้าสู่ระบบปลอดภัยกว่า</string>
     <string name="key_signed_out_only">ใช้เฉพาะตอนที่ไม่ได้เข้าสู่ระบบ</string>
     <string name="clear">ล้าง</string>
+    <string name="discord_line">ความช่วยเหลือ ข่าวสาร และความคิดเห็น</string>
 </resources>

@@ -303,4 +303,5 @@
     <string name="key_warning">Texto plano, nunca caduca. Iniciar sesión es más seguro.</string>
     <string name="key_signed_out_only">Solo se usa sin sesión iniciada</string>
     <string name="clear">Borrar</string>
+    <string name="discord_line">Ayuda, novedades y comentarios</string>
 </resources>

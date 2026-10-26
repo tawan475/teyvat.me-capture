@@ -178,6 +178,8 @@ fun SettingsScreen(
             actions::setRecordCapture, icon = R.drawable.ic_bug,
         )
         CardDivider()
+        ListRow("Discord", stringResource(R.string.discord_line), R.drawable.ic_discord, onClick = { actions.openUrl(Links.DISCORD) }) { External() }
+        CardDivider()
         ListRow(stringResource(R.string.about), null, R.drawable.ic_info, onClick = actions::openAbout) { Chevron() }
     }
 }
@@ -544,6 +546,8 @@ fun AboutScreen(padding: PaddingValues, version: String, gameData: String, openU
         ListRow(stringResource(R.string.source_code), "tawan475/teyvat.me-capture", R.drawable.ic_github, onClick = { openUrl(Links.SOURCE) }) { External() }
         CardDivider()
         ListRow(Links.trackerHost, stringResource(R.string.teyvat_site_line), R.drawable.ic_globe, onClick = { openUrl(Links.trackerSite) }) { External() }
+        CardDivider()
+        ListRow("Discord", stringResource(R.string.discord_line), R.drawable.ic_discord, onClick = { openUrl(Links.DISCORD) }) { External() }
         CardDivider()
         ListRow(stringResource(R.string.report_bug), stringResource(R.string.report_bug_line), R.drawable.ic_bug, onClick = { openUrl(Links.ISSUES) }) { External() }
         CardDivider()

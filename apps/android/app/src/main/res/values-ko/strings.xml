@@ -303,4 +303,5 @@
     <string name="key_warning">평문이며 만료되지 않습니다. 로그인이 더 안전합니다.</string>
     <string name="key_signed_out_only">로그아웃 상태에서만 사용</string>
     <string name="clear">지우기</string>
+    <string name="discord_line">도움말, 소식, 피드백</string>
 </resources>

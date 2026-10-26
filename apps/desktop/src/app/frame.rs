@@ -21,7 +21,7 @@ pub(super) const BREAKPOINT: f32 = 720.0;
 pub(super) const QUICK_BAR_HEIGHT: f32 = 56.0;
 
 impl TeyvatmeApp {
-    /// History, theme and Settings: a small pill floating at the bottom left
+    /// History, theme, Settings and Discord: a small pill floating at the bottom left
     /// of the main screen, on its own.
     pub(super) fn quick_bar(&mut self, ctx: &Context) {
         if self.view != View::Main {
@@ -84,6 +84,10 @@ impl TeyvatmeApp {
                             {
                                 self.open_settings(super::Page::App);
                             }
+                            if widgets::icon_button(ui, icons::discord(), "Discord").clicked() {
+                                ui.ctx()
+                                    .open_url(egui::OpenUrl::new_tab(crate::DISCORD_URL));
+                            }
                         });
                     });
             });
@@ -128,7 +132,10 @@ impl TeyvatmeApp {
                             });
                         });
                         widgets::divider(ui);
+                        // Full width: shrunk to its content, the list cut its
+                        // lines at the first frame's width.
                         egui::ScrollArea::vertical()
+                            .auto_shrink([false, true])
                             .max_height(320.0)
                             .show(ui, |ui| {
                                 if self.activity.is_empty() {

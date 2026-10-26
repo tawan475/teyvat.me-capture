@@ -27,6 +27,7 @@ icons! {
     cloud_upload => "cloud-upload",
     copy => "copy",
     database => "database",
+    discord => "discord",
     download => "download",
     ellipsis => "ellipsis",
     external_link => "external-link",

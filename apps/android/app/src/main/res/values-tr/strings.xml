@@ -303,4 +303,5 @@
     <string name="key_warning">Düz metin, süresi hiç dolmaz. Giriş yapmak daha güvenli.</string>
     <string name="key_signed_out_only">Yalnızca çıkış yapılmışken kullanılır</string>
     <string name="clear">Temizle</string>
+    <string name="discord_line">Yardım, haberler ve geri bildirim</string>
 </resources>

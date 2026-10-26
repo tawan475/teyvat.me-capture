@@ -193,9 +193,11 @@ pub enum Disc {
 }
 
 /// `target`, eased in over a quarter second from whatever `id` showed last.
-/// Asks for frames only while it moves.
+/// Asks for frames only while it moves. A theme switch lands at once, like
+/// every other colour on screen: each theme eases on its own.
 pub fn animated_color(ui: &Ui, id: egui::Id, target: Color32) -> Color32 {
     let ctx = ui.ctx();
+    let id = id.with(ui.visuals().dark_mode);
     let [r, g, b, a] = target.to_array();
     let channel = |name: &str, value: u8| {
         ctx.animate_value_with_time(id.with(name), f32::from(value), 0.25)

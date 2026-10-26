@@ -308,4 +308,5 @@
     <string name="key_warning">Plain text, never expires. Signing in is safer.</string>
     <string name="key_signed_out_only">Used only while signed out</string>
     <string name="clear">Clear</string>
+    <string name="discord_line">Help, news and feedback</string>
 </resources>

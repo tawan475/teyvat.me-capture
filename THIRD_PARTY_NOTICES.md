@@ -94,6 +94,11 @@ License (Lucide Contributors), with the parts derived from Feather under the
 MIT License (Cole Bemis). The full text is next to them in
 `apps/desktop/assets/icons/LICENSE.txt`.
 
+The Discord mark (`apps/desktop/assets/icons/discord.svg`,
+`apps/android/app/src/main/res/drawable/ic_discord.xml`) is from Simple Icons
+(https://simpleicons.org), CC0 1.0. Discord is a trademark of Discord Inc.;
+the mark only links to this project's community server.
+
 ## Gradle wrapper
 
 `apps/android/gradlew`, `gradlew.bat` and `gradle/wrapper/gradle-wrapper.jar`

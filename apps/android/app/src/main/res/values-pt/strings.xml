@@ -303,4 +303,5 @@
     <string name="key_warning">Texto puro, nunca expira. Entrar é mais seguro.</string>
     <string name="key_signed_out_only">Usada só quando você não está conectado</string>
     <string name="clear">Limpar</string>
+    <string name="discord_line">Ajuda, novidades e feedback</string>
 </resources>

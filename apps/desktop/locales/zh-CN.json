@@ -127,6 +127,7 @@
   "Genshin started while capture was running, so its login will be seen. Says \"data decrypting\" once you enter the world and your data arrives.": "原神在抓取运行时启动，因此能看到它的登录。进入世界、数据到达后会显示“数据解密中”。",
   "Genshin was already in the world": "原神已在世界中",
   "Get started": "开始使用",
+  "Help, news and feedback": "帮助、动态与反馈",
   "Import key": "导入密钥",
   "Import key not verified": "导入密钥未验证",
   "Install": "安装",

@@ -981,6 +981,12 @@ impl TeyvatmeApp {
                     "https://teyvat.me",
                 ),
                 (
+                    icons::discord(),
+                    "Discord",
+                    tr("Help, news and feedback"),
+                    crate::DISCORD_URL,
+                ),
+                (
                     icons::heart(),
                     tr("Thanks and licences"),
                     "irminsul, auto-artifactarium, anime-game-data, Outfit, Lucide",

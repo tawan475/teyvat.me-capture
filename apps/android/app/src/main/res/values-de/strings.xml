@@ -303,4 +303,5 @@
     <string name="key_warning">Klartext, läuft nie ab. Anmelden ist sicherer.</string>
     <string name="key_signed_out_only">Nur im abgemeldeten Zustand genutzt</string>
     <string name="clear">Leeren</string>
+    <string name="discord_line">Hilfe, Neuigkeiten und Feedback</string>
 </resources>
