@@ -227,6 +227,13 @@
     <string name="share_good">GOOD JSON を共有</string>
     <string name="alert_capture_stopped">キャプチャ停止</string>
     <string name="alert_vpn_taken">別の VPN に切り替わりました</string>
+    <!-- Background -->
+    <string name="battery_title">バックグラウンドで実行</string>
+    <string name="battery_off_line">省電力機能がプレイ中のエクスポートとアップロードを止めることがあります</string>
+    <string name="battery_on_line">制限なし · エクスポートとアップロードは続きます</string>
+    <string name="battery_more">一部の機種向けの設定</string>
+    <string name="battery_more_line">Xiaomi、Samsung、Huawei などには独自の省電力機能があります</string>
+
     <!-- Updates -->
     <string name="section_updates">アップデート</string>
     <string name="update_auto">自動アップデート</string>

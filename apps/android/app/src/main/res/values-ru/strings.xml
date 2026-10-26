@@ -227,6 +227,13 @@
     <string name="share_good">Поделиться GOOD JSON</string>
     <string name="alert_capture_stopped">Захват остановлен</string>
     <string name="alert_vpn_taken">Включился другой VPN</string>
+    <!-- Background -->
+    <string name="battery_title">Работа в фоне</string>
+    <string name="battery_off_line">Экономия заряда может приостанавливать экспорт и выгрузку во время игры</string>
+    <string name="battery_on_line">Без ограничений · экспорт и выгрузка продолжаются</string>
+    <string name="battery_more">Ещё для некоторых телефонов</string>
+    <string name="battery_more_line">У Xiaomi, Samsung, Huawei… свои режимы экономии</string>
+
     <!-- Updates -->
     <string name="section_updates">Обновления</string>
     <string name="update_auto">Обновлять автоматически</string>

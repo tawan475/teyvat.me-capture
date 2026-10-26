@@ -232,6 +232,13 @@
     <string name="alert_capture_stopped">Capture stopped</string>
     <string name="alert_vpn_taken">Another VPN took over</string>
 
+    <!-- Background -->
+    <string name="battery_title">Run in the background</string>
+    <string name="battery_off_line">Battery saving can pause exports and uploads while you play</string>
+    <string name="battery_on_line">Unrestricted · exports and uploads keep going</string>
+    <string name="battery_more">More for some phones</string>
+    <string name="battery_more_line">Xiaomi, Samsung, Huawei… have their own savers</string>
+
     <!-- Updates -->
     <string name="section_updates">Updates</string>
     <string name="update_auto">Update automatically</string>

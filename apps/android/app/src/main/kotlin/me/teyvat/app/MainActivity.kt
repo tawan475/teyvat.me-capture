@@ -79,6 +79,8 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
     private val snackbars = SnackbarHostState()
     private val stack = mutableStateListOf<Screen>()
     private var notificationsGranted by mutableStateOf(true)
+    /** Unrestricted battery use (Battery.kt), read again on every resume. */
+    private var backgroundAllowed by mutableStateOf(true)
     /** The JSON a Save is waiting to write, built when Save was tapped. */
     private var pendingSave: String? = null
     /** Start capture asked for notifications first; the VPN comes next. */
@@ -174,6 +176,7 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
             updater.installNow()
         }
         notificationsGranted = notificationsAllowed()
+        backgroundAllowed = Battery.unrestricted(this)
         capture.refresh()
         // The upload target is changed on the website: read it again on return.
         if (System.currentTimeMillis() - whoAt > 10_000) {
@@ -268,9 +271,9 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
             val bottomOnly = PaddingValues(top = padding.calculateTopPadding(), bottom = padding.calculateBottomPadding())
             when (screen) {
                 Screen.Welcome -> WelcomeScreen(bottomOnly) { push(Screen.SetUp) }
-                Screen.SetUp -> SetUpScreen(bottomOnly, settings, folder, notificationsGranted, this)
-                Screen.Home -> HomeContent(hero, summary, settings, capture.startingSince, folder, trackerView, update, vpn != VpnState.Off, this, padding)
-                Screen.Settings -> SettingsScreen(padding, settings, trackerView, update, this)
+                Screen.SetUp -> SetUpScreen(bottomOnly, settings, folder, notificationsGranted, backgroundAllowed, this)
+                Screen.Home -> HomeContent(hero, summary, settings, capture.startingSince, folder, trackerView, update, vpn != VpnState.Off, backgroundAllowed, this, padding)
+                Screen.Settings -> SettingsScreen(padding, settings, trackerView, update, backgroundAllowed, this)
                 Screen.ExportSettings -> ExportSettingsScreen(padding, settings, folder, this)
                 Screen.Teyvat -> TeyvatScreen(padding, trackerView, summary.captured, this)
                 Screen.Activity -> ActivityScreen(padding, summary.events)
@@ -605,6 +608,8 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
             startActivity(Intent(AndroidSettings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(AndroidSettings.EXTRA_APP_PACKAGE, packageName))
         }
     }
+
+    override fun allowBackground() = Battery.ask(this)
 
     override fun setTheme(theme: ThemeMode) {
         prefs.update { it.copy(theme = theme) }

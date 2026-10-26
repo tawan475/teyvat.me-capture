@@ -2,6 +2,31 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.1.2
+
+- Desktop: uploads, live sync and wish history now go to teyvat.me while
+  the window is hidden in the tray, also when Teyvat.me starts there with
+  Windows. Before, they waited until you opened the window: the upload
+  check read a copy of your sign-in that only a visible window refreshes.
+- Android: a "Run in the background" step (Home, set-up and Settings).
+  Android's battery optimisation, and the extra savers on Xiaomi, Samsung,
+  Huawei and other phones, could pause exports and uploads while the game
+  was in front. Allowing it keeps them going; Settings links to
+  dontkillmyapp.com for phones that need more.
+
+Everything in 1.1.1 below still applies.
+
+| Platform | File |
+|---|---|
+| Windows 10/11 | `teyvatme-windows.exe` (built-in packet capture; asks for administrator rights) |
+| Windows with Npcap | `teyvatme-windows-pcap.exe` |
+| Linux x86_64 | `teyvatme-linux-x86_64.tar.gz` |
+| macOS (Apple silicon) | `Teyvatme-macos-arm64.app.tar.gz` |
+| Android 10+ | `teyvatme-android.apk` |
+
+Check a download against `SHA256SUMS.txt`. Unofficial fan project, not
+affiliated with HoYoverse.
+
 ## 1.1.1
 
 - Desktop: Settings › Tracker shows the teyvat.me settings directly

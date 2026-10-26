@@ -12,6 +12,9 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- The self-update (Updater.kt): installs a newer release of this app. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Battery.kt: asks to run unrestricted, so battery savers don't pause
+         exports and uploads while the game is in front. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <!-- The VPN's allowed list names the game, which needs it visible (API 30+);
          also Open Genshin. -->

@@ -77,15 +77,35 @@ interface SettingsActions {
     fun openAbout()
     fun setAutoUpdate(on: Boolean)
     fun checkForUpdates()
+    fun allowBackground()
+    fun openUrl(url: String)
 }
 
 @Composable
-fun SettingsScreen(padding: PaddingValues, settings: Settings, tracker: TrackerView, update: UpdateState, actions: SettingsActions) = Scrolling(padding) {
+fun SettingsScreen(
+    padding: PaddingValues,
+    settings: Settings,
+    tracker: TrackerView,
+    update: UpdateState,
+    backgroundAllowed: Boolean,
+    actions: SettingsActions,
+) = Scrolling(padding) {
     SectionLabel(stringResource(R.string.section_app))
     Group {
         ListRow(stringResource(R.string.always_on_vpn), stringResource(R.string.always_on_vpn_line), R.drawable.ic_power, onClick = actions::openAlwaysOnVpn) { External() }
         CardDivider()
         ListRow(stringResource(R.string.notifications), stringResource(R.string.notifications_line), R.drawable.ic_bell, onClick = actions::openNotificationSettings) { External() }
+        CardDivider()
+        ListRow(
+            stringResource(R.string.battery_title),
+            stringResource(if (backgroundAllowed) R.string.battery_on_line else R.string.battery_off_line),
+            R.drawable.ic_power, onClick = actions::allowBackground,
+        ) { External() }
+        CardDivider()
+        ListRow(
+            stringResource(R.string.battery_more), stringResource(R.string.battery_more_line), R.drawable.ic_info,
+            onClick = { actions.openUrl(me.teyvat.app.Battery.DONT_KILL_MY_APP) },
+        ) { External() }
         CardDivider()
         Column(Modifier.padding(16.dp)) {
             Text(stringResource(R.string.theme), style = MaterialTheme.typography.bodyLarge)

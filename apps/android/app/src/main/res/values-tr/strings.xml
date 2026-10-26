@@ -227,6 +227,13 @@
     <string name="share_good">GOOD JSON paylaş</string>
     <string name="alert_capture_stopped">Tarama durdu</string>
     <string name="alert_vpn_taken">Başka bir VPN devraldı</string>
+    <!-- Background -->
+    <string name="battery_title">Arka planda çalış</string>
+    <string name="battery_off_line">Pil tasarrufu oynarken dışa aktarmaları ve yüklemeleri duraklatabilir</string>
+    <string name="battery_on_line">Kısıtlamasız · dışa aktarma ve yükleme sürer</string>
+    <string name="battery_more">Bazı telefonlar için daha fazlası</string>
+    <string name="battery_more_line">Xiaomi, Samsung, Huawei… kendi tasarruf modlarına sahip</string>
+
     <!-- Updates -->
     <string name="section_updates">Güncellemeler</string>
     <string name="update_auto">Otomatik güncelle</string>

@@ -305,10 +305,16 @@ impl WishSync {
         }
     }
 
+    /// The settings with the live sign-in and key state (a window hidden in
+    /// the tray refreshes neither); see [`crate::app::background_state`].
+    fn upload_state(&self) -> SavedAppState {
+        crate::app::background_state(&self.saved_state_rx.borrow(), &self.auth.status().borrow())
+    }
+
     /// Why the user's settings keep a key from syncing: the same gate as
     /// automated uploads, never overridden.
     fn blocked(&self) -> Option<&'static str> {
-        let state = self.saved_state_rx.borrow();
+        let state = self.upload_state();
         if !state.send_wishes {
             return Some(tr("sending wishes is off"));
         }
@@ -339,7 +345,7 @@ impl WishSync {
             self.schedule.clear();
             return;
         };
-        let state = self.saved_state_rx.borrow().clone();
+        let state = self.upload_state();
         let Some((base_url, credential)) = credential_for(&state, &self.auth) else {
             self.schedule.clear();
             return;

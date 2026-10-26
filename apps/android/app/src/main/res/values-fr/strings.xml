@@ -227,6 +227,13 @@
     <string name="share_good">Partager le GOOD JSON</string>
     <string name="alert_capture_stopped">Capture arrêtée</string>
     <string name="alert_vpn_taken">Un autre VPN a pris le relais</string>
+    <!-- Background -->
+    <string name="battery_title">Exécuter en arrière-plan</string>
+    <string name="battery_off_line">L\'économie de batterie peut suspendre les exports et envois pendant que vous jouez</string>
+    <string name="battery_on_line">Sans restriction · exports et envois continuent</string>
+    <string name="battery_more">Plus pour certains téléphones</string>
+    <string name="battery_more_line">Xiaomi, Samsung, Huawei… ont leurs propres économiseurs</string>
+
     <!-- Updates -->
     <string name="section_updates">Mises à jour</string>
     <string name="update_auto">Mise à jour automatique</string>
