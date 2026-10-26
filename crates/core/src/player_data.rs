@@ -14,8 +14,9 @@ use teyvatme_game_data::{AnimeGameData, Property, SkillType};
 pub use teyvatme_protocol::Achievement;
 pub use teyvatme_protocol::r#gen::protos::{AvatarInfo, Item, PropValue};
 use teyvatme_protocol::{
-    ANECDOTE_AREA_IDS, ANECDOTE_IDS, AbyssPeriod, AnecdoteData, DailyCommissions, Expedition,
-    HomeResources, MAX_ANECDOTE_FINISH_COUNT, MAX_ANECDOTE_STATE, MAX_ANECDOTES,
+    ANECDOTE_AREA_IDS, ANECDOTE_IDS, AbyssPeriod, AnecdoteData, DailyCommissions, EpitomizedPath,
+    Expedition, HomeResources, MAX_ANECDOTE_FINISH_COUNT, MAX_ANECDOTE_STATE, MAX_ANECDOTES,
+    ResinClock,
 };
 
 use crate::good::{self, fake_uninitialized_4th_line};
@@ -125,6 +126,13 @@ const MAX_ITEM_EXP: u32 = 5_000_000;
 /// friendship step (a level is at most a few tens of thousands).
 const MAX_CHARACTER_EXP: u32 = 20_000_000;
 const MAX_FRIENDSHIP_EXP: u32 = 1_000_000;
+
+/// One Original Resin comes back every 8 minutes.
+const RESIN_REGEN_SECS: u64 = 8 * 60;
+
+/// How far the resin clock may miss that window: the capture's clock against
+/// the server's. Tight, since a dozen other messages share its shape.
+const RESIN_CLOCK_SLACK_SECS: u64 = 120;
 
 /// `AvatarInfo.prop_map`: EXP toward the next level.
 const PROP_CHARACTER_EXP: u32 = 1001;
@@ -612,6 +620,10 @@ pub enum RoutinePart {
     Expeditions(Vec<Expedition>),
     Home(HomeResources),
     Welkin(u32),
+    /// The banner list's Epitomized Path (`GetGachaInfoRsp`).
+    WishPath(EpitomizedPath),
+    /// A resin clock candidate; kept only beside the resin held.
+    Resin(ResinClock),
 }
 
 /// The planner's routine as captured: each part `None` until its message
@@ -623,6 +635,9 @@ struct Routine {
     expeditions: Option<Vec<Expedition>>,
     home: Option<HomeResources>,
     welkin: Option<u32>,
+    wish_path: Option<EpitomizedPath>,
+    /// (resin, unix time of the next one).
+    resin: Option<(u32, u32)>,
 }
 
 pub struct PlayerData {
@@ -656,6 +671,13 @@ pub struct PlayerData {
 
     /// The dump commit `game_data` was built from, for `gi_player.gameData`.
     game_data_sha: Option<String>,
+
+    /// When the commands being applied arrived, in unix seconds: the
+    /// packet's capture time (`set_clock`). What a message's own times are
+    /// checked against; `None` until set.
+    clock_secs: Option<u64>,
+    /// A resin clock that came before any resin was held, waiting for it.
+    pending_resin: Option<ResinClock>,
 }
 
 impl PlayerData {
@@ -670,6 +692,8 @@ impl PlayerData {
             routine: Routine::default(),
             character_equip_guid_map: HashMap::new(),
             game_data_sha: None,
+            clock_secs: None,
+            pending_resin: None,
         }
     }
 
@@ -689,6 +713,11 @@ impl PlayerData {
     /// by [`remove_items`](Self::remove_items), but a stack whose count merely
     /// falls is only corrected by the next full inventory notify, which the
     /// game sends at login.
+    /// When the commands about to be applied arrived (unix seconds).
+    pub fn set_clock(&mut self, now_secs: u64) {
+        self.clock_secs = Some(now_secs);
+    }
+
     pub fn reset(&mut self) {
         self.achievements.clear();
         self.characters.clear();
@@ -696,6 +725,7 @@ impl PlayerData {
         self.properties.clear();
         self.anecdotes = None;
         self.routine = Routine::default();
+        self.pending_resin = None;
         self.character_equip_guid_map.clear();
     }
 
@@ -732,12 +762,48 @@ impl PlayerData {
             RoutinePart::Expeditions(found) => self.routine.expeditions = Some(found),
             RoutinePart::Home(found) => self.routine.home = Some(found),
             RoutinePart::Welkin(days) => self.routine.welkin = Some(days),
+            RoutinePart::WishPath(found) => self.routine.wish_path = Some(found),
+            RoutinePart::Resin(clock) => {
+                // A three-number shape a dozen messages share: believed only
+                // when its time is the next resin's, at most 8 minutes from
+                // when it came, and one of its numbers is exactly the resin
+                // held. Before the properties (the first copy comes before
+                // the login data) it waits for them.
+                let Some(arrived) = self.clock_secs else {
+                    return;
+                };
+                let at = u64::from(clock.next_at);
+                if at + RESIN_CLOCK_SLACK_SECS < arrived
+                    || at > arrived + RESIN_REGEN_SECS + RESIN_CLOCK_SLACK_SECS
+                {
+                    tracing::debug!("a resin clock candidate whose time is not the next resin's");
+                    return;
+                }
+                if self.properties.contains_key(&PROP_RESIN.id) {
+                    self.check_resin_clock(&clock);
+                } else {
+                    self.pending_resin = Some(clock);
+                }
+            }
         }
     }
 
     pub fn process_properties(&mut self, new_props: &HashMap<u32, u64>) {
         for (k, v) in new_props {
             self.properties.insert(*k, *v);
+        }
+        if let Some(clock) = self.pending_resin.take() {
+            self.check_resin_clock(&clock);
+        }
+    }
+
+    /// Keep a resin clock whose time already checked out, when one of its
+    /// numbers is exactly the resin held.
+    fn check_resin_clock(&mut self, clock: &ResinClock) {
+        let held = self.properties.get(&PROP_RESIN.id).copied();
+        match held.and_then(|held| clock.values.iter().find(|v| u64::from(**v) == held)) {
+            Some(value) => self.routine.resin = Some((*value, clock.next_at)),
+            None => tracing::debug!("a resin clock candidate beside no held resin"),
         }
     }
 
@@ -1046,12 +1112,39 @@ impl PlayerData {
             })
         });
         let welkin = routine.welkin.map(|days| good::GiWelkin { days });
+        let wish_path = routine.wish_path.and_then(|path| {
+            // The id must be a weapon the game data knows: see EpitomizedPath.
+            let Ok(weapon) = self.game_data.get_weapon(path.item_id) else {
+                tracing::warn!(
+                    item_id = path.item_id,
+                    "the Epitomized Path names no known weapon; left out"
+                );
+                return None;
+            };
+            Some(good::GiWishPath {
+                weapon: good::to_good_key(&weapon.name),
+                points: path.points,
+                max: path.max_points,
+            })
+        });
+        let resin = routine
+            .resin
+            // It points up to 8 minutes past the capture.
+            .filter(|(_, next_at)| {
+                plausible_time(
+                    u64::from(*next_at).saturating_sub(RESIN_REGEN_SECS),
+                    now_secs,
+                )
+            })
+            .map(|(value, next_at)| good::GiResin { value, next_at });
         let tasks = good::GiTasks {
             commissions,
             abyss,
             expeditions,
             realm,
             welkin,
+            wish_path,
+            resin,
         };
         (!tasks.is_empty()).then_some(tasks)
     }
@@ -3170,6 +3263,71 @@ mod tests {
         let tasks = data.export_tasks(NOW_SECS).unwrap();
         assert_eq!(tasks.abyss, None);
         assert_eq!(tasks.welkin, Some(good::GiWelkin { days: 12 }));
+    }
+
+    #[test]
+    fn a_resin_clock_is_kept_only_beside_the_resin_held() {
+        let mut data = player_data();
+        let clock = |values: Vec<u32>| {
+            RoutinePart::Resin(ResinClock {
+                next_at: (NOW_SECS + 200) as u32,
+                values,
+            })
+        };
+        data.set_clock(NOW_SECS);
+        // Before the player properties it waits for them, then counts.
+        data.process_routine(clock(vec![2, 124]));
+        assert_eq!(data.export_tasks(NOW_SECS), None);
+        data.process_properties(&HashMap::from([(PROP_RESIN.id, 124)]));
+        assert!(data.export_tasks(NOW_SECS).unwrap().resin.is_some());
+        data.reset();
+        data.process_properties(&HashMap::from([(PROP_RESIN.id, 124)]));
+        data.process_routine(clock(vec![7, 3]));
+        assert_eq!(data.export_tasks(NOW_SECS), None);
+        // A time that is not the next 8 minutes' is another message's.
+        data.process_routine(RoutinePart::Resin(ResinClock {
+            next_at: (NOW_SECS + 3_600) as u32,
+            values: vec![124, 2],
+        }));
+        assert_eq!(data.export_tasks(NOW_SECS), None);
+        // Either order: the number that is the resin held is the resin.
+        data.process_routine(clock(vec![2, 124]));
+        assert_eq!(
+            data.export_tasks(NOW_SECS).unwrap().resin,
+            Some(good::GiResin {
+                value: 124,
+                next_at: (NOW_SECS + 200) as u32,
+            })
+        );
+    }
+
+    #[test]
+    fn the_epitomized_path_names_its_weapon_by_good_key_or_is_left_out() {
+        let path = RoutinePart::WishPath(EpitomizedPath {
+            item_id: 13501,
+            points: 1,
+            max_points: 1,
+        });
+        let mut unknown = player_data();
+        unknown.process_routine(path.clone());
+        assert_eq!(unknown.export_tasks(NOW_SECS), None);
+
+        let mut data = PlayerData::new(
+            TestGameData {
+                weapon_map: r#""13501": {"name": "Staff of Homa", "rarity": 5}"#,
+                ..Default::default()
+            }
+            .build(),
+        );
+        data.process_routine(path);
+        assert_eq!(
+            data.export_tasks(NOW_SECS).unwrap().wish_path,
+            Some(good::GiWishPath {
+                weapon: "StaffOfHoma".to_string(),
+                points: 1,
+                max: 1,
+            })
+        );
     }
 
     #[test]

@@ -1296,7 +1296,10 @@ impl Monitor {
             return;
         }
 
-        match self.data_replacement.verdict_for_batch(key, &classified) {
+        match self
+            .data_replacement
+            .verdict_for_batch(key, &mut classified)
+        {
             DataVerdict::Apply => {}
             DataVerdict::ReplaceThenApply => {
                 self.replace_captured_data("the new game connection delivered data");
@@ -1313,6 +1316,8 @@ impl Monitor {
 
         let full_send = full_send_in(&classified, self.player_data.item_count());
         let noted = changes_in(&classified);
+        self.player_data
+            .set_clock(chrono::Utc::now().timestamp().max(0) as u64);
         let applied = apply_commands(&mut self.player_data, classified);
         if !applied.any() {
             return;

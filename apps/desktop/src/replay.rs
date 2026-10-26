@@ -654,12 +654,12 @@ impl Replay {
     /// Fold one classified batch into the captured data, by the rules the
     /// monitor applies: a new connection's data replaces the old once it is
     /// real data under the session key.
-    fn apply(&mut self, key: KeyState, classified: Vec<(u16, CommandMatch)>, at: Option<u64>) {
+    fn apply(&mut self, key: KeyState, mut classified: Vec<(u16, CommandMatch)>, at: Option<u64>) {
         if classified.is_empty() {
             return;
         }
         let index = self.current(at).number - 1;
-        match self.replacement.verdict_for_batch(key, &classified) {
+        match self.replacement.verdict_for_batch(key, &mut classified) {
             DataVerdict::Apply => {}
             DataVerdict::ReplaceThenApply => {
                 match self.data_from {
@@ -695,6 +695,9 @@ impl Replay {
         let held = self.player_data.item_count();
         let full_send = monitor::full_send_in(&classified, held);
         let noted = monitor::changes_in(&classified);
+        if let Some(ns) = at {
+            self.player_data.set_clock(ns / 1_000_000_000);
+        }
         let applied = monitor::apply_commands(&mut self.player_data, classified);
         if applied.any()
             && let Some(journal) = &mut self.journal

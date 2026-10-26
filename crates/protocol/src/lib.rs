@@ -80,7 +80,7 @@ use crate::connection::parse_frame;
 use crate::crypto::{bruteforce, decrypt_command, guess, lookup_initial_key};
 pub use crate::flat::{FlatMessage, flat_message, parse_avatar_info};
 pub use crate::gacha::{
-    GACHA_TYPES, GachaAuthKey, GachaRecordLink, GachaWish, WISH_CURRENCY_IDS,
+    EpitomizedPath, GACHA_TYPES, GachaAuthKey, GachaRecordLink, GachaWish, WISH_CURRENCY_IDS,
     matches_client_version, matches_do_gacha_rsp, matches_get_authkey_rsp,
     matches_get_gacha_info_rsp,
 };
@@ -90,9 +90,9 @@ use crate::oodle::TcpDecoder;
 pub use crate::routine::{
     ABYSS_FLOOR_IDS, ABYSS_STARS_PER_FLOOR, AbyssPeriod, DAILY_TASK_IDS, DailyCommissions,
     EXPEDITION_HOURS, EXPEDITION_IDS, Expedition, HomeResources, MAX_ABYSS_FLOORS, MAX_DAILY_TASKS,
-    MAX_EXPEDITION_STATE, MAX_REALM_CURRENCY, MAX_WELKIN_DAYS, matches_avatar_expedition_notify,
-    matches_daily_task_notify, matches_home_resource_notify, matches_recharge_data_notify,
-    matches_tower_all_data_rsp,
+    MAX_EXPEDITION_STATE, MAX_REALM_CURRENCY, MAX_RESIN, MAX_WELKIN_DAYS, ResinClock,
+    matches_avatar_expedition_notify, matches_daily_task_notify, matches_home_resource_notify,
+    matches_recharge_data_notify, matches_resin_change_notify, matches_tower_all_data_rsp,
 };
 pub use crate::unk_util::{
     Achievement, AchievementMatchError, matches_achievement_all_data_notify,
@@ -1513,6 +1513,9 @@ pub enum CommandMatch {
     /// The Blessing of the Welkin Moon's days left: see
     /// [`matches_recharge_packet`].
     Welkin(u32),
+    /// A resin clock *candidate*: see [`matches_resin_change_notify`]; the
+    /// caller believes it only beside the resin it holds.
+    ResinClock(ResinClock),
 }
 
 impl CommandMatch {
@@ -1537,6 +1540,7 @@ impl CommandMatch {
             Self::Expeditions(_) => "expeditions",
             Self::HomeResources(_) => "realm currency",
             Self::Welkin(_) => "welkin",
+            Self::ResinClock(_) => "resin clock",
         }
     }
 
@@ -1635,7 +1639,13 @@ pub fn classify_union(game_command: &GameCommand) -> Vec<(u16, CommandMatch)> {
         .filter_map(|inner| {
             let found = match matches_player_property_packet(inner) {
                 Some(properties) => CommandMatch::for_properties(properties),
-                None => CommandMatch::Flat(flat_message(inner)?),
+                // Resent with every login's union, after its first copy came
+                // before the login data (and was dropped with the old
+                // connection's traffic).
+                None => match matches_resin_change_notify(&inner.proto_data) {
+                    Some(clock) => CommandMatch::ResinClock(clock),
+                    None => CommandMatch::Flat(flat_message(inner)?),
+                },
             };
             Some((inner.command_id, found))
         })
@@ -1680,6 +1690,9 @@ pub fn classify_command(game_command: &GameCommand) -> Option<CommandMatch> {
     }
     if let Some(days) = matches_recharge_packet(game_command) {
         claims.push(CommandMatch::Welkin(days));
+    }
+    if let Some(clock) = matches_resin_change_notify(&game_command.proto_data) {
+        claims.push(CommandMatch::ResinClock(clock));
     }
     if let Some(items) = matches_item_change_packet(game_command) {
         claims.push(CommandMatch::ChangedItems(items));

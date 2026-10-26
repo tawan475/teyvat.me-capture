@@ -700,6 +700,55 @@ pub fn matches_recharge_data_notify(data: &[u8]) -> Option<u32> {
     (days <= u64::from(MAX_WELKIN_DAYS)).then_some(days as u32)
 }
 
+// ------------------------------------------------------------------- resin
+
+/// Original Resin a candidate may name: refills can take it past the natural
+/// 200, and the bound only rules out a misread.
+pub const MAX_RESIN: u32 = 2_000;
+
+/// A `ResinChangeNotify` *candidate*: when the next Original Resin comes and
+/// the small numbers beside it (the resin held and the refills bought today,
+/// in an order only the held resin can tell).
+///
+/// Its shape -- a unix time beside one or two small numbers -- is a dozen
+/// messages' shape, so this is a candidate only: the caller believes it when
+/// one of the numbers is exactly the resin the player properties hold.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ResinClock {
+    /// Unix seconds of the next +1.
+    pub next_at: u32,
+    /// The one or two numbers beside it, each at most [`MAX_RESIN`].
+    pub values: Vec<u32>,
+}
+
+/// Recover a resin clock candidate from a payload, or `None` if it cannot be
+/// one: exactly one unix time and one or two numbers up to [`MAX_RESIN`],
+/// each a lone varint, and nothing else.
+pub fn matches_resin_change_notify(data: &[u8]) -> Option<ResinClock> {
+    let msg = parse(data)?;
+    let mut next_at = None;
+    let mut values = Vec::new();
+    for values_of_tag in fields_by_tag(&msg).values() {
+        let [value] = values_of_tag.as_slice() else {
+            return None;
+        };
+        let value = as_varint(value)?;
+        if is_timestamp(value) {
+            if next_at.replace(value as u32).is_some() {
+                return None;
+            }
+        } else if value <= u64::from(MAX_RESIN) {
+            values.push(value as u32);
+        } else {
+            return None;
+        }
+    }
+    let next_at = next_at?;
+    (1..=2)
+        .contains(&values.len())
+        .then_some(ResinClock { next_at, values })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -738,6 +787,47 @@ mod tests {
 
     fn cat(parts: &[Vec<u8>]) -> Vec<u8> {
         parts.concat()
+    }
+
+    // -- resin clock ----------------------------------------------------------
+
+    #[test]
+    fn a_resin_clock_is_a_time_beside_one_or_two_small_numbers() {
+        let clock = matches_resin_change_notify(&cat(&[v(1, 1_791_000_300), v(10, 124), v(15, 2)]));
+        assert_eq!(
+            clock,
+            Some(ResinClock {
+                next_at: 1_791_000_300,
+                values: vec![124, 2],
+            })
+        );
+        // No refills bought today: that number is left out.
+        assert!(matches_resin_change_notify(&cat(&[v(1, 1_791_000_300), v(10, 124)])).is_some());
+        // No time, two times, a big number, a list or a submessage: not one.
+        assert_eq!(
+            matches_resin_change_notify(&cat(&[v(10, 124), v(15, 2)])),
+            None
+        );
+        assert_eq!(
+            matches_resin_change_notify(&cat(&[
+                v(1, 1_791_000_300),
+                v(2, 1_791_000_900),
+                v(10, 4)
+            ])),
+            None
+        );
+        assert_eq!(
+            matches_resin_change_notify(&cat(&[v(1, 1_791_000_300), v(10, 70_000)])),
+            None
+        );
+        assert_eq!(
+            matches_resin_change_notify(&cat(&[v(1, 1_791_000_300), v(10, 124), v(10, 125)])),
+            None
+        );
+        assert_eq!(
+            matches_resin_change_notify(&cat(&[v(1, 1_791_000_300), b(10, &v(1, 2))])),
+            None
+        );
     }
 
     // -- commissions ----------------------------------------------------------

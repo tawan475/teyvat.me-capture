@@ -67,6 +67,9 @@ impl KeyReport {
 #[derive(Debug, Default)]
 pub struct DataReplacement {
     pending: bool,
+    /// Resin clocks that came while holding: the game sends its first one
+    /// before the login data, so it would always be lost with the hold.
+    held_resin: Vec<(u16, CommandMatch)>,
 }
 
 /// What to do with one classified command.
@@ -85,12 +88,17 @@ impl DataReplacement {
     /// A new connection began. Returns whether that is news: the copies of
     /// one handshake, or resets before any data arrived, collapse into one.
     pub fn connection_reset(&mut self) -> bool {
-        !std::mem::replace(&mut self.pending, true)
+        let news = !std::mem::replace(&mut self.pending, true);
+        if news {
+            self.held_resin.clear();
+        }
+        news
     }
 
     /// The user cleared the data, so there is nothing left to replace.
     pub fn clear(&mut self) {
         self.pending = false;
+        self.held_resin.clear();
     }
 
     /// Decide what a classified command does. `key` is what it decrypted
@@ -110,11 +118,32 @@ impl DataReplacement {
     /// [`verdict`](Self::verdict) for one decoded batch: it may replace the
     /// old snapshot when anything in it is real account data, which a delete
     /// notify on its own is not (its shape is too common).
+    ///
+    /// Resin clocks in a held batch are kept, and join the batch that
+    /// replaces the data, after its own commands (the player properties they
+    /// are checked against come in it).
     pub fn verdict_for_batch(
         &mut self,
         key: KeyState,
-        classified: &[(u16, CommandMatch)],
+        classified: &mut Vec<(u16, CommandMatch)>,
     ) -> DataVerdict {
+        let verdict = self.batch_verdict(key, classified);
+        match verdict {
+            DataVerdict::Hold => {
+                // The caller drops a held batch, so its clocks are moved out.
+                let (resin, rest): (Vec<_>, Vec<_>) = std::mem::take(classified)
+                    .into_iter()
+                    .partition(|(_, found)| matches!(found, CommandMatch::ResinClock(_)));
+                *classified = rest;
+                self.held_resin.extend(resin);
+            }
+            DataVerdict::ReplaceThenApply => classified.append(&mut self.held_resin),
+            DataVerdict::Apply => {}
+        }
+        verdict
+    }
+
+    fn batch_verdict(&mut self, key: KeyState, classified: &[(u16, CommandMatch)]) -> DataVerdict {
         // A delete notify, a changed item or property only alter what is
         // held, and the wish history messages are not account data at all.
         let replaces = classified.iter().any(|(_, found)| {
@@ -125,6 +154,7 @@ impl DataReplacement {
                         | CommandMatch::ChangedItems(_)
                         | CommandMatch::PropertyUpdate(_)
                         | CommandMatch::Flat(_)
+                        | CommandMatch::ResinClock(_)
                 )
         });
         self.verdict(key, replaces)
@@ -295,6 +325,19 @@ pub fn apply_commands(
                 tracing::info!("Found Welkin Moon days");
                 player_data.process_routine(RoutinePart::Welkin(days));
                 applied.routine = true;
+            }
+            CommandMatch::ResinClock(clock) => {
+                tracing::debug!(?clock, "resin clock candidate");
+                player_data.process_routine(RoutinePart::Resin(clock));
+                applied.routine = true;
+            }
+            CommandMatch::GachaInfo(links) => {
+                // The wish history reads the links; the path is the account's.
+                if let Some(path) = links.iter().find_map(|link| link.epitomized) {
+                    tracing::info!(?path, "Found the Epitomized Path");
+                    player_data.process_routine(RoutinePart::WishPath(path));
+                    applied.routine = true;
+                }
             }
             CommandMatch::ChangedItems(items) => {
                 // Candidates as well: only the captured account's are taken.
@@ -784,26 +827,71 @@ mod tests {
         // must not throw the old snapshot away for one currency.
         let mut replacement = DataReplacement::default();
         replacement.connection_reset();
-        let update = vec![(
+        let mut update = vec![(
             21436,
             CommandMatch::PropertyUpdate(HashMap::from([(10016, 5)])),
         )];
         assert_eq!(
-            replacement.verdict_for_batch(KeyState::Session, &update),
+            replacement.verdict_for_batch(KeyState::Session, &mut update),
             DataVerdict::Hold
         );
-        let page = vec![(
+        let mut page = vec![(
             1,
             CommandMatch::Properties((10_010..=10_016).map(|k| (k, 3)).collect()),
         )];
         assert_eq!(
-            replacement.verdict_for_batch(KeyState::Session, &page),
+            replacement.verdict_for_batch(KeyState::Session, &mut page),
             DataVerdict::ReplaceThenApply
         );
         assert_eq!(
-            replacement.verdict_for_batch(KeyState::Session, &update),
+            replacement.verdict_for_batch(KeyState::Session, &mut update),
             DataVerdict::Apply
         );
+    }
+
+    #[test]
+    fn a_resin_clock_held_before_the_login_data_joins_it() {
+        let clock = || {
+            CommandMatch::ResinClock(teyvatme_protocol::ResinClock {
+                next_at: 1_791_000_300,
+                values: vec![124, 2],
+            })
+        };
+        let mut replacement = DataReplacement::default();
+        replacement.connection_reset();
+        let mut first = vec![(8226, clock())];
+        assert_eq!(
+            replacement.verdict_for_batch(KeyState::Session, &mut first),
+            DataVerdict::Hold
+        );
+        let mut login = vec![(
+            1,
+            CommandMatch::Properties((10_010..=10_016).map(|k| (k, 3)).collect()),
+        )];
+        assert_eq!(
+            replacement.verdict_for_batch(KeyState::Session, &mut login),
+            DataVerdict::ReplaceThenApply
+        );
+        // After the properties it is checked against.
+        assert!(matches!(
+            login.as_slice(),
+            [
+                (1, CommandMatch::Properties(_)),
+                (8226, CommandMatch::ResinClock(_))
+            ]
+        ));
+        // A connection that never delivered data takes its clocks with it.
+        replacement.connection_reset();
+        let mut stale = vec![(8226, clock())];
+        replacement.verdict_for_batch(KeyState::Session, &mut stale);
+        replacement.clear();
+        replacement.connection_reset();
+        let mut next = vec![(
+            1,
+            CommandMatch::Properties((10_010..=10_016).map(|k| (k, 3)).collect()),
+        )];
+        replacement.verdict_for_batch(KeyState::Session, &mut next);
+        assert_eq!(next.len(), 1);
     }
 
     #[test]

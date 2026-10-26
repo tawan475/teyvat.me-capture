@@ -283,6 +283,12 @@ pub struct GiTasks {
     pub realm: Option<GiRealm>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub welkin: Option<GiWelkin>,
+    /// The weapon banner's Epitomized Path, as the Wish screen last showed it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wish_path: Option<GiWishPath>,
+    /// Original Resin and when the next one comes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resin: Option<GiResin>,
 }
 
 impl GiTasks {
@@ -292,7 +298,29 @@ impl GiTasks {
             && self.expeditions.is_none()
             && self.realm.is_none()
             && self.welkin.is_none()
+            && self.wish_path.is_none()
+            && self.resin.is_none()
     }
+}
+
+/// `gi_tasks.wishPath`: the weapon charted on the Epitomized Path and its Fate
+/// Points.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiWishPath {
+    /// The weapon's GOOD key.
+    pub weapon: String,
+    pub points: u32,
+    pub max: u32,
+}
+
+/// `gi_tasks.resin`: Original Resin when it was read, and when the next comes
+/// (unix seconds; one every 8 minutes below the cap).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiResin {
+    pub value: u32,
+    pub next_at: u32,
 }
 
 /// `gi_tasks.commissions`: today's Daily Commissions.
@@ -620,6 +648,15 @@ mod tests {
                     limit: 2_400,
                 }),
                 welkin: Some(GiWelkin { days: 30 }),
+                wish_path: Some(GiWishPath {
+                    weapon: "StaffOfHoma".to_string(),
+                    points: 1,
+                    max: 1,
+                }),
+                resin: Some(GiResin {
+                    value: 124,
+                    next_at: 1_791_000_300,
+                }),
             }),
         };
 
@@ -816,6 +853,8 @@ mod tests {
                 }],
                 "realm": { "value": 1_800, "limit": 2_400 },
                 "welkin": { "days": 30 },
+                "wishPath": { "weapon": "StaffOfHoma", "points": 1, "max": 1 },
+                "resin": { "value": 124, "nextAt": 1_791_000_300 },
             })
         );
     }
