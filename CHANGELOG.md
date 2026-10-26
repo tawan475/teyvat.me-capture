@@ -2,6 +2,27 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.1.5
+
+- Android: signing in, the import key and uploads work on networks whose
+  DNS answers 0.0.0.0 for teyvat.me (some filters do that for new
+  domains). The app then asks Cloudflare's or Google's DNS over HTTPS,
+  as the browser already does. Seen as "Failed to connect to
+  teyvat.me/0.0.0.0:443".
+
+Everything in 1.1.4 below still applies.
+
+| Platform | File |
+|---|---|
+| Windows 10/11 | `teyvatme-windows.exe` (built-in packet capture; asks for administrator rights) |
+| Windows with Npcap | `teyvatme-windows-pcap.exe` |
+| Linux x86_64 | `teyvatme-linux-x86_64.tar.gz` |
+| macOS (Apple silicon) | `Teyvatme-macos-arm64.app.tar.gz` |
+| Android 10+ | `teyvatme-android.apk` |
+
+Check a download against `SHA256SUMS.txt`. Unofficial fan project, not
+affiliated with HoYoverse.
+
 ## 1.1.4
 
 - Desktop: switching between light and dark changes the whole window at

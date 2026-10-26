@@ -105,4 +105,9 @@ dependencies {
     implementation("androidx.browser:browser:1.8.0")
     // FileProvider for Share and Share log.
     implementation("androidx.core:core-ktx:1.16.0")
+    // The tracker's HTTP client: its DNS hook falls back to DNS over HTTPS when the
+    // network's resolver answers 0.0.0.0 (Net.kt).
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp-dnsoverhttps:4.12.0")
+    testImplementation("junit:junit:4.13.2")
 }

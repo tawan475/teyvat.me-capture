@@ -10,9 +10,7 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import android.util.Log
-import java.io.ByteArrayOutputStream
 import java.io.IOException
-import java.net.HttpURLConnection
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.SocketTimeoutException
@@ -22,6 +20,7 @@ import java.net.URLEncoder
 import java.security.KeyStore
 import java.security.MessageDigest
 import java.security.SecureRandom
+import java.util.concurrent.TimeUnit
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -38,6 +37,11 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
+import okhttp3.Request
+import okhttp3.RequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 
 /** Who the tracker says this sign-in is (`whoami`), as the card shows it. */
@@ -529,16 +533,12 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
         scope.launch {
             val account = withContext(Dispatchers.IO) {
                 runCatching {
-                    val c = open("${Links.trackerApi}/genshin-accounts-public/verify-key", "GET", Credential.Key(key))
-                    try {
-                        val o = answer(c).let { it.optJSONObject("data") ?: it }
-                        KeyAccount(
-                            o.optString("accountName").ifEmpty { "?" },
-                            o.opt("uid")?.takeIf { it != JSONObject.NULL }?.toString() ?: "N/A",
-                        )
-                    } finally {
-                        c.disconnect()
-                    }
+                    val o = getJsonAs("${Links.trackerApi}/genshin-accounts-public/verify-key", Credential.Key(key))
+                        .let { it.optJSONObject("data") ?: it }
+                    KeyAccount(
+                        o.optString("accountName").ifEmpty { "?" },
+                        o.opt("uid")?.takeIf { it != JSONObject.NULL }?.toString() ?: "N/A",
+                    )
                 }.getOrNull()
             }
             if (keyFlow.value.key != key) return@launch
@@ -601,79 +601,46 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
     private class HttpError(val status: Int, val code: String?, val body: String) : IOException("HTTP $status ${body.take(200)}")
     private class SignedOut : IOException("signed out")
 
-    private fun open(url: String, method: String, bearer: String?): HttpURLConnection =
-        open(url, method, bearer?.let { Credential.Bearer(it) })
-
-    private fun open(url: String, method: String, credential: Credential?): HttpURLConnection =
-        (URL(url).openConnection() as HttpURLConnection).apply {
-            requestMethod = method
-            connectTimeout = 15_000
-            readTimeout = 60_000
-            setRequestProperty("User-Agent", "Teyvatme-Android/${BuildConfig.VERSION_NAME}")
-            setRequestProperty("Accept", "application/json")
-            when (credential) {
-                is Credential.Bearer -> setRequestProperty("Authorization", "Bearer ${credential.token}")
-                is Credential.Key -> setRequestProperty("x-import-key", credential.key)
-                null -> {}
+    /** A request to the tracker ([Net.client]); the body of a success, else [HttpError]. */
+    private fun send(url: String, method: String, credential: Credential?, body: RequestBody? = null, readSeconds: Long = 60): String {
+        val request = Request.Builder()
+            .url(url)
+            .method(method, body)
+            .header("User-Agent", "Teyvatme-Android/${BuildConfig.VERSION_NAME}")
+            .header("Accept", "application/json")
+            .apply {
+                when (credential) {
+                    is Credential.Bearer -> header("Authorization", "Bearer ${credential.token}")
+                    is Credential.Key -> header("x-import-key", credential.key)
+                    null -> {}
+                }
             }
-        }
-
-    private fun answer(connection: HttpURLConnection): JSONObject {
-        val status = connection.responseCode
-        val stream = if (status in 200..299) connection.inputStream else connection.errorStream
-        val body = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
-        if (status !in 200..299) {
-            val o = runCatching { JSONObject(body) }.getOrNull()
-            val code = o?.optJSONObject("error")?.optString("code")?.takeIf { it.isNotEmpty() }
-                ?: o?.optString("error")?.takeIf { it.isNotEmpty() }
-            throw HttpError(status, code, body)
-        }
-        return runCatching { JSONObject(body) }.getOrDefault(JSONObject())
-    }
-
-    /** A request with a JSON body (or none); the body of a success. */
-    private fun rawCall(method: String, url: String, body: String, credential: Credential): String {
-        val c = open(url, method, credential)
-        try {
-            if (method != "GET") {
-                c.doOutput = true
-                c.setRequestProperty("Content-Type", "application/json")
-                c.outputStream.use { it.write(body.toByteArray()) }
-            }
-            val status = c.responseCode
-            val stream = if (status in 200..299) c.inputStream else c.errorStream
-            val text = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
-            if (status !in 200..299) {
+            .build()
+        val client = if (readSeconds == 60L) Net.client else Net.client.newBuilder().readTimeout(readSeconds, TimeUnit.SECONDS).build()
+        client.newCall(request).execute().use { response ->
+            val text = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
                 val o = runCatching { JSONObject(text) }.getOrNull()
                 val code = o?.optJSONObject("error")?.optString("code")?.takeIf { it.isNotEmpty() }
-                throw HttpError(status, code, text)
+                    ?: o?.optString("error")?.takeIf { it.isNotEmpty() }
+                throw HttpError(response.code, code, text)
             }
             return text
-        } finally {
-            c.disconnect()
         }
     }
 
-    private fun getJson(url: String, bearer: String?): JSONObject {
-        val c = open(url, "GET", bearer)
-        try {
-            return answer(c)
-        } finally {
-            c.disconnect()
-        }
-    }
+    private fun json(text: String) = runCatching { JSONObject(text) }.getOrDefault(JSONObject())
 
-    private fun postJson(url: String, body: JSONObject, bearer: String?): JSONObject {
-        val c = open(url, "POST", bearer)
-        try {
-            c.doOutput = true
-            c.setRequestProperty("Content-Type", "application/json")
-            c.outputStream.use { it.write(body.toString().toByteArray()) }
-            return answer(c)
-        } finally {
-            c.disconnect()
-        }
-    }
+    /** A request with a JSON body (or none); the body of a success. */
+    private fun rawCall(method: String, url: String, body: String, credential: Credential): String =
+        send(url, method, credential, if (method == "GET") null else body.toRequestBody(JSON_TYPE))
+
+    private fun getJson(url: String, bearer: String?): JSONObject = getJsonAs(url, bearer?.let { Credential.Bearer(it) })
+
+    private fun getJsonAs(url: String, credential: Credential?): JSONObject = json(send(url, "GET", credential))
+
+    private fun postJson(url: String, body: JSONObject, bearer: String?): JSONObject =
+        json(send(url, "POST", bearer?.let { Credential.Bearer(it) }, body.toString().toRequestBody(JSON_TYPE)))
 
     /** The desktop's `snapshot_form`: the capture time first, then the file. */
     private fun postGood(credential: Credential, json: String, capturedAt: Long): JSONObject {
@@ -682,31 +649,12 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
             is Credential.Bearer -> "${Links.trackerApi}/irminsul/import"
             is Credential.Key -> "${Links.trackerApi}/genshin-accounts-public/import-by-key"
         }
-        val boundary = "teyvatme" + randomToken(16)
-        val body = ByteArrayOutputStream()
-        fun line(s: String) = body.write((s + "\r\n").toByteArray())
-        line("--$boundary")
-        line("Content-Disposition: form-data; name=\"timestamp\"")
-        line("")
-        line(capturedAt.toString())
-        line("--$boundary")
-        line("Content-Disposition: form-data; name=\"file\"; filename=\"teyvatme_capture.json\"")
-        line("Content-Type: application/json")
-        line("")
-        body.write(json.toByteArray())
-        line("")
-        line("--$boundary--")
-        val c = open(url, "POST", credential)
-        try {
-            c.doOutput = true
-            c.readTimeout = 120_000
-            c.setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
-            c.setFixedLengthStreamingMode(body.size())
-            c.outputStream.use { body.writeTo(it) }
-            return answer(c)
-        } finally {
-            c.disconnect()
-        }
+        val body = MultipartBody.Builder("teyvatme" + randomToken(16))
+            .setType(MultipartBody.FORM)
+            .addFormDataPart("timestamp", capturedAt.toString())
+            .addFormDataPart("file", "teyvatme_capture.json", json.toRequestBody(JSON_TYPE))
+            .build()
+        return json(send(url, "POST", credential, body, readSeconds = 120))
     }
 
     // -- the refresh token, encrypted -----------------------------------------------
@@ -744,6 +692,7 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
 
     companion object {
         private const val TAG = "teyvatme"
+        private val JSON_TYPE = "application/json".toMediaType()
         /** A failed automated upload is tried again after this, doubling up to [MAX_RETRY_MS]. */
         private const val FIRST_RETRY_MS = 30_000L
         private const val MAX_RETRY_MS = 600_000L
