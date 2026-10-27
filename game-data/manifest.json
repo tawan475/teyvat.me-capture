@@ -1,8 +1,8 @@
 {
-  "id": "29d73a484c855c09523c6249b919f374624e3bb6",
+  "id": "e83a63f9291923a99931f2258db041cdc83e2a9e",
   "client": "ClientWin7.1.0_R48652077_S48511369_D48533839",
   "gameVersion": "7.1.0",
-  "release": "client-7.1.0-29d73a48",
+  "release": "client-7.1.0-e83a63f9",
   "files": {
     "BinOutput/Scene/Point/scene100_point.json": "7729f92e3deba4a150557257761299cd744de2db5d14a52405a57b9dd7adce16",
     "BinOutput/Scene/Point/scene101_point.json": "5e608bbd7df57e3b4d46f43d5fe508dd14ce401e061e386ab228523e3dbea970",
@@ -30,12 +30,15 @@
     "ExcelBinOutput/CookRecipeExcelConfigData.json": "0647a64ead5447f873dcd42ccd452033d4e966e1e885d36c671760deb47c1377",
     "ExcelBinOutput/DungeonEntryExcelConfigData.json": "5d29805a4a3f38c03df00cae4fac5e48075084d200657ec70159f603827e338d",
     "ExcelBinOutput/EquipAffixExcelConfigData.json": "b3b9bbf8311fe88017aabdc94a83a03f1d453936e73793aa4920531145ab7558",
+    "ExcelBinOutput/FlowerLandReputationTaskExcelConfigData.json": "bf1422aa36acaa7938a1e4a65db5cb0efadd8c8ad04d961f723ec136f9e22284",
     "ExcelBinOutput/ForgeExcelConfigData.json": "4d73c9a646a43e508958a2f1bb4d068d89b51de0ebdbc6d689c955e743a5f449",
     "ExcelBinOutput/FurnitureSuiteExcelConfigData.json": "dab89ce3ac63d861164bbc9981069b9510ad580feaf09da83bf9c16677dc8dfb",
     "ExcelBinOutput/HomeWorldEventExcelConfigData.json": "4f4e79448f4193930269bded397672a54915c6ec1415f4d042269c1a4200879e",
     "ExcelBinOutput/MaterialExcelConfigData.json": "56571224e4dee8431fa7a015f2ad4415515b7d81cac4e2b0d94d82f510aaf152",
+    "ExcelBinOutput/MusicGameBookBeatmapExcelConfigData.json": "b9a15916afd1ed7fb4f55c0c19471fbdc5b171f4ffd2b42bb8d25516926c1390",
     "ExcelBinOutput/NpcFirstMetExcelConfigData.json": "73dd38ce081e0a9d7ef139a8d761e3ec9449eccaafedf89004a599b72ed23420",
     "ExcelBinOutput/OfferingOpenStateConfigData.json": "34c0880e55500f875a60b70ab9ceb86a29e46afd6c7a76cf3505f68183c69016",
+    "ExcelBinOutput/PlayerLevelExcelConfigData.json": "0a0e07a70e69c8dd5d2827b5d9f4c2b3ca0dba1405bcdbaf71babdeda299cc9c",
     "ExcelBinOutput/ReliquaryAffixExcelConfigData.json": "abbfcbf9b8825116378d1e04926379a4eda2ce735652b1557ca36377e3c22bfe",
     "ExcelBinOutput/ReliquaryExcelConfigData.json": "08a61151061b56c07e3ffc092f52cfbba2410cb1f80119a80f32e7ab64196948",
     "ExcelBinOutput/ReliquaryMainPropExcelConfigData.json": "2484e01f9427a38902f36a0d7eb7b4498885e466557bcb60700152f2b133980c",
@@ -44,6 +47,7 @@
     "ExcelBinOutput/TribalQuestChapterExcelConfigData.json": "4b1e25698dff95d8c8cf7786e2e18e8a8737a87b7607bca9d490889873741d85",
     "ExcelBinOutput/WeaponExcelConfigData.json": "dfaee6f6eb5ca9b389e66173c52ff71404de1600d32553af8d622fc7ef3d9841",
     "ExcelBinOutput/WorldAreaConfigData.json": "b652de7c6878772b159aff6ada63c64c343ee76eba923f6ae73a5eb9b1760f4d",
-    "TextMap/TextMap_MediumEN.json": "576ffa55f20a94c69deb66f7da2801df9081004b388b82835452f4d58bc0d953"
+    "ExcelBinOutput/WorldWatcherConfigData.json": "54dbfc07e211a227a5616f6de202a5012e0d0d63993114e09129f0129e67bc76",
+    "TextMap/TextMap_MediumEN.json": "604c3d3559b05976983152855187f49765263488f8615fd16995aca19b13f107"
   }
 }
