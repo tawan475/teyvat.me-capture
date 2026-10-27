@@ -36,7 +36,8 @@ MANIFEST = "manifest.json"
 DATA_FOLDERS = ("ExcelBinOutput", "TextMap", "BinOutput")
 RELEASE_REPO = os.environ.get("TEYVATME_GAME_DATA_REPO", "tawan475/genshin-game-data")
 
-# What crates/game-data reads (lib.rs `get_json_file`), and the exploration tables.
+# What crates/game-data reads (lib.rs `get_json_file`), the exploration tables, and tables whose ids tell
+# collection messages apart.
 EXCEL = [
     "AvatarExcelConfigData",
     "AvatarSkillDepotExcelConfigData",
@@ -53,6 +54,9 @@ EXCEL = [
     "ReputationCityExcelConfigData",
     "OfferingOpenStateConfigData",
     "WorldAreaConfigData",
+    # Told apart by their ids: recipes (CookDataNotify has shape twins) and Aranara collections.
+    "CookRecipeExcelConfigData",
+    "AranaraCollectionExcelConfigData",
 ]
 TEXT_MAP = "TextMap/TextMap_MediumEN.json"
 WORLD_AREAS = "ExcelBinOutput/WorldAreaConfigData.json"
