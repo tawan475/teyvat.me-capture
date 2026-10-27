@@ -43,9 +43,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import me.teyvat.app.ui.AboutScreen
 import me.teyvat.app.ui.ActivityScreen
 import me.teyvat.app.ui.ExportSettingsActions
@@ -195,10 +193,7 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
     private fun handle(intent: Intent?) {
         when (intent?.action) {
             ACTION_SHARE_GOOD -> shareGood()
-            ACTION_START_CAPTURE -> {
-                openGameAfterStart = intent.getBooleanExtra(EXTRA_OPEN_GAME, false)
-                startCapture()
-            }
+            ACTION_START_CAPTURE -> startCapture()
             ACTION_INSTALL_UPDATE -> updater.installNow()
             else -> return
         }
@@ -355,18 +350,7 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
         }
         capture.setVpn(VpnState.Starting)
         GameVpnService.start(this)
-        if (openGameAfterStart) {
-            openGameAfterStart = false
-            // The game must connect after the VPN is up, for its login's key.
-            lifecycleScope.launch {
-                val up = withTimeoutOrNull(OPEN_GAME_WAIT_MS) { capture.vpn.first { it == VpnState.On } }
-                if (up != null) openGenshin()
-            }
-        }
     }
-
-    /** Start capture came from the Quick Settings tile: Genshin opens once the VPN is up. */
-    private var openGameAfterStart = false
 
     override fun gameInstalled() = Links.gameLaunch(this) != null
 
@@ -684,9 +668,6 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
         const val ACTION_SHARE_GOOD = "me.teyvat.app.SHARE_GOOD"
         const val ACTION_START_CAPTURE = "me.teyvat.app.START_CAPTURE"
         const val ACTION_INSTALL_UPDATE = "me.teyvat.app.INSTALL_UPDATE"
-        const val EXTRA_OPEN_GAME = "open_game"
 
-        /** How long the tile's Start waits for the VPN before giving up on opening the game. */
-        private const val OPEN_GAME_WAIT_MS = 15_000L
     }
 }
