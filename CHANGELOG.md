@@ -7,6 +7,9 @@ Each release's section is its GitHub release notes (`.github/workflows/release.y
 - Android: a new setting, **Tile opens Genshin** (Settings, off by default).
   With it on, starting capture from the Quick Settings tile also opens the
   game.
+- Live sync sends the resin clock (`gi_tasks.resin`, when the next resin
+  comes) with each resin change, so the tracker's resin is exact between
+  snapshots.
 
 ## 1.11.0
 

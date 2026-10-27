@@ -81,6 +81,7 @@
     "gi_achievements": [81000, 81001],
     "timestamp": 1792000000000,
     "gi_player": { "uid": 812345678, "ar": 60, "wl": 9, "resin": 120 },
+    "gi_tasks": { "resin": { "value": 120, "nextAt": 1792000300 } },
     "gi_achievement_times": { "81000": 1790000000, "81001": 1790000100 },
     "gi_characters": { "Furina": { "friendship": 9, "obtainedAt": 1700000000 } },
     "gi_anecdotes": {
@@ -159,6 +160,7 @@
       ["del", ["weapons", "3488998120056947189"], { "rarity": 1 }],
       ["set", ["weapons", "3488998120056947188", "refinement"], 2],
       ["set", ["gi_player", "resin"], 160],
+      ["set", ["gi_tasks", "resin"], { "value": 160, "nextAt": 1792000380 }],
       ["set", ["gi_characters", "Furina", "friendship"], 10],
       ["set", ["gi_characters", "Nahida", "obtainedAt"], 1792000050],
       ["set", ["achievements", "81219"], 1792000000],
@@ -259,6 +261,7 @@
     "gi_achievements": [81000, 81001, 81219],
     "timestamp": 1792000060000,
     "gi_player": { "uid": 812345678, "ar": 60, "wl": 9, "resin": 160 },
+    "gi_tasks": { "resin": { "value": 160, "nextAt": 1792000380 } },
     "gi_achievement_times": { "81000": 1790000000, "81001": 1790000100, "81219": 1792000000 },
     "gi_characters": {
       "Furina": { "friendship": 10, "obtainedAt": 1700000000 },
