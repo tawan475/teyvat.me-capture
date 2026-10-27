@@ -226,6 +226,16 @@ pub fn classify_commands(commands: &[GameCommand]) -> Vec<(u16, CommandMatch)> {
         .iter()
         .flat_map(|command| {
             let _span = tracing::info_span!("command", id = command.command_id).entered();
+            // The client's own requests carry no account data; of them only
+            // the token request's client version is read.
+            if command.sent {
+                return match classify_command(command) {
+                    Some(found @ CommandMatch::ClientVersion(_)) => {
+                        vec![(command.command_id, found)]
+                    }
+                    _ => Vec::new(),
+                };
+            }
             match classify_command(command) {
                 // The character message also holds the wardrobe.
                 Some(found @ CommandMatch::Avatars(_)) => std::iter::once(found)
@@ -433,6 +443,9 @@ pub fn apply_commands(
                     applied.routine = true;
                 } else if let Some(list) = player_data.apply_lone_list(&records) {
                     tracing::info!(?list, "Found a lone list");
+                    applied.routine = true;
+                } else if let Some(count) = player_data.apply_tribal_chapters(&records) {
+                    tracing::info!(count, "Found the tribal chapters");
                     applied.routine = true;
                 } else if let Some(part) = player_data.apply_exploration(&records) {
                     tracing::info!(?part, "Found exploration");

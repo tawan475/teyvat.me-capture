@@ -2,6 +2,22 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.11.0
+
+- **Serenitea Pot**: the furnishing sets you've learned and the companions'
+  rewards you've collected.
+- **Domains**: which domains you've cleared once (their first-clear reward
+  taken).
+- **NPCs met** and **Natlan's tribal chapters** (each chapter's state and
+  when it started).
+
+New optional export parts: `gi_collections.furnishingSets`,
+`gi_collections.companionRewards`, `gi_collections.npcsMet`,
+`gi_exploration.domainsCleared` and `gi_exploration.tribalChapters`.
+
+- The game's own requests are no longer read as account data (one of them
+  could replace the monsters you've seen with a shorter list).
+
 ## 1.10.0
 
 - Desktop: updates like on Android. **Settings → About** shows your version

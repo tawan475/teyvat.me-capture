@@ -1,0 +1,10 @@
+[
+  {
+    "eventID": 1002,
+    "eventType": "HOME_AVATAR_REWARD_EVENT"
+  },
+  {
+    "eventID": 5,
+    "eventType": "HOME_AVATAR_SUMMON_EVENT"
+  }
+]

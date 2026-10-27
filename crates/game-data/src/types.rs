@@ -236,3 +236,19 @@ pub struct Crafting {
     /// `CompoundExcelConfigData.id`: processing.
     pub compound: BTreeSet<u32>,
 }
+
+/// The ids of the tables that tell the game's lone id lists apart.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(default)]
+pub struct IdTables {
+    /// `FurnitureSuiteExcelConfigData.suiteID`.
+    pub furnishing_sets: BTreeSet<u32>,
+    /// `HomeWorldEventExcelConfigData.eventID` of the companions' reward events.
+    pub companion_rewards: BTreeSet<u32>,
+    /// `DungeonEntryExcelConfigData.id`.
+    pub domains: BTreeSet<u32>,
+    /// `NpcFirstMetExcelConfigData.id`.
+    pub npcs_met: BTreeSet<u32>,
+    /// `TribalQuestChapterExcelConfigData.id`.
+    pub tribal_chapters: BTreeSet<u32>,
+}
