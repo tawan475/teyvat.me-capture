@@ -370,11 +370,12 @@ type WornBy = string
 
 // ── gi_exploration ──────────────────────────────────────────────── [shipped]
 // Every part is the game's state at login (or right after it); absent when not captured.
+// [next] Statues, scenes and explore are left out while the player is in another player's world (co-op).
 
 export interface GiExploration {
   /** Statues of The Seven by city (CityConfigData: 1 Mondstadt, 2 Liyue, 3 Inazuma, ...); level 1 = not yet levelled. */
   statues?: Record<IdKey, { level: number; /** Oculi given toward the next level. */ oculi: number }>
-  /** Level by offering (OfferingOpenStateConfigData: Frostbearing Tree, Sacred Sakura, ...). */
+  /** Level by offering (OfferingOpenStateConfigData: Frostbearing Tree, Sacred Sakura, ...); [next] 0 = never levelled. */
   offerings?: Record<IdKey, number>
   /**
    * By scene (3 = Teyvat; the other maps have their own ids): the map points
@@ -384,7 +385,7 @@ export interface GiExploration {
   scenes?: Record<IdKey, { points: GameId[]; areas: GameId[] }>
   /** Exploration by area (WorldAreaConfigData), in the game's raw points; % = points / the area's total. */
   explore?: Record<IdKey, number>
-  /** Reputation level by city (Mondstadt to Fontaine). */
+  /** Reputation level by city (Mondstadt to Fontaine); [next] 0 = not started. */
   reputation?: Record<IdKey, number>
   /** [next] Domains whose first-clear reward was taken (DungeonEntryExcelConfigData ids, ascending). */
   domainsCleared?: GameId[]

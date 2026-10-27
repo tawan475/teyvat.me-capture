@@ -2046,6 +2046,49 @@ pub fn matches_social_detail(data: &[u8]) -> Option<SocialProfile> {
     Some(out)
 }
 
+// ------------------------------------------------------------ world owner
+
+/// The client asking about one scene of a world (`GetSceneAreaReq`,
+/// `GetScenePointReq`; 7.1: commands 1649 and 24721): the world's owner and
+/// the scene. The replies (Statues of The Seven, map points) name neither, so
+/// in someone else's world (co-op) only the request tells whose they are.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SceneRequest {
+    pub owner: u32,
+    pub scene: u32,
+}
+
+/// Read a client request as a [`SceneRequest`], or `None`: two or three lone
+/// numbers, exactly one UID-sized (the owner) and exactly one other above 1
+/// (the scene), the rest flags (`is_relogin`). Other requests share that
+/// shape (7.1's 5753: another player's UID beside a 7), so the caller
+/// believes a command id only once it has asked about several of the game
+/// data's scenes.
+pub fn matches_scene_request(data: &[u8]) -> Option<SceneRequest> {
+    let msg = parse(data)?;
+    let fields = fields_by_tag(&msg);
+    if !(2..=3).contains(&fields.len()) {
+        return None;
+    }
+    let (mut owner, mut scene) = (None, None);
+    for values in fields.values() {
+        let value = single_varint(values)?;
+        let slot = match value {
+            0 | 1 => continue,
+            v if UID_RANGE.contains(&v) => &mut owner,
+            2..=99_999 => &mut scene,
+            _ => return None,
+        };
+        if slot.replace(value as u32).is_some() {
+            return None;
+        }
+    }
+    Some(SceneRequest {
+        owner: owner?,
+        scene: scene?,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2281,6 +2324,38 @@ mod tests {
         let two = [&data[..], &b(14, b"player02")[..]].concat();
         assert_eq!(player_nickname(&two), None);
         assert_eq!(player_nickname(&prop(10_009)), None);
+    }
+
+    #[test]
+    fn a_scene_request_names_the_world_owner() {
+        let area = [v(5, 3), v(11, 812_345_678)].concat();
+        assert_eq!(
+            matches_scene_request(&area),
+            Some(SceneRequest {
+                owner: 812_345_678,
+                scene: 3
+            })
+        );
+        let point = [v(1, 811_111_111), v(13, 1), v(15, 101)].concat();
+        assert_eq!(
+            matches_scene_request(&point),
+            Some(SceneRequest {
+                owner: 811_111_111,
+                scene: 101
+            })
+        );
+        // No owner, two scenes, a list, or more fields: not one.
+        assert_eq!(matches_scene_request(&v(5, 3)), None);
+        assert_eq!(
+            matches_scene_request(&[v(5, 3), v(6, 5), v(11, 812_345_678)].concat()),
+            None
+        );
+        assert_eq!(
+            matches_scene_request(&[b(5, &[3]), v(11, 812_345_678)].concat()),
+            None
+        );
+        let four = [v(1, 812_345_678), v(2, 3), v(3, 1), v(4, 0)].concat();
+        assert_eq!(matches_scene_request(&four), None);
     }
 
     #[test]

@@ -42,6 +42,15 @@ use crate::{AppState, DataUpdated, Message, State};
 /// first packet would snapshot a half-parsed account.
 const AUTOMATION_DEBOUNCE: Duration = Duration::from_secs(5);
 
+/// How long a countdown waits, from its start, for the world's exploration
+/// points: 7.1 sends them 4-8 s after the bag, and without this wait most
+/// login snapshots went without them until the next world change.
+const AUTOMATION_EXPLORE_WAIT: Duration = Duration::from_secs(12);
+
+/// New data restarts a countdown only this long after it began, so a stream
+/// of changes cannot hold the export back.
+const AUTOMATION_MAX_WAIT: Duration = Duration::from_secs(20);
+
 /// Whole-request timeout for a tracker call that only asks a question.
 ///
 /// `reqwest::Client` has no timeout of its own, so a wedged self-hosted backend
@@ -636,6 +645,9 @@ pub struct Monitor {
     capture_timestamp_ms: Option<i64>,
 
     automation_pending_since: Option<Instant>,
+    /// When the pending countdown began (`automation_pending_since` moves on
+    /// with new data).
+    automation_armed_at: Option<Instant>,
     automation_last_signature: Option<AutomationSignature>,
     automation_cycle_started_at: Option<Instant>,
     /// A failed automated upload hands its signature back here so the same
@@ -746,6 +758,7 @@ impl Monitor {
             packet_log: PacketLog::new(),
             capture_timestamp_ms: None,
             automation_pending_since: None,
+            automation_armed_at: None,
             automation_last_signature: None,
             automation_cycle_started_at: None,
             automation_retry_tx,
@@ -802,10 +815,13 @@ impl Monitor {
                 break;
             }
 
+            let explore_held = self.player_data.has_exploration_points();
             let sleep_fut = async {
                 if let Some(pending_since) = self.automation_pending_since {
-                    let elapsed = pending_since.elapsed();
-                    if let Some(rem) = AUTOMATION_DEBOUNCE.checked_sub(elapsed) {
+                    let armed_at = self.automation_armed_at.unwrap_or(pending_since);
+                    let rem =
+                        automation_wait(pending_since, armed_at, explore_held, Instant::now());
+                    if !rem.is_zero() {
                         tokio::time::sleep(rem).await;
                     }
                 } else {
@@ -1374,6 +1390,13 @@ impl Monitor {
         let anecdotes = self.player_data.recorded_anecdotes();
         self.app_state
             .update_captured(updated, player, Some(counts), tasks, anecdotes);
+        // A countdown waits for the last of a burst (the world's parts come
+        // seconds after the bag).
+        if let (Some(pending), Some(armed)) =
+            (&mut self.automation_pending_since, self.automation_armed_at)
+        {
+            *pending = rearmed(*pending, armed, Instant::now());
+        }
         self.check_automation_trigger();
     }
 
@@ -1514,7 +1537,9 @@ impl Monitor {
                 "All automation triggers met! Starting {} second countdown...",
                 AUTOMATION_DEBOUNCE.as_secs()
             );
-            self.automation_pending_since = Some(Instant::now());
+            let now = Instant::now();
+            self.automation_pending_since = Some(now);
+            self.automation_armed_at = Some(now);
         }
     }
 
@@ -1999,6 +2024,32 @@ fn instant_after(floor: Option<Instant>) -> Instant {
 /// `check_automation_trigger` refuses every later attempt for the same data, and
 /// the data itself only changes at the next login.
 ///
+/// How long a pending countdown still waits: [`AUTOMATION_DEBOUNCE`] after
+/// the last new data and, until the world's exploration points are held,
+/// [`AUTOMATION_EXPLORE_WAIT`] after it began.
+fn automation_wait(
+    pending_since: Instant,
+    armed_at: Instant,
+    explore_held: bool,
+    now: Instant,
+) -> Duration {
+    let quiet = AUTOMATION_DEBOUNCE.saturating_sub(now.saturating_duration_since(pending_since));
+    if explore_held {
+        return quiet;
+    }
+    quiet.max(AUTOMATION_EXPLORE_WAIT.saturating_sub(now.saturating_duration_since(armed_at)))
+}
+
+/// A pending countdown's start after new data: now, while the countdown is
+/// younger than [`AUTOMATION_MAX_WAIT`].
+fn rearmed(pending_since: Instant, armed_at: Instant, now: Instant) -> Instant {
+    if now.saturating_duration_since(armed_at) < AUTOMATION_MAX_WAIT {
+        now
+    } else {
+        pending_since
+    }
+}
+
 /// Only clears the signature it was given. A newer export may already have
 /// replaced it, and that one is not this failure's to cancel. `true` when
 /// something was actually released.
@@ -2270,6 +2321,31 @@ pub(crate) fn load_keys() -> Result<HashMap<u16, Vec<u8>>> {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+
+    #[test]
+    fn a_countdown_waits_for_the_burst_and_the_exploration() {
+        let start = Instant::now();
+        let at = |s: u64| start + Duration::from_secs(s);
+        // Exploration held: 5 s after the last data.
+        assert_eq!(
+            automation_wait(start, start, true, at(2)),
+            Duration::from_secs(3)
+        );
+        assert_eq!(automation_wait(start, start, true, at(6)), Duration::ZERO);
+        // Not yet: until 12 s from the start, whichever ends later.
+        assert_eq!(
+            automation_wait(start, start, false, at(6)),
+            Duration::from_secs(6)
+        );
+        assert_eq!(
+            automation_wait(at(10), start, false, at(11)),
+            Duration::from_secs(4)
+        );
+        assert_eq!(automation_wait(start, start, false, at(13)), Duration::ZERO);
+        // New data restarts it, for 20 s at most.
+        assert_eq!(rearmed(start, start, at(7)), at(7));
+        assert_eq!(rearmed(at(19), start, at(21)), at(19));
+    }
 
     /// Automation on for both destinations, with Genshin Optimizer settings
     /// that leave out characters, everything under 5★ and the real 4th line.

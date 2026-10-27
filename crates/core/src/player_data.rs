@@ -3790,6 +3790,121 @@ mod tests {
     }
 
     #[test]
+    fn a_level_left_out_is_zero() {
+        let mut data = explorer();
+        // Offering 4 never levelled: its id alone (protobuf drops a 0).
+        let mut offerings = records(&[
+            &[(1, 1), (10, 12)],
+            &[(1, 2), (10, 50), (14, 1)],
+            &[(1, 3), (10, 1)],
+            &[(1, 4)],
+        ]);
+        offerings.records[0].lists.insert(7, (1..=12).collect());
+        assert_eq!(
+            data.apply_exploration(&offerings),
+            Some(ExplorationPart::Offerings)
+        );
+        // City 3's reputation not started.
+        let reputation = records(&[&[(1, 1), (14, 8)], &[(1, 2), (14, 10)], &[(1, 3)]]);
+        assert_eq!(
+            data.apply_exploration(&reputation),
+            Some(ExplorationPart::Reputation)
+        );
+        let json = serde_json::to_value(data.export_exploration()).unwrap();
+        assert_eq!(
+            json["offerings"],
+            serde_json::json!({ "1": 12, "2": 50, "3": 1, "4": 0 })
+        );
+        assert_eq!(
+            json["reputation"],
+            serde_json::json!({ "1": 8, "2": 10, "3": 0 })
+        );
+        // Nothing levelled at all: no level to tell, not believed.
+        let bare = records(&[&[(1, 1)], &[(1, 2)], &[(1, 3)]]);
+        assert_eq!(data.apply_exploration(&bare), None);
+    }
+
+    #[test]
+    fn another_players_world_is_not_kept() {
+        use teyvatme_protocol::SceneRequest;
+        let mut data = PlayerData::new(
+            TestGameData {
+                exploration: r#""cities": [1, 2, 3, 4], "reputation_cities": [1],
+                    "offerings": [1], "areas": [1, 2, 6],
+                    "scene_points": {"3": [7, 12, 20, 31, 40], "5": [1], "6": [2]}"#,
+                ..Default::default()
+            }
+            .build(),
+        );
+        let mut item = Item::new();
+        item.guid = (812_345_678_u64 << 32) | 5;
+        item.item_id = 104_001;
+        item.mut_material().count = 1;
+        data.process_items(&[item]);
+        let ask = |data: &mut PlayerData, command: u16, owner: u32, scenes: &[u32]| {
+            for scene in scenes {
+                data.note_scene_request(
+                    command,
+                    SceneRequest {
+                        owner,
+                        scene: *scene,
+                    },
+                );
+            }
+        };
+        let statues = |level: u64| {
+            records(&[
+                &[(5, level), (7, 1)],
+                &[(5, level), (7, 2)],
+                &[(5, level), (7, 3)],
+            ])
+        };
+        let explore = |points: u64| RecordsMessage {
+            lists: BTreeMap::from([(4, vec![1, 2, 6]), (10, vec![points, 175, 1_402])]),
+            ..Default::default()
+        };
+        let map = RecordsMessage {
+            varints: BTreeMap::from([(11, 3)]),
+            lists: BTreeMap::from([(6, vec![7, 12, 20, 31]), (3, vec![40])]),
+            ..Default::default()
+        };
+        // At login, the player's own world.
+        ask(&mut data, 1649, 812_345_678, &[3, 5, 6]);
+        assert_eq!(
+            data.apply_exploration(&statues(10)),
+            Some(ExplorationPart::Statues)
+        );
+        assert_eq!(
+            data.apply_exploration(&explore(278)),
+            Some(ExplorationPart::Explore)
+        );
+        // Another request naming another player once (7.1's 5753), or about
+        // a scene without points: no change.
+        ask(&mut data, 5753, 811_111_111, &[3]);
+        ask(&mut data, 1649, 811_111_111, &[7]);
+        assert_eq!(
+            data.apply_exploration(&statues(10)),
+            Some(ExplorationPart::Statues)
+        );
+        // Co-op: the client asks about the host's scenes; the replies are
+        // the host's.
+        ask(&mut data, 1649, 811_111_111, &[3, 5, 6]);
+        assert_eq!(data.apply_exploration(&statues(4)), None);
+        assert_eq!(data.apply_exploration(&explore(999)), None);
+        assert_eq!(data.apply_exploration(&map), None);
+        let json = serde_json::to_value(data.export_exploration()).unwrap();
+        assert_eq!(json["statues"]["1"]["level"], 10);
+        assert_eq!(json["explore"]["1"], 278);
+        assert!(json.get("scenes").is_none());
+        // Back home: the first request says so.
+        ask(&mut data, 1649, 812_345_678, &[3]);
+        assert_eq!(
+            data.apply_exploration(&map),
+            Some(ExplorationPart::ScenePoints(3))
+        );
+    }
+
+    #[test]
     fn reset_forgets_the_routine() {
         let mut data = player_data();
         data.process_routine(RoutinePart::Welkin(12));
