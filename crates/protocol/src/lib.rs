@@ -349,6 +349,10 @@ pub struct GameCommand {
     pub proto_header: Vec<u8>,
     /// Serialised payload, without the header.
     pub proto_data: Vec<u8>,
+    /// Sent by the game client (its own requests) rather than the server.
+    /// Account data only ever comes from the server; the client's requests
+    /// can repeat its ids (the Living Beings it asks the counts of).
+    pub sent: bool,
 }
 
 impl GameCommand {
@@ -476,6 +480,7 @@ impl GameCommand {
                 data_len,
                 proto_header: bytes[Self::HEADER_LEN..data_start].to_vec(),
                 proto_data: bytes[data_start..data_end].to_vec(),
+                sent: false,
             },
             total,
         ))
@@ -1107,6 +1112,9 @@ impl GameSniffer {
         // Before anything reads a payload: the token response, whose seeds the
         // session key is recovered from, can itself arrive compressed.
         commands.retain_mut(|command| self.decompress(direction, command));
+        for command in &mut commands {
+            command.sent = direction == PacketDirection::Sent;
+        }
 
         for command in &commands {
             let span = info_span!("command", ?command);
@@ -1686,6 +1694,7 @@ pub fn union_commands(game_command: &GameCommand) -> Option<Vec<GameCommand>> {
             data_len: u32::try_from(proto_data.len()).ok()?,
             proto_header: Vec::new(),
             proto_data,
+            sent: false,
         });
     }
     if commands.is_empty() || id_field == body_field {

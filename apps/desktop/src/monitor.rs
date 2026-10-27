@@ -2398,6 +2398,7 @@ pub(crate) mod tests {
             data_len: data.len() as u32,
             proto_header: header.to_vec(),
             proto_data: data.to_vec(),
+            sent: false,
         }
     }
 

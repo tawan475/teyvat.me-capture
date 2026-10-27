@@ -199,6 +199,15 @@ pub struct GiCollections {
     /// The music game's songs by beatmap id.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub music_game: Option<BTreeMap<u32, GiSong>>,
+    /// Furnishing sets learned (`FurnitureSuiteExcelConfigData` ids).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub furnishing_sets: Option<Vec<u32>>,
+    /// Companions' rewards collected in the Serenitea Pot (`HomeWorldEventExcelConfigData` ids).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub companion_rewards: Option<Vec<u32>>,
+    /// NPCs met (`NpcFirstMetExcelConfigData` ids).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub npcs_met: Option<Vec<u32>>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
@@ -448,6 +457,22 @@ pub struct GiExploration {
     /// Reputation level by city.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reputation: Option<BTreeMap<u32, u32>>,
+    /// Domains whose first-clear reward was taken (`DungeonEntryExcelConfigData` ids).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub domains_cleared: Option<Vec<u32>>,
+    /// Natlan's tribal chapters (`TribalQuestChapterExcelConfigData` ids).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub tribal_chapters: Option<BTreeMap<u32, GiTribalChapter>>,
+}
+
+/// One tribal chapter: `notOpen`, `locked`, `open` or `finished`, and when it
+/// started.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiTribalChapter {
+    pub state: String,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub started_at: Option<u32>,
 }
 
 impl GiExploration {
@@ -457,6 +482,8 @@ impl GiExploration {
             && self.scenes.is_none()
             && self.explore.is_none()
             && self.reputation.is_none()
+            && self.domains_cleared.is_none()
+            && self.tribal_chapters.is_none()
     }
 }
 
@@ -1109,6 +1136,8 @@ mod tests {
                 )])),
                 explore: Some(BTreeMap::from([(1, 278)])),
                 reputation: Some(BTreeMap::from([(1, 8)])),
+                domains_cleared: None,
+                tribal_chapters: None,
             }),
         };
 

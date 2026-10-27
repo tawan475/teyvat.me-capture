@@ -48,6 +48,7 @@ fn server_commands(buf: &[u8]) -> Vec<GameCommand> {
                 data_len: data_len as u32,
                 proto_header: Vec::new(),
                 proto_data: data.to_vec(),
+                sent: false,
             });
         }
         i = data_at + data_len;

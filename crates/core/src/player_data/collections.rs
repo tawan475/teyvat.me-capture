@@ -44,11 +44,22 @@ pub(super) struct CollectionsState {
     pub crafting: Option<Vec<u32>>,
     pub forging: Option<Vec<u32>>,
     pub processing: Option<Vec<u32>>,
+    pub furnishing_sets: Option<Vec<u32>>,
+    pub companion_rewards: Option<Vec<u32>>,
+    pub domains_cleared: Option<Vec<u32>>,
+    pub npcs_met: Option<Vec<u32>>,
+    /// Natlan's tribal chapters: id → (state 1-4, when it started).
+    pub tribal_chapters: Option<BTreeMap<u32, (u32, Option<u32>)>>,
 }
 
 /// The share of a lone list's ids one recipe table must hold for the list to
 /// be that table's (a newer game version may add a few the pinned data lacks).
 const RECIPE_LIST_SHARE: f64 = 0.95;
+
+/// The fewest ids a furnishing set list is believed with. The sets' ids are
+/// small and dense, so several short server lists fit them; an account learns
+/// dozens of sets with its first Serenitea Pot.
+const FURNISHING_SETS_MIN: usize = 20;
 
 /// The shortest recipe list believed (7.1: 44 processing, 46 forging, 578
 /// crafting; every account starts with more than this).
@@ -72,6 +83,10 @@ pub enum LoneList {
     Crafting,
     Forging,
     Processing,
+    FurnishingSets,
+    CompanionRewards,
+    DomainsCleared,
+    NpcsMet,
 }
 
 /// The fewest recipes believed (every account starts with a few).
@@ -320,7 +335,133 @@ impl PlayerData {
             self.collections.ar_rewards = Some(sorted());
             return Some(LoneList::ArRewards);
         }
+        // Furnishing sets learned (`UnlockedFurnitureSuiteDataNotify`), the
+        // companions' rewards collected (`HomeAvatarAllFinishRewardNotify`),
+        // domains cleared once (`_GetDungeonEntryFirstPassRewardStatusRsp`)
+        // and NPCs met (`MetNpcIdListNotify`): small ids all, from tables
+        // whose ranges overlap, so a list is a table's only when nearly all
+        // its ids are that table's and no other table holds as many. Many
+        // short lists of small numbers fit several tables equally; those
+        // stay out.
+        if list.len() >= 3
+            && let Ok(tables) = self.game_data.id_tables()
+        {
+            let share = |table: &std::collections::BTreeSet<u32>| {
+                let held = list
+                    .iter()
+                    .filter(|v| u32::try_from(**v).is_ok_and(|v| table.contains(&v)))
+                    .count();
+                held as f64 / list.len() as f64
+            };
+            let scores = [
+                (LoneList::FurnishingSets, share(&tables.furnishing_sets)),
+                (LoneList::CompanionRewards, share(&tables.companion_rewards)),
+                (LoneList::DomainsCleared, share(&tables.domains)),
+                (LoneList::NpcsMet, share(&tables.npcs_met)),
+            ];
+            let best = scores
+                .iter()
+                .copied()
+                .filter(|(_, score)| *score >= RECIPE_LIST_SHARE)
+                .filter(|(kind, score)| scores.iter().all(|(k, s)| k == kind || s < score))
+                .filter(|(kind, _)| {
+                    *kind != LoneList::FurnishingSets || list.len() >= FURNISHING_SETS_MIN
+                })
+                .map(|(kind, _)| kind)
+                .next();
+            if let Some(kind) = best {
+                let found = Some(sorted());
+                let state = &mut self.collections;
+                match kind {
+                    LoneList::FurnishingSets => state.furnishing_sets = found,
+                    LoneList::CompanionRewards => state.companion_rewards = found,
+                    LoneList::DomainsCleared => state.domains_cleared = found,
+                    _ => state.npcs_met = found,
+                }
+                return Some(kind);
+            }
+        }
         None
+    }
+
+    /// Keep Natlan's tribal chapters if `records` is their list (7.1:
+    /// `GMKGAHNKOLA`, at login): records of a chapter id (the table's, every
+    /// one once, at least half the table), a state 1-4 (not open, locked,
+    /// open, finished) and maybe a start time, and nothing else.
+    pub fn apply_tribal_chapters(&mut self, records: &RecordsMessage) -> Option<usize> {
+        let table = &self.game_data.id_tables().ok()?.tribal_chapters;
+        let entries = &records.records;
+        if table.is_empty()
+            || entries.len() * 2 < table.len()
+            || entries.len() > table.len()
+            || !records.lists.is_empty()
+            || !records.varints.is_empty()
+        {
+            return None;
+        }
+        if entries
+            .iter()
+            .any(|e| !e.lists.is_empty() || e.varints.len() > 3)
+        {
+            return None;
+        }
+        // By field across the records: the id is distinct and the table's on
+        // every one; the state 1-4 on every one; the start time, when sent.
+        let tags: std::collections::BTreeSet<u32> = entries
+            .iter()
+            .flat_map(|e| e.varints.keys().copied())
+            .collect();
+        let column = |tag: u32| entries.iter().map(move |e| e.varints.get(&tag).copied());
+        let on_all = |tag: u32| column(tag).all(|v| v.is_some());
+        let id_tags: Vec<u32> = tags
+            .iter()
+            .copied()
+            .filter(|t| on_all(*t))
+            .filter(|t| {
+                let ids: Vec<u64> = column(*t).flatten().collect();
+                let unique: std::collections::BTreeSet<u64> = ids.iter().copied().collect();
+                unique.len() == ids.len()
+                    && ids
+                        .iter()
+                        .all(|v| u32::try_from(*v).is_ok_and(|v| table.contains(&v)))
+            })
+            .collect();
+        let [id_tag] = id_tags.as_slice() else {
+            return None;
+        };
+        let state_tags: Vec<u32> = tags
+            .iter()
+            .copied()
+            .filter(|t| {
+                t != id_tag && on_all(*t) && column(*t).flatten().all(|v| (1..=4).contains(&v))
+            })
+            .collect();
+        let [state_tag] = state_tags.as_slice() else {
+            return None;
+        };
+        let time_tag = tags.iter().copied().find(|t| t != id_tag && t != state_tag);
+        if time_tag.is_some_and(|t| {
+            !column(t)
+                .flatten()
+                .all(|v| (1_577_836_800..=u64::from(u32::MAX)).contains(&v))
+        }) {
+            return None;
+        }
+        let out: BTreeMap<u32, (u32, Option<u32>)> = entries
+            .iter()
+            .map(|e| {
+                (
+                    e.varints[id_tag] as u32,
+                    (
+                        e.varints[state_tag] as u32,
+                        time_tag.and_then(|t| e.varints.get(&t)).map(|v| *v as u32),
+                    ),
+                )
+            })
+            .collect();
+        let count = out.len();
+        self.collections.tribal_chapters = Some(out);
+        Some(count)
     }
 
     /// Keep one part of the collections, replacing what the game sent for it
@@ -353,6 +494,9 @@ impl PlayerData {
             spincrystals: self.spincrystals.clone(),
             recipes: state.recipes.clone(),
             monsters_seen: state.monsters_seen.clone(),
+            furnishing_sets: state.furnishing_sets.clone(),
+            companion_rewards: state.companion_rewards.clone(),
+            npcs_met: state.npcs_met.clone(),
             music_game: state.music_game.as_ref().map(|songs| {
                 songs
                     .iter()

@@ -63,7 +63,7 @@ fn lookup_const_value<T: FromStr>(
     res
 }
 
-const DATABASE_VERSION: u32 = 8;
+const DATABASE_VERSION: u32 = 9;
 
 #[derive(Debug, Deserialize, Serialize)]
 struct Database {
@@ -91,6 +91,9 @@ struct Database {
     /// `Compound`).
     #[serde(default)]
     crafting: Crafting,
+    /// The ids of the tables that tell lone id lists apart.
+    #[serde(default)]
+    id_tables: IdTables,
     #[serde(default)]
     exploration: Exploration,
 }
@@ -114,6 +117,7 @@ impl Database {
             spincrystals: BTreeMap::new(),
             recipes: BTreeMap::new(),
             crafting: Crafting::default(),
+            id_tables: IdTables::default(),
             exploration: Exploration::default(),
         }
     }
@@ -269,6 +273,12 @@ impl AnimeGameData {
         Ok(&self.db()?.crafting)
     }
 
+    /// Furnishing sets, companion reward events, domain entries, NPCs met
+    /// and Natlan's tribal chapters, by id.
+    pub fn id_tables(&self) -> Result<&IdTables> {
+        Ok(&self.db()?.id_tables)
+    }
+
     /// The exploration tables' ids (see [`Exploration`]).
     pub fn exploration(&self) -> Result<&Exploration> {
         Ok(&self.db()?.exploration)
@@ -353,6 +363,7 @@ impl AnimeGameData {
         tracing::info!("Downloading recipes");
         db.recipes = Self::fetch_recipes(source, &latest_git_hash).await;
         db.crafting = Self::fetch_crafting(source, &latest_git_hash).await;
+        db.id_tables = Self::fetch_id_tables(source, &latest_git_hash).await;
 
         tracing::info!("Downloading const value map");
         let const_value_map = Self::fetch_const_value_map(source, &latest_git_hash).await?;
@@ -654,6 +665,46 @@ impl AnimeGameData {
         }
     }
 
+    /// The id tables behind the lone id lists. A table that cannot be read
+    /// leaves its set empty (logged).
+    async fn fetch_id_tables<Source: GameDataSource>(source: &Source, git_ref: &str) -> IdTables {
+        async fn ids<Source: GameDataSource>(
+            source: &Source,
+            git_ref: &str,
+            table: &str,
+            field: &str,
+            keep: impl Fn(&serde_json::Value) -> bool,
+        ) -> BTreeSet<u32> {
+            let path = format!("ExcelBinOutput/{table}ExcelConfigData.json");
+            match source
+                .get_json_file::<Vec<serde_json::Value>>(git_ref, &path)
+                .await
+            {
+                Ok(rows) => rows
+                    .iter()
+                    .filter(|row| keep(row))
+                    .filter_map(|row| u32::try_from(row.get(field)?.as_u64()?).ok())
+                    .collect(),
+                Err(e) => {
+                    tracing::warn!("could not read {path}; its ids are left out: {e}");
+                    BTreeSet::new()
+                }
+            }
+        }
+        let all = |_: &serde_json::Value| true;
+        IdTables {
+            furnishing_sets: ids(source, git_ref, "FurnitureSuite", "suiteID", all).await,
+            companion_rewards: ids(source, git_ref, "HomeWorldEvent", "eventID", |row| {
+                row.get("eventType").and_then(serde_json::Value::as_str)
+                    == Some("HOME_AVATAR_REWARD_EVENT")
+            })
+            .await,
+            domains: ids(source, git_ref, "DungeonEntry", "id", all).await,
+            npcs_met: ids(source, git_ref, "NpcFirstMet", "id", all).await,
+            tribal_chapters: ids(source, git_ref, "TribalQuestChapter", "id", all).await,
+        }
+    }
+
     async fn fetch_property_map<Source: GameDataSource>(
         source: &Source,
         git_ref: &str,
@@ -852,6 +903,21 @@ mod tests {
                 }
                 "ExcelBinOutput/CompoundExcelConfigData.json" => {
                     include_str!("test_data/ExcelBinOutput/CompoundExcelConfigData.json")
+                }
+                "ExcelBinOutput/FurnitureSuiteExcelConfigData.json" => {
+                    include_str!("test_data/ExcelBinOutput/FurnitureSuiteExcelConfigData.json")
+                }
+                "ExcelBinOutput/HomeWorldEventExcelConfigData.json" => {
+                    include_str!("test_data/ExcelBinOutput/HomeWorldEventExcelConfigData.json")
+                }
+                "ExcelBinOutput/DungeonEntryExcelConfigData.json" => {
+                    include_str!("test_data/ExcelBinOutput/DungeonEntryExcelConfigData.json")
+                }
+                "ExcelBinOutput/NpcFirstMetExcelConfigData.json" => {
+                    include_str!("test_data/ExcelBinOutput/NpcFirstMetExcelConfigData.json")
+                }
+                "ExcelBinOutput/TribalQuestChapterExcelConfigData.json" => {
+                    include_str!("test_data/ExcelBinOutput/TribalQuestChapterExcelConfigData.json")
                 }
                 "TextMap/TextMap_MediumEN.json" => {
                     include_str!("test_data/TextMap/TextMap_MediumEN.json")
@@ -1097,6 +1163,19 @@ mod tests {
         let mut data = AnimeGameData::new();
         data.update_impl(&source).await.unwrap();
         assert_eq!(data.get_material(100002).unwrap(), &"Sunsettia".to_string());
+    }
+
+    #[tokio::test]
+    async fn id_tables_come_from_their_tables() {
+        let mut data = AnimeGameData::new();
+        data.update_impl(&TestDataSource).await.unwrap();
+        let tables = data.id_tables().unwrap();
+        assert_eq!(tables.furnishing_sets, BTreeSet::from([1, 2]));
+        // Only the reward events.
+        assert_eq!(tables.companion_rewards, BTreeSet::from([1002]));
+        assert_eq!(tables.domains, BTreeSet::from([1006, 1112]));
+        assert_eq!(tables.npcs_met, BTreeSet::from([2, 1052]));
+        assert_eq!(tables.tribal_chapters, BTreeSet::from([1, 18]));
     }
 
     #[tokio::test]

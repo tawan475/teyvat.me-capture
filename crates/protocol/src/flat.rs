@@ -134,6 +134,7 @@ mod tests {
             data_len: payload.len() as u32,
             proto_header: Vec::new(),
             proto_data: payload,
+            sent: false,
         }
     }
 

@@ -56,6 +56,7 @@ fn flat(fields: &[Vec<u8>]) -> FlatMessage {
         data_len: payload.len() as u32,
         proto_header: Vec::new(),
         proto_data: payload,
+        sent: false,
     })
     .expect("a possible character update")
 }

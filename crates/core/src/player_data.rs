@@ -1285,6 +1285,27 @@ impl PlayerData {
             }),
             explore: state.explore.clone(),
             reputation: state.reputation.clone(),
+            domains_cleared: self.collections.domains_cleared.clone(),
+            tribal_chapters: self.collections.tribal_chapters.as_ref().map(|chapters| {
+                chapters
+                    .iter()
+                    .map(|(id, (state, started))| {
+                        let state = match state {
+                            1 => "notOpen",
+                            2 => "locked",
+                            3 => "open",
+                            _ => "finished",
+                        };
+                        (
+                            *id,
+                            good::GiTribalChapter {
+                                state: state.to_string(),
+                                started_at: *started,
+                            },
+                        )
+                    })
+                    .collect()
+            }),
         };
         (!out.is_empty()).then_some(out)
     }
@@ -2331,6 +2352,8 @@ mod tests {
         recipes: &'static str,
         /// The `crafting` object's inside (`"combine": [...]`, ...).
         crafting: &'static str,
+        /// The `id_tables` object's inside (`"npcs_met": [...]`, ...).
+        id_tables: &'static str,
         /// The `exploration` object's inside; empty leaves it out.
         exploration: &'static str,
     }
@@ -2358,7 +2381,8 @@ mod tests {
                     "weapon_map": {{{}}},
                     "spincrystals": {{{}}},
                     "recipes": {{{}}},
-                    "crafting": {{{}}}{}
+                    "crafting": {{{}}},
+                    "id_tables": {{{}}}{}
                 }}"#,
                 self.affix_map,
                 self.artifact_map,
@@ -2371,6 +2395,7 @@ mod tests {
                 self.spincrystals,
                 self.recipes,
                 self.crafting,
+                self.id_tables,
                 if self.exploration.is_empty() {
                     String::new()
                 } else {
@@ -3941,6 +3966,117 @@ mod tests {
                 .len(),
             11
         );
+    }
+
+    #[test]
+    fn id_lists_are_told_apart_by_their_tables() {
+        let mut data = PlayerData::new(
+            TestGameData {
+                id_tables: r#""furnishing_sets": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25],
+                    "companion_rewards": [1001, 1002, 1003, 1004, 1005],
+                    "domains": [1, 2, 3, 4, 1006, 1112],
+                    "npcs_met": [1, 2, 3, 1052, 1053, 1054],
+                    "tribal_chapters": [1, 2, 3, 4]"#,
+                ..Default::default()
+            }
+            .build(),
+        );
+        let lone = |ids: &[u64]| RecordsMessage {
+            lists: BTreeMap::from([(1, ids.to_vec())]),
+            ..Default::default()
+        };
+        let sets: Vec<u64> = (1..=22).collect();
+        assert_eq!(
+            data.apply_lone_list(&lone(&sets)),
+            Some(LoneList::FurnishingSets)
+        );
+        assert_eq!(
+            data.apply_lone_list(&lone(&[1003, 1001, 1005])),
+            Some(LoneList::CompanionRewards)
+        );
+        assert_eq!(
+            data.apply_lone_list(&lone(&[1, 1006, 1112])),
+            Some(LoneList::DomainsCleared)
+        );
+        assert_eq!(
+            data.apply_lone_list(&lone(&[2, 1052, 1054])),
+            Some(LoneList::NpcsMet)
+        );
+        // Small ids several tables hold, and a short list of set ids: neither.
+        assert_eq!(data.apply_lone_list(&lone(&[1, 2, 3])), None);
+        assert_eq!(data.apply_lone_list(&lone(&[5, 6, 7, 8])), None);
+        let json = serde_json::to_value(data.export_at(&settings(), NOW_SECS * 1000).0).unwrap();
+        let collections = &json["gi_collections"];
+        assert_eq!(collections["furnishingSets"].as_array().unwrap().len(), 22);
+        assert_eq!(
+            collections["companionRewards"],
+            serde_json::json!([1001, 1003, 1005])
+        );
+        assert_eq!(collections["npcsMet"], serde_json::json!([2, 1052, 1054]));
+        assert_eq!(
+            json["gi_exploration"]["domainsCleared"],
+            serde_json::json!([1, 1006, 1112])
+        );
+    }
+
+    #[test]
+    fn tribal_chapters_carry_their_state_and_start() {
+        use teyvatme_protocol::Record;
+        let mut data = PlayerData::new(
+            TestGameData {
+                id_tables: r#""tribal_chapters": [1, 2, 3, 4]"#,
+                ..Default::default()
+            }
+            .build(),
+        );
+        let chapter = |id: u64, state: u64, started: Option<u64>| Record {
+            varints: match started {
+                Some(at) => BTreeMap::from([(3, id), (7, state), (11, at)]),
+                None => BTreeMap::from([(3, id), (7, state)]),
+            },
+            ..Default::default()
+        };
+        let list = |records: Vec<Record>| RecordsMessage {
+            records,
+            ..Default::default()
+        };
+        let chapters = list(vec![
+            chapter(1, 4, Some(1_730_000_000)),
+            chapter(2, 4, Some(1_760_000_000)),
+            chapter(3, 2, None),
+        ]);
+        assert_eq!(data.apply_tribal_chapters(&chapters), Some(3));
+        let json = serde_json::to_value(data.export_at(&settings(), NOW_SECS * 1000).0).unwrap();
+        assert_eq!(
+            json["gi_exploration"]["tribalChapters"],
+            serde_json::json!({
+                "1": {"state": "finished", "startedAt": 1_730_000_000},
+                "2": {"state": "finished", "startedAt": 1_760_000_000},
+                "3": {"state": "locked"},
+            })
+        );
+        // An id the table lacks, a repeat, a state past 4, or too few: another
+        // message.
+        for other in [
+            list(vec![
+                chapter(1, 4, None),
+                chapter(2, 4, None),
+                chapter(9, 2, None),
+            ]),
+            list(vec![
+                chapter(1, 4, None),
+                chapter(1, 4, None),
+                chapter(2, 2, None),
+            ]),
+            list(vec![
+                chapter(1, 5, None),
+                chapter(2, 5, None),
+                chapter(3, 2, None),
+            ]),
+            list(vec![chapter(1, 4, None)]),
+        ] {
+            assert_eq!(data.apply_tribal_chapters(&other), None);
+        }
     }
 
     #[test]

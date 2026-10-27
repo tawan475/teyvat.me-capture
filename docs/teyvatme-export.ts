@@ -104,7 +104,7 @@ export interface TeyvatmeExport {
     /** Comfort by realm (HomeWorldModule id): the mansion's and each outdoor block's. */
     comfort?: Record<IdKey, { mansion: number; blocks: number[] }>
   }
-  /** [next] Miliastra Wonderland. */
+  /** [shipped] Miliastra Wonderland. */
   gi_miliastra?: {
     /** Cosmetics owned by id (outfits, effects...): when obtained, 0 when the game sent no time. */
     cosmetics?: Record<IdKey, UnixSeconds | 0>
@@ -244,7 +244,7 @@ export interface GiTasks {
    * (InvestigationMonsterConfigData): one time per spot, ascending; a time already past = up now.
    */
   respawns?: Record<IdKey, UnixSeconds[]>
-  /** [next] Login events' calendars by config id: days signed in, days claimed, last sign-in, open/close. */
+  /** [shipped] Login events' calendars by config id: days signed in, days claimed, last sign-in, open/close. */
   signIns?: Record<IdKey, { days: number; claimed: number[]; lastAt: UnixSeconds; start: UnixSeconds; end: UnixSeconds }>
 }
 
@@ -314,8 +314,14 @@ export interface GiCollections {
   blueprints?: GameId[]
   /** [shipped] Recipes unlocked, ascending: at the crafting bench (Combine), the blacksmith (Forge), processing (Compound). */
   crafting?: { crafting?: GameId[]; forging?: GameId[]; processing?: GameId[] }
-  /** [next] The music game's songs by beatmap id: best score (absent if never played) and reward taken. */
+  /** [shipped] The music game's songs by beatmap id: best score (absent if never played) and reward taken. */
   musicGame?: Record<IdKey, { score?: number; claimed: boolean }>
+  /** [next] Furnishing sets learned (FurnitureSuiteExcelConfigData ids, ascending). */
+  furnishingSets?: GameId[]
+  /** [next] Companions' rewards collected in the Serenitea Pot (HomeWorldEventExcelConfigData ids, ascending). */
+  companionRewards?: GameId[]
+  /** [next] NPCs met (NpcFirstMetExcelConfigData ids, ascending). */
+  npcsMet?: GameId[]
 }
 interface Progress {
   progress: number
@@ -366,6 +372,13 @@ export interface GiExploration {
   explore?: Record<IdKey, number>
   /** Reputation level by city (Mondstadt to Fontaine). */
   reputation?: Record<IdKey, number>
+  /** [next] Domains whose first-clear reward was taken (DungeonEntryExcelConfigData ids, ascending). */
+  domainsCleared?: GameId[]
+  /** [next] Natlan's tribal chapters by TribalQuestChapterExcelConfigData id. */
+  tribalChapters?: Record<
+    IdKey,
+    { state: 'notOpen' | 'locked' | 'open' | 'finished'; /** When it started (absent before). */ startedAt?: UnixSeconds }
+  >
 }
 
 // ── gi_capture ──────────────────────────────────────────────────── [shipped]
