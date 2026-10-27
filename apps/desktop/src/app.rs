@@ -29,7 +29,8 @@ use crate::ui::toast::Toasts;
 
 type AsyncRuntimeHandles = (
     mpsc::UnboundedSender<Message>,
-    mpsc::UnboundedSender<UpdateAnswer>,
+    mpsc::UnboundedSender<UpdateCommand>,
+    watch::Receiver<UpdateStatus>,
     watch::Receiver<AppState>,
     crate::wish_history::WishView,
     crate::activity::Receiver,
@@ -43,7 +44,7 @@ use tray_icon::{TrayIcon, TrayIconBuilder};
 use crate::game_watch::{GameStatus, MissedLaunch};
 use crate::monitor::Monitor;
 use crate::player_data::{ExportCounts, ExportSettings};
-use crate::update::{InstallLock, UpdateAnswer, check_for_app_update};
+use crate::update::{InstallLock, UpdateCommand, UpdateStatus, run_updater};
 use crate::{AppState, DataUpdated, Message, ReloadHandle, TracingLevel};
 
 /// How long a capture backend may take to release its device or ETW session.
@@ -617,9 +618,11 @@ fn uid_mismatch_message(account: &TrackerAccount, captured: u32) -> String {
 
 pub struct TeyvatmeApp {
     ui_message_tx: mpsc::UnboundedSender<Message>,
-    /// Answers to the update prompt only. Keeping these off `ui_message_tx` is
-    /// what stops the update check from eating unrelated startup messages.
-    update_answer_tx: mpsc::UnboundedSender<UpdateAnswer>,
+    /// "Check for updates" and "Update now", to the updater (off
+    /// `ui_message_tx`, so it never eats unrelated messages).
+    update_tx: mpsc::UnboundedSender<UpdateCommand>,
+    /// What the updater knows (Settings › About, the home banner).
+    update_status: watch::Receiver<UpdateStatus>,
     state_rx: watch::Receiver<AppState>,
     /// The wish URL (from the game's key, or its web cache) and the sync.
     wishes: crate::wish_history::WishView,
@@ -645,7 +648,6 @@ pub struct TeyvatmeApp {
     optimizer_save_path: Option<PathBuf>,
     optimizer_export_target: OptimizerExportTarget,
 
-    restarting: bool,
     /// Shared with `main`, which does the relaunch after `run_native` returns
     /// and the single-instance mutex has been released.
     restart_requested: Arc<AtomicBool>,
@@ -744,8 +746,6 @@ pub struct TeyvatmeApp {
     /// Whether this process can capture (Windows: elevated).
     is_admin: bool,
     applied_theme: Option<ThemeChoice>,
-    /// An update the user put off at start, for the main screen's banner and About.
-    update_put_off: Option<String>,
     /// The folder of the last manual save, for "Open export folder".
     last_save_folder: Option<PathBuf>,
     started_at: Instant,
@@ -1079,7 +1079,9 @@ fn start_async_runtime(
 ) -> AsyncRuntimeHandles {
     tracing::info!("starting tokio async");
     let (ui_message_tx, ui_message_rx) = mpsc::unbounded_channel::<Message>();
-    let (update_answer_tx, mut update_answer_rx) = mpsc::unbounded_channel::<UpdateAnswer>();
+    let (update_tx, update_rx) = mpsc::unbounded_channel::<UpdateCommand>();
+    let (update_status_tx, update_status_rx) = watch::channel(UpdateStatus::Idle);
+    let mut repaint_on_update = update_status_rx.clone();
     let (toast_tx, toast_rx) = mpsc::unbounded_channel::<crate::activity::Event>();
 
     let (state_tx, state_rx) = watch::channel(AppState::new());
@@ -1112,19 +1114,21 @@ fn start_async_runtime(
                 }
             });
 
-            // Before starting the monitor, check for updates if not in debug mode
-            tracing::info!("Checking for update");
-            if let Err(e) = check_for_app_update(
-                &state_tx,
-                &mut update_answer_rx,
-                &cancel_token,
-                &toast_tx,
-                &install_lock,
-            )
-            .await
-            {
-                tracing::error!("error checking for update: {e}");
-            }
+            // The updater checks at once and then now and then, in the
+            // background: capture starts without waiting on it.
+            let update_ctx = monitor_ctx.clone();
+            tokio::spawn(async move {
+                while repaint_on_update.changed().await.is_ok() {
+                    update_ctx.request_repaint();
+                }
+            });
+            tokio::spawn(run_updater(
+                update_status_tx,
+                update_rx,
+                cancel_token.clone(),
+                toast_tx.clone(),
+                Arc::clone(&install_lock),
+            ));
 
             // Wish history from the keys; ends with the monitor.
             tokio::spawn(wish_sync.run());
@@ -1156,7 +1160,8 @@ fn start_async_runtime(
     tracing::info!("started tokio");
     (
         ui_message_tx,
-        update_answer_tx,
+        update_tx,
+        update_status_rx,
         state_rx,
         wish_view,
         toast_rx,
@@ -1212,7 +1217,7 @@ impl TeyvatmeApp {
         );
         let auth_status_rx = tracker_auth.status();
 
-        let (ui_message_tx, update_answer_tx, state_rx, wishes, toast_rx, monitor_handle) =
+        let (ui_message_tx, update_tx, update_status, state_rx, wishes, toast_rx, monitor_handle) =
             start_async_runtime(
                 cancel_token.clone(),
                 cc.egui_ctx.clone(),
@@ -1364,7 +1369,8 @@ impl TeyvatmeApp {
         Self {
             saved_state,
             ui_message_tx,
-            update_answer_tx,
+            update_tx,
+            update_status,
             restart_requested,
             tray_menu_ready,
             game_missed_modal_open: false,
@@ -1385,7 +1391,6 @@ impl TeyvatmeApp {
             pending_open_url: None,
             optimizer_save_path: None,
             optimizer_export_target: OptimizerExportTarget::None,
-            restarting: false,
             tracker_account: None,
             tracker_verify_rx,
             tracker_upload_rx: None,
@@ -1419,7 +1424,6 @@ impl TeyvatmeApp {
             last_game_status: GameStatus::default(),
             is_admin: is_admin(),
             applied_theme: None,
-            update_put_off: None,
             last_save_folder: None,
             started_at: Instant::now(),
             monitor_cancel_token: cancel_token,

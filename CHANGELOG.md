@@ -2,6 +2,18 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.10.0
+
+- Desktop: updates like on Android. **Settings → About** shows your version
+  and has **Check for updates**; **Update now** downloads and installs the new
+  version while capture keeps running, then **Restart now** switches to it
+  (or it starts the next time you open Teyvat.me). No more full-screen update
+  prompt at start: the app checks in the background at start and every few
+  hours, and a banner on the home screen says when there's one.
+- Android: the Quick Settings tile lights up while capture runs (and says
+  "Starting capture" while it starts); it used to stay grey until the panel
+  was closed and opened again.
+
 ## 1.9.0
 
 - **Music game**: every song's best score and whether its reward is taken.

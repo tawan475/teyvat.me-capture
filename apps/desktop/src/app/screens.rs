@@ -4,8 +4,6 @@
 //! What comes before the main window (spec §6): the startup states and the
 //! first run, and the dialogs (§7).
 
-use std::sync::atomic::Ordering;
-
 use egui::{Align, Context, Id, Layout, Modal, RichText, Ui};
 
 use super::{Onboarding, TeyvatmeApp, View};
@@ -17,7 +15,6 @@ use crate::ui::widgets::{
     self, ButtonKind, CalloutKind, button, callout, card_frame, divider, list_row, secondary_text,
     small_text, strong_text, switch_row, title_text,
 };
-use crate::update::UpdateAnswer;
 use crate::{ConfirmationType, Message, State};
 
 impl TeyvatmeApp {
@@ -25,60 +22,13 @@ impl TeyvatmeApp {
     pub(super) fn startup_screen(&mut self, ui: &mut Ui, state: &State) {
         let pal = widgets::p(ui);
         centred(ui, |ui| match state {
-            State::Starting | State::CheckingForUpdate => {
+            State::Starting => {
                 ui.add(egui::Spinner::new().size(28.0).color(pal.ac_tx));
-                ui.label(title_text(tr("Checking for updates"), pal.tx));
+                ui.label(title_text(tr("Starting"), pal.tx));
             }
             State::CheckingForData => {
                 ui.add(egui::Spinner::new().size(28.0).color(pal.ac_tx));
                 ui.label(title_text(tr("Checking game data"), pal.tx));
-            }
-            State::WaitingForUpdateConfirmation(version) => {
-                disc(ui, icons::download());
-                ui.label(
-                    RichText::new(trf("Update {0}", &[&version]))
-                        .text_style(style::dialog())
-                        .color(pal.tx),
-                );
-                ui.label(secondary_text(
-                    trf("You have {0}", &[&env!("CARGO_PKG_VERSION")]),
-                    pal.tx2,
-                ));
-                centred_row(ui, |ui| {
-                    if button(ui, ButtonKind::Ghost, None, tr("Not now"), false).clicked() {
-                        self.update_put_off = Some(version.clone());
-                        if let Err(e) = self.update_answer_tx.send(UpdateAnswer::Declined) {
-                            tracing::error!("Unable to send UI message: {e}");
-                        }
-                    }
-                    if button(
-                        ui,
-                        ButtonKind::Fill,
-                        Some(icons::download()),
-                        tr("Install"),
-                        false,
-                    )
-                    .clicked()
-                        && let Err(e) = self.update_answer_tx.send(UpdateAnswer::Accepted)
-                    {
-                        tracing::error!("Unable to send UI message: {e}");
-                    }
-                });
-            }
-            State::Updating => {
-                ui.add(egui::Spinner::new().size(28.0).color(pal.ac_tx));
-                ui.label(title_text(tr("Installing the update"), pal.tx));
-            }
-            State::Updated => {
-                disc(ui, icons::circle_check());
-                ui.label(title_text(tr("Updated · restarting"), pal.tx));
-                if !self.restarting {
-                    self.restarting = true;
-                    // Only ask to close: `main` relaunches once `run_native`
-                    // has returned and the single-instance locks are free.
-                    self.restart_requested.store(true, Ordering::SeqCst);
-                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
-                }
             }
             State::WaitingForDownloadConfirmation(kind) => {
                 disc(ui, icons::database());
@@ -394,24 +344,6 @@ fn centred(ui: &mut Ui, content: impl FnOnce(&mut Ui)) {
         ui.spacing_mut().item_spacing.y = 12.0;
         content(ui);
     });
-}
-
-/// A row of buttons centred under `centred` content. A row's width is known
-/// only once it is drawn, so it is drawn at last pass's width, and a pass
-/// that finds a new one is discarded.
-fn centred_row(ui: &mut Ui, content: impl FnOnce(&mut Ui)) {
-    let id = ui.next_auto_id().with("centred_row");
-    let width = ui.data(|d| d.get_temp::<f32>(id)).unwrap_or(0.0);
-    let row = ui.allocate_ui_with_layout(
-        egui::vec2(width, 0.0),
-        Layout::left_to_right(Align::Center),
-        content,
-    );
-    let used = row.response.rect.width();
-    if (used - width).abs() > 0.5 {
-        ui.data_mut(|d| d.insert_temp(id, used));
-        ui.ctx().request_discard("centred row measured");
-    }
 }
 
 /// `Documents\Teyvat.me`, where first run suggests auto-exports go.

@@ -23,6 +23,7 @@ use crate::ui::widgets::{
     self, ButtonKind, Disc, HeroVariant, Step, button, card, divider, icon_button, line, list_row,
     secondary_text, small_text, strong_text, switch_row, title_text,
 };
+use crate::update::UpdateStatus;
 
 /// How long a tile glows after its class updates.
 const TILE_FLASH: Duration = Duration::from_millis(600);
@@ -65,13 +66,19 @@ impl TeyvatmeApp {
             });
     }
 
-    /// The update put off at start, until installed (from About).
+    /// A newer version found, or installed and waiting for a restart.
     fn update_banner(&mut self, ui: &mut Ui) {
-        let Some(version) = self.update_put_off.clone() else {
-            return;
+        let status = self.update_status.borrow().clone();
+        let (title, ready) = match &status {
+            UpdateStatus::Available(v) | UpdateStatus::Installing(v) => {
+                (trf("Update {0}", &[v]), false)
+            }
+            UpdateStatus::Ready(v) => (trf("{0} installed · restart to use it", &[v]), true),
+            _ => return,
         };
         let pal = widgets::p(ui);
         let mut open = false;
+        let mut restart = false;
         egui::Frame::new()
             .fill(pal.ac_con)
             .corner_radius(egui::CornerRadius::same(12))
@@ -80,16 +87,24 @@ impl TeyvatmeApp {
                 ui.set_width(ui.available_width());
                 ui.horizontal(|ui| {
                     ui.add(icons::image(icons::download(), 18.0, pal.ac_on));
-                    line(ui, strong_text(trf("Update {0}", &[&version]), pal.ac_on));
+                    line(ui, strong_text(title, pal.ac_on));
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        open = button(ui, ButtonKind::Secondary, None, tr("Details"), false)
-                            .on_hover_text(tr("Installs and restarts Teyvat.me"))
-                            .clicked();
+                        if ready {
+                            restart =
+                                button(ui, ButtonKind::Secondary, None, tr("Restart now"), false)
+                                    .clicked();
+                        } else {
+                            open = button(ui, ButtonKind::Secondary, None, tr("Details"), false)
+                                .clicked();
+                        }
                     });
                 });
             });
         if open {
             self.open_settings(Page::About);
+        }
+        if restart {
+            self.restart_to_update(ui);
         }
     }
 
