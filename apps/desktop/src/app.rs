@@ -171,6 +171,17 @@ pub struct SavedAppState {
     /// switch). On by default; needs a sign-in or a verified import key.
     #[serde(default = "default_true")]
     pub send_wishes: bool,
+    /// Settings › App › Notifications: a Windows notification when resin
+    /// reaches `resin_alert_at` (off by default).
+    #[serde(default)]
+    pub resin_alert: bool,
+    #[serde(default = "default_resin_alert_at")]
+    pub resin_alert_at: u32,
+}
+
+/// The resin alert's threshold until one is picked (the user's choice).
+fn default_resin_alert_at() -> u32 {
+    160
 }
 
 /// The theme setting (Settings › App).
@@ -309,6 +320,8 @@ impl Default for SavedAppState {
             theme: ThemeChoice::System,
             language: None,
             send_wishes: true,
+            resin_alert: false,
+            resin_alert_at: default_resin_alert_at(),
         }
     }
 }

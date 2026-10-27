@@ -2,8 +2,14 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
-## 1.14.2
+## 1.15.0
 
+- **Resin alert** (Settings, off by default): one notification when your
+  Original Resin reaches the number you pick (160 to start with), with the
+  time it will be full. It comes from the resin clock of your last capture,
+  also with the game closed: a Windows notification on desktop (while
+  Teyvat.me runs, in the tray too), an Android notification on the phone.
+  A Test button shows one.
 - Windows: in the tray, Teyvat.me no longer keeps one CPU core at 100 %.
   A hidden window never gets the redraws the window library waits for, so
   from the first update after hiding it polled without pause (about 3.5 %

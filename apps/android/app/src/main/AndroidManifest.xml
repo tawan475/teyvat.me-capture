@@ -71,6 +71,11 @@
                 android:value="true" />
         </service>
 
+        <!-- The resin alert's alarm (ResinAlert.kt). -->
+        <receiver
+            android:name=".ResinAlarm"
+            android:exported="false" />
+
         <!-- PackageInstaller's answer about a self-update. -->
         <receiver
             android:name=".InstallResult"

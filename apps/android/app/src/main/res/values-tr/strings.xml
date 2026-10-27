@@ -378,4 +378,11 @@
         <item quantity="other">%s değişiklik</item>
     </plurals>
     <string name="home_done_title">Tarama tamamlandı</string>
+    <string name="resin_alert">Reçine hatırlatıcısı</string>
+    <string name="resin_alert_line">Reçinen bu sayıya ulaşınca bir bildirim</string>
+    <string name="resin_alert_at">Hatırlatma değeri %1$d / %2$d</string>
+    <string name="resin_alert_test">Dene</string>
+    <string name="resin_alert_title">Reçine %1$d/%2$d</string>
+    <string name="resin_alert_full">Reçine dolu</string>
+    <string name="resin_alert_full_at">%s itibarıyla dolu</string>
 </resources>

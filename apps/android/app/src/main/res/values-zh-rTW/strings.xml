@@ -376,4 +376,11 @@
         <item quantity="other">%s 項變更</item>
     </plurals>
     <string name="home_done_title">擷取完成</string>
+    <string name="resin_alert">樹脂提醒</string>
+    <string name="resin_alert_line">樹脂達到此數值時發送通知</string>
+    <string name="resin_alert_at">提醒數值 %1$d / %2$d</string>
+    <string name="resin_alert_test">測試</string>
+    <string name="resin_alert_title">原粹樹脂 %1$d/%2$d</string>
+    <string name="resin_alert_full">原粹樹脂已回滿</string>
+    <string name="resin_alert_full_at">%s 回滿</string>
 </resources>

@@ -376,4 +376,11 @@
         <item quantity="other">변경 %s건</item>
     </plurals>
     <string name="home_done_title">캡처 완료</string>
+    <string name="resin_alert">레진 알림</string>
+    <string name="resin_alert_line">레진이 이 값에 도달하면 알림</string>
+    <string name="resin_alert_at">알림 기준 %1$d / %2$d</string>
+    <string name="resin_alert_test">테스트</string>
+    <string name="resin_alert_title">퓨어 레진 %1$d/%2$d</string>
+    <string name="resin_alert_full">퓨어 레진이 가득 찼습니다</string>
+    <string name="resin_alert_full_at">%s에 가득 참</string>
 </resources>
