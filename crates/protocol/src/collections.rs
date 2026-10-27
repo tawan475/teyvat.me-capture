@@ -682,6 +682,33 @@ pub fn matches_tcg_notify(data: &[u8]) -> Option<TcgCollection> {
     })
 }
 
+/// The copies count's tag: the one varint (besides the id) on nearly every
+/// card, 1 to [`MAX_TCG_COPIES`] wherever it is sent. Nearly, not every: a
+/// card held 0 times comes without it (a player's 7.1 list: 183 of 184), while
+/// the face (1-2) and the proficiency are on few cards.
+fn tcg_count_tag(list: &[Entry], id_tag: u32) -> Option<u32> {
+    let tags: BTreeSet<u32> = list
+        .iter()
+        .flat_map(|e| e.varints.keys().copied())
+        .collect();
+    let found: Vec<u32> = tags
+        .into_iter()
+        .filter(|tag| *tag != id_tag)
+        .filter(|tag| {
+            let values: Vec<u64> = list
+                .iter()
+                .filter_map(|e| e.varints.get(tag).copied())
+                .collect();
+            values.len() * 10 >= list.len() * 9
+                && values.iter().all(|v| (1..=MAX_TCG_COPIES).contains(v))
+        })
+        .collect();
+    match found.as_slice() {
+        [tag] => Some(*tag),
+        _ => None,
+    }
+}
+
 fn tcg_cards(list: &[Entry]) -> Option<BTreeMap<u32, TcgCard>> {
     if list.len() < 2 || list.len() > MAX_TCG_CARDS {
         return None;
@@ -689,9 +716,7 @@ fn tcg_cards(list: &[Entry]) -> Option<BTreeMap<u32, TcgCard>> {
     let id_tag = only_tag(list, &[], |values| {
         all_distinct(values) && values.iter().all(|v| TCG_CARD_IDS.contains(v))
     })?;
-    let count_tag = only_tag(list, &[id_tag], |values| {
-        values.iter().all(|v| (1..=MAX_TCG_COPIES).contains(v))
-    })?;
+    let count_tag = tcg_count_tag(list, id_tag)?;
     // Every other varint: the face (1-2) and the proficiency. The face is
     // there on few cards; the proficiency is the one tag with a value above 2.
     let mut proficiency_tag = None;
@@ -710,6 +735,9 @@ fn tcg_cards(list: &[Entry]) -> Option<BTreeMap<u32, TcgCard>> {
     }
     Some(
         list.iter()
+            // A card with no copies (its count left out, as protobuf leaves
+            // out a 0) is not owned.
+            .filter(|entry| entry.varints.contains_key(&count_tag))
             .map(|entry| {
                 (
                     entry.varints[&id_tag] as u32,
@@ -2070,6 +2098,14 @@ mod tests {
         ]
         .concat();
         let found = matches_tcg_notify(&data).unwrap();
+        // A card held 0 times comes without its count: still the collection,
+        // without that card.
+        let owned: Vec<u8> = (0..9).flat_map(|i| card(332_001 + i, 1, 0)).collect();
+        let unowned = b(6, &v(9, 211_012));
+        let with_unowned = [&data[..], &owned[..], &unowned[..]].concat();
+        let more = matches_tcg_notify(&with_unowned).unwrap();
+        assert_eq!(more.cards.len(), found.cards.len() + 9);
+        assert!(!more.cards.contains_key(&211_012));
         assert_eq!(
             found.cards[&1101],
             TcgCard {
