@@ -2,6 +2,15 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.2.2
+
+- Android: the Quick Settings tile no longer opens Teyvat.me. A tap starts
+  capture in the background, like a VPN app's tile, and opens Genshin;
+  another tap stops capture. Only the very first start still opens the app,
+  because Android asks to allow the VPN there once.
+
+Everything in 1.2.1 and 1.2.0 below still applies.
+
 ## 1.2.1
 
 - Android: a **Quick Settings tile**. Add "Teyvat.me" to your quick settings;
