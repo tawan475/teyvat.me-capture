@@ -1907,6 +1907,145 @@ pub fn matches_sign_in_rsp(data: &[u8]) -> Option<BTreeMap<u32, SignIn>> {
     None
 }
 
+// ------------------------------------------------------------------ profile
+
+/// Text a player typed: valid UTF-8 without control characters (a newline
+/// allowed), so a small message of numbers (the birthday's four bytes are
+/// valid UTF-8) is never taken for one.
+fn player_text(bytes: &[u8]) -> Option<String> {
+    let text = std::str::from_utf8(bytes).ok()?;
+    (!text.chars().any(|c| c.is_control() && c != '\n')).then(|| text.to_string())
+}
+
+/// The in-game nickname from `PlayerDataNotify` (7.1: command 3272, tag 13),
+/// the login message the player properties come from: its one text field
+/// sent once (the property map's entries repeat one tag), 1-64 bytes.
+pub fn player_nickname(data: &[u8]) -> Option<String> {
+    let msg = parse(data)?;
+    let texts: Vec<String> = fields_by_tag(&msg)
+        .values()
+        .filter_map(|values| match values.as_slice() {
+            [LengthDelimited(bytes)] if (1..=64).contains(&bytes.len()) => player_text(bytes),
+            _ => None,
+        })
+        .collect();
+    match texts.as_slice() {
+        [one] => Some(one.clone()),
+        _ => None,
+    }
+}
+
+/// A profile picture as the game sends it; every part optional.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ProfilePicture {
+    /// `ProfilePictureExcelConfigData` id (7.1: 1001...).
+    pub id: Option<u32>,
+    /// A character's icon (10000xxx), older clients' way.
+    pub avatar_id: Option<u32>,
+    pub costume_id: Option<u32>,
+    /// The frame around it (7.1: 100016...).
+    pub frame_id: Option<u32>,
+}
+
+/// One player's profile card (`SocialDetail` in `GetPlayerSocialDetailRsp`,
+/// 7.1: command 25989; the game asks for the player's own at login, and for
+/// others' when their profile is opened).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SocialProfile {
+    pub uid: u32,
+    /// The card's texts by tag: the nickname and, when set, the signature.
+    pub texts: Vec<String>,
+    pub name_card: Option<u32>,
+    pub picture: Option<ProfilePicture>,
+    /// (month, day).
+    pub birthday: Option<(u32, u32)>,
+}
+
+/// Name card item ids (7.1: 210001-210279).
+const NAME_CARD_IDS: RangeInclusive<u64> = 210_001..=210_999;
+
+/// A UID: nine or ten digits.
+const UID_RANGE: RangeInclusive<u64> = 100_000_000..=4_294_967_295;
+
+fn profile_picture(bytes: &[u8]) -> Option<ProfilePicture> {
+    let msg = parse(bytes)?;
+    let mut out = ProfilePicture::default();
+    for values in fields_by_tag(&msg).values() {
+        let value = single_varint(values)?;
+        let slot = match value {
+            1_000..=99_999 => &mut out.id,
+            100_000..=199_999 => &mut out.frame_id,
+            200_000..=999_999 => &mut out.costume_id,
+            10_000_000..=10_999_999 => &mut out.avatar_id,
+            _ => return None,
+        };
+        if slot.replace(value as u32).is_some() {
+            return None;
+        }
+    }
+    (out.id.is_some() || out.avatar_id.is_some()).then_some(out)
+}
+
+fn birthday(bytes: &[u8]) -> Option<(u32, u32)> {
+    let msg = parse(bytes)?;
+    let fields = fields_by_tag(&msg);
+    let [month, day] = fields.values().collect::<Vec<_>>()[..] else {
+        return None;
+    };
+    let (month, day) = (single_varint(month)?, single_varint(day)?);
+    ((1..=12).contains(&month) && (1..=31).contains(&day)).then_some((month as u32, day as u32))
+}
+
+/// Recover a profile card from a `GetPlayerSocialDetailRsp` payload, or `None`
+/// if it is not one: one nested detail (beside at most a retcode) holding
+/// exactly one UID-sized number, at least one text, and a name card id. The
+/// other parts are told apart by value: the birthday is a small message of a
+/// month and a day, the picture one of picture, frame, costume and character
+/// ids.
+pub fn matches_social_detail(data: &[u8]) -> Option<SocialProfile> {
+    let msg = parse(data)?;
+    let mut detail = None;
+    for values in fields_by_tag(&msg).values() {
+        match values.as_slice() {
+            [Varint(_)] => {}
+            [LengthDelimited(bytes)] if detail.is_none() => detail = Some(*bytes),
+            _ => return None,
+        }
+    }
+    let msg = parse(detail?)?;
+    let mut out = SocialProfile::default();
+    let mut uid = None;
+    for values in fields_by_tag(&msg).values() {
+        match values.as_slice() {
+            [Varint(v)] if UID_RANGE.contains(v) => {
+                if uid.replace(*v as u32).is_some() {
+                    return None;
+                }
+            }
+            [Varint(v)] if NAME_CARD_IDS.contains(v) => {
+                if out.name_card.replace(*v as u32).is_some() {
+                    return None;
+                }
+            }
+            [LengthDelimited(bytes)] => {
+                if let Some(text) = player_text(bytes) {
+                    out.texts.push(text);
+                } else if let Some(day) = birthday(bytes) {
+                    out.birthday.get_or_insert(day);
+                } else if let Some(picture) = profile_picture(bytes) {
+                    out.picture.get_or_insert(picture);
+                }
+            }
+            _ => {}
+        }
+    }
+    out.uid = uid?;
+    if out.texts.is_empty() || out.texts.len() > 4 || out.name_card.is_none() {
+        return None;
+    }
+    Some(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2125,6 +2264,68 @@ mod tests {
         assert!(found.decks[&3].valid);
         assert!(found.decks[&1].valid);
         assert_eq!(found.current_deck, Some(3));
+    }
+
+    #[test]
+    fn the_nickname_is_the_one_text_beside_the_properties() {
+        let prop = |id: u64| b(8, &[v(1, id), b(2, &[v(1, id), v(4, 5)].concat())].concat());
+        let data = [
+            prop(10_009),
+            prop(10_010),
+            b(13, b"player01"),
+            v(15, 1_792_000_000),
+        ]
+        .concat();
+        assert_eq!(player_nickname(&data).as_deref(), Some("player01"));
+        // Two texts, or none: not the nickname.
+        let two = [&data[..], &b(14, b"player02")[..]].concat();
+        assert_eq!(player_nickname(&two), None);
+        assert_eq!(player_nickname(&prop(10_009)), None);
+    }
+
+    #[test]
+    fn a_profile_card_is_read_by_value() {
+        let detail = [
+            v(1, 812_345_678),
+            b(2, b"player01"),
+            v(3, 60),
+            b(5, "Hello\nTeyvat".as_bytes()),
+            b(6, &[v(1, 12), v(2, 18)].concat()),
+            v(7, 8),
+            v(14, 210_279),
+            b(22, &[v(1, 10_000_140), v(2, 90)].concat()),
+            b(22, &[v(1, 10_000_143), v(2, 90)].concat()),
+            list(23, &[210_001, 210_279]),
+            b(25, &[v(3, 1001), v(4, 100_016)].concat()),
+        ]
+        .concat();
+        let data = b(6, &detail);
+        let found = matches_social_detail(&data).unwrap();
+        assert_eq!(found.uid, 812_345_678);
+        assert_eq!(found.texts, ["player01", "Hello\nTeyvat"]);
+        assert_eq!(found.birthday, Some((12, 18)));
+        assert_eq!(found.name_card, Some(210_279));
+        assert_eq!(
+            found.picture,
+            Some(ProfilePicture {
+                id: Some(1001),
+                frame_id: Some(100_016),
+                ..Default::default()
+            })
+        );
+        // An older picture: a character in an outfit.
+        let picture = profile_picture(&[v(1, 10_000_046), v(2, 204_601)].concat()).unwrap();
+        assert_eq!(picture.avatar_id, Some(10_000_046));
+        assert_eq!(picture.costume_id, Some(204_601));
+        // A list of details (a friend list) or no name card: another message.
+        assert_eq!(
+            matches_social_detail(&[b(6, &detail), b(6, &detail)].concat()),
+            None
+        );
+        assert_eq!(
+            matches_social_detail(&b(6, &[v(1, 812_345_678), b(2, b"player01")].concat())),
+            None
+        );
     }
 
     #[test]

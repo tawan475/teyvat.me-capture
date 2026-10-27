@@ -181,6 +181,20 @@ export interface GiPlayer {
   maxStamina?: number
   /** The game data dump commit the GOOD keys came from. */
   gameData?: string
+  /** [next] The in-game name. */
+  nickname?: string
+  /** [next] The profile's signature; "" when the player set none. */
+  signature?: string
+  /** [next] The name card on the profile: its item id (210001...; the wardrobe's `namecards`). */
+  nameCard?: GameId
+  /**
+   * [next] The profile picture as the game sends it. 7.1 sends `id`
+   * (ProfilePictureExcelConfigData) and `frameId`; older clients a character
+   * (`avatarId`, 10000xxx) and its outfit (`costumeId`).
+   */
+  profilePicture?: { id?: GameId; avatarId?: GameId; costumeId?: GameId; frameId?: GameId }
+  /** [next] The birthday set on the profile. */
+  birthday?: { month: number; day: number }
 }
 
 // ── gi_characters ──────────────────────────────────────────────── [shipped]

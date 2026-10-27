@@ -2,6 +2,16 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.14.0
+
+- **Your profile**: the in-game nickname, signature, name card, profile
+  picture and birthday, from the profile the game loads at login (the
+  profiles of players you look up are left out). In the log they show as
+  lengths only.
+
+New optional export fields: `gi_player.nickname`, `signature`, `nameCard`,
+`profilePicture` and `birthday`.
+
 ## 1.13.2
 
 - **Genius Invokation TCG**: the card collection and decks are read again

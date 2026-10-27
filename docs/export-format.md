@@ -32,7 +32,7 @@ A tracker also gets two more payloads, typed in the same file:
 |---|---|
 | `gi_achievements` | Achievement ids done. |
 | `gi_achievement_times` | When each was done, for those the game timed. |
-| `gi_player` | Adventure Rank and EXP, World Level, resin at login, Story Keys, stamina, and the UID. |
+| `gi_player` | Adventure Rank and EXP, World Level, resin at login, Story Keys, stamina, and the UID. From the next release also the nickname, signature, name card, profile picture and birthday. |
 | `gi_characters` | Per character: friendship, friendship EXP, when they joined, and EXP into the level. |
 | `gi_anecdotes` | The Travel Accounts book: every anecdote met and its state, areas, reward track, last wish. |
 | `gi_tasks` | What a planner can tick: commissions, the Spiral Abyss, expeditions, realm currency, Welkin Moon, the Epitomized Path, the resin clock, and weekly boss discounts, boss respawns, Adventure Rank rewards claimed, and (next release) login event calendars. |

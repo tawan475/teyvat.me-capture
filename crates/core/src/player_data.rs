@@ -251,6 +251,10 @@ const PROP_WORLD_LEVEL_LIMIT: PlayerProp = PlayerProp {
 };
 /// `PROP_PLAYER_RESIN`, Original Resin: refills can take it past the natural
 /// cap, up to 2000.
+/// The most profile cards kept per login: the account's own and those of
+/// players whose profile was opened.
+const MAX_PROFILES: usize = 8;
+
 const PROP_RESIN: PlayerProp = PlayerProp {
     id: 10020,
     range: 0..=2_000,
@@ -687,6 +691,11 @@ pub struct PlayerData {
     clock_secs: Option<u64>,
     /// A resin clock that came before any resin was held, waiting for it.
     pending_resin: Option<ResinClock>,
+    /// The in-game name, from the login's player data.
+    nickname: Option<String>,
+    /// Profile cards seen this login, the account's own among them (the
+    /// game also sends those of players whose profile is opened).
+    profiles: Vec<teyvatme_protocol::SocialProfile>,
     /// The Radiant Spincrystals in the Serenitea Pot's music list (item ids),
     /// as the game last sent the list.
     spincrystals: Option<Vec<u32>>,
@@ -723,6 +732,8 @@ impl PlayerData {
             game_data_sha: None,
             clock_secs: None,
             pending_resin: None,
+            nickname: None,
+            profiles: Vec::new(),
             spincrystals: None,
             collections: collections::CollectionsState::default(),
             exploration: exploration::ExplorationState::default(),
@@ -758,6 +769,8 @@ impl PlayerData {
         self.anecdotes = None;
         self.routine = Routine::default();
         self.pending_resin = None;
+        self.nickname = None;
+        self.profiles.clear();
         self.spincrystals = None;
         self.collections = collections::CollectionsState::default();
         self.exploration = exploration::ExplorationState::default();
@@ -862,6 +875,33 @@ impl PlayerData {
                 }
             }
         }
+    }
+
+    pub fn set_nickname(&mut self, nickname: String) {
+        self.nickname = Some(nickname);
+    }
+
+    /// Keep a profile card, replacing an earlier one of the same player; at
+    /// most [`MAX_PROFILES`], the newest kept.
+    pub fn process_profile(&mut self, profile: teyvatme_protocol::SocialProfile) {
+        self.profiles.retain(|held| held.uid != profile.uid);
+        if self.profiles.len() >= MAX_PROFILES {
+            self.profiles.remove(0);
+        }
+        self.profiles.push(profile);
+    }
+
+    /// The account's own profile card, and which of its texts is the
+    /// nickname: the one equal to the login's nickname, else the only text.
+    fn own_profile(&self) -> Option<(&teyvatme_protocol::SocialProfile, Option<usize>)> {
+        let uid = self.account_uid()?;
+        let card = self.profiles.iter().find(|card| card.uid == uid)?;
+        let nickname = match &self.nickname {
+            Some(name) => card.texts.iter().position(|text| text == name),
+            None if card.texts.len() == 1 => Some(0),
+            None => None,
+        };
+        Some((card, nickname))
     }
 
     pub fn process_properties(&mut self, new_props: &HashMap<u32, u64>) {
@@ -1454,6 +1494,7 @@ impl PlayerData {
             story_keys: self.plausible_property(&PROP_STORY_KEYS, &mut rejected),
             max_stamina: self.plausible_property(&PROP_MAX_STAMINA, &mut rejected),
             game_data: None,
+            ..self.profile_fields()
         };
         // Nothing about the account is known: say nothing, rather than send a
         // key that only names the game data.
@@ -1465,6 +1506,51 @@ impl PlayerData {
             ..player
         };
         (Some(player), rejected)
+    }
+
+    /// `gi_player`'s profile card fields: the nickname (from the login, or
+    /// the card), and from the account's own card the signature (the other
+    /// text; "" when there is none, unknown when the nickname isn't), the
+    /// name card, the picture and the birthday.
+    fn profile_fields(&self) -> good::GiPlayer {
+        let own = self.own_profile();
+        let nickname = self.nickname.clone().or_else(|| {
+            let (card, at) = own?;
+            card.texts.get(at?).cloned()
+        });
+        let signature = own.and_then(|(card, at)| {
+            let at = at?;
+            let others: Vec<&String> = card
+                .texts
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| *i != at)
+                .map(|(_, t)| t)
+                .collect();
+            match others.as_slice() {
+                [] => Some(String::new()),
+                [one] => Some((*one).clone()),
+                _ => None,
+            }
+        });
+        let card = own.map(|(card, _)| card);
+        good::GiPlayer {
+            nickname,
+            signature,
+            name_card: card.and_then(|card| card.name_card),
+            profile_picture: card.and_then(|card| card.picture).map(|picture| {
+                good::GiProfilePicture {
+                    id: picture.id,
+                    avatar_id: picture.avatar_id,
+                    costume_id: picture.costume_id,
+                    frame_id: picture.frame_id,
+                }
+            }),
+            birthday: card
+                .and_then(|card| card.birthday)
+                .map(|(month, day)| good::GiBirthday { month, day }),
+            ..Default::default()
+        }
     }
 
     /// What the captured data says about the account: `gi_player`.
@@ -1604,7 +1690,20 @@ impl PlayerData {
                 "player properties outside their plausible range were left out of gi_player"
             );
         }
-        tracing::info!(?gi_player, "account values for this export");
+        // The name and the signature are the player's own text: their
+        // lengths only, so a shared log doesn't carry them.
+        let logged = gi_player.as_ref().map(|player| good::GiPlayer {
+            nickname: player
+                .nickname
+                .as_ref()
+                .map(|n| format!("<{} chars>", n.chars().count())),
+            signature: player
+                .signature
+                .as_ref()
+                .map(|s| format!("<{} chars>", s.chars().count())),
+            ..player.clone()
+        });
+        tracing::info!(gi_player = ?logged, "account values for this export");
         let uid_check = self.uid_check();
         match uid_check.uid {
             Some(uid) => tracing::info!(
@@ -2986,6 +3085,11 @@ mod tests {
                 story_keys: Some(3),
                 max_stamina: Some(24_000),
                 game_data: Some("792978e5".to_string()),
+                nickname: None,
+                signature: None,
+                name_card: None,
+                profile_picture: None,
+                birthday: None,
             })
         );
     }
@@ -4096,6 +4200,51 @@ mod tests {
         ] {
             assert_eq!(data.apply_tribal_chapters(&other), None);
         }
+    }
+
+    #[test]
+    fn the_profile_card_is_the_accounts_own() {
+        use teyvatme_protocol::{ProfilePicture, SocialProfile};
+        let mut data = player_data();
+        // The account UID is the item guids' top half.
+        let mora = || material_item(104003, minted_guid(812_345_678, 1), 12);
+        data.process_items(&[mora()]);
+        let card = |uid: u32, texts: &[&str]| SocialProfile {
+            uid,
+            texts: texts.iter().map(|t| t.to_string()).collect(),
+            name_card: Some(210_001),
+            picture: Some(ProfilePicture {
+                id: Some(1001),
+                frame_id: Some(100_016),
+                ..Default::default()
+            }),
+            birthday: Some((1, 2)),
+        };
+        let player = |data: &PlayerData| {
+            serde_json::to_value(data.export_at(&settings(), NOW_SECS * 1000).0).unwrap()["gi_player"].clone()
+        };
+        data.set_nickname("player01".to_string());
+        // Another player's card (opened from the friend list) is not ours.
+        data.process_profile(card(811_111_111, &["player02", "Hi"]));
+        assert_eq!(player(&data)["nickname"], "player01");
+        assert!(player(&data).get("nameCard").is_none());
+        // Ours: the text that isn't the nickname is the signature.
+        data.process_profile(card(812_345_678, &["Hello", "player01"]));
+        let ours = player(&data);
+        assert_eq!(ours["signature"], "Hello");
+        assert_eq!(ours["nameCard"], 210_001);
+        assert_eq!(
+            ours["profilePicture"],
+            serde_json::json!({"id": 1001, "frameId": 100_016})
+        );
+        assert_eq!(ours["birthday"], serde_json::json!({"month": 1, "day": 2}));
+        // Only the nickname on the card: no signature set.
+        data.process_profile(card(812_345_678, &["player01"]));
+        assert_eq!(player(&data)["signature"], "");
+        // A new login forgets them.
+        data.reset();
+        data.process_items(&[mora()]);
+        assert!(player(&data).get("nickname").is_none());
     }
 
     #[test]

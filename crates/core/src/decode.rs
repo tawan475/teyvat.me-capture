@@ -17,7 +17,8 @@ use std::time::{Duration, Instant};
 
 use teyvatme_protocol::{
     CommandMatch, GameCommand, GamePacket, GameSniffer, KeyState, avatar_wardrobe,
-    classify_command, classify_union, flat_message, matches_records_message, union_commands,
+    classify_command, classify_union, flat_message, matches_records_message, player_nickname,
+    union_commands,
 };
 use tokio::sync::mpsc;
 
@@ -153,6 +154,8 @@ impl DataReplacement {
                     CommandMatch::DeletedItems(_)
                         | CommandMatch::ChangedItems(_)
                         | CommandMatch::PropertyUpdate(_)
+                        | CommandMatch::Nickname(_)
+                        | CommandMatch::Profile(_)
                         | CommandMatch::Flat(_)
                         | CommandMatch::ResinClock(_)
                         | CommandMatch::Records(_)
@@ -242,6 +245,11 @@ pub fn classify_commands(commands: &[GameCommand]) -> Vec<(u16, CommandMatch)> {
                     .chain(avatar_wardrobe(&command.proto_data).map(CommandMatch::Wardrobe))
                     .map(|found| (command.command_id, found))
                     .collect(),
+                // The login's player data also holds the nickname.
+                Some(found @ CommandMatch::Properties(_)) => std::iter::once(found)
+                    .chain(player_nickname(&command.proto_data).map(CommandMatch::Nickname))
+                    .map(|found| (command.command_id, found))
+                    .collect(),
                 Some(found) => vec![(command.command_id, found)],
                 None if union_commands(command).is_some() => classify_union(command),
                 // Both readings: a lone packed list (the Serenitea Pot's
@@ -285,6 +293,22 @@ pub fn apply_commands(
             CommandMatch::PropertyUpdate(properties) => {
                 tracing::info!("Found property update: {:?}", properties);
                 player_data.process_properties(&properties);
+                applied.properties = true;
+            }
+            CommandMatch::Nickname(nickname) => {
+                tracing::info!(chars = nickname.chars().count(), "Found the nickname");
+                player_data.set_nickname(nickname);
+                applied.properties = true;
+            }
+            CommandMatch::Profile(profile) => {
+                tracing::info!(
+                    texts = profile.texts.len(),
+                    name_card = ?profile.name_card,
+                    birthday = profile.birthday.is_some(),
+                    picture = profile.picture.is_some(),
+                    "Found a profile card"
+                );
+                player_data.process_profile(profile);
                 applied.properties = true;
             }
             CommandMatch::Flat(flat) => {

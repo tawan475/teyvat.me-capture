@@ -79,13 +79,14 @@ pub use crate::anecdotes::{
 pub use crate::collections::{
     AranaraState, ArchiveTab, AvatarWardrobe, BossList, DefeatCount, EndingState, EventInfo,
     EventWatcher, GLIDER_IDS, Handbook, HandbookProgress, HandbookState, HandbookTarget,
-    HangoutChapter, HomeComfort, MusicSong, OUTFIT_IDS, SavedTeam, SignIn, TRAIL_IDS, TcgCard,
-    TcgChallenges, TcgCollection, TcgDeck, WeaponSkin, WeeklyDiscounts, avatar_wardrobe,
-    matches_activity_info_rsp, matches_aranara_notify, matches_beyond_cosmetic_notify,
-    matches_codex_kill_count, matches_codex_notify, matches_coop_notify,
-    matches_home_comfort_notify, matches_investigation_monster_rsp, matches_investigation_notify,
-    matches_music_game_notify, matches_sign_in_rsp, matches_tcg_challenges, matches_tcg_notify,
-    matches_tcg_tavern, matches_weapon_skin_notify,
+    HangoutChapter, HomeComfort, MusicSong, OUTFIT_IDS, ProfilePicture, SavedTeam, SignIn,
+    SocialProfile, TRAIL_IDS, TcgCard, TcgChallenges, TcgCollection, TcgDeck, WeaponSkin,
+    WeeklyDiscounts, avatar_wardrobe, matches_activity_info_rsp, matches_aranara_notify,
+    matches_beyond_cosmetic_notify, matches_codex_kill_count, matches_codex_notify,
+    matches_coop_notify, matches_home_comfort_notify, matches_investigation_monster_rsp,
+    matches_investigation_notify, matches_music_game_notify, matches_sign_in_rsp,
+    matches_social_detail, matches_tcg_challenges, matches_tcg_notify, matches_tcg_tavern,
+    matches_weapon_skin_notify, player_nickname,
 };
 use crate::connection::parse_frame;
 use crate::crypto::{bruteforce, decrypt_command, guess, lookup_initial_key};
@@ -1547,6 +1548,12 @@ pub enum CommandMatch {
     Handbook(Handbook),
     /// Genius Invokation TCG cards and decks: see [`matches_tcg_notify`].
     Tcg(TcgCollection),
+    /// The in-game nickname, from the login message the properties come
+    /// from (`decode::classify_commands` reads it beside them).
+    Nickname(String),
+    /// A player's profile card: the account's own at login, others' when
+    /// their profile is opened (the UID tells).
+    Profile(SocialProfile),
     /// Aranara collections: see [`matches_aranara_notify`].
     Aranara(BTreeMap<u32, BTreeMap<u32, AranaraState>>),
     /// Weapon skins held: see [`matches_weapon_skin_notify`].
@@ -1614,6 +1621,8 @@ impl CommandMatch {
             Self::Defeats(_) => "defeats",
             Self::Handbook(_) => "handbook",
             Self::Tcg(_) => "tcg",
+            Self::Nickname(_) => "nickname",
+            Self::Profile(_) => "profile",
             Self::Aranara(_) => "aranara",
             Self::WeaponSkins(_) => "weapon skins",
             Self::Wardrobe(_) => "wardrobe",
@@ -1801,6 +1810,9 @@ pub fn classify_command(game_command: &GameCommand) -> Option<CommandMatch> {
     }
     if let Some(tcg) = matches_tcg_notify(&game_command.proto_data) {
         claims.push(CommandMatch::Tcg(tcg));
+    }
+    if let Some(profile) = matches_social_detail(&game_command.proto_data) {
+        claims.push(CommandMatch::Profile(profile));
     }
     if let Some(aranara) = matches_aranara_notify(&game_command.proto_data) {
         claims.push(CommandMatch::Aranara(aranara));
