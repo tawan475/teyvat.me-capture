@@ -57,6 +57,10 @@ EXCEL = [
     # Told apart by their ids: recipes (CookDataNotify has shape twins) and Aranara collections.
     "CookRecipeExcelConfigData",
     "AranaraCollectionExcelConfigData",
+    # The crafting, forging and processing unlock lists are lone id lists: told apart by these ids.
+    "CombineExcelConfigData",
+    "ForgeExcelConfigData",
+    "CompoundExcelConfigData",
 ]
 TEXT_MAP = "TextMap/TextMap_MediumEN.json"
 WORLD_AREAS = "ExcelBinOutput/WorldAreaConfigData.json"

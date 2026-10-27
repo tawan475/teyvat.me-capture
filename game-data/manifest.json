@@ -1,8 +1,8 @@
 {
-  "id": "1fb107ab66d53d54826a099fa85fb4201fdecf3f",
+  "id": "9db06f3324ef052fac20e75bb0f8b7ea389d2a0a",
   "client": "ClientWin7.1.0_R48652077_S48511369_D48533839",
   "gameVersion": "7.1.0",
-  "release": "client-7.1.0-1fb107ab",
+  "release": "client-7.1.0-9db06f33",
   "files": {
     "BinOutput/Scene/Point/scene100_point.json": "7729f92e3deba4a150557257761299cd744de2db5d14a52405a57b9dd7adce16",
     "BinOutput/Scene/Point/scene101_point.json": "5e608bbd7df57e3b4d46f43d5fe508dd14ce401e061e386ab228523e3dbea970",
@@ -22,9 +22,12 @@
     "ExcelBinOutput/AvatarSkillDepotExcelConfigData.json": "bdaf9a832ebfee3fa85f60ee8c09a0af77f1b257018d5f802324a9700eb731c2",
     "ExcelBinOutput/AvatarSkillExcelConfigData.json": "707a22c9c087db478e4ca45a42ac1d3b7a3943f2055ee253b24e7c0445b3bfa1",
     "ExcelBinOutput/CityConfigData.json": "dcc871514e681e724efe1f5521f5ee82072b70576f8aed0d1db5ca3f51aaceab",
+    "ExcelBinOutput/CombineExcelConfigData.json": "b5a1c096e97374528f4053153e24bf560c84256d915bcaa58a7be57969ecdcbc",
+    "ExcelBinOutput/CompoundExcelConfigData.json": "02e4c529f1367310969f5035007d6da43ae713e8985be4a16898a35dee7200f5",
     "ExcelBinOutput/ConstValueExcelConfigData.json": "a96d4a071654e0d2bfd07c5e13ab29a8b3660e7eb16f31aee629386b15cf92f4",
     "ExcelBinOutput/CookRecipeExcelConfigData.json": "0647a64ead5447f873dcd42ccd452033d4e966e1e885d36c671760deb47c1377",
     "ExcelBinOutput/EquipAffixExcelConfigData.json": "b3b9bbf8311fe88017aabdc94a83a03f1d453936e73793aa4920531145ab7558",
+    "ExcelBinOutput/ForgeExcelConfigData.json": "4d73c9a646a43e508958a2f1bb4d068d89b51de0ebdbc6d689c955e743a5f449",
     "ExcelBinOutput/MaterialExcelConfigData.json": "56571224e4dee8431fa7a015f2ad4415515b7d81cac4e2b0d94d82f510aaf152",
     "ExcelBinOutput/OfferingOpenStateConfigData.json": "34c0880e55500f875a60b70ab9ceb86a29e46afd6c7a76cf3505f68183c69016",
     "ExcelBinOutput/ReliquaryAffixExcelConfigData.json": "abbfcbf9b8825116378d1e04926379a4eda2ce735652b1557ca36377e3c22bfe",
@@ -34,6 +37,6 @@
     "ExcelBinOutput/ReputationCityExcelConfigData.json": "fd214aa13d2da508cb7a9051fc47551b3e8a209b1d9adb08d260a22ddaae230b",
     "ExcelBinOutput/WeaponExcelConfigData.json": "dfaee6f6eb5ca9b389e66173c52ff71404de1600d32553af8d622fc7ef3d9841",
     "ExcelBinOutput/WorldAreaConfigData.json": "b652de7c6878772b159aff6ada63c64c343ee76eba923f6ae73a5eb9b1760f4d",
-    "TextMap/TextMap_MediumEN.json": "36a9ebfb30a55df6432fadc298317abe71fffc070d6fcec967f033ec7aabb94c"
+    "TextMap/TextMap_MediumEN.json": "f7397631d73020968ec1a0e71f6c48c4cbb8b08b64f27954ec66964ddfb033e3"
   }
 }

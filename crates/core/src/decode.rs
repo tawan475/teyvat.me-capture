@@ -373,6 +373,21 @@ pub fn apply_commands(
                 player_data.process_collection(CollectionPart::WeaponSkins(found));
                 applied.routine = true;
             }
+            CommandMatch::Events(found) => {
+                tracing::info!(count = found.len(), "Found the events running");
+                player_data.process_collection(CollectionPart::Events(found));
+                applied.routine = true;
+            }
+            CommandMatch::Bosses(found) => {
+                tracing::info!(count = found.respawns.len(), "Found the bosses' respawns");
+                player_data.process_routine(RoutinePart::Bosses(found));
+                applied.routine = true;
+            }
+            CommandMatch::Hangouts(found) => {
+                tracing::info!(chapters = found.len(), "Found the Hangout Events");
+                player_data.process_collection(CollectionPart::Hangouts(found));
+                applied.routine = true;
+            }
             CommandMatch::Wardrobe(found) => {
                 tracing::info!("Found the wardrobe");
                 player_data.process_collection(CollectionPart::Wardrobe(found));
@@ -385,6 +400,9 @@ pub fn apply_commands(
                     applied.routine = true;
                 } else if let Some(count) = player_data.apply_recipes(&records) {
                     tracing::info!(count, "Found the recipes");
+                    applied.routine = true;
+                } else if let Some(list) = player_data.apply_lone_list(&records) {
+                    tracing::info!(?list, "Found a lone list");
                     applied.routine = true;
                 } else if let Some(part) = player_data.apply_exploration(&records) {
                     tracing::info!(?part, "Found exploration");

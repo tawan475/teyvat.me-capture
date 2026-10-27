@@ -143,6 +143,9 @@ pub struct Achievement {
     pub id: u32,
     pub status: u32,
     pub finish_timestamp: Option<u32>,
+    /// `(current, total)` progress, when the list's progress fields could be
+    /// told apart.
+    pub progress: Option<(u32, u32)>,
 }
 
 /// Why a payload was not accepted as an `AchievementAllDataNotify`.
@@ -349,6 +352,47 @@ struct AchievementTags {
     id: u32,
     status: u32,
     finish_timestamp: u32,
+    /// `(current, total)`: see [`progress_tags`].
+    progress: Option<(Option<u32>, u32)>,
+}
+
+/// The progress fields among the tags left once id, status and time are
+/// known: the total is the one on every entry; the current count, left off at
+/// 0, is the one other. `None` when the rest does not read that way.
+fn progress_tags(entries: &[Entry], known: [u32; 3]) -> Option<(Option<u32>, u32)> {
+    let common = tags_present_in_every_entry(entries);
+    let rest: Vec<u32> = all_tags(entries)
+        .into_iter()
+        .filter(|tag| !known.contains(tag))
+        .collect();
+    let totals: Vec<u32> = rest
+        .iter()
+        .copied()
+        .filter(|tag| common.contains(tag))
+        .collect();
+    let [total] = totals.as_slice() else {
+        return None;
+    };
+    let current = match rest
+        .iter()
+        .copied()
+        .filter(|tag| tag != total)
+        .collect::<Vec<_>>()
+        .as_slice()
+    {
+        [] => None,
+        [current] => Some(*current),
+        _ => return None,
+    };
+    let fits = entries.iter().all(|entry| {
+        let total = entry.get(total).copied().unwrap_or(0);
+        let current = current
+            .and_then(|tag| entry.get(&tag).copied())
+            .unwrap_or(0);
+        // A finished achievement's count may run past its total.
+        current <= u64::from(u32::MAX) && total <= u64::from(u32::MAX)
+    });
+    fits.then_some((current, *total))
 }
 
 fn tags_present_in_every_entry(entries: &[Entry]) -> BTreeSet<u32> {
@@ -562,6 +606,7 @@ fn identify_achievement_tags(entries: &[Entry]) -> Option<AchievementTags> {
         id,
         status,
         finish_timestamp,
+        progress: progress_tags(entries, [id, status, finish_timestamp]),
     })
 }
 
@@ -582,6 +627,14 @@ fn collect_achievements(entries: &[Entry], tags: &AchievementTags) -> Vec<Achiev
             finish_timestamp: entry
                 .get(&tags.finish_timestamp)
                 .and_then(|&v| u32::try_from(v).ok()),
+            progress: tags.progress.map(|(current, total)| {
+                let read = |tag: Option<u32>| {
+                    tag.and_then(|tag| entry.get(&tag))
+                        .and_then(|&v| u32::try_from(v).ok())
+                        .unwrap_or(0)
+                };
+                (read(current), read(Some(total)))
+            }),
         });
     }
     if skipped != 0 {

@@ -14,9 +14,9 @@ use teyvatme_game_data::{AnimeGameData, Property, SkillType};
 pub use teyvatme_protocol::Achievement;
 pub use teyvatme_protocol::r#gen::protos::{AvatarInfo, Item, PropValue};
 use teyvatme_protocol::{
-    ANECDOTE_AREA_IDS, ANECDOTE_IDS, AbyssPeriod, AnecdoteData, DailyCommissions, EpitomizedPath,
-    Expedition, HomeResources, MAX_ANECDOTE_FINISH_COUNT, MAX_ANECDOTE_STATE, MAX_ANECDOTES,
-    RecordsMessage, ResinClock,
+    ANECDOTE_AREA_IDS, ANECDOTE_IDS, AbyssPeriod, AnecdoteData, BossList, DailyCommissions,
+    EpitomizedPath, Expedition, HomeResources, MAX_ANECDOTE_FINISH_COUNT, MAX_ANECDOTE_STATE,
+    MAX_ANECDOTES, RecordsMessage, ResinClock,
 };
 
 use crate::good::{self, fake_uninitialized_4th_line};
@@ -24,7 +24,7 @@ use crate::good::{self, fake_uninitialized_4th_line};
 mod avatar_change;
 mod collections;
 
-pub use collections::CollectionPart;
+pub use collections::{CollectionPart, LoneList};
 mod exploration;
 
 pub use exploration::ExplorationPart;
@@ -630,6 +630,8 @@ pub enum RoutinePart {
     WishPath(EpitomizedPath),
     /// A resin clock candidate; kept only beside the resin held.
     Resin(ResinClock),
+    /// The bosses' respawns and the weekly discounts.
+    Bosses(BossList),
 }
 
 /// The planner's routine as captured: each part `None` until its message
@@ -644,6 +646,7 @@ struct Routine {
     wish_path: Option<EpitomizedPath>,
     /// (resin, unix time of the next one).
     resin: Option<(u32, u32)>,
+    bosses: Option<BossList>,
 }
 
 pub struct PlayerData {
@@ -835,6 +838,7 @@ impl PlayerData {
             RoutinePart::Home(found) => self.routine.home = Some(found),
             RoutinePart::Welkin(days) => self.routine.welkin = Some(days),
             RoutinePart::WishPath(found) => self.routine.wish_path = Some(found),
+            RoutinePart::Bosses(found) => self.routine.bosses = Some(found),
             RoutinePart::Resin(clock) => {
                 // A three-number shape a dozen messages share: believed only
                 // when its time is the next resin's, at most 8 minutes from
@@ -1051,6 +1055,21 @@ impl PlayerData {
         times
     }
 
+    /// `gi_achievement_progress`: how far each unfinished achievement is, for
+    /// those with a total; `None` when no progress was captured.
+    fn export_achievement_progress(&self) -> Option<BTreeMap<u32, good::GiAchievementProgress>> {
+        let out: BTreeMap<u32, good::GiAchievementProgress> = self
+            .achievements
+            .values()
+            .filter(|ach| !achievement_completed(ach))
+            .filter_map(|ach| {
+                let (progress, total) = ach.progress?;
+                (total > 0).then_some((ach.id, good::GiAchievementProgress { progress, total }))
+            })
+            .collect();
+        (!out.is_empty()).then_some(out)
+    }
+
     /// `gi_anecdotes`, per the tracker contract (`GI_ANECDOTES.md`), or `None`
     /// when the book was not captured.
     ///
@@ -1209,6 +1228,7 @@ impl PlayerData {
                 )
             })
             .map(|(value, next_at)| good::GiResin { value, next_at });
+        let bosses = routine.bosses.as_ref();
         let tasks = good::GiTasks {
             commissions,
             abyss,
@@ -1217,6 +1237,14 @@ impl PlayerData {
             welkin,
             wish_path,
             resin,
+            weekly_bosses: bosses.and_then(|b| b.weekly).map(|w| good::GiWeeklyBosses {
+                left: w.left,
+                limit: w.limit,
+                cost: w.cost,
+                full_cost: w.full_cost,
+            }),
+            ar_rewards: self.collections.ar_rewards.clone(),
+            respawns: bosses.map(|b| b.respawns.clone()),
         };
         (!tasks.is_empty()).then_some(tasks)
     }
@@ -1608,6 +1636,8 @@ impl PlayerData {
             // Omitted when nothing of it was captured, like the keys above.
             gi_tasks: self.export_tasks(now_ms / 1000),
             gi_collections: self.export_collections(),
+            gi_achievement_progress: self.export_achievement_progress(),
+            gi_events: self.export_events(),
             gi_wardrobe: self.export_wardrobe(),
             gi_exploration: self.export_exploration(),
         };
@@ -3150,6 +3180,7 @@ mod tests {
             id: 80014,
             status: 3,
             finish_timestamp: extras.then_some(1_650_000_000),
+            progress: None,
         }]);
 
         if extras {
@@ -3751,6 +3782,17 @@ mod tests {
             1,
             BTreeMap::from([(1, AranaraState::Finished)]),
         )])));
+        data.process_collection(CollectionPart::Hangouts(BTreeMap::from([(
+            101_401,
+            teyvatme_protocol::HangoutChapter {
+                state: Some(3),
+                endings: BTreeMap::from([
+                    (10_140_101, teyvatme_protocol::EndingState::Claimed),
+                    (10_140_102, teyvatme_protocol::EndingState::Locked),
+                ]),
+                pictures: BTreeMap::from([(10_140_101, true), (10_140_102, false)]),
+            },
+        )])));
         data.process_collection(CollectionPart::Tcg(TcgCollection {
             cards: BTreeMap::from([
                 (
@@ -3795,6 +3837,12 @@ mod tests {
                     "decks": {"3": {"name": "Mono Pyro", "characters": [1101], "cards": [211_011], "valid": true}},
                     "currentDeck": 3,
                 },
+                "hangouts": {"101401": {
+                    "state": "accepted",
+                    "endings": {"10140101": "claimed", "10140102": "locked"},
+                    "pictures": [10_140_101],
+                    "picturesTotal": 2,
+                }},
             })
         );
         assert!(json.as_object().unwrap().get("gi_wardrobe").is_none());
@@ -4020,6 +4068,7 @@ mod tests {
 
     fn achievement(id: u32, status: u32, finish_timestamp: Option<u32>) -> Achievement {
         Achievement {
+            progress: None,
             id,
             status,
             finish_timestamp,

@@ -81,8 +81,24 @@ export interface TeyvatmeExport {
   gi_collections?: GiCollections
   /** [shipped] What the characters own and wear, and the saved teams. */
   gi_wardrobe?: GiWardrobe
-  /** [next] Exploration: Statues, offerings, map points, exploration, reputation. */
+  /** [shipped] Exploration: Statues, offerings, map points, exploration, reputation. */
   gi_exploration?: GiExploration
+  /** [next] How far each unfinished achievement is, by achievement id (those with a total). */
+  gi_achievement_progress?: Record<IdKey, { progress: number; total: number }>
+  /**
+   * [next] The events running when the game was asked (right after login), by event id
+   * (NewActivityExcelConfigData): this run's schedule id, when it opened and closes, and
+   * its progress counters by watcher id (absent when it has none).
+   */
+  gi_events?: Record<
+    IdKey,
+    {
+      schedule: GameId
+      start: UnixSeconds
+      end: UnixSeconds
+      progress?: Record<IdKey, { progress: number; total: number; claimed: boolean }>
+    }
+  >
 }
 
 // ── GOOD's own shapes ─────────────────────────────────────────────── [GOOD]
@@ -209,6 +225,15 @@ export interface GiTasks {
   wishPath?: { weapon: GoodKey; points: number; max: number }
   /** [shipped] Original Resin and when the next comes (one per 8 minutes; absent at 200+). */
   resin?: { value: number; nextAt: UnixSeconds }
+  /** [next] The weekly bosses' resin discounts: left this week of `limit`; what one costs now and without it. */
+  weeklyBosses?: { left: number; limit: number; cost: number; fullCost: number }
+  /** [next] Adventure Ranks whose reward was claimed (2-60, ascending). */
+  arRewards?: number[]
+  /**
+   * [next] When each boss and elite of the Adventurer Handbook respawns, by its Handbook id
+   * (InvestigationMonsterConfigData): one time per spot, ascending; a time already past = up now.
+   */
+  respawns?: Record<IdKey, UnixSeconds[]>
 }
 
 // ── gi_collections ─────────────────────────────────────── [shipped] / [next]
@@ -252,6 +277,23 @@ export interface GiCollections {
   }
   /** [shipped] Every recipe unlocked → its proficiency (0 when none yet; the most is in the game data). */
   recipes?: Record<IdKey, number>
+  /** [next] Hangout Events by chapter (101401 = the first). */
+  hangouts?: Record<
+    IdKey,
+    {
+      /** Absent when it couldn't be read. */
+      state?: 'closed' | 'locked' | 'open' | 'accepted'
+      /** By ending (= its reward id): not seen, seen with its reward waiting, or claimed. */
+      endings: Record<IdKey, 'locked' | 'unclaimed' | 'claimed'>
+      /** Pictures unlocked, ascending, of `picturesTotal`. */
+      pictures: GameId[]
+      picturesTotal: number
+    }
+  >
+  /** [next] Every monster seen (monster ids, ascending; more than the Archive's Living Beings). */
+  monstersSeen?: GameId[]
+  /** [next] Furnishing blueprints learned: the furnishings' item ids, ascending. */
+  blueprints?: GameId[]
 }
 interface Progress {
   progress: number
@@ -284,7 +326,7 @@ interface Wardrobe {
 /** A character key, the way GOOD's weapon `location` has it: "Traveler" for any Traveler. */
 type WornBy = string
 
-// ── gi_exploration ─────────────────────────────────────────────────── [next]
+// ── gi_exploration ──────────────────────────────────────────────── [shipped]
 // Every part is the game's state at login (or right after it); absent when not captured.
 
 export interface GiExploration {

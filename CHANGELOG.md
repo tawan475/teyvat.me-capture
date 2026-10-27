@@ -2,6 +2,24 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.7.0
+
+More of your account, all from what the game sends at login:
+
+- **Hangout Events**: each chapter's endings (seen, reward waiting, claimed)
+  and pictures unlocked.
+- **Weekly bosses**: discounts left this week, and when every boss and elite
+  respawns.
+- **Achievement progress** on the achievements you haven't finished.
+- **Monsters seen**, **furnishing blueprints** learned, and the **Adventure
+  Rank rewards** you've claimed.
+- **Events**: the events running, when each closes, and your progress
+  counters in them.
+
+New optional export parts: `gi_collections.hangouts`, `.monstersSeen`,
+`.blueprints`; `gi_tasks.weeklyBosses`, `.respawns`, `.arRewards`; and new
+`gi_achievement_progress` and `gi_events` keys.
+
 ## 1.6.0
 
 - Captures your **exploration**: Statue of The Seven levels (and Oculi toward

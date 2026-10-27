@@ -9,8 +9,8 @@
 use std::collections::BTreeMap;
 
 use teyvatme_protocol::{
-    AranaraState, ArchiveTab, AvatarWardrobe, DefeatCount, Handbook, HandbookProgress,
-    HandbookState, RecordsMessage, TcgCollection, WeaponSkin,
+    AranaraState, ArchiveTab, AvatarWardrobe, DefeatCount, EndingState, EventInfo, Handbook,
+    HandbookProgress, HandbookState, HangoutChapter, RecordsMessage, TcgCollection, WeaponSkin,
 };
 
 use super::PlayerData;
@@ -28,6 +28,28 @@ pub(super) struct CollectionsState {
     pub wardrobe: Option<AvatarWardrobe>,
     /// Unlocked recipes → proficiency (0 when none yet).
     pub recipes: Option<BTreeMap<u32, u32>>,
+    pub hangouts: Option<BTreeMap<u32, HangoutChapter>>,
+    pub monsters_seen: Option<Vec<u32>>,
+    pub blueprints: Option<Vec<u32>>,
+    pub ar_rewards: Option<Vec<u32>>,
+    pub events: Option<BTreeMap<u32, EventInfo>>,
+}
+
+/// Monster ids (7.1: 20 010 101-84 803 091).
+const MONSTER_IDS: std::ops::RangeInclusive<u64> = 20_000_000..=99_999_999;
+
+/// Furnishing ids, the blueprint list's (7.1: 360 101-374 823).
+const FURNISHING_IDS: std::ops::RangeInclusive<u64> = 360_000..=379_999;
+
+/// Adventure Ranks with a reward: AR 1 has none.
+const AR_REWARD_LEVELS: std::ops::RangeInclusive<u64> = 2..=60;
+
+/// Which lone list a records message was.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LoneList {
+    MonstersSeen,
+    Blueprints,
+    ArRewards,
 }
 
 /// The fewest recipes believed (every account starts with a few).
@@ -46,6 +68,8 @@ pub enum CollectionPart {
     Aranara(BTreeMap<u32, BTreeMap<u32, AranaraState>>),
     WeaponSkins(Vec<WeaponSkin>),
     Wardrobe(AvatarWardrobe),
+    Hangouts(BTreeMap<u32, HangoutChapter>),
+    Events(BTreeMap<u32, EventInfo>),
 }
 
 fn tab_key(tab: ArchiveTab) -> &'static str {
@@ -71,6 +95,35 @@ fn progress(p: &HandbookProgress) -> good::GiProgress {
             HandbookState::RewardTaken => "claimed",
         }
         .to_string(),
+    }
+}
+
+fn hangout(chapter: &HangoutChapter) -> good::GiHangout {
+    good::GiHangout {
+        state: chapter.state.and_then(|state| {
+            ["closed", "locked", "open", "accepted"]
+                .get(state as usize)
+                .map(|s| s.to_string())
+        }),
+        endings: chapter
+            .endings
+            .iter()
+            .map(|(id, state)| {
+                let state = match state {
+                    EndingState::Locked => "locked",
+                    EndingState::Unclaimed => "unclaimed",
+                    EndingState::Claimed => "claimed",
+                };
+                (*id, state.to_string())
+            })
+            .collect(),
+        pictures: chapter
+            .pictures
+            .iter()
+            .filter(|(_, unlocked)| **unlocked)
+            .map(|(id, _)| *id)
+            .collect(),
+        pictures_total: chapter.pictures.len() as u32,
     }
 }
 
@@ -149,6 +202,58 @@ impl PlayerData {
         Some(count)
     }
 
+    /// Keep a lone id list if `records` is one of three (7.1, all at login):
+    /// the monsters seen (`AllSeenMonsterNotify`: monster ids alone), the
+    /// furnishing blueprints learned (`UnlockedFurnitureFormulaDataNotify`:
+    /// furnishing ids beside a flag) or the Adventure Rank rewards claimed
+    /// (`PlayerLevelRewardUpdateNotify`: ranks 2-60 alone, none above the
+    /// account's). Over four recorded sessions no other message's lone list
+    /// fit any of them (the other small lists all hold a 1).
+    pub fn apply_lone_list(&mut self, records: &RecordsMessage) -> Option<LoneList> {
+        if !records.records.is_empty() || records.lists.len() != 1 || records.varints.len() > 1 {
+            return None;
+        }
+        let list = records.lists.values().next()?;
+        let unique: std::collections::BTreeSet<u64> = list.iter().copied().collect();
+        if unique.len() != list.len() {
+            return None;
+        }
+        let sorted = || {
+            let mut out: Vec<u32> = list.iter().map(|v| *v as u32).collect();
+            out.sort_unstable();
+            out
+        };
+        let state = &mut self.collections;
+        // The client's own ask for defeat counts (`QueryCodexMonsterBeKilledNumReq`)
+        // lists exactly the Archive's Living Beings, which arrived before it.
+        let living = state
+            .archive
+            .as_ref()
+            .and_then(|a| a.get(&ArchiveTab::LivingBeings));
+        let is_codex_ask = living.is_some_and(|ids| {
+            list.iter()
+                .all(|v| u32::try_from(*v).is_ok_and(|v| ids.binary_search(&v).is_ok()))
+        });
+        if list.len() >= 50 && !is_codex_ask && list.iter().all(|v| MONSTER_IDS.contains(v)) {
+            state.monsters_seen = Some(sorted());
+            return Some(LoneList::MonstersSeen);
+        }
+        if list.len() >= 10 && list.iter().all(|v| FURNISHING_IDS.contains(v)) {
+            state.blueprints = Some(sorted());
+            return Some(LoneList::Blueprints);
+        }
+        let ar = self.properties.get(&super::PROP_ADVENTURE_RANK.id).copied();
+        if records.varints.is_empty()
+            && list.len() >= 3
+            && list.iter().all(|v| AR_REWARD_LEVELS.contains(v))
+            && ar.is_some_and(|ar| list.iter().all(|v| *v <= ar))
+        {
+            self.collections.ar_rewards = Some(sorted());
+            return Some(LoneList::ArRewards);
+        }
+        None
+    }
+
     /// Keep one part of the collections, replacing what the game sent for it
     /// before (each message is the whole of its part).
     pub fn process_collection(&mut self, part: CollectionPart) {
@@ -161,6 +266,8 @@ impl PlayerData {
             CollectionPart::Aranara(found) => state.aranara = Some(found),
             CollectionPart::WeaponSkins(found) => state.weapon_skins = Some(found),
             CollectionPart::Wardrobe(found) => state.wardrobe = Some(found),
+            CollectionPart::Hangouts(found) => state.hangouts = Some(found),
+            CollectionPart::Events(found) => state.events = Some(found),
         }
     }
 
@@ -170,6 +277,14 @@ impl PlayerData {
         let out = good::GiCollections {
             spincrystals: self.spincrystals.clone(),
             recipes: state.recipes.clone(),
+            monsters_seen: state.monsters_seen.clone(),
+            blueprints: state.blueprints.clone(),
+            hangouts: state.hangouts.as_ref().map(|hangouts| {
+                hangouts
+                    .iter()
+                    .map(|(id, chapter)| (*id, hangout(chapter)))
+                    .collect()
+            }),
             archive: state.archive.as_ref().map(|archive| {
                 archive
                     .iter()
@@ -258,6 +373,43 @@ impl PlayerData {
             }),
         };
         (!out.is_empty()).then_some(out)
+    }
+
+    /// `gi_events`, or `None` when the events were not captured.
+    pub(super) fn export_events(&self) -> Option<BTreeMap<u32, good::GiEvent>> {
+        let events = self.collections.events.as_ref()?;
+        Some(
+            events
+                .iter()
+                .map(|(id, event)| {
+                    let progress = (!event.watchers.is_empty()).then(|| {
+                        event
+                            .watchers
+                            .iter()
+                            .map(|(w, p)| {
+                                (
+                                    *w,
+                                    good::GiEventProgress {
+                                        progress: p.progress,
+                                        total: p.total,
+                                        claimed: p.claimed,
+                                    },
+                                )
+                            })
+                            .collect()
+                    });
+                    (
+                        *id,
+                        good::GiEvent {
+                            schedule: event.schedule,
+                            start: event.start,
+                            end: event.end,
+                            progress,
+                        },
+                    )
+                })
+                .collect(),
+        )
     }
 
     /// `gi_wardrobe`, or `None` when none of it was captured. Who wears what
