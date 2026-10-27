@@ -166,6 +166,8 @@
     <string name="open_vpn_settings">VPN-Einstellungen öffnen</string>
     <string name="notifications">Benachrichtigungen</string>
     <string name="notifications_line">Erfassungsstatus beim Spielen</string>
+    <string name="tile_opens_game">Kachel öffnet Genshin</string>
+    <string name="tile_opens_game_line">Die Schnelleinstellungs-Kachel öffnet beim Start der Erfassung auch das Spiel</string>
     <string name="allow">Erlauben</string>
     <string name="setup_vpn_dialog">Android fragt, ob du ein VPN erlaubst: So darf eine App den Datenverkehr einer anderen lesen</string>
 

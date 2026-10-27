@@ -2,6 +2,12 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.12.0
+
+- Android: a new setting, **Tile opens Genshin** (Settings, off by default).
+  With it on, starting capture from the Quick Settings tile also opens the
+  game.
+
 ## 1.11.0
 
 - **Serenitea Pot**: the furnishing sets you've learned and the companions'

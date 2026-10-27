@@ -166,6 +166,8 @@
     <string name="open_vpn_settings">打开 VPN 设置</string>
     <string name="notifications">通知</string>
     <string name="notifications_line">游戏时显示抓取状态</string>
+    <string name="tile_opens_game">磁贴打开原神</string>
+    <string name="tile_opens_game_line">快速设置磁贴开始捕获时也打开游戏</string>
     <string name="allow">允许</string>
     <string name="setup_vpn_dialog">Android 会请你允许 VPN：这是应用读取其他应用流量的方式</string>
 

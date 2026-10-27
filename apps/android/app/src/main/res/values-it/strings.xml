@@ -166,6 +166,8 @@
     <string name="open_vpn_settings">Apri impostazioni VPN</string>
     <string name="notifications">Notifiche</string>
     <string name="notifications_line">Stato della cattura mentre giochi</string>
+    <string name="tile_opens_game">Il riquadro apre Genshin</string>
+    <string name="tile_opens_game_line">Il riquadro delle Impostazioni rapide apre anche il gioco quando avvia l\'acquisizione</string>
     <string name="allow">Consenti</string>
     <string name="setup_vpn_dialog">Android ti chiede di consentire una VPN: è così che un\'app può leggere il traffico di un\'altra</string>
 

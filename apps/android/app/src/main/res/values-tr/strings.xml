@@ -166,6 +166,8 @@
     <string name="open_vpn_settings">VPN ayarlarını aç</string>
     <string name="notifications">Bildirimler</string>
     <string name="notifications_line">Oynarken tarama durumu</string>
+    <string name="tile_opens_game">Kutucuk Genshin\'i açar</string>
+    <string name="tile_opens_game_line">Hızlı Ayarlar kutucuğu yakalamayı başlatırken oyunu da açar</string>
     <string name="allow">İzin ver</string>
     <string name="setup_vpn_dialog">Android bir VPN\'e izin vermeni ister: bir uygulama başka bir uygulamanın trafiğini ancak böyle okuyabilir</string>
 

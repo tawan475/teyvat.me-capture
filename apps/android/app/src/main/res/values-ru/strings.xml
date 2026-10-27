@@ -166,6 +166,8 @@
     <string name="open_vpn_settings">Открыть настройки VPN</string>
     <string name="notifications">Уведомления</string>
     <string name="notifications_line">Статус захвата во время игры</string>
+    <string name="tile_opens_game">Плитка открывает Genshin</string>
+    <string name="tile_opens_game_line">Плитка быстрых настроек при запуске захвата также открывает игру</string>
     <string name="allow">Разрешить</string>
     <string name="setup_vpn_dialog">Android попросит разрешить VPN: только так приложение может читать трафик другого приложения</string>
 

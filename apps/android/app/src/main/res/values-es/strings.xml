@@ -166,6 +166,8 @@
     <string name="open_vpn_settings">Abrir ajustes de VPN</string>
     <string name="notifications">Notificaciones</string>
     <string name="notifications_line">Estado de la captura mientras juegas</string>
+    <string name="tile_opens_game">El icono abre Genshin</string>
+    <string name="tile_opens_game_line">El icono de Ajustes rápidos también abre el juego al iniciar la captura</string>
     <string name="allow">Permitir</string>
     <string name="setup_vpn_dialog">Android te pide permitir una VPN: así es como una app puede leer el tráfico de otra</string>
 

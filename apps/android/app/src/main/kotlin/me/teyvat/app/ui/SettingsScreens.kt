@@ -77,6 +77,7 @@ interface SettingsActions {
     fun setRecordCapture(on: Boolean)
     fun openAbout()
     fun setAutoUpdate(on: Boolean)
+    fun setTileOpensGame(on: Boolean)
     fun checkForUpdates()
     fun allowBackground()
     fun openUrl(url: String)
@@ -97,6 +98,11 @@ fun SettingsScreen(
         ListRow(stringResource(R.string.always_on_vpn), stringResource(R.string.always_on_vpn_line), R.drawable.ic_power, onClick = actions::openAlwaysOnVpn) { External() }
         CardDivider()
         ListRow(stringResource(R.string.notifications), stringResource(R.string.notifications_line), R.drawable.ic_bell, onClick = actions::openNotificationSettings) { External() }
+        CardDivider()
+        SwitchRow(
+            stringResource(R.string.tile_opens_game), stringResource(R.string.tile_opens_game_line), settings.tileOpensGame,
+            actions::setTileOpensGame, icon = R.drawable.ic_gamepad,
+        )
         CardDivider()
         ListRow(
             stringResource(R.string.battery_title),

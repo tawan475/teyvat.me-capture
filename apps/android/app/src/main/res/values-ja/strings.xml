@@ -166,6 +166,8 @@
     <string name="open_vpn_settings">VPN 設定を開く</string>
     <string name="notifications">通知</string>
     <string name="notifications_line">プレイ中のキャプチャ状況</string>
+    <string name="tile_opens_game">タイルで原神を開く</string>
+    <string name="tile_opens_game_line">クイック設定のタイルでキャプチャを開始すると、ゲームも開きます</string>
     <string name="allow">許可</string>
     <string name="setup_vpn_dialog">Android から VPN の許可を求められます：アプリがほかのアプリの通信を読むための仕組みです</string>
 

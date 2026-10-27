@@ -166,6 +166,8 @@
     <string name="open_vpn_settings">VPN 설정 열기</string>
     <string name="notifications">알림</string>
     <string name="notifications_line">플레이 중 캡처 상태</string>
+    <string name="tile_opens_game">타일로 원신 열기</string>
+    <string name="tile_opens_game_line">빠른 설정 타일로 캡처를 시작하면 게임도 엽니다</string>
     <string name="allow">허용</string>
     <string name="setup_vpn_dialog">Android가 VPN 허용을 요청합니다: 앱이 다른 앱의 통신을 읽는 방법입니다</string>
 

@@ -170,6 +170,8 @@
     <string name="open_vpn_settings">Open VPN settings</string>
     <string name="notifications">Notifications</string>
     <string name="notifications_line">Capture status while you play</string>
+    <string name="tile_opens_game">Tile opens Genshin</string>
+    <string name="tile_opens_game_line">The Quick Settings tile also opens the game when it starts capture</string>
     <string name="allow">Allow</string>
     <string name="setup_vpn_dialog">Android asks you to allow a VPN: it is how an app may read another app\'s traffic</string>
 
