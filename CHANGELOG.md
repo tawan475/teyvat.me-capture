@@ -2,6 +2,13 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.13.1
+
+- Windows: the window draws with Direct3D 12 instead of OpenGL. NVIDIA's
+  OpenGL driver could close Teyvat.me with "Unable to recover from a kernel
+  exception" while the game ran; Direct3D reports such trouble to the app
+  instead. If Direct3D can't start, the window uses OpenGL as before.
+
 ## 1.12.0
 
 - **New look, desktop and Android.** The home screen is one status strip

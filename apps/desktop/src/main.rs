@@ -369,6 +369,7 @@ impl TracingLevel {
     }
 }
 
+#[derive(Clone)]
 struct ReloadHandle(reload::Handle<EnvFilter, tracing_subscriber::Registry>);
 
 impl ReloadHandle {
@@ -397,6 +398,51 @@ impl Args {
     fn journal_request(&self) -> Option<(&Path, &Path)> {
         let out = self.replay_journal.as_deref()?;
         Some((self.savefile_path.as_deref()?, out))
+    }
+}
+
+/// The window draws with Direct3D 12 on Windows: NVIDIA's OpenGL driver ends
+/// the whole process on an internal error ("Unable to recover from a kernel
+/// exception", error 3: seen twice with the game running, irminsul included),
+/// where Direct3D reports a lost device. The low-power GPU is enough for this
+/// window and leaves a laptop's discrete GPU to the game.
+#[cfg(windows)]
+fn direct3d(options: eframe::NativeOptions) -> eframe::NativeOptions {
+    use eframe::egui_wgpu::{SurfaceErrorAction, WgpuConfiguration, WgpuSetup, WgpuSetupCreateNew};
+    use eframe::wgpu;
+
+    let mut setup = WgpuSetupCreateNew::default();
+    setup.instance_descriptor.backends = wgpu::Backends::DX12;
+    setup.power_preference = wgpu::PowerPreference::LowPower;
+    // wgpu's default memory blocks are sized for games: this window's few
+    // textures fit the small ones (the default made the process commit
+    // ~600 MB where OpenGL commits ~160 MB).
+    setup.device_descriptor = std::sync::Arc::new(|_adapter| wgpu::DeviceDescriptor {
+        label: Some("teyvatme window"),
+        required_limits: wgpu::Limits {
+            max_texture_dimension_2d: 8192,
+            ..wgpu::Limits::downlevel_defaults()
+        },
+        memory_hints: wgpu::MemoryHints::MemoryUsage,
+        ..Default::default()
+    });
+    eframe::NativeOptions {
+        renderer: eframe::Renderer::Wgpu,
+        wgpu_options: WgpuConfiguration {
+            wgpu_setup: WgpuSetup::CreateNew(setup),
+            // A lost surface (the GPU reset, a display change while the game
+            // goes full screen) is made again rather than skipped forever.
+            on_surface_error: std::sync::Arc::new(|err| match err {
+                wgpu::SurfaceError::Lost => SurfaceErrorAction::RecreateSurface,
+                wgpu::SurfaceError::Outdated => SurfaceErrorAction::SkipFrame,
+                err => {
+                    tracing::warn!("dropped a frame: {err}");
+                    SurfaceErrorAction::SkipFrame
+                }
+            }),
+            ..WgpuConfiguration::default()
+        },
+        ..options
     }
 }
 
@@ -505,6 +551,8 @@ fn main() -> eframe::Result {
         persist_window: true,
         ..Default::default()
     };
+    #[cfg(windows)]
+    let native_options = direct3d(native_options);
     let start_window = if args.after_update {
         app::StartWindow::Front
     } else if args.minimized {
@@ -512,21 +560,44 @@ fn main() -> eframe::Result {
     } else {
         app::StartWindow::AsIs
     };
-    let result = eframe::run_native(
-        app_id(),
-        native_options,
-        Box::new(move |cc| {
-            Ok(Box::new(app::TeyvatmeApp::new(
-                cc,
-                reload_handle,
-                capture_backend,
-                capture_source,
-                app_restart_requested,
-                previous_run_notice,
-                start_window,
-            )))
-        }),
-    );
+    let start = |native_options: eframe::NativeOptions| {
+        let reload_handle = reload_handle.clone();
+        let capture_source = capture_source.clone();
+        let app_restart_requested = Arc::clone(&app_restart_requested);
+        let previous_run_notice = previous_run_notice.clone();
+        eframe::run_native(
+            app_id(),
+            native_options,
+            Box::new(move |cc| {
+                Ok(Box::new(app::TeyvatmeApp::new(
+                    cc,
+                    reload_handle,
+                    capture_backend,
+                    capture_source,
+                    app_restart_requested,
+                    previous_run_notice,
+                    start_window,
+                )))
+            }),
+        )
+    };
+    let glow_options = eframe::NativeOptions {
+        renderer: eframe::Renderer::Glow,
+        ..native_options.clone()
+    };
+    let result = match start(native_options) {
+        // Direct3D 12 could not start (no adapter, an old driver): the window
+        // opens with OpenGL as before.
+        #[cfg(windows)]
+        Err(e) => {
+            tracing::warn!("Direct3D could not start the window ({e}); using OpenGL");
+            start(glow_options)
+        }
+        result => {
+            drop(glow_options);
+            result
+        }
+    };
 
     // Every orderly way out -- the close button, the tray's Quit, "Close
     // Teyvat.me" in the missed-launch modal, the update relaunch -- closes the
