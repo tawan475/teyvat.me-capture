@@ -1005,6 +1005,473 @@ pub fn avatar_wardrobe(data: &[u8]) -> Option<AvatarWardrobe> {
     Some(out)
 }
 
+// ----------------------------------------------------------------- hangouts
+
+/// Hangout Event chapter ids (7.1: 101 401-108 301). Everything inside a
+/// chapter -- its endings, pictures and story points -- is numbered
+/// `chapter * 100 + n`, which is how its lists are recognised.
+const HANGOUT_CHAPTER_IDS: RangeInclusive<u64> = 100_000..=999_999;
+
+/// The most chapters believed (7.1: 19).
+const MAX_HANGOUTS: usize = 1_000;
+
+/// `CoopReward.State` (one reward per ending).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EndingState {
+    /// Seen, its reward not taken yet.
+    Unclaimed,
+    /// Not seen yet.
+    Locked,
+    /// Seen and its reward taken.
+    Claimed,
+}
+
+/// One Hangout Event chapter (`CoopDataNotify`).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct HangoutChapter {
+    /// `CoopChapter.State` (0 closed, 1 conditions not met, 2 open, 3
+    /// accepted), when it could be told apart from the ending counts.
+    pub state: Option<u32>,
+    /// By ending (= its reward's id).
+    pub endings: BTreeMap<u32, EndingState>,
+    /// Pictures (CGs) by id: unlocked or not.
+    pub pictures: BTreeMap<u32, bool>,
+}
+
+/// A chapter's list of `{id, one small number}` entries whose ids are the
+/// chapter's own, by id; `None` if it is not one.
+fn chapter_pairs(chapter: u64, values: &[Vec<u8>]) -> Option<BTreeMap<u32, u64>> {
+    let mut out = BTreeMap::new();
+    for bytes in values {
+        let pair = entry(bytes)?;
+        if !pair.lists.is_empty() || !pair.other.is_empty() || pair.fixed || pair.varints.len() > 2
+        {
+            return None;
+        }
+        let ids: Vec<(u32, u64)> = pair
+            .varints
+            .iter()
+            .filter(|(_, v)| **v / 100 == chapter)
+            .map(|(t, v)| (*t, *v))
+            .collect();
+        let [(id_tag, id)] = ids.as_slice() else {
+            return None;
+        };
+        let value = pair
+            .varints
+            .iter()
+            .find(|(t, _)| **t != *id_tag)
+            .map_or(0, |(_, v)| *v);
+        if out.insert(*id as u32, value).is_some() {
+            return None;
+        }
+    }
+    Some(out)
+}
+
+/// Recover the Hangout Events, by chapter, from a `CoopDataNotify` payload,
+/// or `None` if it is not one: one repeated field of chapters, each with a
+/// unique chapter id (`HANGOUT_CHAPTER_IDS`) and lists of entries numbered
+/// after it.
+///
+/// Of a chapter's `{id, number}` lists, the endings are the one whose length
+/// is one of the chapter's own counts (its ending total) and whose numbers are
+/// 0-2; the other, with 0/1 flags, the pictures. An ending's state says
+/// whether it was seen, so the counts beside it need no reading; the chapter's
+/// state is the one small number left once those counts are set aside, and
+/// `None` when it cannot be.
+pub fn matches_coop_notify(data: &[u8]) -> Option<BTreeMap<u32, HangoutChapter>> {
+    let msg = parse(data)?;
+    for values in fields_by_tag(&msg).values() {
+        if values.len() < 2 || values.len() > MAX_HANGOUTS {
+            continue;
+        }
+        let Some(chapters) = entries(values) else {
+            continue;
+        };
+        let mut out = BTreeMap::new();
+        let ok = chapters.iter().all(|chapter| {
+            let ids: Vec<u64> = chapter
+                .varints
+                .values()
+                .copied()
+                .filter(|v| HANGOUT_CHAPTER_IDS.contains(v))
+                .collect();
+            let [id] = ids.as_slice() else {
+                return false;
+            };
+            let pair_lists: Vec<BTreeMap<u32, u64>> = chapter
+                .other
+                .values()
+                .filter(|values| values.len() >= 2)
+                .filter_map(|values| chapter_pairs(*id, values))
+                .collect();
+            let small: Vec<u64> = chapter
+                .varints
+                .values()
+                .copied()
+                .filter(|v| *v != *id && *v <= 1_000)
+                .collect();
+            let ending_lists: Vec<&BTreeMap<u32, u64>> = pair_lists
+                .iter()
+                .filter(|list| {
+                    small.contains(&(list.len() as u64)) && list.values().all(|v| *v <= 2)
+                })
+                .collect();
+            // Pictures hold 0/1 flags only; endings also 2 (claimed).
+            let endings = match ending_lists.as_slice() {
+                [one] => *one,
+                several => match several
+                    .iter()
+                    .filter(|list| list.values().any(|v| *v == 2))
+                    .collect::<Vec<_>>()
+                    .as_slice()
+                {
+                    [one] => **one,
+                    _ => return false,
+                },
+            };
+            let picture_lists: Vec<&BTreeMap<u32, u64>> = pair_lists
+                .iter()
+                .filter(|list| !std::ptr::eq(*list, endings) && list.values().all(|v| *v <= 1))
+                .collect();
+            let seen = endings.values().filter(|v| **v != 1).count() as u64;
+            let total = endings.len() as u64;
+            let mut rest = small.clone();
+            for count in [total, seen] {
+                if let Some(at) = rest.iter().position(|v| *v == count) {
+                    rest.remove(at);
+                }
+            }
+            let state = match rest.as_slice() {
+                [one] if *one <= 3 => Some(*one as u32),
+                _ => None,
+            };
+            let found = HangoutChapter {
+                state,
+                endings: endings
+                    .iter()
+                    .map(|(id, v)| {
+                        let state = match v {
+                            0 => EndingState::Unclaimed,
+                            1 => EndingState::Locked,
+                            _ => EndingState::Claimed,
+                        };
+                        (*id, state)
+                    })
+                    .collect(),
+                pictures: match picture_lists.as_slice() {
+                    [one] => one.iter().map(|(id, v)| (*id, *v == 1)).collect(),
+                    _ => BTreeMap::new(),
+                },
+            };
+            out.insert(*id as u32, found).is_none()
+        });
+        if ok && !out.is_empty() {
+            return Some(out);
+        }
+    }
+    None
+}
+
+// ------------------------------------------------------------------- bosses
+
+/// Monster ids (7.1: 20 010 101-29 xxx xxx for the bosses and elites).
+const MONSTER_IDS: RangeInclusive<u64> = 20_000_000..=99_999_999;
+
+/// The most boss entries believed (7.1: 103).
+const MAX_BOSSES: usize = 2_000;
+
+/// The weekly bosses' resin discounts (`WeeklyBossResinDiscountInfo`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct WeeklyDiscounts {
+    /// Discounts left this week.
+    pub left: u32,
+    pub limit: u32,
+    /// What a weekly boss costs now, and without the discount.
+    pub cost: u32,
+    pub full_cost: u32,
+}
+
+/// The bosses and elites of the Adventurer Handbook (`GetInvestigationMonsterRsp`).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct BossList {
+    /// By the Handbook's monster id: when each spot respawns next (unix
+    /// seconds; a time already past means it is up).
+    pub respawns: BTreeMap<u32, Vec<u32>>,
+    pub weekly: Option<WeeklyDiscounts>,
+}
+
+/// A nested `{monster id, scene, group}`: the spot's monster config.
+fn monster_config(bytes: &[u8]) -> bool {
+    entry(bytes).is_some_and(|e| {
+        e.lists.is_empty()
+            && e.varints
+                .values()
+                .filter(|v| MONSTER_IDS.contains(v))
+                .count()
+                == 1
+    })
+}
+
+/// A nested `{left, limit, cost, full cost}`: two pairs of small numbers,
+/// left no more than the limit (at most 10) and the cost below the full cost
+/// (at most 1,000 resin).
+fn weekly_discounts(bytes: &[u8]) -> Option<WeeklyDiscounts> {
+    let e = entry(bytes)?;
+    if !e.lists.is_empty() || !e.other.is_empty() || e.fixed || e.varints.len() > 4 {
+        return None;
+    }
+    let mut small: Vec<u64> = e.varints.values().copied().filter(|v| *v <= 10).collect();
+    let mut resin: Vec<u64> = e
+        .varints
+        .values()
+        .copied()
+        .filter(|v| *v > 10 && *v <= 1_000)
+        .collect();
+    small.sort_unstable();
+    resin.sort_unstable();
+    // proto3 leaves 0 off: no discounts left shows as the limit alone.
+    let (left, limit) = match small.as_slice() {
+        [limit] => (0, *limit),
+        [left, limit] => (*left, *limit),
+        _ => return None,
+    };
+    let [cost, full_cost] = resin.as_slice() else {
+        return None;
+    };
+    (limit > 0).then_some(WeeklyDiscounts {
+        left: left as u32,
+        limit: limit as u32,
+        cost: *cost as u32,
+        full_cost: *full_cost as u32,
+    })
+}
+
+/// Recover the bosses from a `GetInvestigationMonsterRsp` payload, or `None`
+/// if it is not one: one repeated field of monster entries (a unique id and a
+/// list of spots), each spot holding one next-respawn time, a nested monster
+/// config with a monster id (`MONSTER_IDS`) and, on the weekly bosses, the
+/// week's resin discounts.
+pub fn matches_investigation_monster_rsp(data: &[u8]) -> Option<BossList> {
+    let msg = parse(data)?;
+    for values in fields_by_tag(&msg).values() {
+        if values.len() < 2 || values.len() > MAX_BOSSES {
+            continue;
+        }
+        let Some(monsters) = entries(values) else {
+            continue;
+        };
+        // The id: distinct across the entries (the city beside it repeats).
+        let Some(id_tag) = only_tag(&monsters, &[], |values| {
+            all_distinct(values) && values.iter().all(|v| (1..=99_999).contains(v))
+        }) else {
+            continue;
+        };
+        let mut out = BossList::default();
+        let ok = monsters.iter().all(|monster| {
+            let id = &monster.varints[&id_tag];
+            let spot_lists: Vec<&Vec<Vec<u8>>> = monster.other.values().collect();
+            let [spots] = spot_lists.as_slice() else {
+                return false;
+            };
+            let mut times = Vec::new();
+            for bytes in spots.iter() {
+                let Some(spot) = entry(bytes) else {
+                    return false;
+                };
+                let stamps: Vec<u64> = spot
+                    .varints
+                    .values()
+                    .copied()
+                    .filter(|v| EXPIRY.contains(v))
+                    .collect();
+                let [at] = stamps.as_slice() else {
+                    return false;
+                };
+                if !spot.other.values().flatten().any(|b| monster_config(b)) {
+                    return false;
+                }
+                if let Some(found) = spot
+                    .other
+                    .values()
+                    .flatten()
+                    .find_map(|b| weekly_discounts(b))
+                {
+                    out.weekly = Some(found);
+                }
+                times.push(*at as u32);
+            }
+            times.sort_unstable();
+            out.respawns.insert(*id as u32, times).is_none()
+        });
+        if ok && !out.respawns.is_empty() {
+            return Some(out);
+        }
+    }
+    None
+}
+
+// ------------------------------------------------------------------- events
+
+/// Event (activity) ids (7.1: 2051-6016); each run's schedule id is the
+/// event's id times 1000 plus the run (2 051 001).
+const EVENT_IDS: RangeInclusive<u64> = 1_000..=99_999;
+
+/// The most events believed in one reply (7.1: ~15).
+const MAX_EVENTS: usize = 500;
+
+/// One progress counter of an event (`ActivityWatcherInfo`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct EventWatcher {
+    pub progress: u32,
+    pub total: u32,
+    pub claimed: bool,
+}
+
+/// One event running (`ActivityInfo`).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct EventInfo {
+    pub schedule: u32,
+    /// When it opened and closes (unix seconds).
+    pub start: u32,
+    pub end: u32,
+    /// Its progress counters by watcher id.
+    pub watchers: BTreeMap<u32, EventWatcher>,
+}
+
+/// An event's watchers: entries with a unique watcher id (above the event
+/// ids), a total on every one, and beside it the progress (never above it)
+/// and the claimed flag (only ever 1), both left off at 0. The progress is the
+/// tag that ever goes past 1; when none does, the two are both 0 or 1 and read
+/// the same either way.
+fn event_watchers(values: &[Vec<u8>]) -> Option<BTreeMap<u32, EventWatcher>> {
+    let list: Vec<Entry> = values.iter().map(|b| entry(b)).collect::<Option<_>>()?;
+    if list
+        .iter()
+        .any(|e| !e.lists.is_empty() || !e.other.is_empty() || e.fixed || e.varints.len() > 4)
+    {
+        return None;
+    }
+    let id_tag = only_tag(&list, &[], |values| {
+        all_distinct(values) && values.iter().all(|v| (100_000..=999_999_999).contains(v))
+    })?;
+    let tags: BTreeSet<u32> = list
+        .iter()
+        .flat_map(|e| e.varints.keys().copied())
+        .filter(|t| *t != id_tag)
+        .collect();
+    if tags.len() > 3 {
+        return None;
+    }
+    let at = |e: &Entry, t: u32| e.varints.get(&t).copied().unwrap_or(0);
+    // The total: on every entry, never below any other number of the entry
+    // but the claimed flag; the progress: the other tag that ever passes 1.
+    let on_all = |t: u32| list.iter().all(|e| e.varints.contains_key(&t));
+    let total_tag = tags.iter().copied().filter(|t| on_all(*t)).find(|t| {
+        list.iter().all(|e| {
+            tags.iter()
+                .all(|o| o == t || at(e, *o) <= 1 || at(e, *o) <= at(e, *t))
+        })
+    })?;
+    let over_one = |tag: u32| list.iter().any(|e| at(e, tag) > 1);
+    let progress_tag = tags
+        .iter()
+        .copied()
+        .find(|t| *t != total_tag && over_one(*t));
+    let claimed_tag = tags
+        .iter()
+        .copied()
+        .find(|t| *t != total_tag && Some(*t) != progress_tag);
+    list.iter()
+        .map(|e| {
+            let total = e.varints[&total_tag];
+            let progress = progress_tag
+                .and_then(|t| e.varints.get(&t))
+                .copied()
+                .unwrap_or(0);
+            if progress > total {
+                return None;
+            }
+            Some((
+                e.varints[&id_tag] as u32,
+                EventWatcher {
+                    progress: progress as u32,
+                    total: total as u32,
+                    claimed: claimed_tag
+                        .and_then(|t| e.varints.get(&t))
+                        .is_some_and(|v| *v == 1),
+                },
+            ))
+        })
+        .collect()
+}
+
+/// Recover the events running, by event id, from a `GetActivityInfoRsp`
+/// payload, or `None` if it is not one: one repeated field of events, each
+/// with its id (`EVENT_IDS`) and a schedule id that is that id times 1000
+/// plus the run, two or three times (when it opened, its first day, when it
+/// closes) and maybe a list of progress counters. Each event's own details
+/// (a submessage per kind of event) are not read.
+pub fn matches_activity_info_rsp(data: &[u8]) -> Option<BTreeMap<u32, EventInfo>> {
+    let msg = parse(data)?;
+    for values in fields_by_tag(&msg).values() {
+        if values.is_empty() || values.len() > MAX_EVENTS {
+            continue;
+        }
+        let Some(events) = entries(values) else {
+            continue;
+        };
+        let mut out = BTreeMap::new();
+        let ok = events.iter().all(|event| {
+            let pair = event.varints.values().find_map(|id| {
+                EVENT_IDS.contains(id).then_some(())?;
+                let schedule = event
+                    .varints
+                    .values()
+                    .find(|s| **s / 1_000 == *id && **s % 1_000 > 0)?;
+                Some((*id, *schedule))
+            });
+            let Some((id, schedule)) = pair else {
+                return false;
+            };
+            let times: Vec<u64> = event
+                .varints
+                .values()
+                .copied()
+                .filter(|v| EXPIRY.contains(v))
+                .collect();
+            if !(2..=4).contains(&times.len()) {
+                return false;
+            }
+            let watchers = event
+                .other
+                .values()
+                .filter(|values| !values.is_empty())
+                .filter_map(|values| event_watchers(values))
+                .max_by_key(BTreeMap::len)
+                .unwrap_or_default();
+            out.insert(
+                id as u32,
+                EventInfo {
+                    schedule: schedule as u32,
+                    start: *times.iter().min().unwrap_or(&0) as u32,
+                    end: *times.iter().max().unwrap_or(&0) as u32,
+                    watchers,
+                },
+            )
+            .is_none()
+        });
+        // The schedule list (`ActivityScheduleInfoNotify`) pairs ids and times
+        // too, but no event of it carries details of its own.
+        let detailed = events.iter().any(|event| !event.other.is_empty());
+        if ok && detailed && !out.is_empty() {
+            return Some(out);
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1291,5 +1758,181 @@ mod tests {
         assert_eq!(found.teams[&5].name, "Freeze");
         assert_eq!(found.teams[&14].avatar_guids, vec![guid, guid + 1]);
         assert_eq!(found.current_team, Some(14));
+    }
+
+    #[test]
+    fn hangouts_are_read_by_chapter() {
+        let pair = |tag: u32, id: u64, id_tag: u32, value_tag: u32, value: u64| {
+            let mut e = v(id_tag, id);
+            if value > 0 {
+                e.extend(v(value_tag, value));
+            }
+            b(tag, &e)
+        };
+        // {id 1, state 2, finished 3, total 4, pictures 5, endings 6}
+        let chapter = |id: u64, state: u64, seen: u64, total: u64| {
+            let mut e = v(1, id);
+            if state > 0 {
+                e.extend(v(2, state));
+            }
+            if seen > 0 {
+                e.extend(v(3, seen));
+            }
+            e.extend(v(4, total));
+            for n in 1..=3 {
+                e.extend(pair(5, id * 100 + n, 13, 5, u64::from(n <= 2)));
+            }
+            for n in 1..=total {
+                e.extend(pair(6, id * 100 + n, 10, 13, if n <= seen { 2 } else { 1 }));
+            }
+            b(9, &e)
+        };
+        let data = [
+            list(1, &[101_401]),
+            chapter(101_401, 3, 5, 5),
+            chapter(102_301, 3, 2, 6),
+        ]
+        .concat();
+        let found = matches_coop_notify(&data).unwrap();
+        let done = &found[&101_401];
+        assert_eq!(done.state, Some(3));
+        assert_eq!(done.endings.len(), 5);
+        assert!(done.endings.values().all(|e| *e == EndingState::Claimed));
+        assert_eq!(done.pictures.values().filter(|u| **u).count(), 2);
+        let partial = &found[&102_301];
+        let locked = partial
+            .endings
+            .values()
+            .filter(|e| **e == EndingState::Locked);
+        assert_eq!(locked.count(), 4);
+        assert_eq!(partial.state, Some(3));
+        // A chapter holding another chapter's entries: something else.
+        let mut stray = v(1, 102_301);
+        stray.extend(v(4, 2));
+        stray.extend(pair(6, 10_140_101, 10, 13, 1));
+        stray.extend(pair(6, 10_140_102, 10, 13, 1));
+        let wrong = [chapter(101_401, 3, 1, 2), b(9, &stray)].concat();
+        assert_eq!(matches_coop_notify(&wrong), None);
+    }
+
+    #[test]
+    fn bosses_and_the_weekly_discounts_are_read() {
+        let float = |tag: u32| {
+            let mut out = varint((u64::from(tag) << 3) | 5);
+            out.extend([0, 0, 0x80, 0x3f]);
+            out
+        };
+        let spot = |monster: u64, at: u64, discount: bool| {
+            let mut e = v(1, 90);
+            e.extend(v(3, at));
+            e.extend(v(9, 86_400));
+            e.extend(b(4, &[float(1), float(2)].concat()));
+            e.extend(b(7, &[v(1, 3), v(2, monster), v(5, 133_220_051)].concat()));
+            if discount {
+                e.extend(b(12, &[v(1, 3), v(2, 3), v(3, 30), v(4, 60)].concat()));
+            }
+            b(6, &e)
+        };
+        let data = [
+            b(
+                5,
+                &[
+                    v(1, 1),
+                    v(2, 1),
+                    spot(20_010_801, 1_791_000_000, false),
+                    spot(20_010_801, 1_791_000_100, false),
+                ]
+                .concat(),
+            ),
+            b(
+                5,
+                &[v(1, 1), v(2, 40), spot(29_020_102, 1_791_200_000, true)].concat(),
+            ),
+            v(3, 0),
+        ]
+        .concat();
+        let found = matches_investigation_monster_rsp(&data).unwrap();
+        assert_eq!(found.respawns[&1], vec![1_791_000_000, 1_791_000_100]);
+        assert_eq!(
+            found.weekly,
+            Some(WeeklyDiscounts {
+                left: 3,
+                limit: 3,
+                cost: 30,
+                full_cost: 60
+            })
+        );
+        // Spots without a monster config: something else.
+        let bare = [
+            b(5, &[v(2, 1), b(2, &v(3, 1_791_000_000))].concat()),
+            b(5, &[v(2, 2), b(2, &v(3, 1_791_000_000))].concat()),
+        ]
+        .concat();
+        assert_eq!(matches_investigation_monster_rsp(&bare), None);
+    }
+
+    #[test]
+    fn events_are_read_with_their_progress() {
+        let watcher = |id: u64, progress: u64, total: u64, claimed: bool| {
+            let mut e = v(1, id);
+            if progress > 0 {
+                e.extend(v(2, progress));
+            }
+            e.extend(v(3, total));
+            if claimed {
+                e.extend(v(4, 1));
+            }
+            b(7, &e)
+        };
+        let event = |id: u64, watchers: Vec<u8>| {
+            let mut e = v(1, id);
+            e.extend(v(2, id * 1_000 + 1));
+            e.extend(v(3, 1_790_000_000));
+            e.extend(v(4, 1_791_000_000));
+            e.extend(v(5, 1_790_020_000));
+            e.extend(v(6, 4));
+            e.extend(watchers);
+            e.extend(b(1044, &[v(1, 5), v(2, 6)].concat()));
+            b(9, &e)
+        };
+        let data = [
+            event(
+                2051,
+                [
+                    watcher(1_523_001, 3, 10, false),
+                    watcher(1_523_002, 1, 1, true),
+                ]
+                .concat(),
+            ),
+            event(6016, Vec::new()),
+            v(4, 0),
+        ]
+        .concat();
+        let found = matches_activity_info_rsp(&data).unwrap();
+        let first = &found[&2051];
+        assert_eq!(first.schedule, 2_051_001);
+        assert_eq!((first.start, first.end), (1_790_000_000, 1_791_000_000));
+        assert_eq!(
+            first.watchers[&1_523_001],
+            EventWatcher {
+                progress: 3,
+                total: 10,
+                claimed: false
+            }
+        );
+        assert!(first.watchers[&1_523_002].claimed);
+        assert!(found[&6016].watchers.is_empty());
+        // An entry whose numbers don't pair an id with its schedule: something else.
+        let other = b(
+            9,
+            &[
+                v(1, 2051),
+                v(2, 9_999_001),
+                v(3, 1_790_000_000),
+                v(4, 1_791_000_000),
+            ]
+            .concat(),
+        );
+        assert_eq!(matches_activity_info_rsp(&other), None);
     }
 }

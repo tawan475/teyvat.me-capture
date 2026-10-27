@@ -15,7 +15,7 @@ Every field, with its type and meaning: [`teyvatme-export.ts`](teyvatme-export.t
 | | Save / Copy (a GOOD file) | Upload to a tracker |
 |---|---|---|
 | GOOD: `characters`, `weapons`, `artifacts`, `materials`, `timestamp` | yes, filtered by your export settings | yes, the whole account |
-| `gi_achievements`, `gi_achievement_times`, `gi_player`, `gi_characters`, `gi_anecdotes`, `gi_tasks`, `gi_collections`, `gi_wardrobe`, `gi_exploration` | yes | yes |
+| `gi_achievements`, `gi_achievement_times`, `gi_player`, `gi_characters`, `gi_anecdotes`, `gi_tasks`, `gi_collections`, `gi_wardrobe`, `gi_exploration`, `gi_achievement_progress`, `gi_events` | yes | yes |
 | `gi_guid` and `gi_exp` on each weapon and artifact | no | yes |
 | `gi_capture` (why the snapshot was taken) | no | yes |
 
@@ -35,9 +35,11 @@ A tracker also gets two more payloads, typed in the same file:
 | `gi_player` | Adventure Rank and EXP, World Level, resin at login, Story Keys, stamina, and the UID. |
 | `gi_characters` | Per character: friendship, friendship EXP, when they joined, and EXP into the level. |
 | `gi_anecdotes` | The Travel Accounts book: every anecdote met and its state, areas, reward track, last wish. |
-| `gi_tasks` | What a planner can tick: commissions, the Spiral Abyss, expeditions, realm currency, Welkin Moon, the Epitomized Path and the resin clock. |
-| `gi_collections` | What you've collected: the Radiant Spincrystals in your Serenitea Pot, the Archive, enemies defeated, the Adventurer Handbook, Aranara, your TCG cards and decks, and your recipes. |
-| `gi_exploration` | (next release) Statues of The Seven, offerings, the map points and areas you've unlocked, exploration per area, and reputation. |
+| `gi_tasks` | What a planner can tick: commissions, the Spiral Abyss, expeditions, realm currency, Welkin Moon, the Epitomized Path, the resin clock, and (next release) weekly boss discounts, boss respawns and Adventure Rank rewards claimed. |
+| `gi_collections` | What you've collected: the Radiant Spincrystals in your Serenitea Pot, the Archive, enemies defeated, the Adventurer Handbook, Aranara, your TCG cards and decks, your recipes, and (next release) Hangout Events, monsters seen and furnishing blueprints. |
+| `gi_achievement_progress` | (next release) How far each unfinished achievement is. |
+| `gi_events` | (next release) The events running and your progress in each. |
+| `gi_exploration` | Statues of The Seven, offerings, the map points and areas you've unlocked, exploration per area, and reputation. |
 | `gi_wardrobe` | Outfits, wind gliders, weapon skins and sprint trails you own and who wears them, and your saved teams. |
 | `gi_capture` | Uploads only: why this snapshot was taken, and which game login it belongs to. |
 

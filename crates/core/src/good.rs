@@ -133,6 +133,13 @@ pub struct Good {
     /// sprint trails, and the saved teams. Omitted when none was captured.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub gi_wardrobe: Option<GiWardrobe>,
+    /// How far each unfinished achievement is (those with a total).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub gi_achievement_progress: Option<BTreeMap<u32, GiAchievementProgress>>,
+    /// The events running when the game was asked (right after login), by
+    /// event id, with their progress counters.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub gi_events: Option<BTreeMap<u32, GiEvent>>,
     /// Exploration: the Statues of The Seven, offerings, map points,
     /// exploration progress and reputation, as the game last sent each part.
     #[serde(skip_serializing_if = "Option::is_none", default)]
@@ -171,6 +178,32 @@ pub struct GiCollections {
     /// in the game data).
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub recipes: Option<BTreeMap<u32, u32>>,
+    /// Hangout Events by chapter.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub hangouts: Option<BTreeMap<u32, GiHangout>>,
+    /// Every monster seen (monster ids, ascending).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub monsters_seen: Option<Vec<u32>>,
+    /// Furnishing blueprints learned (the furnishings' item ids, ascending).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub blueprints: Option<Vec<u32>>,
+}
+
+/// One Hangout Event chapter.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiHangout {
+    /// `closed`, `locked` (its conditions not met), `open` or `accepted`;
+    /// absent when it could not be read.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub state: Option<String>,
+    /// By ending: `locked` (not seen), `unclaimed` (seen, reward waiting) or
+    /// `claimed`.
+    pub endings: BTreeMap<u32, String>,
+    /// Pictures unlocked, ascending.
+    pub pictures: Vec<u32>,
+    /// Pictures the chapter has.
+    pub pictures_total: u32,
 }
 
 impl GiCollections {
@@ -241,6 +274,36 @@ pub struct GiTcgDeck {
     pub characters: Vec<u32>,
     pub cards: Vec<u32>,
     pub valid: bool,
+}
+
+/// One event running.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiEvent {
+    /// This run of it (the event id times 1000 plus the run).
+    pub schedule: u32,
+    pub start: u32,
+    pub end: u32,
+    /// Its progress counters by watcher id; absent when it has none.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub progress: Option<BTreeMap<u32, GiEventProgress>>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiEventProgress {
+    pub progress: u32,
+    pub total: u32,
+    /// Its reward taken.
+    pub claimed: bool,
+}
+
+/// One unfinished achievement's progress.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiAchievementProgress {
+    pub progress: u32,
+    pub total: u32,
 }
 
 /// `gi_wardrobe`: what the characters own and wear, as the game last sent it
@@ -501,6 +564,29 @@ pub struct GiTasks {
     /// Original Resin and when the next one comes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resin: Option<GiResin>,
+    /// The weekly bosses' resin discounts this week.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub weekly_bosses: Option<GiWeeklyBosses>,
+    /// Adventure Ranks whose reward was claimed (2-60, ascending).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub ar_rewards: Option<Vec<u32>>,
+    /// When each boss and elite of the Adventurer Handbook respawns, by its
+    /// Handbook id (`InvestigationMonsterConfigData`): one time per spot, unix
+    /// seconds, ascending; a time already past means it is up.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub respawns: Option<BTreeMap<u32, Vec<u32>>>,
+}
+
+/// `gi_tasks.weeklyBosses`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiWeeklyBosses {
+    /// Discounts left this week, of `limit`.
+    pub left: u32,
+    pub limit: u32,
+    /// What a weekly boss costs now, and without the discount.
+    pub cost: u32,
+    pub full_cost: u32,
 }
 
 impl GiTasks {
@@ -512,6 +598,9 @@ impl GiTasks {
             && self.welkin.is_none()
             && self.wish_path.is_none()
             && self.resin.is_none()
+            && self.weekly_bosses.is_none()
+            && self.ar_rewards.is_none()
+            && self.respawns.is_none()
     }
 }
 
@@ -869,6 +958,9 @@ mod tests {
                     value: 124,
                     next_at: 1_791_000_300,
                 }),
+                weekly_bosses: None,
+                ar_rewards: None,
+                respawns: None,
             }),
             gi_collections: Some(GiCollections {
                 spincrystals: Some(vec![141001, 141002]),
@@ -878,6 +970,22 @@ mod tests {
                 current_team: Some(1),
                 ..Default::default()
             }),
+            gi_events: Some(BTreeMap::from([(
+                2051,
+                GiEvent {
+                    schedule: 2_051_001,
+                    start: 1_790_000_000,
+                    end: 1_791_000_000,
+                    progress: None,
+                },
+            )])),
+            gi_achievement_progress: Some(BTreeMap::from([(
+                80002,
+                GiAchievementProgress {
+                    progress: 3,
+                    total: 10,
+                },
+            )])),
             gi_exploration: Some(GiExploration {
                 statues: Some(BTreeMap::from([(
                     1,
@@ -921,12 +1029,14 @@ mod tests {
                 "artifacts",
                 "characters",
                 "format",
+                "gi_achievement_progress",
                 "gi_achievement_times",
                 "gi_achievements",
                 "gi_anecdotes",
                 "gi_capture",
                 "gi_characters",
                 "gi_collections",
+                "gi_events",
                 "gi_exploration",
                 "gi_player",
                 "gi_tasks",
@@ -1138,6 +1248,8 @@ mod tests {
             gi_tasks: None,
             gi_collections: None,
             gi_wardrobe: None,
+            gi_achievement_progress: None,
+            gi_events: None,
             gi_exploration: None,
         };
 

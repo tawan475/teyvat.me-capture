@@ -77,10 +77,12 @@ pub use crate::anecdotes::{
     matches_anecdote_get_data_rsp,
 };
 pub use crate::collections::{
-    AranaraState, ArchiveTab, AvatarWardrobe, DefeatCount, GLIDER_IDS, Handbook, HandbookProgress,
-    HandbookState, HandbookTarget, OUTFIT_IDS, SavedTeam, TRAIL_IDS, TcgCard, TcgCollection,
-    TcgDeck, WeaponSkin, avatar_wardrobe, matches_aranara_notify, matches_codex_kill_count,
-    matches_codex_notify, matches_investigation_notify, matches_tcg_notify,
+    AranaraState, ArchiveTab, AvatarWardrobe, BossList, DefeatCount, EndingState, EventInfo,
+    EventWatcher, GLIDER_IDS, Handbook, HandbookProgress, HandbookState, HandbookTarget,
+    HangoutChapter, OUTFIT_IDS, SavedTeam, TRAIL_IDS, TcgCard, TcgCollection, TcgDeck, WeaponSkin,
+    WeeklyDiscounts, avatar_wardrobe, matches_activity_info_rsp, matches_aranara_notify,
+    matches_codex_kill_count, matches_codex_notify, matches_coop_notify,
+    matches_investigation_monster_rsp, matches_investigation_notify, matches_tcg_notify,
     matches_weapon_skin_notify,
 };
 use crate::connection::parse_frame;
@@ -1543,6 +1545,13 @@ pub enum CommandMatch {
     /// [`avatar_wardrobe`]. Never produced by [`classify_command`]; the
     /// caller reads it from the message that gave [`Self::Avatars`].
     Wardrobe(AvatarWardrobe),
+    /// Hangout Events by chapter: see [`matches_coop_notify`].
+    Hangouts(BTreeMap<u32, HangoutChapter>),
+    /// The bosses' respawns and the weekly discounts: see
+    /// [`matches_investigation_monster_rsp`].
+    Bosses(BossList),
+    /// The events running and their progress: see [`matches_activity_info_rsp`].
+    Events(BTreeMap<u32, EventInfo>),
     /// A message of small records no matcher claimed (see
     /// [`matches_records_message`]): a candidate only, which the caller
     /// recognises (or not) against the game data's ids. Never produced by
@@ -1581,6 +1590,9 @@ impl CommandMatch {
             Self::Aranara(_) => "aranara",
             Self::WeaponSkins(_) => "weapon skins",
             Self::Wardrobe(_) => "wardrobe",
+            Self::Hangouts(_) => "hangouts",
+            Self::Bosses(_) => "bosses",
+            Self::Events(_) => "events",
         }
     }
 
@@ -1766,6 +1778,15 @@ pub fn classify_command(game_command: &GameCommand) -> Option<CommandMatch> {
     }
     if let Some(skins) = matches_weapon_skin_notify(&game_command.proto_data) {
         claims.push(CommandMatch::WeaponSkins(skins));
+    }
+    if let Some(hangouts) = matches_coop_notify(&game_command.proto_data) {
+        claims.push(CommandMatch::Hangouts(hangouts));
+    }
+    if let Some(bosses) = matches_investigation_monster_rsp(&game_command.proto_data) {
+        claims.push(CommandMatch::Bosses(bosses));
+    }
+    if let Some(events) = matches_activity_info_rsp(&game_command.proto_data) {
+        claims.push(CommandMatch::Events(events));
     }
     // Last on purpose. Its shape -- one packed uint64 list beside a scalar or
     // two -- is the least specific of the five, so anything another matcher can
