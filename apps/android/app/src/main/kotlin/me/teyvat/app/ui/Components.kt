@@ -586,7 +586,7 @@ fun HomeTopBar(
             TmIcon(if (dark) R.drawable.ic_moon else R.drawable.ic_sun, stringResource(R.string.theme))
         }
         IconButton(onClick = onSettings) { TmIcon(R.drawable.ic_settings, stringResource(R.string.settings)) }
-        IconButton(onClick = onDiscord) { TmIcon(R.drawable.ic_messages_square, "Discord") }
+        IconButton(onClick = onDiscord) { TmIcon(R.drawable.ic_discord, "Discord") }
     }
 }
 
