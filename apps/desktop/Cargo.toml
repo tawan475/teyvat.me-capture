@@ -6,7 +6,7 @@
 [package]
 name = "teyvatme"
 # Above every irminsul release (0.2.x), so the bridge release offers it.
-version = "1.12.0"
+version = "1.13.0"
 authors = ["tawan475", "Erik Gilling <konkers@konkers.net>"]
 license = "MIT"
 publish = false
@@ -125,6 +125,13 @@ version = "3.6.3"
 features = ["sync-secret-service", "crypto-rust"]
 
 [target.'cfg(windows)'.dependencies]
+# The window draws with Direct3D 12 on Windows (`main.rs`): NVIDIA's OpenGL
+# driver ends the whole process on an internal error ("Unable to recover from a
+# kernel exception", seen on 7.1 with the game running), where Direct3D only
+# reports a lost device. glow stays the fallback and the backend elsewhere.
+eframe = { version = "0.32", default-features = false, features = ["wgpu"] }
+# eframe's wgpu brings no backend of its own: Direct3D 12 only.
+wgpu = { version = "25", default-features = false, features = ["dx12"] }
 pktmon = { version = "0.6.2", features = ["tokio"] }
 # On Windows pcap is optional (needs the Npcap SDK); pktmon is the default backend.
 pcap = { version = "2.3.0", features = ["capture-stream"], optional = true }
