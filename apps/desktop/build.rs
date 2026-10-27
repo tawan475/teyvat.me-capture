@@ -15,52 +15,34 @@ use winresource::WindowsResource;
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
-    // Without these, cargo re-runs this build script on *every* source edit,
-    // which means every edit performs a network probe against gitlab.com.  With
-    // them the game data is refreshed when the build script or icon changes,
-    // when OUT_DIR is wiped (`cargo clean`), or when TEYVATME_REFRESH_GAME_DATA
-    // is changed, which is the documented way to force a refresh.
+    // The game data comes from the repository's pinned copy (`game-data/`, see
+    // its README), so a build needs no network. Without these, cargo would re-run
+    // this script on every source edit; with them the database is rebuilt when
+    // the script, the icon or the pinned files change, or OUT_DIR is wiped.
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=assets/icon.ico");
-    println!("cargo:rerun-if-env-changed=TEYVATME_REFRESH_GAME_DATA");
+    let manifest_dir = env::var_os("CARGO_MANIFEST_DIR").unwrap();
+    let pin_dir = Path::new(&manifest_dir).join("../../game-data");
+    println!("cargo:rerun-if-changed={}", pin_dir.display());
+    let pinned = teyvatme_game_data::Pinned::open(&pin_dir).map_err(io::Error::other)?;
 
-    // Download new game data and save it in a location to be included by the source.
+    // Build the database and save it where the source includes it.
     let out_dir = env::var_os("OUT_DIR").unwrap();
     let cache_path = Path::new(&out_dir).join("game_data.json");
     let gz_path = Path::new(&out_dir).join("game_data.gz");
 
     let mut db = teyvatme_game_data::AnimeGameData::new_with_cache(&cache_path);
-
-    // Network failures must not fail the build when a usable cache already
-    // exists: a build with a warm OUT_DIR is expected to work offline.
-    let needs_update = match db.needs_update().await {
-        Ok(needs_update) => needs_update,
-        Err(e) => {
-            println!(
-                "cargo:warning=unable to check for new game data ({e}); falling back to the \
-                 cached copy"
-            );
-            false
-        }
-    };
-
     let mut updated = false;
-    if needs_update {
-        match db.update().await {
-            Ok(()) => updated = true,
-            Err(e) => println!("cargo:warning=unable to download game data ({e})"),
-        }
+    if db
+        .needs_update_from(&pinned)
+        .await
+        .map_err(io::Error::other)?
+    {
+        db.update_from(&pinned)
+            .await
+            .map_err(|e| io::Error::other(format!("unable to build the game data: {e:#}")))?;
+        updated = true;
     }
-
-    // `save_to_writer()` errors out when no database is loaded, so bail with an
-    // actionable message rather than writing an empty/short game_data.gz that
-    // `include_bytes!` would happily embed.
-    assert!(
-        db.has_data(),
-        "no cached game data at {} and the download failed: Teyvat.me's first build needs network \
-         access to gitlab.com",
-        cache_path.display()
-    );
 
     // The gz is what `monitor.rs` embeds with `include_bytes!`, so it must exist
     // whether or not this run refreshed the json cache.  Writing it only inside
@@ -70,7 +52,8 @@ async fn main() -> io::Result<()> {
         write_game_data_gz(&db, &gz_path)?;
     }
 
-    // Which Dimbreath dump the binary carries, for the log and the export's
+    // Which game data set the binary carries (its 40-hex id; Dimbreath dump
+    // commits before 2026-10-27), for the log and the export's
     // `gi_player.gameData`. Read back out of the gz rather than the json cache:
     // the gz is what `monitor.rs` embeds, and the cache is only written on a
     // best-effort basis. Cargo replays this directive from its saved build
@@ -80,7 +63,7 @@ async fn main() -> io::Result<()> {
     let game_data_sha = match read_game_data_sha(&gz_path) {
         Ok(sha) => sha,
         Err(e) => {
-            println!("cargo:warning=unable to read the game data's dump commit ({e})");
+            println!("cargo:warning=unable to read the game data's data set id ({e})");
             String::new()
         }
     };
@@ -155,14 +138,14 @@ fn gz_is_complete(gz_path: &Path) -> bool {
 }
 
 /// The part of the game data blob this script reads back: `teyvatme-game-data`
-/// serializes the Dimbreath commit it was built from as `git_hash`, but has no
-/// public accessor for it.
+/// serializes the data set it was built from as `git_hash`, but has no public
+/// accessor for it.
 #[derive(serde::Deserialize)]
 struct GameDataMeta {
     git_hash: String,
 }
 
-/// The dump commit recorded in `game_data.gz`, checked to look like one.
+/// The data set id recorded in `game_data.gz`, checked to look like one.
 fn read_game_data_sha(gz_path: &Path) -> io::Result<String> {
     let reader = io::BufReader::new(GzDecoder::new(File::open(gz_path)?));
     let meta: GameDataMeta = serde_json::from_reader(reader).map_err(io::Error::other)?;

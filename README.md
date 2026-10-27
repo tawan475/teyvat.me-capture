@@ -59,12 +59,13 @@ Like every tool of this kind, it is used at your own risk.
 | `apps/android` | The Android app: a per-app VPN that forwards the game's traffic and decodes it on the phone (Kotlin + Compose, and a Rust native library in `apps/android/native`). |
 | `crates/core` | `teyvatme-core`: everything platform-free that both apps share. That is the decode layer from captured frames to account data, the account model, the GOOD export, live sync's deltas and policy, and the capture recordings. |
 | `crates/protocol` | `teyvatme-protocol`: KCP, the game's encryption and key recovery, Oodle decompression, and the message matchers. |
-| `crates/game-data` | `teyvatme-game-data`: downloads and indexes Dimbreath's game data dump (used at build time and run time). |
+| `crates/game-data` | `teyvatme-game-data`: indexes the game data (characters, weapons, artifacts, materials, talents) from the pinned copy in [`game-data/`](game-data/README.md), at build time and run time. |
 
 ## Building
 
 The toolchain is pinned in `rust-toolchain.toml` (a nightly, because of
-`rustfmt.toml`). The first build downloads the game data dump.
+`rustfmt.toml`). The game data comes from the pinned copy in
+[`game-data/`](game-data/README.md): builds need no network.
 
 ```sh
 cargo run                         # the desktop app (Windows: pktmon backend)

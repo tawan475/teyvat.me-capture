@@ -18,10 +18,12 @@ use anyhow::{Result, anyhow};
 #[cfg(feature = "download")]
 mod dimbreath;
 mod game_data;
+mod pinned;
 mod types;
 
 #[cfg(feature = "download")]
 use dimbreath::Dimbreath;
+pub use pinned::Pinned;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 pub use types::*;
@@ -236,6 +238,16 @@ impl AnimeGameData {
 
     pub fn has_data(&self) -> bool {
         self.db.is_some()
+    }
+
+    /// True when the loaded data is not the pinned data set's (or nothing is loaded).
+    pub async fn needs_update_from(&self, pinned: &Pinned) -> Result<bool> {
+        self.needs_update_impl(pinned).await
+    }
+
+    /// Builds the database from a pinned copy of the game data files (no network).
+    pub async fn update_from(&mut self, pinned: &Pinned) -> Result<()> {
+        self.update_impl(pinned).await
     }
 
     #[cfg(feature = "download")]
@@ -663,6 +675,60 @@ mod tests {
             let data = serde_json::from_str(json_string)?;
             Ok(data)
         }
+    }
+
+    /// The test data written as a pinned folder (gzipped files and a manifest).
+    fn pinned_test_data(id: &str) -> tempfile::TempDir {
+        use std::io::Write as _;
+        let dir = tempfile::tempdir().unwrap();
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/test_data");
+        for sub in ["ExcelBinOutput", "TextMap"] {
+            std::fs::create_dir_all(dir.path().join(sub)).unwrap();
+            for entry in std::fs::read_dir(root.join(sub)).unwrap() {
+                let path = entry.unwrap().path();
+                let name = path.file_name().unwrap().to_str().unwrap().to_owned();
+                let file = File::create(dir.path().join(sub).join(format!("{name}.gz"))).unwrap();
+                let mut gz = flate2::write::GzEncoder::new(file, flate2::Compression::default());
+                gz.write_all(&std::fs::read(&path).unwrap()).unwrap();
+                gz.finish().unwrap();
+            }
+        }
+        std::fs::write(
+            dir.path().join("manifest.json"),
+            format!(r#"{{"id": "{id}"}}"#),
+        )
+        .unwrap();
+        dir
+    }
+
+    #[tokio::test]
+    async fn pinned_files_build_the_same_database() {
+        let id = "13be4fd7343fe4cee8fa0096fe854b1c5b01b124";
+        let dir = pinned_test_data(id);
+        let pinned = Pinned::open(dir.path()).unwrap();
+        assert_eq!(pinned.id(), id);
+
+        let mut from_pinned = AnimeGameData::new();
+        assert!(from_pinned.needs_update_from(&pinned).await.unwrap());
+        from_pinned.update_from(&pinned).await.unwrap();
+        assert!(!from_pinned.needs_update_from(&pinned).await.unwrap());
+
+        let mut from_source = AnimeGameData::new();
+        from_source.update_impl(&TestDataSource).await.unwrap();
+        let json = |data: &AnimeGameData| {
+            let mut out = Vec::new();
+            data.save_to_writer(&mut out).unwrap();
+            serde_json::from_slice::<serde_json::Value>(&out).unwrap()
+        };
+        assert_eq!(json(&from_pinned), json(&from_source));
+    }
+
+    #[test]
+    fn a_pinned_folder_needs_a_well_formed_id() {
+        let dir = pinned_test_data("not-an-id");
+        let error = Pinned::open(dir.path()).unwrap_err().to_string();
+        assert!(error.contains("not 40 hex digits"), "{error}");
+        assert!(Pinned::open(dir.path().join("missing")).is_err());
     }
 
     #[tokio::test]
