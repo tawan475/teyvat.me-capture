@@ -2,6 +2,34 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.14.0
+
+- **Your profile**: the in-game nickname, signature, name card, profile
+  picture and birthday, from the profile the game loads at login (the
+  profiles of players you look up are left out). In the log they show as
+  lengths only.
+- **Offerings** (Sacred Sakura, Tree of Dreams, …) are read again for
+  accounts with an offering never levelled. The game leaves a level of 0
+  out, and that one offering made the whole list unreadable. Reputation
+  cities not started read as level 0 the same way.
+- **Co-op**: in another player's world, its Statues of The Seven, map and
+  exploration progress are no longer taken for yours.
+- Desktop: the login snapshot waits up to 12 s for the world's exploration
+  points, which the game sends 4–8 s after the bag. Most logins used to
+  send it without them until the next world change. New data during the
+  wait restarts its 5 s, for 20 s at most.
+- **Weekly bosses**: the discounts left were read backwards. The game sends
+  the discounts used, so a week with all three used showed 3 of 3 left, and
+  a fresh week 0 of 3.
+- Desktop: the language picker writes every language's name in its own
+  script (Chinese, Japanese, Korean, Thai and Russian names were empty
+  boxes outside their own language). Those fonts load only while the list
+  is open.
+
+New optional export fields: `gi_player.nickname`, `signature`, `nameCard`,
+`profilePicture` and `birthday`; `gi_tasks.weeklyBosses.used` (with it,
+`left` is the count left; exports without it held the count used there).
+
 ## 1.13.2
 
 - **Genius Invokation TCG**: the card collection and decks are read again

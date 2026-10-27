@@ -7,6 +7,10 @@
 //! `TEYVATME_PREVIEW_UPDATE` the updater's state. `full` is `decoding` with a
 //! wish key, teyvat.me signed in (as `player01`) and auto-export on, as
 //! board 12 draws it.
+//! `TEYVATME_PREVIEW_SHOT=<file.png>` saves the window's own pixels there
+//! once it has settled, then closes it; `TEYVATME_PREVIEW_OPEN=language`
+//! clicks the language picker 2 s in (an input event inside the app, not the
+//! system's mouse).
 
 use std::time::{Duration, Instant};
 
@@ -16,6 +20,63 @@ use crate::game_watch::{GameStatus, MissedLaunch};
 use crate::player_data::ExportCounts;
 
 impl TeyvatmeApp {
+    /// `TEYVATME_PREVIEW_OPEN=language`: one click on the picker, 2 s in.
+    pub(super) fn preview_click(&mut self, raw_input: &mut egui::RawInput) {
+        static CLICKED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        if std::env::var("TEYVATME_PREVIEW_OPEN").as_deref() != Ok("language")
+            || self.started_at.elapsed() < Duration::from_secs(2)
+        {
+            return;
+        }
+        let Some(pos) = self.preview_click_at else {
+            return;
+        };
+        if CLICKED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+            return;
+        }
+        let button = |pressed| egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        };
+        raw_input
+            .events
+            .extend([egui::Event::PointerMoved(pos), button(true), button(false)]);
+    }
+
+    /// `TEYVATME_PREVIEW_SHOT`: ask for the window's pixels 4 s in, save
+    /// them, close.
+    pub(super) fn preview_shot(&mut self, ctx: &egui::Context) {
+        let Ok(path) = std::env::var("TEYVATME_PREVIEW_SHOT") else {
+            return;
+        };
+        let shot = ctx.input(|input| {
+            input.events.iter().find_map(|event| match event {
+                egui::Event::Screenshot { image, .. } => Some(image.clone()),
+                _ => None,
+            })
+        });
+        if let Some(image) = shot {
+            let [width, height] = image.size;
+            let bytes = image.pixels.iter().flat_map(|c| c.to_array()).collect();
+            if let Some(png) = image::RgbaImage::from_raw(width as u32, height as u32, bytes)
+                && let Err(e) = png.save(&path)
+            {
+                tracing::warn!("preview shot not saved: {e}");
+            }
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            return;
+        }
+        static ASKED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        if self.started_at.elapsed() > Duration::from_secs(4)
+            && !ASKED.swap(true, std::sync::atomic::Ordering::Relaxed)
+        {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
+        }
+        ctx.request_repaint_after(Duration::from_millis(250));
+    }
+
     /// The state to draw: `real`, or the preview's.
     pub(super) fn preview(&mut self, real: AppState) -> AppState {
         let Ok(name) = std::env::var("TEYVATME_PREVIEW") else {
@@ -88,6 +149,7 @@ impl TeyvatmeApp {
                 ),
                 weekly_bosses: Some(crate::good::GiWeeklyBosses {
                     left: 2,
+                    used: Some(1),
                     limit: 3,
                     cost: 30,
                     full_cost: 60,

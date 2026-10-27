@@ -313,6 +313,7 @@ mod tests {
             ]),
             weekly_bosses: Some(GiWeeklyBosses {
                 left: 2,
+                used: Some(1),
                 limit: 3,
                 cost: 30,
                 full_cost: 60,

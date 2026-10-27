@@ -12,10 +12,15 @@
 //! A record, little endian: `cmd u16, header len u32, data len u32, header,
 //! data` (monitor.rs `encode_packet_log_record`). The file has no direction:
 //! the client's requests are in it too, read here as if the server sent them.
+//!
+//! With `GAME_DATA=<game_data.json>` (the build's, in
+//! `target/*/build/teyvatme-*/out/`) the messages are also applied as the app
+//! would, and the parts of the export they filled are listed with their sizes.
 
 use std::collections::BTreeMap;
 
-use teyvatme_core::decode::classify_commands;
+use teyvatme_core::decode::{apply_commands, classify_commands};
+use teyvatme_core::player_data::{ExportSettings, PlayerData};
 use teyvatme_protocol::GameCommand;
 
 fn main() {
@@ -66,6 +71,30 @@ fn main() {
         println!("{name}: {ids:?}");
     }
     println!("unclaimed: {unclaimed}");
+    if let Ok(path) = std::env::var("GAME_DATA") {
+        let file = std::fs::File::open(&path).expect("read the game data");
+        let game_data =
+            teyvatme_game_data::AnimeGameData::new_from_reader(file).expect("parse the game data");
+        let mut data = PlayerData::new(game_data);
+        for command in &commands {
+            apply_commands(&mut data, classify_commands(std::slice::from_ref(command)));
+        }
+        let (json, _) = data
+            .export_genshin_optimizer_with_report(&ExportSettings::default())
+            .expect("export");
+        let good: serde_json::Value = serde_json::from_str(&json).expect("the export's JSON");
+        for (key, value) in good.as_object().into_iter().flatten() {
+            let parts = match value {
+                serde_json::Value::Object(parts) => parts
+                    .iter()
+                    .map(|(part, inner)| format!("{part} {}", size(inner)))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                other => size(other).to_string(),
+            };
+            println!("export {key}: {parts}");
+        }
+    }
     // DUMP=<cmd>: the wire shape of that command (tags, types, counts).
     if let Some(cmd) = std::env::var("DUMP")
         .ok()
@@ -75,6 +104,15 @@ fn main() {
             println!("== {cmd}: {} bytes", command.proto_data.len());
             shape(&command.proto_data, 1);
         }
+    }
+}
+
+/// Entries in a list or map, 1 for anything else.
+fn size(value: &serde_json::Value) -> usize {
+    match value {
+        serde_json::Value::Array(all) => all.len(),
+        serde_json::Value::Object(all) => all.len(),
+        _ => 1,
     }
 }
 

@@ -1213,12 +1213,21 @@ const MAX_BOSSES: usize = 2_000;
 /// The weekly bosses' resin discounts (`WeeklyBossResinDiscountInfo`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct WeeklyDiscounts {
-    /// Discounts left this week.
-    pub left: u32,
+    /// Discounts used this week (`discount_num`: 3 all evening on a 7.1
+    /// account whose game said 0 of 3 left).
+    pub used: u32,
     pub limit: u32,
-    /// What a weekly boss costs now, and without the discount.
+    /// What a weekly boss costs with the discount, and without it (both
+    /// fixed: sent the same whether or not a discount is left).
     pub cost: u32,
     pub full_cost: u32,
+}
+
+impl WeeklyDiscounts {
+    /// Discounts left this week.
+    pub fn left(&self) -> u32 {
+        self.limit.saturating_sub(self.used)
+    }
 }
 
 /// The bosses and elites of the Adventurer Handbook (`GetInvestigationMonsterRsp`).
@@ -1242,8 +1251,8 @@ fn monster_config(bytes: &[u8]) -> bool {
     })
 }
 
-/// A nested `{left, limit, cost, full cost}`: two pairs of small numbers,
-/// left no more than the limit (at most 10) and the cost below the full cost
+/// A nested `{used, limit, cost, full cost}`: two pairs of small numbers,
+/// used no more than the limit (at most 10) and the cost below the full cost
 /// (at most 1,000 resin).
 fn weekly_discounts(bytes: &[u8]) -> Option<WeeklyDiscounts> {
     let e = entry(bytes)?;
@@ -1259,17 +1268,17 @@ fn weekly_discounts(bytes: &[u8]) -> Option<WeeklyDiscounts> {
         .collect();
     small.sort_unstable();
     resin.sort_unstable();
-    // proto3 leaves 0 off: no discounts left shows as the limit alone.
-    let (left, limit) = match small.as_slice() {
+    // proto3 leaves 0 off: none used yet shows as the limit alone.
+    let (used, limit) = match small.as_slice() {
         [limit] => (0, *limit),
-        [left, limit] => (*left, *limit),
+        [used, limit] => (*used, *limit),
         _ => return None,
     };
     let [cost, full_cost] = resin.as_slice() else {
         return None;
     };
     (limit > 0).then_some(WeeklyDiscounts {
-        left: left as u32,
+        used: used as u32,
         limit: limit as u32,
         cost: *cost as u32,
         full_cost: *full_cost as u32,
@@ -1907,6 +1916,188 @@ pub fn matches_sign_in_rsp(data: &[u8]) -> Option<BTreeMap<u32, SignIn>> {
     None
 }
 
+// ------------------------------------------------------------------ profile
+
+/// Text a player typed: valid UTF-8 without control characters (a newline
+/// allowed), so a small message of numbers (the birthday's four bytes are
+/// valid UTF-8) is never taken for one.
+fn player_text(bytes: &[u8]) -> Option<String> {
+    let text = std::str::from_utf8(bytes).ok()?;
+    (!text.chars().any(|c| c.is_control() && c != '\n')).then(|| text.to_string())
+}
+
+/// The in-game nickname from `PlayerDataNotify` (7.1: command 3272, tag 13),
+/// the login message the player properties come from: its one text field
+/// sent once (the property map's entries repeat one tag), 1-64 bytes.
+pub fn player_nickname(data: &[u8]) -> Option<String> {
+    let msg = parse(data)?;
+    let texts: Vec<String> = fields_by_tag(&msg)
+        .values()
+        .filter_map(|values| match values.as_slice() {
+            [LengthDelimited(bytes)] if (1..=64).contains(&bytes.len()) => player_text(bytes),
+            _ => None,
+        })
+        .collect();
+    match texts.as_slice() {
+        [one] => Some(one.clone()),
+        _ => None,
+    }
+}
+
+/// A profile picture as the game sends it; every part optional.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ProfilePicture {
+    /// `ProfilePictureExcelConfigData` id (7.1: 1001...).
+    pub id: Option<u32>,
+    /// A character's icon (10000xxx), older clients' way.
+    pub avatar_id: Option<u32>,
+    pub costume_id: Option<u32>,
+    /// The frame around it (7.1: 100016...).
+    pub frame_id: Option<u32>,
+}
+
+/// One player's profile card (`SocialDetail` in `GetPlayerSocialDetailRsp`,
+/// 7.1: command 25989; the game asks for the player's own at login, and for
+/// others' when their profile is opened).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SocialProfile {
+    pub uid: u32,
+    /// The card's texts by tag: the nickname and, when set, the signature.
+    pub texts: Vec<String>,
+    pub name_card: Option<u32>,
+    pub picture: Option<ProfilePicture>,
+    /// (month, day).
+    pub birthday: Option<(u32, u32)>,
+}
+
+/// Name card item ids (7.1: 210001-210298 in the material table).
+const NAME_CARD_IDS: RangeInclusive<u64> = 210_001..=210_999;
+
+/// A UID: nine or ten digits.
+const UID_RANGE: RangeInclusive<u64> = 100_000_000..=4_294_967_295;
+
+fn profile_picture(bytes: &[u8]) -> Option<ProfilePicture> {
+    let msg = parse(bytes)?;
+    let mut out = ProfilePicture::default();
+    for values in fields_by_tag(&msg).values() {
+        let value = single_varint(values)?;
+        let slot = match value {
+            1_000..=99_999 => &mut out.id,
+            100_000..=199_999 => &mut out.frame_id,
+            200_000..=999_999 => &mut out.costume_id,
+            10_000_000..=10_999_999 => &mut out.avatar_id,
+            _ => return None,
+        };
+        if slot.replace(value as u32).is_some() {
+            return None;
+        }
+    }
+    (out.id.is_some() || out.avatar_id.is_some()).then_some(out)
+}
+
+fn birthday(bytes: &[u8]) -> Option<(u32, u32)> {
+    let msg = parse(bytes)?;
+    let fields = fields_by_tag(&msg);
+    let [month, day] = fields.values().collect::<Vec<_>>()[..] else {
+        return None;
+    };
+    let (month, day) = (single_varint(month)?, single_varint(day)?);
+    ((1..=12).contains(&month) && (1..=31).contains(&day)).then_some((month as u32, day as u32))
+}
+
+/// Recover a profile card from a `GetPlayerSocialDetailRsp` payload, or `None`
+/// if it is not one: one nested detail (beside at most a retcode) holding
+/// exactly one UID-sized number, at least one text, and a name card id. The
+/// other parts are told apart by value: the birthday is a small message of a
+/// month and a day, the picture one of picture, frame, costume and character
+/// ids.
+pub fn matches_social_detail(data: &[u8]) -> Option<SocialProfile> {
+    let msg = parse(data)?;
+    let mut detail = None;
+    for values in fields_by_tag(&msg).values() {
+        match values.as_slice() {
+            [Varint(_)] => {}
+            [LengthDelimited(bytes)] if detail.is_none() => detail = Some(*bytes),
+            _ => return None,
+        }
+    }
+    let msg = parse(detail?)?;
+    let mut out = SocialProfile::default();
+    let mut uid = None;
+    for values in fields_by_tag(&msg).values() {
+        match values.as_slice() {
+            [Varint(v)] if UID_RANGE.contains(v) => {
+                if uid.replace(*v as u32).is_some() {
+                    return None;
+                }
+            }
+            [Varint(v)] if NAME_CARD_IDS.contains(v) => {
+                if out.name_card.replace(*v as u32).is_some() {
+                    return None;
+                }
+            }
+            [LengthDelimited(bytes)] => {
+                if let Some(text) = player_text(bytes) {
+                    out.texts.push(text);
+                } else if let Some(day) = birthday(bytes) {
+                    out.birthday.get_or_insert(day);
+                } else if let Some(picture) = profile_picture(bytes) {
+                    out.picture.get_or_insert(picture);
+                }
+            }
+            _ => {}
+        }
+    }
+    out.uid = uid?;
+    if out.texts.is_empty() || out.texts.len() > 4 || out.name_card.is_none() {
+        return None;
+    }
+    Some(out)
+}
+
+// ------------------------------------------------------------ world owner
+
+/// The client asking about one scene of a world (`GetSceneAreaReq`,
+/// `GetScenePointReq`; 7.1: commands 1649 and 24721): the world's owner and
+/// the scene. The replies (Statues of The Seven, map points) name neither, so
+/// in someone else's world (co-op) only the request tells whose they are.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SceneRequest {
+    pub owner: u32,
+    pub scene: u32,
+}
+
+/// Read a client request as a [`SceneRequest`], or `None`: two or three lone
+/// numbers, exactly one UID-sized (the owner) and exactly one other above 1
+/// (the scene), the rest flags (`is_relogin`). Other requests share that
+/// shape (7.1's 5753: another player's UID beside a 7), so the caller
+/// believes a command id only once it has asked about several of the game
+/// data's scenes.
+pub fn matches_scene_request(data: &[u8]) -> Option<SceneRequest> {
+    let msg = parse(data)?;
+    let fields = fields_by_tag(&msg);
+    if !(2..=3).contains(&fields.len()) {
+        return None;
+    }
+    let (mut owner, mut scene) = (None, None);
+    for values in fields.values() {
+        let value = single_varint(values)?;
+        let slot = match value {
+            0 | 1 => continue,
+            v if UID_RANGE.contains(&v) => &mut owner,
+            2..=99_999 => &mut scene,
+            _ => return None,
+        };
+        if slot.replace(value as u32).is_some() {
+            return None;
+        }
+    }
+    Some(SceneRequest {
+        owner: owner?,
+        scene: scene?,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2128,6 +2319,100 @@ mod tests {
     }
 
     #[test]
+    fn the_nickname_is_the_one_text_beside_the_properties() {
+        let prop = |id: u64| b(8, &[v(1, id), b(2, &[v(1, id), v(4, 5)].concat())].concat());
+        let data = [
+            prop(10_009),
+            prop(10_010),
+            b(13, b"player01"),
+            v(15, 1_792_000_000),
+        ]
+        .concat();
+        assert_eq!(player_nickname(&data).as_deref(), Some("player01"));
+        // Two texts, or none: not the nickname.
+        let two = [&data[..], &b(14, b"player02")[..]].concat();
+        assert_eq!(player_nickname(&two), None);
+        assert_eq!(player_nickname(&prop(10_009)), None);
+    }
+
+    #[test]
+    fn a_scene_request_names_the_world_owner() {
+        let area = [v(5, 3), v(11, 812_345_678)].concat();
+        assert_eq!(
+            matches_scene_request(&area),
+            Some(SceneRequest {
+                owner: 812_345_678,
+                scene: 3
+            })
+        );
+        let point = [v(1, 811_111_111), v(13, 1), v(15, 101)].concat();
+        assert_eq!(
+            matches_scene_request(&point),
+            Some(SceneRequest {
+                owner: 811_111_111,
+                scene: 101
+            })
+        );
+        // No owner, two scenes, a list, or more fields: not one.
+        assert_eq!(matches_scene_request(&v(5, 3)), None);
+        assert_eq!(
+            matches_scene_request(&[v(5, 3), v(6, 5), v(11, 812_345_678)].concat()),
+            None
+        );
+        assert_eq!(
+            matches_scene_request(&[b(5, &[3]), v(11, 812_345_678)].concat()),
+            None
+        );
+        let four = [v(1, 812_345_678), v(2, 3), v(3, 1), v(4, 0)].concat();
+        assert_eq!(matches_scene_request(&four), None);
+    }
+
+    #[test]
+    fn a_profile_card_is_read_by_value() {
+        let detail = [
+            v(1, 812_345_678),
+            b(2, b"player01"),
+            v(3, 60),
+            b(5, "Hello\nTeyvat".as_bytes()),
+            b(6, &[v(1, 12), v(2, 18)].concat()),
+            v(7, 8),
+            v(14, 210_279),
+            b(22, &[v(1, 10_000_140), v(2, 90)].concat()),
+            b(22, &[v(1, 10_000_143), v(2, 90)].concat()),
+            list(23, &[210_001, 210_279]),
+            b(25, &[v(3, 1001), v(4, 100_016)].concat()),
+        ]
+        .concat();
+        let data = b(6, &detail);
+        let found = matches_social_detail(&data).unwrap();
+        assert_eq!(found.uid, 812_345_678);
+        assert_eq!(found.texts, ["player01", "Hello\nTeyvat"]);
+        assert_eq!(found.birthday, Some((12, 18)));
+        assert_eq!(found.name_card, Some(210_279));
+        assert_eq!(
+            found.picture,
+            Some(ProfilePicture {
+                id: Some(1001),
+                frame_id: Some(100_016),
+                ..Default::default()
+            })
+        );
+        // An older picture: a character in an outfit.
+        let picture = profile_picture(&[v(1, 10_000_046), v(2, 204_601)].concat()).unwrap();
+        assert_eq!(picture.avatar_id, Some(10_000_046));
+        assert_eq!(picture.costume_id, Some(204_601));
+        // A list of details (a friend list) or no name card: another message.
+        assert_eq!(
+            matches_social_detail(&[b(6, &detail), b(6, &detail)].concat()),
+            None
+        );
+        assert_eq!(
+            matches_social_detail(&b(6, &[v(1, 812_345_678), b(2, b"player01")].concat())),
+            None
+        );
+    }
+
+    #[test]
     fn aranara_states_are_read() {
         let pair = |id: u64, state: u64| b(4, &[v(1, id), v(2, state)].concat());
         let data = b(3, &[pair(1, 3), pair(2, 0), pair(11, 1), v(7, 1)].concat());
@@ -2272,7 +2557,8 @@ mod tests {
             e.extend(b(4, &[float(1), float(2)].concat()));
             e.extend(b(7, &[v(1, 3), v(2, monster), v(5, 133_220_051)].concat()));
             if discount {
-                e.extend(b(12, &[v(1, 3), v(2, 3), v(3, 30), v(4, 60)].concat()));
+                // One discount used of three.
+                e.extend(b(12, &[v(1, 1), v(2, 3), v(3, 30), v(4, 60)].concat()));
             }
             b(6, &e)
         };
@@ -2299,11 +2585,22 @@ mod tests {
         assert_eq!(
             found.weekly,
             Some(WeeklyDiscounts {
-                left: 3,
+                used: 1,
                 limit: 3,
                 cost: 30,
                 full_cost: 60
             })
+        );
+        assert_eq!(found.weekly.unwrap().left(), 2);
+        // None used: the 0 is left out.
+        assert_eq!(
+            weekly_discounts(&[v(2, 3), v(3, 30), v(4, 60)].concat()).map(|w| (w.used, w.left())),
+            Some((0, 3))
+        );
+        // All used: the game's "0/3".
+        assert_eq!(
+            weekly_discounts(&[v(1, 3), v(2, 3), v(3, 30), v(4, 60)].concat()).map(|w| w.left()),
+            Some(0)
         );
         // Spots without a monster config: something else.
         let bare = [

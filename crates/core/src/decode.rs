@@ -17,7 +17,8 @@ use std::time::{Duration, Instant};
 
 use teyvatme_protocol::{
     CommandMatch, GameCommand, GamePacket, GameSniffer, KeyState, avatar_wardrobe,
-    classify_command, classify_union, flat_message, matches_records_message, union_commands,
+    classify_command, classify_union, flat_message, matches_records_message, matches_scene_request,
+    player_nickname, union_commands,
 };
 use tokio::sync::mpsc;
 
@@ -153,6 +154,9 @@ impl DataReplacement {
                     CommandMatch::DeletedItems(_)
                         | CommandMatch::ChangedItems(_)
                         | CommandMatch::PropertyUpdate(_)
+                        | CommandMatch::Nickname(_)
+                        | CommandMatch::Profile(_)
+                        | CommandMatch::SceneRequest(_)
                         | CommandMatch::Flat(_)
                         | CommandMatch::ResinClock(_)
                         | CommandMatch::Records(_)
@@ -227,19 +231,28 @@ pub fn classify_commands(commands: &[GameCommand]) -> Vec<(u16, CommandMatch)> {
         .flat_map(|command| {
             let _span = tracing::info_span!("command", id = command.command_id).entered();
             // The client's own requests carry no account data; of them only
-            // the token request's client version is read.
+            // the token request's client version is read, and the scene
+            // requests' world owner (whose world the replies describe).
             if command.sent {
                 return match classify_command(command) {
                     Some(found @ CommandMatch::ClientVersion(_)) => {
                         vec![(command.command_id, found)]
                     }
-                    _ => Vec::new(),
+                    _ => matches_scene_request(&command.proto_data)
+                        .map(|request| (command.command_id, CommandMatch::SceneRequest(request)))
+                        .into_iter()
+                        .collect(),
                 };
             }
             match classify_command(command) {
                 // The character message also holds the wardrobe.
                 Some(found @ CommandMatch::Avatars(_)) => std::iter::once(found)
                     .chain(avatar_wardrobe(&command.proto_data).map(CommandMatch::Wardrobe))
+                    .map(|found| (command.command_id, found))
+                    .collect(),
+                // The login's player data also holds the nickname.
+                Some(found @ CommandMatch::Properties(_)) => std::iter::once(found)
+                    .chain(player_nickname(&command.proto_data).map(CommandMatch::Nickname))
                     .map(|found| (command.command_id, found))
                     .collect(),
                 Some(found) => vec![(command.command_id, found)],
@@ -285,6 +298,27 @@ pub fn apply_commands(
             CommandMatch::PropertyUpdate(properties) => {
                 tracing::info!("Found property update: {:?}", properties);
                 player_data.process_properties(&properties);
+                applied.properties = true;
+            }
+            CommandMatch::Nickname(nickname) => {
+                tracing::info!(chars = nickname.chars().count(), "Found the nickname");
+                player_data.set_nickname(nickname);
+                applied.properties = true;
+            }
+            CommandMatch::SceneRequest(request) => {
+                // Changes nothing exported: it says whose world the next
+                // replies describe.
+                player_data.note_scene_request(command_id, request);
+            }
+            CommandMatch::Profile(profile) => {
+                tracing::info!(
+                    texts = profile.texts.len(),
+                    name_card = ?profile.name_card,
+                    birthday = profile.birthday.is_some(),
+                    picture = profile.picture.is_some(),
+                    "Found a profile card"
+                );
+                player_data.process_profile(profile);
                 applied.properties = true;
             }
             CommandMatch::Flat(flat) => {

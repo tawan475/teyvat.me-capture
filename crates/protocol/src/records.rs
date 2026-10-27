@@ -31,8 +31,9 @@ const MAX_RECORDS: usize = 5_000;
 /// ~1,700 in 7.1).
 const MAX_LIST: usize = 50_000;
 
-/// The most fields one record may have.
-const MAX_RECORD_FIELDS: usize = 12;
+/// The most field numbers one record may have (a map's entries share one, so
+/// they count once: 7.1's offering 6 is 11 fields on the wire).
+const MAX_RECORD_FIELDS: usize = 16;
 
 /// Below this, a message is not worth the caller's look: fewer records and no
 /// list this long.
@@ -78,15 +79,15 @@ fn varints_of(bytes: &[u8]) -> Option<Vec<u64>> {
 }
 
 /// A submessage as a record, or `None` when it is not one (it does not parse,
-/// repeats a lone number, has more than [`MAX_RECORD_FIELDS`] fields, or holds
+/// repeats a lone number, has more than [`MAX_RECORD_FIELDS`] field numbers, or holds
 /// fixed-width numbers).
 fn read_record(bytes: &[u8]) -> Option<Record> {
     let msg = Unk::parse_from_bytes(bytes).ok()?;
     let mut record = Record::default();
-    let mut fields = 0;
+    let mut tags = std::collections::BTreeSet::new();
     for (tag, value) in msg.unknown_fields().iter() {
-        fields += 1;
-        if fields > MAX_RECORD_FIELDS {
+        tags.insert(tag);
+        if tags.len() > MAX_RECORD_FIELDS {
             return None;
         }
         match value {

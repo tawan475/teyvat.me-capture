@@ -20,11 +20,19 @@
 //! Each reply replaces what the last one of its kind said (every one is the
 //! whole state of its part). Nothing here is live: the game sends them at
 //! login and when the map is opened.
+//!
+//! A level of 0 is left out on the wire (protobuf drops zeros), so a record
+//! may lack its level: an offering never levelled is its id alone.
+//!
+//! The Statues, map points and exploration replies describe the world the
+//! player is in, a co-op host's too, and name no owner; the client's requests
+//! for them do ([`teyvatme_protocol::SceneRequest`]). While the latest names
+//! another player, those replies are not kept.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use teyvatme_game_data::Exploration;
-use teyvatme_protocol::{Record, RecordsMessage};
+use teyvatme_protocol::{Record, RecordsMessage, SceneRequest};
 
 use super::PlayerData;
 
@@ -53,6 +61,26 @@ pub(super) struct ExplorationState {
     pub explore: Option<BTreeMap<u32, u32>>,
     /// Scene → (unlocked points, revealed areas).
     pub scenes: BTreeMap<u32, (BTreeSet<u32>, BTreeSet<u32>)>,
+    /// Whose world the player is in, as the client's requests say.
+    pub world: WorldWatch,
+}
+
+/// A command id is believed to ask about a world's scenes once it asked
+/// about this many of the game data's scenes for one owner (the client asks
+/// about seven at every scene enter; at login, the player's own world).
+const SCENE_REQUEST_SCENES: usize = 3;
+
+/// The most (command id, owner) pairs watched: other requests of the shape
+/// are a handful.
+const MAX_WATCHED_REQUESTS: usize = 32;
+
+/// What the client's scene requests said.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(super) struct WorldWatch {
+    /// (command id, owner) → the game data's scenes asked about.
+    requests: BTreeMap<(u16, u32), BTreeSet<u32>>,
+    /// The owner the latest believed request named.
+    owner: Option<u32>,
 }
 
 /// Which part a message was.
@@ -81,25 +109,52 @@ fn id_field(records: &[Record], known: &BTreeSet<u32>) -> Option<u32> {
     })
 }
 
-/// The record field other than `id` present in every record with every value
-/// in `range`, or `None` when there is not exactly one.
-fn level_field(records: &[Record], id: u32, range: &std::ops::RangeInclusive<u64>) -> Option<u32> {
-    let candidates: Vec<u32> = records
-        .first()?
-        .varints
-        .keys()
-        .copied()
+/// Every record field other than `id` whose values, where it is present, are
+/// all in `range` (a level of 0 is left out on the wire).
+fn in_range_fields(records: &[Record], id: u32, range: &std::ops::RangeInclusive<u64>) -> Vec<u32> {
+    let tags: BTreeSet<u32> = records
+        .iter()
+        .flat_map(|record| record.varints.keys().copied())
         .filter(|tag| *tag != id)
+        .collect();
+    tags.into_iter()
         .filter(|tag| {
             records
                 .iter()
-                .all(|record| record.varints.get(tag).is_some_and(|v| range.contains(v)))
+                .all(|record| record.varints.get(tag).is_none_or(|v| range.contains(v)))
         })
+        .collect()
+}
+
+/// The level field: of the fields in `range` on at least half the records,
+/// the only one, or else the only one on every record; `None` otherwise.
+fn level_field(records: &[Record], id: u32, range: &std::ops::RangeInclusive<u64>) -> Option<u32> {
+    let present = |tag: &u32| {
+        records
+            .iter()
+            .filter(|r| r.varints.contains_key(tag))
+            .count()
+    };
+    let candidates: Vec<u32> = in_range_fields(records, id, range)
+        .into_iter()
+        .filter(|tag| present(tag) * 2 >= records.len())
         .collect();
-    match candidates.as_slice() {
+    if let [one] = candidates.as_slice() {
+        return Some(*one);
+    }
+    let everywhere: Vec<u32> = candidates
+        .into_iter()
+        .filter(|tag| present(tag) == records.len())
+        .collect();
+    match everywhere.as_slice() {
         [one] => Some(*one),
         _ => None,
     }
+}
+
+/// A record's level: 0 when left out.
+fn level_of(record: &Record, level: u32) -> u32 {
+    record.varints.get(&level).map_or(0, |v| *v as u32)
 }
 
 fn statues(msg: &RecordsMessage, known: &Exploration) -> Option<BTreeMap<u32, (u32, u32)>> {
@@ -126,7 +181,7 @@ fn statues(msg: &RecordsMessage, known: &Exploration) -> Option<BTreeMap<u32, (u
         }
         out.insert(
             record.varints[&city] as u32,
-            (record.varints[&level] as u32, oculi as u32),
+            (level_of(record, level), oculi as u32),
         );
     }
     Some(out)
@@ -134,9 +189,10 @@ fn statues(msg: &RecordsMessage, known: &Exploration) -> Option<BTreeMap<u32, (u
 
 fn reputation(msg: &RecordsMessage, known: &Exploration) -> Option<BTreeMap<u32, u32>> {
     let records = &msg.records;
+    // A city's id and its level (left out at 0).
     if records
         .iter()
-        .any(|r| r.varints.len() != 2 || !r.lists.is_empty())
+        .any(|r| !(1..=2).contains(&r.varints.len()) || !r.lists.is_empty())
     {
         return None;
     }
@@ -145,7 +201,7 @@ fn reputation(msg: &RecordsMessage, known: &Exploration) -> Option<BTreeMap<u32,
     Some(
         records
             .iter()
-            .map(|r| (r.varints[&city] as u32, r.varints[&level] as u32))
+            .map(|r| (r.varints[&city] as u32, level_of(r, level)))
             .collect(),
     )
 }
@@ -157,21 +213,15 @@ fn offerings(msg: &RecordsMessage, known: &Exploration) -> Option<BTreeMap<u32, 
     }
     let id = id_field(records, &known.offerings)?;
     // Beside the level, an offering record holds flags (0/1, absent when 0):
-    // the level is the one field in every record, in range, that goes past 1.
-    let level = records
-        .first()?
-        .varints
-        .keys()
-        .copied()
-        .filter(|tag| *tag != id)
+    // the level is the one field in range that goes past 1. It is absent
+    // too on an offering never levelled (its id alone).
+    let level = in_range_fields(records, id, &OFFERING_LEVELS)
+        .into_iter()
         .filter(|tag| {
-            records.iter().all(|r| {
-                r.varints
-                    .get(tag)
-                    .is_some_and(|v| OFFERING_LEVELS.contains(v))
-            })
+            records
+                .iter()
+                .any(|r| r.varints.get(tag).is_some_and(|v| *v > 1))
         })
-        .filter(|tag| records.iter().any(|r| r.varints[tag] > 1))
         .collect::<Vec<_>>();
     let [level] = level.as_slice() else {
         return None;
@@ -181,7 +231,10 @@ fn offerings(msg: &RecordsMessage, known: &Exploration) -> Option<BTreeMap<u32, 
     // chapters (ids 1-18 with a state and a start time) have none.
     let rewards_listed = records.iter().any(|r| {
         r.lists.values().any(|taken| {
-            !taken.is_empty() && taken.iter().all(|l| (1..=r.varints[level]).contains(l))
+            !taken.is_empty()
+                && taken
+                    .iter()
+                    .all(|l| (1..=u64::from(level_of(r, *level))).contains(l))
         })
     });
     let timed = records
@@ -193,7 +246,7 @@ fn offerings(msg: &RecordsMessage, known: &Exploration) -> Option<BTreeMap<u32, 
     Some(
         records
             .iter()
-            .map(|r| (r.varints[&id] as u32, r.varints[level] as u32))
+            .map(|r| (r.varints[&id] as u32, level_of(r, *level)))
             .collect(),
     )
 }
@@ -297,12 +350,57 @@ fn scene_points(
 }
 
 impl PlayerData {
+    /// Note whose world a client request asks about. A command id counts as a
+    /// scene request once it asked about [`SCENE_REQUEST_SCENES`] of the game
+    /// data's scenes for one owner; from then on each names the world's owner.
+    pub fn note_scene_request(&mut self, command_id: u16, request: SceneRequest) {
+        let Ok(known) = self.game_data.exploration() else {
+            return;
+        };
+        if !known.scene_points.contains_key(&request.scene) {
+            return;
+        }
+        // Unknown before the login's data names the account.
+        let own = self.account_uid().map(|uid| uid == request.owner);
+        let world = &mut self.exploration.world;
+        let key = (command_id, request.owner);
+        if world.requests.len() < MAX_WATCHED_REQUESTS || world.requests.contains_key(&key) {
+            world.requests.entry(key).or_default().insert(request.scene);
+        }
+        let believed = world
+            .requests
+            .get(&key)
+            .is_some_and(|scenes| scenes.len() >= SCENE_REQUEST_SCENES);
+        if believed && world.owner != Some(request.owner) {
+            tracing::info!(?own, "the player's world changed");
+            world.owner = Some(request.owner);
+        }
+    }
+
+    /// Whether the world's exploration points are held.
+    pub fn has_exploration_points(&self) -> bool {
+        self.exploration.explore.is_some()
+    }
+
+    /// Whether the scene requests say the player is in another player's
+    /// world (co-op).
+    fn in_another_world(&self) -> bool {
+        let owner = self.exploration.world.owner;
+        owner.is_some_and(|owner| self.account_uid().is_some_and(|uid| uid != owner))
+    }
+
     /// Recognise a records message as one of the exploration parts and keep
-    /// it, or `None` when it is none of them.
+    /// it, or `None` when it is none of them. The parts that describe the
+    /// world the player is in are not kept while it is another player's.
     pub fn apply_exploration(&mut self, msg: &RecordsMessage) -> Option<ExplorationPart> {
         let known = self.game_data.exploration().ok()?.clone();
+        let elsewhere = self.in_another_world();
         if !msg.records.is_empty() {
             if let Some(found) = statues(msg, &known) {
+                if elsewhere {
+                    tracing::debug!("statues of another player's world: not kept");
+                    return None;
+                }
                 self.exploration.statues = Some(found);
                 return Some(ExplorationPart::Statues);
             }
@@ -317,10 +415,18 @@ impl PlayerData {
             return None;
         }
         if let Some(found) = explore(msg, &known) {
+            if elsewhere {
+                tracing::debug!("exploration of another player's world: not kept");
+                return None;
+            }
             self.exploration.explore = Some(found);
             return Some(ExplorationPart::Explore);
         }
         if let Some((scene, points, areas)) = scene_points(msg, &known, self.account_uid()) {
+            if elsewhere {
+                tracing::debug!(scene, "map points of another player's world: not kept");
+                return None;
+            }
             self.exploration.scenes.insert(scene, (points, areas));
             return Some(ExplorationPart::ScenePoints(scene));
         }

@@ -699,10 +699,14 @@ pub struct GiSignIn {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GiWeeklyBosses {
-    /// Discounts left this week, of `limit`.
+    /// Discounts left this week, of `limit`. Exports without `used` (1.13.2
+    /// and before) held the count used here instead.
     pub left: u32,
+    /// Discounts used this week; its presence says `left` is the count left.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub used: Option<u32>,
     pub limit: u32,
-    /// What a weekly boss costs now, and without the discount.
+    /// What a weekly boss costs with the discount, and without it.
     pub cost: u32,
     pub full_cost: u32,
 }
@@ -827,6 +831,44 @@ pub struct GiPlayer {
     /// The Dimbreath dump commit the export's GOOD keys were derived from.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub game_data: Option<String>,
+    /// The in-game name.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub nickname: Option<String>,
+    /// The profile's signature: "" when the profile card came without one.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub signature: Option<String>,
+    /// The name card on the profile (an item id, 210001...).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub name_card: Option<u32>,
+    /// The profile picture, as the game sends it.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub profile_picture: Option<GiProfilePicture>,
+    /// The birthday set on the profile.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub birthday: Option<GiBirthday>,
+}
+
+/// `gi_player.profilePicture`: every part optional. 7.1 sends `id` (a
+/// `ProfilePictureExcelConfigData` id) and `frameId`; older clients a
+/// character (`avatarId`) and its outfit (`costumeId`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiProfilePicture {
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub id: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub avatar_id: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub costume_id: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub frame_id: Option<u32>,
+}
+
+/// `gi_player.birthday`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct GiBirthday {
+    pub month: u32,
+    pub day: u32,
 }
 
 /// GOOD key for the Traveler before their element is appended.
@@ -999,6 +1041,14 @@ mod tests {
                 story_keys: Some(3),
                 max_stamina: Some(24_000),
                 game_data: Some("792978e5503ecfba73dcb3562ed44a0d35a2abe2".to_string()),
+                nickname: Some("player01".to_string()),
+                signature: Some(String::new()),
+                name_card: Some(210_001),
+                profile_picture: Some(GiProfilePicture {
+                    id: Some(1001),
+                    ..Default::default()
+                }),
+                birthday: Some(GiBirthday { month: 1, day: 2 }),
             }),
             gi_achievement_times: Some(BTreeMap::from([(80001, 1_650_000_000)])),
             gi_characters: Some(BTreeMap::from([(
@@ -1255,9 +1305,14 @@ mod tests {
             [
                 "ar",
                 "arExp",
+                "birthday",
                 "gameData",
                 "maxStamina",
+                "nameCard",
+                "nickname",
+                "profilePicture",
                 "resin",
+                "signature",
                 "storyKeys",
                 "uid",
                 "wl",
