@@ -79,11 +79,12 @@ pub use crate::anecdotes::{
 pub use crate::collections::{
     AranaraState, ArchiveTab, AvatarWardrobe, BossList, DefeatCount, EndingState, EventInfo,
     EventWatcher, GLIDER_IDS, Handbook, HandbookProgress, HandbookState, HandbookTarget,
-    HangoutChapter, OUTFIT_IDS, SavedTeam, TRAIL_IDS, TcgCard, TcgCollection, TcgDeck, WeaponSkin,
-    WeeklyDiscounts, avatar_wardrobe, matches_activity_info_rsp, matches_aranara_notify,
-    matches_codex_kill_count, matches_codex_notify, matches_coop_notify,
-    matches_investigation_monster_rsp, matches_investigation_notify, matches_tcg_notify,
-    matches_weapon_skin_notify,
+    HangoutChapter, HomeComfort, OUTFIT_IDS, SavedTeam, TRAIL_IDS, TcgCard, TcgChallenges,
+    TcgCollection, TcgDeck, WeaponSkin, WeeklyDiscounts, avatar_wardrobe,
+    matches_activity_info_rsp, matches_aranara_notify, matches_codex_kill_count,
+    matches_codex_notify, matches_coop_notify, matches_home_comfort_notify,
+    matches_investigation_monster_rsp, matches_investigation_notify, matches_tcg_challenges,
+    matches_tcg_notify, matches_tcg_tavern, matches_weapon_skin_notify,
 };
 use crate::connection::parse_frame;
 use crate::crypto::{bruteforce, decrypt_command, guess, lookup_initial_key};
@@ -1552,6 +1553,12 @@ pub enum CommandMatch {
     Bosses(BossList),
     /// The events running and their progress: see [`matches_activity_info_rsp`].
     Events(BTreeMap<u32, EventInfo>),
+    /// The Serenitea Pot's comfort by realm: see [`matches_home_comfort_notify`].
+    Comfort(BTreeMap<u32, HomeComfort>),
+    /// TCG challenges cleared: see [`matches_tcg_challenges`].
+    TcgChallenges(TcgChallenges),
+    /// TCG Tavern challenges by character: see [`matches_tcg_tavern`].
+    TcgTavern(BTreeMap<u32, Vec<u32>>),
     /// A message of small records no matcher claimed (see
     /// [`matches_records_message`]): a candidate only, which the caller
     /// recognises (or not) against the game data's ids. Never produced by
@@ -1583,6 +1590,8 @@ impl CommandMatch {
             Self::Welkin(_) => "welkin",
             Self::ResinClock(_) => "resin clock",
             Self::Records(_) => "records",
+            Self::TcgChallenges(_) => "tcg challenges",
+            Self::TcgTavern(_) => "tcg tavern",
             Self::Archive(_) => "archive",
             Self::Defeats(_) => "defeats",
             Self::Handbook(_) => "handbook",
@@ -1593,6 +1602,7 @@ impl CommandMatch {
             Self::Hangouts(_) => "hangouts",
             Self::Bosses(_) => "bosses",
             Self::Events(_) => "events",
+            Self::Comfort(_) => "comfort",
         }
     }
 
@@ -1787,6 +1797,15 @@ pub fn classify_command(game_command: &GameCommand) -> Option<CommandMatch> {
     }
     if let Some(events) = matches_activity_info_rsp(&game_command.proto_data) {
         claims.push(CommandMatch::Events(events));
+    }
+    if let Some(comfort) = matches_home_comfort_notify(&game_command.proto_data) {
+        claims.push(CommandMatch::Comfort(comfort));
+    }
+    if let Some(found) = matches_tcg_challenges(&game_command.proto_data) {
+        claims.push(CommandMatch::TcgChallenges(found));
+    }
+    if let Some(found) = matches_tcg_tavern(&game_command.proto_data) {
+        claims.push(CommandMatch::TcgTavern(found));
     }
     // Last on purpose. Its shape -- one packed uint64 list beside a scalar or
     // two -- is the least specific of the five, so anything another matcher can

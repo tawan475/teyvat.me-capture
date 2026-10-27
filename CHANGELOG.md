@@ -2,6 +2,17 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.8.0
+
+- **Crafting, forging and processing**: which recipes you've unlocked at the
+  crafting bench, the blacksmith and for processing.
+- **Genius Invokation TCG**: the challenge levels you've cleared, boss
+  challenges unlocked, and the Tavern.
+- **Serenitea Pot**: comfort in each realm and the mansion.
+
+New optional export parts: `gi_collections.crafting`, `gi_collections.tcg`'s
+`levels` / `bosses` / `tavern`, and a new `gi_teapot` key.
+
 ## 1.7.0
 
 More of your account, all from what the game sends at login:

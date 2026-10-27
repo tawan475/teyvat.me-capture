@@ -10,7 +10,8 @@ use std::collections::BTreeMap;
 
 use teyvatme_protocol::{
     AranaraState, ArchiveTab, AvatarWardrobe, DefeatCount, EndingState, EventInfo, Handbook,
-    HandbookProgress, HandbookState, HangoutChapter, RecordsMessage, TcgCollection, WeaponSkin,
+    HandbookProgress, HandbookState, HangoutChapter, HomeComfort, RecordsMessage, TcgChallenges,
+    TcgCollection, WeaponSkin,
 };
 
 use super::PlayerData;
@@ -33,7 +34,22 @@ pub(super) struct CollectionsState {
     pub blueprints: Option<Vec<u32>>,
     pub ar_rewards: Option<Vec<u32>>,
     pub events: Option<BTreeMap<u32, EventInfo>>,
+    pub comfort: Option<BTreeMap<u32, HomeComfort>>,
+    pub tcg_challenges: Option<TcgChallenges>,
+    pub tcg_tavern: Option<BTreeMap<u32, Vec<u32>>>,
+    /// Crafting, forging and processing recipes unlocked.
+    pub crafting: Option<Vec<u32>>,
+    pub forging: Option<Vec<u32>>,
+    pub processing: Option<Vec<u32>>,
 }
+
+/// The share of a lone list's ids one recipe table must hold for the list to
+/// be that table's (a newer game version may add a few the pinned data lacks).
+const RECIPE_LIST_SHARE: f64 = 0.95;
+
+/// The shortest recipe list believed (7.1: 44 processing, 46 forging, 578
+/// crafting; every account starts with more than this).
+const MIN_RECIPE_LIST: usize = 10;
 
 /// Monster ids (7.1: 20 010 101-84 803 091).
 const MONSTER_IDS: std::ops::RangeInclusive<u64> = 20_000_000..=99_999_999;
@@ -50,6 +66,9 @@ pub enum LoneList {
     MonstersSeen,
     Blueprints,
     ArRewards,
+    Crafting,
+    Forging,
+    Processing,
 }
 
 /// The fewest recipes believed (every account starts with a few).
@@ -70,6 +89,9 @@ pub enum CollectionPart {
     Wardrobe(AvatarWardrobe),
     Hangouts(BTreeMap<u32, HangoutChapter>),
     Events(BTreeMap<u32, EventInfo>),
+    Comfort(BTreeMap<u32, HomeComfort>),
+    TcgChallenges(TcgChallenges),
+    TcgTavern(BTreeMap<u32, Vec<u32>>),
 }
 
 fn tab_key(tab: ArchiveTab) -> &'static str {
@@ -242,6 +264,47 @@ impl PlayerData {
             state.blueprints = Some(sorted());
             return Some(LoneList::Blueprints);
         }
+        // The crafting bench's, the blacksmith's and processing's unlocked
+        // recipes (`CombineDataNotify`, `ForgeDataNotify` beside its queue
+        // count, `CompoundDataNotify`): told apart by which recipe table holds
+        // the ids. Crafting and forging share some ids, so a list is a
+        // table's when nearly all its ids are that table's and no other
+        // table holds as many.
+        // At least 10: a few short lists elsewhere hold ids the crafting
+        // table shares (7.1's six finished bonus activities, 50 001-50 006).
+        if list.len() >= MIN_RECIPE_LIST
+            && let Ok(tables) = self.game_data.crafting()
+        {
+            let share = |table: &std::collections::BTreeSet<u32>| {
+                let held = list
+                    .iter()
+                    .filter(|v| u32::try_from(**v).is_ok_and(|v| table.contains(&v)))
+                    .count();
+                held as f64 / list.len() as f64
+            };
+            let scores = [
+                (LoneList::Crafting, share(&tables.combine)),
+                (LoneList::Forging, share(&tables.forge)),
+                (LoneList::Processing, share(&tables.compound)),
+            ];
+            let best = scores
+                .iter()
+                .copied()
+                .filter(|(_, score)| *score >= RECIPE_LIST_SHARE)
+                .filter(|(kind, score)| scores.iter().all(|(k, s)| k == kind || s < score))
+                .map(|(kind, _)| kind)
+                .next();
+            if let Some(kind) = best {
+                let found = Some(sorted());
+                let state = &mut self.collections;
+                match kind {
+                    LoneList::Crafting => state.crafting = found,
+                    LoneList::Forging => state.forging = found,
+                    _ => state.processing = found,
+                }
+                return Some(kind);
+            }
+        }
         let ar = self.properties.get(&super::PROP_ADVENTURE_RANK.id).copied();
         if records.varints.is_empty()
             && list.len() >= 3
@@ -268,6 +331,9 @@ impl PlayerData {
             CollectionPart::Wardrobe(found) => state.wardrobe = Some(found),
             CollectionPart::Hangouts(found) => state.hangouts = Some(found),
             CollectionPart::Events(found) => state.events = Some(found),
+            CollectionPart::Comfort(found) => state.comfort = Some(found),
+            CollectionPart::TcgChallenges(found) => state.tcg_challenges = Some(found),
+            CollectionPart::TcgTavern(found) => state.tcg_tavern = Some(found),
         }
     }
 
@@ -279,6 +345,14 @@ impl PlayerData {
             recipes: state.recipes.clone(),
             monsters_seen: state.monsters_seen.clone(),
             blueprints: state.blueprints.clone(),
+            crafting: (state.crafting.is_some()
+                || state.forging.is_some()
+                || state.processing.is_some())
+            .then(|| good::GiCrafting {
+                crafting: state.crafting.clone(),
+                forging: state.forging.clone(),
+                processing: state.processing.clone(),
+            }),
             hangouts: state.hangouts.as_ref().map(|hangouts| {
                 hangouts
                     .iter()
@@ -370,9 +444,36 @@ impl PlayerData {
                         .collect()
                 }),
                 current_deck: tcg.current_deck,
+                levels: state.tcg_challenges.as_ref().map(|c| c.levels.clone()),
+                bosses: state
+                    .tcg_challenges
+                    .as_ref()
+                    .map(|c| c.bosses.keys().copied().collect()),
+                tavern: state.tcg_tavern.clone(),
             }),
         };
         (!out.is_empty()).then_some(out)
+    }
+
+    /// `gi_teapot`, or `None` when none of it was captured.
+    pub(super) fn export_teapot(&self) -> Option<good::GiTeapot> {
+        let comfort = self.collections.comfort.as_ref()?;
+        Some(good::GiTeapot {
+            comfort: Some(
+                comfort
+                    .iter()
+                    .map(|(id, c)| {
+                        (
+                            *id,
+                            good::GiComfort {
+                                mansion: c.mansion,
+                                blocks: c.blocks.clone(),
+                            },
+                        )
+                    })
+                    .collect(),
+            ),
+        })
     }
 
     /// `gi_events`, or `None` when the events were not captured.

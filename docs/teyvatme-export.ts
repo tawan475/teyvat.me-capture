@@ -83,10 +83,10 @@ export interface TeyvatmeExport {
   gi_wardrobe?: GiWardrobe
   /** [shipped] Exploration: Statues, offerings, map points, exploration, reputation. */
   gi_exploration?: GiExploration
-  /** [next] How far each unfinished achievement is, by achievement id (those with a total). */
+  /** [shipped] How far each unfinished achievement is, by achievement id (those with a total). */
   gi_achievement_progress?: Record<IdKey, { progress: number; total: number }>
   /**
-   * [next] The events running when the game was asked (right after login), by event id
+   * [shipped] The events running when the game was asked (right after login), by event id
    * (NewActivityExcelConfigData): this run's schedule id, when it opened and closes, and
    * its progress counters by watcher id (absent when it has none).
    */
@@ -99,6 +99,11 @@ export interface TeyvatmeExport {
       progress?: Record<IdKey, { progress: number; total: number; claimed: boolean }>
     }
   >
+  /** [next] The Serenitea Pot. Its Trust Rank follows from `gi_tasks.realm.limit` (HomeWorldLevel). */
+  gi_teapot?: {
+    /** Comfort by realm (HomeWorldModule id): the mansion's and each outdoor block's. */
+    comfort?: Record<IdKey, { mansion: number; blocks: number[] }>
+  }
 }
 
 // ── GOOD's own shapes ─────────────────────────────────────────────── [GOOD]
@@ -225,12 +230,12 @@ export interface GiTasks {
   wishPath?: { weapon: GoodKey; points: number; max: number }
   /** [shipped] Original Resin and when the next comes (one per 8 minutes; absent at 200+). */
   resin?: { value: number; nextAt: UnixSeconds }
-  /** [next] The weekly bosses' resin discounts: left this week of `limit`; what one costs now and without it. */
+  /** [shipped] The weekly bosses' resin discounts: left this week of `limit`; what one costs now and without it. */
   weeklyBosses?: { left: number; limit: number; cost: number; fullCost: number }
-  /** [next] Adventure Ranks whose reward was claimed (2-60, ascending). */
+  /** [shipped] Adventure Ranks whose reward was claimed (2-60, ascending). */
   arRewards?: number[]
   /**
-   * [next] When each boss and elite of the Adventurer Handbook respawns, by its Handbook id
+   * [shipped] When each boss and elite of the Adventurer Handbook respawns, by its Handbook id
    * (InvestigationMonsterConfigData): one time per spot, ascending; a time already past = up now.
    */
   respawns?: Record<IdKey, UnixSeconds[]>
@@ -274,10 +279,16 @@ export interface GiCollections {
     decks?: Record<IdKey, { name: string; characters: GameId[]; cards: GameId[]; valid: boolean }>
     /** The deck in use. */
     currentDeck?: GameId
+    /** [next] Challenge levels played (GCGLevelExcelConfigData) → the challenge ids finished in each. */
+    levels?: Record<IdKey, GameId[]>
+    /** [next] Boss challenges unlocked (GCGBossLevelExcelConfigData ids). */
+    bosses?: GameId[]
+    /** [next] The Tavern: by character, the level ids unlocked with them. */
+    tavern?: Record<IdKey, GameId[]>
   }
   /** [shipped] Every recipe unlocked → its proficiency (0 when none yet; the most is in the game data). */
   recipes?: Record<IdKey, number>
-  /** [next] Hangout Events by chapter (101401 = the first). */
+  /** [shipped] Hangout Events by chapter (101401 = the first). */
   hangouts?: Record<
     IdKey,
     {
@@ -290,10 +301,12 @@ export interface GiCollections {
       picturesTotal: number
     }
   >
-  /** [next] Every monster seen (monster ids, ascending; more than the Archive's Living Beings). */
+  /** [shipped] Every monster seen (monster ids, ascending; more than the Archive's Living Beings). */
   monstersSeen?: GameId[]
-  /** [next] Furnishing blueprints learned: the furnishings' item ids, ascending. */
+  /** [shipped] Furnishing blueprints learned: the furnishings' item ids, ascending. */
   blueprints?: GameId[]
+  /** [next] Recipes unlocked, ascending: at the crafting bench (Combine), the blacksmith (Forge), processing (Compound). */
+  crafting?: { crafting?: GameId[]; forging?: GameId[]; processing?: GameId[] }
 }
 interface Progress {
   progress: number

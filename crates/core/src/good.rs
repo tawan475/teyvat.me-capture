@@ -140,6 +140,9 @@ pub struct Good {
     /// event id, with their progress counters.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub gi_events: Option<BTreeMap<u32, GiEvent>>,
+    /// The Serenitea Pot (its Trust Rank follows from `gi_tasks.realm.limit`).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub gi_teapot: Option<GiTeapot>,
     /// Exploration: the Statues of The Seven, offerings, map points,
     /// exploration progress and reputation, as the game last sent each part.
     #[serde(skip_serializing_if = "Option::is_none", default)]
@@ -187,6 +190,24 @@ pub struct GiCollections {
     /// Furnishing blueprints learned (the furnishings' item ids, ascending).
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub blueprints: Option<Vec<u32>>,
+    /// Recipes unlocked at the crafting bench, the blacksmith and processing.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub crafting: Option<GiCrafting>,
+}
+
+/// `gi_collections.crafting`: recipe ids unlocked, ascending, by bench.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiCrafting {
+    /// `CombineExcelConfigData` ids.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub crafting: Option<Vec<u32>>,
+    /// `ForgeExcelConfigData` ids.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub forging: Option<Vec<u32>>,
+    /// `CompoundExcelConfigData` ids.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub processing: Option<Vec<u32>>,
 }
 
 /// One Hangout Event chapter.
@@ -257,6 +278,16 @@ pub struct GiTcg {
     pub decks: Option<BTreeMap<u32, GiTcgDeck>>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub current_deck: Option<u32>,
+    /// Challenge levels played, by level id (`GCGLevelExcelConfigData`): the
+    /// challenge ids finished in each.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub levels: Option<BTreeMap<u32, Vec<u32>>>,
+    /// Boss challenges unlocked (`GCGBossLevelExcelConfigData` ids).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub bosses: Option<Vec<u32>>,
+    /// The Tavern: by character, the level ids unlocked with them.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub tavern: Option<BTreeMap<u32, Vec<u32>>>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
@@ -274,6 +305,24 @@ pub struct GiTcgDeck {
     pub characters: Vec<u32>,
     pub cards: Vec<u32>,
     pub valid: bool,
+}
+
+/// `gi_teapot`: the Serenitea Pot. Append fields only.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiTeapot {
+    /// Comfort by realm (`HomeWorldModuleExcelConfigData` id).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub comfort: Option<BTreeMap<u32, GiComfort>>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiComfort {
+    /// The mansion's comfort.
+    pub mansion: u32,
+    /// Each outdoor block's.
+    pub blocks: Vec<u32>,
 }
 
 /// One event running.
@@ -970,6 +1019,15 @@ mod tests {
                 current_team: Some(1),
                 ..Default::default()
             }),
+            gi_teapot: Some(GiTeapot {
+                comfort: Some(BTreeMap::from([(
+                    2,
+                    GiComfort {
+                        mansion: 14_600,
+                        blocks: vec![13_470],
+                    },
+                )])),
+            }),
             gi_events: Some(BTreeMap::from([(
                 2051,
                 GiEvent {
@@ -1040,6 +1098,7 @@ mod tests {
                 "gi_exploration",
                 "gi_player",
                 "gi_tasks",
+                "gi_teapot",
                 "gi_wardrobe",
                 "materials",
                 "source",
@@ -1250,6 +1309,7 @@ mod tests {
             gi_wardrobe: None,
             gi_achievement_progress: None,
             gi_events: None,
+            gi_teapot: None,
             gi_exploration: None,
         };
 

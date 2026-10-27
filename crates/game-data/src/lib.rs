@@ -63,7 +63,7 @@ fn lookup_const_value<T: FromStr>(
     res
 }
 
-const DATABASE_VERSION: u32 = 7;
+const DATABASE_VERSION: u32 = 8;
 
 #[derive(Debug, Deserialize, Serialize)]
 struct Database {
@@ -87,6 +87,10 @@ struct Database {
     /// Cooking recipes: id → the most proficiency it takes.
     #[serde(default)]
     recipes: BTreeMap<u32, u32>,
+    /// Crafting, forging and processing recipe ids (`Combine`, `Forge`,
+    /// `Compound`).
+    #[serde(default)]
+    crafting: Crafting,
     #[serde(default)]
     exploration: Exploration,
 }
@@ -109,6 +113,7 @@ impl Database {
             weapon_map: HashMap::new(),
             spincrystals: BTreeMap::new(),
             recipes: BTreeMap::new(),
+            crafting: Crafting::default(),
             exploration: Exploration::default(),
         }
     }
@@ -259,6 +264,11 @@ impl AnimeGameData {
         Ok(&self.db()?.recipes)
     }
 
+    /// The crafting, forging and processing recipe ids.
+    pub fn crafting(&self) -> Result<&Crafting> {
+        Ok(&self.db()?.crafting)
+    }
+
     /// The exploration tables' ids (see [`Exploration`]).
     pub fn exploration(&self) -> Result<&Exploration> {
         Ok(&self.db()?.exploration)
@@ -342,6 +352,7 @@ impl AnimeGameData {
 
         tracing::info!("Downloading recipes");
         db.recipes = Self::fetch_recipes(source, &latest_git_hash).await;
+        db.crafting = Self::fetch_crafting(source, &latest_git_hash).await;
 
         tracing::info!("Downloading const value map");
         let const_value_map = Self::fetch_const_value_map(source, &latest_git_hash).await?;
@@ -612,6 +623,37 @@ impl AnimeGameData {
             .collect()
     }
 
+    /// The crafting, forging and processing recipe ids. A table that cannot be
+    /// read leaves its set empty (logged).
+    async fn fetch_crafting<Source: GameDataSource>(source: &Source, git_ref: &str) -> Crafting {
+        async fn ids<Source: GameDataSource>(
+            source: &Source,
+            git_ref: &str,
+            table: &str,
+            field: &str,
+        ) -> BTreeSet<u32> {
+            let path = format!("ExcelBinOutput/{table}ExcelConfigData.json");
+            match source
+                .get_json_file::<Vec<serde_json::Value>>(git_ref, &path)
+                .await
+            {
+                Ok(rows) => rows
+                    .iter()
+                    .filter_map(|row| u32::try_from(row.get(field)?.as_u64()?).ok())
+                    .collect(),
+                Err(e) => {
+                    tracing::warn!("could not read {path}; its ids are left out: {e}");
+                    BTreeSet::new()
+                }
+            }
+        }
+        Crafting {
+            combine: ids(source, git_ref, "Combine", "combineId").await,
+            forge: ids(source, git_ref, "Forge", "id").await,
+            compound: ids(source, git_ref, "Compound", "id").await,
+        }
+    }
+
     async fn fetch_property_map<Source: GameDataSource>(
         source: &Source,
         git_ref: &str,
@@ -801,6 +843,15 @@ mod tests {
                 }
                 "ExcelBinOutput/CookRecipeExcelConfigData.json" => {
                     include_str!("test_data/ExcelBinOutput/CookRecipeExcelConfigData.json")
+                }
+                "ExcelBinOutput/CombineExcelConfigData.json" => {
+                    include_str!("test_data/ExcelBinOutput/CombineExcelConfigData.json")
+                }
+                "ExcelBinOutput/ForgeExcelConfigData.json" => {
+                    include_str!("test_data/ExcelBinOutput/ForgeExcelConfigData.json")
+                }
+                "ExcelBinOutput/CompoundExcelConfigData.json" => {
+                    include_str!("test_data/ExcelBinOutput/CompoundExcelConfigData.json")
                 }
                 "TextMap/TextMap_MediumEN.json" => {
                     include_str!("test_data/TextMap/TextMap_MediumEN.json")
@@ -1046,6 +1097,16 @@ mod tests {
         let mut data = AnimeGameData::new();
         data.update_impl(&source).await.unwrap();
         assert_eq!(data.get_material(100002).unwrap(), &"Sunsettia".to_string());
+    }
+
+    #[tokio::test]
+    async fn crafting_ids_come_from_their_tables() {
+        let mut data = AnimeGameData::new();
+        data.update_impl(&TestDataSource).await.unwrap();
+        let crafting = data.crafting().unwrap();
+        assert_eq!(crafting.combine, BTreeSet::from([11001, 11002]));
+        assert_eq!(crafting.forge, BTreeSet::from([11001, 14001]));
+        assert_eq!(crafting.compound, BTreeSet::from([1001]));
     }
 
     #[tokio::test]

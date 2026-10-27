@@ -373,6 +373,21 @@ pub fn apply_commands(
                 player_data.process_collection(CollectionPart::WeaponSkins(found));
                 applied.routine = true;
             }
+            CommandMatch::TcgChallenges(found) => {
+                tracing::info!(levels = found.levels.len(), "Found the TCG challenges");
+                player_data.process_collection(CollectionPart::TcgChallenges(found));
+                applied.routine = true;
+            }
+            CommandMatch::TcgTavern(found) => {
+                tracing::info!(characters = found.len(), "Found the TCG Tavern");
+                player_data.process_collection(CollectionPart::TcgTavern(found));
+                applied.routine = true;
+            }
+            CommandMatch::Comfort(found) => {
+                tracing::info!(realms = found.len(), "Found the Serenitea Pot's comfort");
+                player_data.process_collection(CollectionPart::Comfort(found));
+                applied.routine = true;
+            }
             CommandMatch::Events(found) => {
                 tracing::info!(count = found.len(), "Found the events running");
                 player_data.process_collection(CollectionPart::Events(found));
