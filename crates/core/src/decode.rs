@@ -386,6 +386,9 @@ pub fn apply_commands(
                 } else if let Some(count) = player_data.apply_recipes(&records) {
                     tracing::info!(count, "Found the recipes");
                     applied.routine = true;
+                } else if let Some(part) = player_data.apply_exploration(&records) {
+                    tracing::info!(?part, "Found exploration");
+                    applied.routine = true;
                 }
             }
             CommandMatch::ResinClock(clock) => {

@@ -3,6 +3,7 @@
 // Portions copyright (c) 2025 Erik Gilling and irminsul contributors
 // See THIRD_PARTY_NOTICES.md.
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::str::FromStr;
 
 use anyhow::{Error, anyhow};
@@ -205,4 +206,21 @@ pub enum SkillType {
 pub struct Weapon {
     pub name: String,
     pub rarity: u32,
+}
+
+/// The ids the exploration messages carry, so a candidate can be checked
+/// against the game's own tables: each set is what the dump lists, empty when
+/// its table could not be read (then nothing is believed).
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Exploration {
+    /// `CityConfigData.cityId`: the Statues of The Seven.
+    pub cities: BTreeSet<u32>,
+    /// `ReputationCityExcelConfigData.cityId`.
+    pub reputation_cities: BTreeSet<u32>,
+    /// `OfferingOpenStateConfigData.offeringId`.
+    pub offerings: BTreeSet<u32>,
+    /// `WorldAreaConfigData.areaID1` of the level-1 areas: exploration's areas.
+    pub areas: BTreeSet<u32>,
+    /// Map point ids by scene (`BinOutput/Scene/Point/scene<id>_point.json`).
+    pub scene_points: BTreeMap<u32, BTreeSet<u32>>,
 }
