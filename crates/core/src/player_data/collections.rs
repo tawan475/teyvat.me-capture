@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 
 use teyvatme_protocol::{
     AranaraState, ArchiveTab, AvatarWardrobe, DefeatCount, Handbook, HandbookProgress,
-    HandbookState, TcgCollection, WeaponSkin,
+    HandbookState, RecordsMessage, TcgCollection, WeaponSkin,
 };
 
 use super::PlayerData;
@@ -26,7 +26,15 @@ pub(super) struct CollectionsState {
     pub aranara: Option<BTreeMap<u32, BTreeMap<u32, AranaraState>>>,
     pub weapon_skins: Option<Vec<WeaponSkin>>,
     pub wardrobe: Option<AvatarWardrobe>,
+    /// Unlocked recipes → proficiency (0 when none yet).
+    pub recipes: Option<BTreeMap<u32, u32>>,
 }
+
+/// The fewest recipes believed (every account starts with a few).
+const MIN_RECIPES: usize = 3;
+
+/// The most recipes believed (7.1: 284 in the game, 252 unlocked).
+const MAX_RECIPES: usize = 5_000;
 
 /// One part of the collections, as a message brought it.
 #[derive(Clone, Debug, PartialEq)]
@@ -76,6 +84,71 @@ fn aranara_state(state: AranaraState) -> &'static str {
 }
 
 impl PlayerData {
+    /// Keep the recipes if `records` is the recipe list (7.1:
+    /// `CookDataNotify`, at login), replacing the earlier one; returns how
+    /// many, or `None` when this is another message.
+    ///
+    /// The list is records of one or two numbers (the recipe id and, once
+    /// cooked, its proficiency) beside a lone number or two (the cooking
+    /// grade), a shape a few other messages share. It is told apart by the
+    /// game data: every entry's id is one of the recipe table's, once, and
+    /// the proficiency never above that recipe's most.
+    pub fn apply_recipes(&mut self, records: &RecordsMessage) -> Option<usize> {
+        let table = self.game_data.recipes().ok()?;
+        let entries = &records.records;
+        if entries.len() < MIN_RECIPES
+            || entries.len() > MAX_RECIPES
+            || !records.lists.is_empty()
+            || records.varints.len() > 2
+            || entries
+                .iter()
+                .any(|e| !e.lists.is_empty() || e.varints.is_empty() || e.varints.len() > 2)
+        {
+            return None;
+        }
+        // The id: the tag on every entry whose values are all recipes, once.
+        let tags: std::collections::BTreeSet<u32> = entries
+            .iter()
+            .flat_map(|e| e.varints.keys().copied())
+            .collect();
+        let id_tags: Vec<u32> = tags
+            .iter()
+            .copied()
+            .filter(|tag| {
+                let ids: Option<Vec<u64>> = entries
+                    .iter()
+                    .map(|e| e.varints.get(tag).copied())
+                    .collect();
+                ids.is_some_and(|ids| {
+                    let unique: std::collections::BTreeSet<u64> = ids.iter().copied().collect();
+                    unique.len() == ids.len()
+                        && ids
+                            .iter()
+                            .all(|id| u32::try_from(*id).is_ok_and(|id| table.contains_key(&id)))
+                })
+            })
+            .collect();
+        let [id_tag] = id_tags.as_slice() else {
+            return None;
+        };
+        let mut found = BTreeMap::new();
+        for entry in entries {
+            let id = entry.varints[id_tag] as u32;
+            let proficiency = entry
+                .varints
+                .iter()
+                .find(|(tag, _)| *tag != id_tag)
+                .map_or(0, |(_, value)| *value);
+            if proficiency > u64::from(table[&id]) {
+                return None;
+            }
+            found.insert(id, proficiency as u32);
+        }
+        let count = found.len();
+        self.collections.recipes = Some(found);
+        Some(count)
+    }
+
     /// Keep one part of the collections, replacing what the game sent for it
     /// before (each message is the whole of its part).
     pub fn process_collection(&mut self, part: CollectionPart) {
@@ -96,6 +169,7 @@ impl PlayerData {
         let state = &self.collections;
         let out = good::GiCollections {
             spincrystals: self.spincrystals.clone(),
+            recipes: state.recipes.clone(),
             archive: state.archive.as_ref().map(|archive| {
                 archive
                     .iter()

@@ -79,7 +79,7 @@ export interface TeyvatmeExport {
   gi_capture?: GiCapture
   /** [shipped] / [next] What the player has collected. */
   gi_collections?: GiCollections
-  /** [next] What the characters own and wear, and the saved teams. */
+  /** [shipped] What the characters own and wear, and the saved teams. */
   gi_wardrobe?: GiWardrobe
 }
 
@@ -219,7 +219,7 @@ export interface GiCollections {
    * game sends at every login; absent while the Pot holds none.
    */
   spincrystals?: GameId[]
-  /** [next] The Archive's unlocked entries by tab, codex ids ascending. */
+  /** [shipped] The Archive's unlocked entries by tab, codex ids ascending. */
   archive?: Partial<
     Record<
       'quests' | 'weapons' | 'livingBeings' | 'materials' | 'books' | 'tutorials' | 'viewpoints' | 'artifacts',
@@ -227,19 +227,19 @@ export interface GiCollections {
     >
   >
   /**
-   * [next] By Living Beings codex id: enemies defeated, creatures captured.
+   * [shipped] By Living Beings codex id: enemies defeated, creatures captured.
    * Only those with a count; `captured` absent at 0.
    */
   defeats?: Record<IdKey, { defeated: number; captured?: number }>
-  /** [next] The Adventurer Handbook: its chapters and every target in them. */
+  /** [shipped] The Adventurer Handbook: its chapters and every target in them. */
   handbook?: {
     chapters: Record<IdKey, Progress>
     /** Keyed by the target's quest id. */
     targets: Record<IdKey, Progress & { chapter: GameId }>
   }
-  /** [next] Aranara collections, by collection type then id (only type 1 in 7.1). */
+  /** [shipped] Aranara collections, by collection type then id (only type 1 in 7.1). */
   aranara?: Record<IdKey, Record<IdKey, 'none' | 'collectable' | 'collected' | 'finished'>>
-  /** [next] Genius Invokation TCG. */
+  /** [shipped] Genius Invokation TCG. */
   tcg?: {
     /** Cards owned (character cards below 10000, action cards above). */
     cards: Record<IdKey, { count: number; proficiency?: number }>
@@ -248,6 +248,8 @@ export interface GiCollections {
     /** The deck in use. */
     currentDeck?: GameId
   }
+  /** [next] Every recipe unlocked → its proficiency (0 when none yet; the most is in the game data). */
+  recipes?: Record<IdKey, number>
 }
 interface Progress {
   progress: number
@@ -256,7 +258,7 @@ interface Progress {
   state: 'open' | 'complete' | 'claimed'
 }
 
-// ── gi_wardrobe ─────────────────────────────────────────────────────── [next]
+// ── gi_wardrobe ──────────────────────────────────────────────────── [shipped]
 
 export interface GiWardrobe {
   /** Owned ids, and who wears which. */

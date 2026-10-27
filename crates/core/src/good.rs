@@ -163,6 +163,10 @@ pub struct GiCollections {
     /// Genius Invokation TCG.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub tcg: Option<GiTcg>,
+    /// Every recipe unlocked → its proficiency (0 when none yet; the most is
+    /// in the game data).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub recipes: Option<BTreeMap<u32, u32>>,
 }
 
 impl GiCollections {

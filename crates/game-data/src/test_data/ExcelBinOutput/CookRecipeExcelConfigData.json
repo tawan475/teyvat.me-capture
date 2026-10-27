@@ -1,0 +1,15 @@
+[
+  {
+    "id": 1001,
+    "maxProficiency": 5,
+    "rankLevel": 1,
+    "nameTextMapHash": 1,
+    "isDefaultUnlocked": true
+  },
+  {
+    "id": 5502,
+    "maxProficiency": 25,
+    "rankLevel": 4,
+    "nameTextMapHash": 2
+  }
+]

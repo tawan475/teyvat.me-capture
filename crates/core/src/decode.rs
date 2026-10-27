@@ -383,6 +383,9 @@ pub fn apply_commands(
                 if let Some(count) = player_data.apply_collections(&records) {
                     tracing::info!(count, "Found the Serenitea Pot's Radiant Spincrystals");
                     applied.routine = true;
+                } else if let Some(count) = player_data.apply_recipes(&records) {
+                    tracing::info!(count, "Found the recipes");
+                    applied.routine = true;
                 }
             }
             CommandMatch::ResinClock(clock) => {
