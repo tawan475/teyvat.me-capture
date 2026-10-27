@@ -8,6 +8,7 @@ Each release's section is its GitHub release notes (`.github/workflows/release.y
   OpenGL driver could close Teyvat.me with "Unable to recover from a kernel
   exception" while the game ran; Direct3D reports such trouble to the app
   instead. If Direct3D can't start, the window uses OpenGL as before.
+- Android: the top bar's Discord button shows the Discord logo again.
 
 ## 1.12.0
 
