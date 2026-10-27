@@ -79,12 +79,13 @@ pub use crate::anecdotes::{
 pub use crate::collections::{
     AranaraState, ArchiveTab, AvatarWardrobe, BossList, DefeatCount, EndingState, EventInfo,
     EventWatcher, GLIDER_IDS, Handbook, HandbookProgress, HandbookState, HandbookTarget,
-    HangoutChapter, HomeComfort, OUTFIT_IDS, SavedTeam, TRAIL_IDS, TcgCard, TcgChallenges,
-    TcgCollection, TcgDeck, WeaponSkin, WeeklyDiscounts, avatar_wardrobe,
-    matches_activity_info_rsp, matches_aranara_notify, matches_codex_kill_count,
-    matches_codex_notify, matches_coop_notify, matches_home_comfort_notify,
-    matches_investigation_monster_rsp, matches_investigation_notify, matches_tcg_challenges,
-    matches_tcg_notify, matches_tcg_tavern, matches_weapon_skin_notify,
+    HangoutChapter, HomeComfort, MusicSong, OUTFIT_IDS, SavedTeam, SignIn, TRAIL_IDS, TcgCard,
+    TcgChallenges, TcgCollection, TcgDeck, WeaponSkin, WeeklyDiscounts, avatar_wardrobe,
+    matches_activity_info_rsp, matches_aranara_notify, matches_beyond_cosmetic_notify,
+    matches_codex_kill_count, matches_codex_notify, matches_coop_notify,
+    matches_home_comfort_notify, matches_investigation_monster_rsp, matches_investigation_notify,
+    matches_music_game_notify, matches_sign_in_rsp, matches_tcg_challenges, matches_tcg_notify,
+    matches_tcg_tavern, matches_weapon_skin_notify,
 };
 use crate::connection::parse_frame;
 use crate::crypto::{bruteforce, decrypt_command, guess, lookup_initial_key};
@@ -1559,6 +1560,12 @@ pub enum CommandMatch {
     TcgChallenges(TcgChallenges),
     /// TCG Tavern challenges by character: see [`matches_tcg_tavern`].
     TcgTavern(BTreeMap<u32, Vec<u32>>),
+    /// The music game's songs: see [`matches_music_game_notify`].
+    MusicGame(BTreeMap<u32, MusicSong>),
+    /// Miliastra Wonderland cosmetics owned: see [`matches_beyond_cosmetic_notify`].
+    BeyondCosmetics(BTreeMap<u32, u32>),
+    /// Login event calendars: see [`matches_sign_in_rsp`].
+    SignIns(BTreeMap<u32, SignIn>),
     /// A message of small records no matcher claimed (see
     /// [`matches_records_message`]): a candidate only, which the caller
     /// recognises (or not) against the game data's ids. Never produced by
@@ -1590,6 +1597,9 @@ impl CommandMatch {
             Self::Welkin(_) => "welkin",
             Self::ResinClock(_) => "resin clock",
             Self::Records(_) => "records",
+            Self::MusicGame(_) => "music game",
+            Self::BeyondCosmetics(_) => "miliastra cosmetics",
+            Self::SignIns(_) => "sign-ins",
             Self::TcgChallenges(_) => "tcg challenges",
             Self::TcgTavern(_) => "tcg tavern",
             Self::Archive(_) => "archive",
@@ -1806,6 +1816,15 @@ pub fn classify_command(game_command: &GameCommand) -> Option<CommandMatch> {
     }
     if let Some(found) = matches_tcg_tavern(&game_command.proto_data) {
         claims.push(CommandMatch::TcgTavern(found));
+    }
+    if let Some(found) = matches_music_game_notify(&game_command.proto_data) {
+        claims.push(CommandMatch::MusicGame(found));
+    }
+    if let Some(found) = matches_beyond_cosmetic_notify(&game_command.proto_data) {
+        claims.push(CommandMatch::BeyondCosmetics(found));
+    }
+    if let Some(found) = matches_sign_in_rsp(&game_command.proto_data) {
+        claims.push(CommandMatch::SignIns(found));
     }
     // Last on purpose. Its shape -- one packed uint64 list beside a scalar or
     // two -- is the least specific of the five, so anything another matcher can

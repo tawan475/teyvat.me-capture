@@ -373,6 +373,21 @@ pub fn apply_commands(
                 player_data.process_collection(CollectionPart::WeaponSkins(found));
                 applied.routine = true;
             }
+            CommandMatch::MusicGame(found) => {
+                tracing::info!(songs = found.len(), "Found the music game");
+                player_data.process_collection(CollectionPart::MusicGame(found));
+                applied.routine = true;
+            }
+            CommandMatch::BeyondCosmetics(found) => {
+                tracing::info!(count = found.len(), "Found the Miliastra cosmetics");
+                player_data.process_collection(CollectionPart::BeyondCosmetics(found));
+                applied.routine = true;
+            }
+            CommandMatch::SignIns(found) => {
+                tracing::info!(count = found.len(), "Found the login events");
+                player_data.process_collection(CollectionPart::SignIns(found));
+                applied.routine = true;
+            }
             CommandMatch::TcgChallenges(found) => {
                 tracing::info!(levels = found.levels.len(), "Found the TCG challenges");
                 player_data.process_collection(CollectionPart::TcgChallenges(found));

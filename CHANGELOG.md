@@ -2,6 +2,19 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.9.0
+
+- **Music game**: every song's best score and whether its reward is taken.
+- **Miliastra Wonderland**: the cosmetics you own and when you got them.
+- **Login events**: days signed in and rewards claimed on the event
+  calendars running.
+
+New optional export parts: `gi_collections.musicGame`, `gi_tasks.signIns`,
+and a new `gi_miliastra` key.
+
+- The "Open before the game" hint is gone from the home screen (desktop and
+  Android).
+
 ## 1.8.0
 
 - **Crafting, forging and processing**: which recipes you've unlocked at the

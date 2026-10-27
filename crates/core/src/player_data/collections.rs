@@ -10,8 +10,8 @@ use std::collections::BTreeMap;
 
 use teyvatme_protocol::{
     AranaraState, ArchiveTab, AvatarWardrobe, DefeatCount, EndingState, EventInfo, Handbook,
-    HandbookProgress, HandbookState, HangoutChapter, HomeComfort, RecordsMessage, TcgChallenges,
-    TcgCollection, WeaponSkin,
+    HandbookProgress, HandbookState, HangoutChapter, HomeComfort, MusicSong, RecordsMessage,
+    SignIn, TcgChallenges, TcgCollection, WeaponSkin,
 };
 
 use super::PlayerData;
@@ -37,6 +37,9 @@ pub(super) struct CollectionsState {
     pub comfort: Option<BTreeMap<u32, HomeComfort>>,
     pub tcg_challenges: Option<TcgChallenges>,
     pub tcg_tavern: Option<BTreeMap<u32, Vec<u32>>>,
+    pub music_game: Option<BTreeMap<u32, MusicSong>>,
+    pub beyond_cosmetics: Option<BTreeMap<u32, u32>>,
+    pub sign_ins: Option<BTreeMap<u32, SignIn>>,
     /// Crafting, forging and processing recipes unlocked.
     pub crafting: Option<Vec<u32>>,
     pub forging: Option<Vec<u32>>,
@@ -92,6 +95,9 @@ pub enum CollectionPart {
     Comfort(BTreeMap<u32, HomeComfort>),
     TcgChallenges(TcgChallenges),
     TcgTavern(BTreeMap<u32, Vec<u32>>),
+    MusicGame(BTreeMap<u32, MusicSong>),
+    BeyondCosmetics(BTreeMap<u32, u32>),
+    SignIns(BTreeMap<u32, SignIn>),
 }
 
 fn tab_key(tab: ArchiveTab) -> &'static str {
@@ -334,6 +340,9 @@ impl PlayerData {
             CollectionPart::Comfort(found) => state.comfort = Some(found),
             CollectionPart::TcgChallenges(found) => state.tcg_challenges = Some(found),
             CollectionPart::TcgTavern(found) => state.tcg_tavern = Some(found),
+            CollectionPart::MusicGame(found) => state.music_game = Some(found),
+            CollectionPart::BeyondCosmetics(found) => state.beyond_cosmetics = Some(found),
+            CollectionPart::SignIns(found) => state.sign_ins = Some(found),
         }
     }
 
@@ -344,6 +353,20 @@ impl PlayerData {
             spincrystals: self.spincrystals.clone(),
             recipes: state.recipes.clone(),
             monsters_seen: state.monsters_seen.clone(),
+            music_game: state.music_game.as_ref().map(|songs| {
+                songs
+                    .iter()
+                    .map(|(id, song)| {
+                        (
+                            *id,
+                            good::GiSong {
+                                score: (song.score > 0).then_some(song.score),
+                                claimed: song.claimed,
+                            },
+                        )
+                    })
+                    .collect()
+            }),
             blueprints: state.blueprints.clone(),
             crafting: (state.crafting.is_some()
                 || state.forging.is_some()
@@ -453,6 +476,36 @@ impl PlayerData {
             }),
         };
         (!out.is_empty()).then_some(out)
+    }
+
+    /// `gi_miliastra`, or `None` when none of it was captured.
+    pub(super) fn export_miliastra(&self) -> Option<good::GiMiliastra> {
+        let cosmetics = self.collections.beyond_cosmetics.clone()?;
+        Some(good::GiMiliastra {
+            cosmetics: Some(cosmetics),
+        })
+    }
+
+    /// `gi_tasks.signIns`, or `None` when not captured.
+    pub(super) fn export_sign_ins(&self) -> Option<BTreeMap<u32, good::GiSignIn>> {
+        let sign_ins = self.collections.sign_ins.as_ref()?;
+        Some(
+            sign_ins
+                .iter()
+                .map(|(id, s)| {
+                    (
+                        *id,
+                        good::GiSignIn {
+                            days: s.days,
+                            claimed: s.claimed.clone(),
+                            last_at: s.last_at,
+                            start: s.start,
+                            end: s.end,
+                        },
+                    )
+                })
+                .collect(),
+        )
     }
 
     /// `gi_teapot`, or `None` when none of it was captured.

@@ -207,11 +207,7 @@ impl TeyvatmeApp {
                 tr("Waiting for the game"),
                 tr("Genshin isn't running · start it now"),
                 [Done, Pending, Pending],
-                |ui| {
-                    #[rustfmt::skip]
-                    let why = tr("The login is the only moment the session key can be read");
-                    widgets::chip(ui, icons::info(), tr("Open before the game")).on_hover_text(why);
-                },
+                |_| {},
             ),
             GameStatus::AwaitingLogin => widgets::status_hero(
                 ui,

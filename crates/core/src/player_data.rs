@@ -1244,6 +1244,7 @@ impl PlayerData {
                 full_cost: w.full_cost,
             }),
             ar_rewards: self.collections.ar_rewards.clone(),
+            sign_ins: self.export_sign_ins(),
             respawns: bosses.map(|b| b.respawns.clone()),
         };
         (!tasks.is_empty()).then_some(tasks)
@@ -1639,6 +1640,7 @@ impl PlayerData {
             gi_achievement_progress: self.export_achievement_progress(),
             gi_events: self.export_events(),
             gi_teapot: self.export_teapot(),
+            gi_miliastra: self.export_miliastra(),
             gi_wardrobe: self.export_wardrobe(),
             gi_exploration: self.export_exploration(),
         };
