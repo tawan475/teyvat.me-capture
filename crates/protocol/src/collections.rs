@@ -1961,7 +1961,7 @@ pub struct SocialProfile {
     pub birthday: Option<(u32, u32)>,
 }
 
-/// Name card item ids (7.1: 210001-210279).
+/// Name card item ids (7.1: 210001-210298 in the material table).
 const NAME_CARD_IDS: RangeInclusive<u64> = 210_001..=210_999;
 
 /// A UID: nine or ten digits.
