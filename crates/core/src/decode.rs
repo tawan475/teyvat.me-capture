@@ -16,12 +16,12 @@
 use std::time::{Duration, Instant};
 
 use teyvatme_protocol::{
-    CommandMatch, GameCommand, GamePacket, GameSniffer, KeyState, classify_command, classify_union,
-    flat_message, matches_records_message, union_commands,
+    CommandMatch, GameCommand, GamePacket, GameSniffer, KeyState, avatar_wardrobe,
+    classify_command, classify_union, flat_message, matches_records_message, union_commands,
 };
 use tokio::sync::mpsc;
 
-use crate::player_data::{PlayerData, RoutinePart};
+use crate::player_data::{CollectionPart, PlayerData, RoutinePart};
 
 /// What the sniffer thread sends back.
 ///
@@ -227,6 +227,11 @@ pub fn classify_commands(commands: &[GameCommand]) -> Vec<(u16, CommandMatch)> {
         .flat_map(|command| {
             let _span = tracing::info_span!("command", id = command.command_id).entered();
             match classify_command(command) {
+                // The character message also holds the wardrobe.
+                Some(found @ CommandMatch::Avatars(_)) => std::iter::once(found)
+                    .chain(avatar_wardrobe(&command.proto_data).map(CommandMatch::Wardrobe))
+                    .map(|found| (command.command_id, found))
+                    .collect(),
                 Some(found) => vec![(command.command_id, found)],
                 None if union_commands(command).is_some() => classify_union(command),
                 // Both readings: a lone packed list (the Serenitea Pot's
@@ -333,6 +338,44 @@ pub fn apply_commands(
             CommandMatch::Welkin(days) => {
                 tracing::info!("Found Welkin Moon days");
                 player_data.process_routine(RoutinePart::Welkin(days));
+                applied.routine = true;
+            }
+            CommandMatch::Archive(found) => {
+                tracing::info!(tabs = found.len(), "Found the Archive");
+                player_data.process_collection(CollectionPart::Archive(found));
+                applied.routine = true;
+            }
+            CommandMatch::Defeats(found) => {
+                tracing::info!(count = found.len(), "Found the enemies defeated");
+                player_data.process_collection(CollectionPart::Defeats(found));
+                applied.routine = true;
+            }
+            CommandMatch::Handbook(found) => {
+                tracing::info!(
+                    chapters = found.chapters.len(),
+                    "Found the Adventurer Handbook"
+                );
+                player_data.process_collection(CollectionPart::Handbook(found));
+                applied.routine = true;
+            }
+            CommandMatch::Tcg(found) => {
+                tracing::info!(cards = found.cards.len(), "Found the TCG cards");
+                player_data.process_collection(CollectionPart::Tcg(found));
+                applied.routine = true;
+            }
+            CommandMatch::Aranara(found) => {
+                tracing::info!("Found the Aranara collections");
+                player_data.process_collection(CollectionPart::Aranara(found));
+                applied.routine = true;
+            }
+            CommandMatch::WeaponSkins(found) => {
+                tracing::info!(count = found.len(), "Found the weapon skins");
+                player_data.process_collection(CollectionPart::WeaponSkins(found));
+                applied.routine = true;
+            }
+            CommandMatch::Wardrobe(found) => {
+                tracing::info!("Found the wardrobe");
+                player_data.process_collection(CollectionPart::Wardrobe(found));
                 applied.routine = true;
             }
             CommandMatch::Records(records) => {

@@ -77,8 +77,10 @@ export interface TeyvatmeExport {
   gi_tasks?: GiTasks
   /** [shipped] Why this snapshot was taken (live sync). Tracker uploads only. */
   gi_capture?: GiCapture
-  /** [next] What the player has collected. */
+  /** [shipped] / [next] What the player has collected. */
   gi_collections?: GiCollections
+  /** [next] What the characters own and wear, and the saved teams. */
+  gi_wardrobe?: GiWardrobe
 }
 
 // ── GOOD's own shapes ─────────────────────────────────────────────── [GOOD]
@@ -207,16 +209,76 @@ export interface GiTasks {
   resin?: { value: number; nextAt: UnixSeconds }
 }
 
-// ── gi_collections ─────────────────────────────────────────────────── [next]
+// ── gi_collections ─────────────────────────────────────── [shipped] / [next]
+// Every part is the game's state at login; a part not captured is absent.
 
 export interface GiCollections {
   /**
-   * [next] The Radiant Spincrystals in the Serenitea Pot's music list, by item
-   * id (141001 = "Radiant Spincrystal 1"), ascending. From the list the game
-   * sends at every login; absent while the Pot holds none.
+   * [shipped] The Radiant Spincrystals in the Serenitea Pot's music list, by
+   * item id (141001 = "Radiant Spincrystal 1"), ascending. From the list the
+   * game sends at every login; absent while the Pot holds none.
    */
   spincrystals?: GameId[]
+  /** [next] The Archive's unlocked entries by tab, codex ids ascending. */
+  archive?: Partial<
+    Record<
+      'quests' | 'weapons' | 'livingBeings' | 'materials' | 'books' | 'tutorials' | 'viewpoints' | 'artifacts',
+      GameId[]
+    >
+  >
+  /**
+   * [next] By Living Beings codex id: enemies defeated, creatures captured.
+   * Only those with a count; `captured` absent at 0.
+   */
+  defeats?: Record<IdKey, { defeated: number; captured?: number }>
+  /** [next] The Adventurer Handbook: its chapters and every target in them. */
+  handbook?: {
+    chapters: Record<IdKey, Progress>
+    /** Keyed by the target's quest id. */
+    targets: Record<IdKey, Progress & { chapter: GameId }>
+  }
+  /** [next] Aranara collections, by collection type then id (only type 1 in 7.1). */
+  aranara?: Record<IdKey, Record<IdKey, 'none' | 'collectable' | 'collected' | 'finished'>>
+  /** [next] Genius Invokation TCG. */
+  tcg?: {
+    /** Cards owned (character cards below 10000, action cards above). */
+    cards: Record<IdKey, { count: number; proficiency?: number }>
+    /** Saved decks by id; `name` is the player's own text. */
+    decks?: Record<IdKey, { name: string; characters: GameId[]; cards: GameId[]; valid: boolean }>
+    /** The deck in use. */
+    currentDeck?: GameId
+  }
 }
+interface Progress {
+  progress: number
+  total: number
+  /** "complete" = done but its reward not taken yet. */
+  state: 'open' | 'complete' | 'claimed'
+}
+
+// ── gi_wardrobe ─────────────────────────────────────────────────────── [next]
+
+export interface GiWardrobe {
+  /** Owned ids, and who wears which. */
+  outfits?: Wardrobe
+  /** Wind gliders. */
+  gliders?: Wardrobe
+  weaponSkins?: Wardrobe
+  /** Sprint trails. */
+  trails?: Wardrobe
+  /** Saved teams by slot; `name` is the player's own text. */
+  teams?: Record<IdKey, { name: string; characters: WornBy[] }>
+  /** The team slot in use. */
+  currentTeam?: GameId
+}
+interface Wardrobe {
+  owned: GameId[]
+  worn: Record<WornBy, GameId>
+  /** Owned only until then (trial weapon skins). */
+  expires?: Record<IdKey, UnixSeconds>
+}
+/** A character key, the way GOOD's weapon `location` has it: "Traveler" for any Traveler. */
+type WornBy = string
 
 // ── gi_capture ──────────────────────────────────────────────────── [shipped]
 

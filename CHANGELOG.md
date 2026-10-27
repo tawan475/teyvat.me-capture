@@ -2,6 +2,25 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.4.0
+
+Captures what you've collected and what your characters wear, all from the
+data the game sends at login:
+
+- **Archive**: every tab's unlocked entries (books, viewpoints, Living
+  Beings, weapons, artifacts, materials, tutorials, quests).
+- **Enemies defeated** and creatures captured, per Living Being.
+- **Adventurer Handbook**: each chapter and target, and whether its reward is
+  taken.
+- **Genius Invokation TCG**: the cards you own (count and proficiency) and
+  your saved decks.
+- **Aranara** collections.
+- **Wardrobe**: outfits, wind gliders, weapon skins (trials with their end
+  date) and sprint trails you own, who wears which, and your saved teams.
+
+Exported as new parts of `gi_collections` and a new `gi_wardrobe` key; a
+tracker can show what you have and what's left.
+
 ## 1.3.0
 
 - Captures your **Radiant Spincrystals**: which of the 206 are in your

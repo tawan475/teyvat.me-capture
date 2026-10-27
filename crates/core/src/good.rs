@@ -129,6 +129,10 @@ pub struct Good {
     /// Omitted when none of it was captured, and each part when it was not.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub gi_collections: Option<GiCollections>,
+    /// What the characters own and wear: outfits, wind gliders, weapon skins,
+    /// sprint trails, and the saved teams. Omitted when none was captured.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub gi_wardrobe: Option<GiWardrobe>,
 }
 
 /// `gi_collections`: what the player has collected, each part as the game
@@ -140,6 +144,142 @@ pub struct GiCollections {
     /// (141001 = "Radiant Spincrystal 1"), ascending.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub spincrystals: Option<Vec<u32>>,
+    /// The Archive's unlocked entries by tab (`quests`, `weapons`,
+    /// `livingBeings`, `materials`, `books`, `tutorials`, `viewpoints`,
+    /// `artifacts`), codex ids ascending.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub archive: Option<BTreeMap<String, Vec<u32>>>,
+    /// By Living Beings codex id: enemies defeated, creatures captured. Only
+    /// the ones with a count; `captured` left out at 0.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub defeats: Option<BTreeMap<u32, GiDefeats>>,
+    /// The Adventurer Handbook.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub handbook: Option<GiHandbook>,
+    /// Aranara collections by collection type, then id: `none`,
+    /// `collectable`, `collected` or `finished`.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub aranara: Option<BTreeMap<u32, BTreeMap<u32, String>>>,
+    /// Genius Invokation TCG.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub tcg: Option<GiTcg>,
+}
+
+impl GiCollections {
+    pub fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiDefeats {
+    pub defeated: u32,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub captured: Option<u32>,
+}
+
+/// A Handbook chapter's or target's progress. `state`: `open`, `complete`
+/// (done, reward not taken) or `claimed`.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiProgress {
+    pub progress: u32,
+    pub total: u32,
+    pub state: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiHandbook {
+    /// By chapter id.
+    pub chapters: BTreeMap<u32, GiProgress>,
+    /// By the target's quest id.
+    pub targets: BTreeMap<u32, GiHandbookTarget>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiHandbookTarget {
+    #[serde(flatten)]
+    pub progress: GiProgress,
+    pub chapter: u32,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiTcg {
+    /// Cards owned by card id (character cards below 10000).
+    pub cards: BTreeMap<u32, GiTcgCard>,
+    /// Saved decks by id; `name` is the player's own text.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub decks: Option<BTreeMap<u32, GiTcgDeck>>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub current_deck: Option<u32>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiTcgCard {
+    pub count: u32,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub proficiency: Option<u32>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiTcgDeck {
+    pub name: String,
+    pub characters: Vec<u32>,
+    pub cards: Vec<u32>,
+    pub valid: bool,
+}
+
+/// `gi_wardrobe`: what the characters own and wear, as the game last sent it
+/// (at login). Append fields only.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiWardrobe {
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub outfits: Option<GiWardrobeKind>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub gliders: Option<GiWardrobeKind>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub weapon_skins: Option<GiWardrobeKind>,
+    /// Sprint trails.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub trails: Option<GiWardrobeKind>,
+    /// Saved teams by slot; `name` is the player's own text.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub teams: Option<BTreeMap<u32, GiTeam>>,
+    /// The team slot in use.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub current_team: Option<u32>,
+}
+
+impl GiWardrobe {
+    pub fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiWardrobeKind {
+    /// Owned ids, ascending.
+    pub owned: Vec<u32>,
+    /// Who wears which, by character key.
+    pub worn: BTreeMap<String, u32>,
+    /// Owned only until then (trial weapon skins), unix seconds.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub expires: Option<BTreeMap<u32, u32>>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiTeam {
+    pub name: String,
+    pub characters: Vec<String>,
 }
 
 /// `gi_capture`: why a tracker snapshot was taken, and which game login it
@@ -675,6 +815,11 @@ mod tests {
             }),
             gi_collections: Some(GiCollections {
                 spincrystals: Some(vec![141001, 141002]),
+                ..Default::default()
+            }),
+            gi_wardrobe: Some(GiWardrobe {
+                current_team: Some(1),
+                ..Default::default()
             }),
         };
 
@@ -708,6 +853,7 @@ mod tests {
                 "gi_collections",
                 "gi_player",
                 "gi_tasks",
+                "gi_wardrobe",
                 "materials",
                 "source",
                 "timestamp",
@@ -902,6 +1048,7 @@ mod tests {
             gi_capture: None,
             gi_tasks: None,
             gi_collections: None,
+            gi_wardrobe: None,
         };
 
         let json = serde_json::to_value(&good).expect("Good must serialize");
