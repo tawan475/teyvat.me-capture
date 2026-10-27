@@ -1472,6 +1472,25 @@ impl PlayerData {
         self.checked_gi_player().0
     }
 
+    /// `gi_tasks` as the export writes it at `now_secs`, for the apps' Today
+    /// card. `None` when none of it was captured.
+    pub fn gi_tasks(&self, now_secs: u64) -> Option<good::GiTasks> {
+        self.export_tasks(now_secs)
+    }
+
+    /// Anecdotes recorded in the Travel Accounts book (finished at least
+    /// once, or state 3), for the apps' tiles. `None` until the book was
+    /// captured.
+    pub fn recorded_anecdotes(&self) -> Option<usize> {
+        let book = self.anecdotes.as_ref()?;
+        Some(
+            book.anecdotes
+                .iter()
+                .filter(|entry| entry.finish_count > 0 || entry.state == 3)
+                .count(),
+        )
+    }
+
     /// Items held, of every kind (what a full send is measured against).
     pub fn item_count(&self) -> usize {
         self.items.len()
@@ -4188,6 +4207,15 @@ mod tests {
                 "wish": { "npcId": 9801, "lastWishTime": 1_790_000_000 },
             })
         );
+    }
+
+    #[test]
+    fn recorded_anecdotes_count_finished_or_recorded_entries() {
+        let mut data = player_data();
+        assert_eq!(data.recorded_anecdotes(), None);
+        data.process_anecdotes(&book());
+        // 100001 (state 3) and 101604 (finished twice); 107302 is in progress.
+        assert_eq!(data.recorded_anecdotes(), Some(2));
     }
 
     #[test]

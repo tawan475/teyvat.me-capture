@@ -700,6 +700,8 @@ pub struct TeyvatmeApp {
 
     #[allow(dead_code)]
     tray_icon: Option<TrayIcon>,
+    /// What the tray icon's tooltip says now.
+    tray_tooltip: String,
     /// Whether there is a tray icon with a menu the user can actually act on.
     ///
     /// On Linux `TrayIconEvent` is never delivered, so the menu is the only way
@@ -797,6 +799,7 @@ mod preview;
 mod run;
 mod screens;
 mod settings;
+mod today;
 
 /// How the window starts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1404,6 +1407,7 @@ impl TeyvatmeApp {
             uid_mismatch_warned: None,
             uid_match_logged: None,
             tray_icon,
+            tray_tooltip: String::new(),
             state_rx,
             wishes,
             was_minimized: false,

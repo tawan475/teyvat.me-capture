@@ -157,9 +157,6 @@ pub mod style {
     pub fn about() -> TextStyle {
         TextStyle::Name("about".into())
     }
-    pub fn hero() -> TextStyle {
-        TextStyle::Heading
-    }
     pub fn tile() -> TextStyle {
         TextStyle::Name("tile".into())
     }

@@ -60,6 +60,7 @@ impl TeyvatmeApp {
 
         // Background reports always reach the log; toasts only while seen.
         self.drain_activity(!out_of_sight);
+        self.update_tray_tooltip();
 
         // Nothing is drawn out of sight: eframe keeps running frames for a
         // minimized window, and anything animating would keep it at full rate.
@@ -121,18 +122,11 @@ impl TeyvatmeApp {
                 self.draw_view(ui, &app_state);
             });
 
-        self.quick_bar(ctx);
         self.activity_popover(ctx);
         self.launch_missed_dialog(ctx);
         self.address_dialog(ctx);
 
-        // Narrow, they would cover the floating buttons: start above them.
-        let inset = if self.view == View::Main && ctx.screen_rect().width() < 560.0 {
-            super::frame::QUICK_BAR_HEIGHT - 8.0
-        } else {
-            0.0
-        };
-        if let Some(action) = self.toasts.show(ctx, inset) {
+        if let Some(action) = self.toasts.show(ctx, 0.0) {
             self.handle_toast_action(ctx, action);
         }
         for (kind, text) in self.toasts.take_raised() {
@@ -238,6 +232,25 @@ impl TeyvatmeApp {
                 }
                 Err(tokio::sync::oneshot::error::TryRecvError::Empty) => {}
             }
+        }
+    }
+
+    /// "Teyvat.me · <the status strip's title>" on the tray icon, kept
+    /// current while the window is hidden too.
+    fn update_tray_tooltip(&mut self) {
+        let Some(tray) = &self.tray_icon else {
+            return;
+        };
+        let status = self.state_rx.borrow().game_status;
+        let text = format!(
+            "Teyvat.me · {}",
+            super::home::strip_title(self.is_admin, status)
+        );
+        if text != self.tray_tooltip {
+            if let Err(e) = tray.set_tooltip(Some(&text)) {
+                tracing::debug!("could not set the tray tooltip: {e}");
+            }
+            self.tray_tooltip = text;
         }
     }
 

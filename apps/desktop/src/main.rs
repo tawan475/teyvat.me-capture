@@ -181,6 +181,14 @@ pub struct AppState {
     counts: Option<player_data::ExportCounts>,
     /// When the captured data last changed.
     captured_at: Option<chrono::DateTime<chrono::Local>>,
+    /// The game's routine as the export writes it (`gi_tasks`), for the
+    /// Today card.
+    tasks: Option<good::GiTasks>,
+    /// When `tasks` last changed in more than its resin clock: the login (or
+    /// world change) whose state the Today card shows.
+    tasks_at: Option<chrono::DateTime<chrono::Local>>,
+    /// Anecdotes recorded in the Travel Accounts book, for the tiles.
+    anecdotes: Option<usize>,
 }
 
 impl AppState {
@@ -193,6 +201,9 @@ impl AppState {
             player: None,
             counts: None,
             captured_at: None,
+            tasks: None,
+            tasks_at: None,
+            anecdotes: None,
         }
     }
 }

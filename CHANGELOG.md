@@ -4,6 +4,12 @@ Each release's section is its GitHub release notes (`.github/workflows/release.y
 
 ## 1.12.0
 
+- **New look, desktop and Android.** The home screen is one status strip
+  (Capture · Open Genshin · Enter world, with History, Theme, Settings and
+  Discord beside it), then your account and **Today** side by side (resin
+  counting to full, realm currency, commissions, expeditions, weekly bosses,
+  Spiral Abyss), then Export and Wish history, and teyvat.me at the foot.
+  Narrow windows and phones show the same in one column.
 - Android: a new setting, **Tile opens Genshin** (Settings, off by default).
   With it on, starting capture from the Quick Settings tile also opens the
   game.

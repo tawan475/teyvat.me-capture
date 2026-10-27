@@ -122,6 +122,23 @@ impl WishView {
             .is_some_and(|key| !key.is_fresh(now))
     }
 
+    /// When the held key arrived (wall clock), for "URL ready · HH:mm".
+    pub(crate) fn key_received(&self, now: Instant) -> Option<chrono::DateTime<chrono::Local>> {
+        let key = self.key(now)?;
+        let age = teyvatme_core::wish::link::KEY_LIFETIME.saturating_sub(key.remaining(now));
+        Some(chrono::Local::now() - chrono::TimeDelta::from_std(age).ok()?)
+    }
+
+    /// Debug builds: hold a made-up key, for the preview's screenshots.
+    #[cfg(debug_assertions)]
+    pub(crate) fn preview_key(&mut self, received_at: Instant) {
+        if self.key_rx.borrow().is_none() {
+            let key =
+                WishKey::new("preview", "hk4e_global", received_at).with_uid(Some(812_345_678));
+            self.key_rx = watch::channel(Some(key)).1;
+        }
+    }
+
     /// The URL to copy: the game's link for this login's key.
     pub(crate) fn wish_url(&self, now: Instant) -> Option<String> {
         self.key(now).map(|key| key.wish_url())
