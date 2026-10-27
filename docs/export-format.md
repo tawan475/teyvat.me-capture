@@ -15,7 +15,7 @@ Every field, with its type and meaning: [`teyvatme-export.ts`](teyvatme-export.t
 | | Save / Copy (a GOOD file) | Upload to a tracker |
 |---|---|---|
 | GOOD: `characters`, `weapons`, `artifacts`, `materials`, `timestamp` | yes, filtered by your export settings | yes, the whole account |
-| `gi_achievements`, `gi_achievement_times`, `gi_player`, `gi_characters`, `gi_anecdotes`, `gi_tasks` | yes | yes |
+| `gi_achievements`, `gi_achievement_times`, `gi_player`, `gi_characters`, `gi_anecdotes`, `gi_tasks`, `gi_collections` | yes | yes |
 | `gi_guid` and `gi_exp` on each weapon and artifact | no | yes |
 | `gi_capture` (why the snapshot was taken) | no | yes |
 
@@ -33,9 +33,10 @@ A tracker also gets two more payloads, typed in the same file:
 | `gi_achievements` | Achievement ids done. |
 | `gi_achievement_times` | When each was done, for those the game timed. |
 | `gi_player` | Adventure Rank and EXP, World Level, resin at login, Story Keys, stamina, and the UID. |
-| `gi_characters` | Per character: friendship, when they joined, and (next release) EXP into the level and friendship EXP. |
+| `gi_characters` | Per character: friendship, friendship EXP, when they joined, and EXP into the level. |
 | `gi_anecdotes` | The Travel Accounts book: every anecdote met and its state, areas, reward track, last wish. |
-| `gi_tasks` | What a planner can tick: commissions, the Spiral Abyss, expeditions, realm currency, Welkin Moon, and (next release) the Epitomized Path and the resin clock. |
+| `gi_tasks` | What a planner can tick: commissions, the Spiral Abyss, expeditions, realm currency, Welkin Moon, the Epitomized Path and the resin clock. |
+| `gi_collections` | (next release) What you've collected: the Radiant Spincrystals in your Serenitea Pot. |
 | `gi_capture` | Uploads only: why this snapshot was taken, and which game login it belongs to. |
 
 ## Rules it keeps

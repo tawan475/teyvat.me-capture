@@ -7,7 +7,7 @@
 // kept (and tested) for the builds that download.
 #![cfg_attr(not(feature = "download"), allow(dead_code))]
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
@@ -18,10 +18,12 @@ use anyhow::{Result, anyhow};
 #[cfg(feature = "download")]
 mod dimbreath;
 mod game_data;
+mod pinned;
 mod types;
 
 #[cfg(feature = "download")]
 use dimbreath::Dimbreath;
+pub use pinned::Pinned;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 pub use types::*;
@@ -61,7 +63,7 @@ fn lookup_const_value<T: FromStr>(
     res
 }
 
-const DATABASE_VERSION: u32 = 4;
+const DATABASE_VERSION: u32 = 5;
 
 #[derive(Debug, Deserialize, Serialize)]
 struct Database {
@@ -78,6 +80,10 @@ struct Database {
     tps_avatar_id_female: Option<u32>,
     tps_avatar_id_male: Option<u32>,
     weapon_map: HashMap<u32, Weapon>,
+    /// Radiant Spincrystals: the Serenitea Pot music id each one unlocks →
+    /// its item id.
+    #[serde(default)]
+    spincrystals: BTreeMap<u32, u32>,
 }
 
 impl Database {
@@ -96,6 +102,7 @@ impl Database {
             tps_avatar_id_female: None,
             tps_avatar_id_male: None,
             weapon_map: HashMap::new(),
+            spincrystals: BTreeMap::new(),
         }
     }
 
@@ -234,8 +241,24 @@ impl AnimeGameData {
             .ok_or_else(|| anyhow!("Unable to fetch weapon {id}"))
     }
 
+    /// Radiant Spincrystals by the Serenitea Pot music id each one unlocks
+    /// (value: the item id).
+    pub fn spincrystals(&self) -> Result<&BTreeMap<u32, u32>> {
+        Ok(&self.db()?.spincrystals)
+    }
+
     pub fn has_data(&self) -> bool {
         self.db.is_some()
+    }
+
+    /// True when the loaded data is not the pinned data set's (or nothing is loaded).
+    pub async fn needs_update_from(&self, pinned: &Pinned) -> Result<bool> {
+        self.needs_update_impl(pinned).await
+    }
+
+    /// Builds the database from a pinned copy of the game data files (no network).
+    pub async fn update_from(&mut self, pinned: &Pinned) -> Result<()> {
+        self.update_impl(pinned).await
     }
 
     #[cfg(feature = "download")]
@@ -294,7 +317,8 @@ impl AnimeGameData {
         db.weapon_map = Self::fetch_weapon_map(source, &latest_git_hash, &text_map).await?;
 
         tracing::info!("Downloading material map");
-        db.material_map = Self::fetch_material_map(source, &latest_git_hash, &text_map).await?;
+        (db.material_map, db.spincrystals) =
+            Self::fetch_material_map(source, &latest_git_hash, &text_map).await?;
 
         tracing::info!("Downloading character map");
         db.character_map = Self::fetch_character_map(source, &latest_git_hash, &text_map).await?;
@@ -412,12 +436,12 @@ impl AnimeGameData {
         source: &Source,
         git_ref: &str,
         text_map: &HashMap<u32, String>,
-    ) -> Result<HashMap<u32, String>> {
+    ) -> Result<(HashMap<u32, String>, BTreeMap<u32, u32>)> {
         let data: Vec<MaterialExcelConfigDataEntry> = source
             .get_json_file(git_ref, "ExcelBinOutput/MaterialExcelConfigData.json")
             .await?;
 
-        Ok(data
+        let names = data
             .iter()
             .filter_map(|entry| {
                 Some((
@@ -425,7 +449,25 @@ impl AnimeGameData {
                     lookup_text(text_map, entry.name_text_map_hash)?.clone(),
                 ))
             })
-            .collect())
+            .collect();
+        // A Radiant Spincrystal is used up into the Serenitea Pot's music
+        // list: its use names the music id it unlocks.
+        let spincrystals = data
+            .iter()
+            .filter(|entry| entry.material_type == "MATERIAL_BGM")
+            .filter_map(|entry| {
+                let music = entry
+                    .item_use
+                    .iter()
+                    .find(|item_use| item_use.use_op == "ITEM_USE_UNLOCK_HOME_BGM")?
+                    .use_param
+                    .first()?
+                    .parse()
+                    .ok()?;
+                Some((music, entry.id))
+            })
+            .collect();
+        Ok((names, spincrystals))
     }
 
     async fn fetch_property_map<Source: GameDataSource>(
@@ -665,6 +707,60 @@ mod tests {
         }
     }
 
+    /// The test data written as a pinned folder (gzipped files and a manifest).
+    fn pinned_test_data(id: &str) -> tempfile::TempDir {
+        use std::io::Write as _;
+        let dir = tempfile::tempdir().unwrap();
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/test_data");
+        for sub in ["ExcelBinOutput", "TextMap"] {
+            std::fs::create_dir_all(dir.path().join(sub)).unwrap();
+            for entry in std::fs::read_dir(root.join(sub)).unwrap() {
+                let path = entry.unwrap().path();
+                let name = path.file_name().unwrap().to_str().unwrap().to_owned();
+                let file = File::create(dir.path().join(sub).join(format!("{name}.gz"))).unwrap();
+                let mut gz = flate2::write::GzEncoder::new(file, flate2::Compression::default());
+                gz.write_all(&std::fs::read(&path).unwrap()).unwrap();
+                gz.finish().unwrap();
+            }
+        }
+        std::fs::write(
+            dir.path().join("manifest.json"),
+            format!(r#"{{"id": "{id}"}}"#),
+        )
+        .unwrap();
+        dir
+    }
+
+    #[tokio::test]
+    async fn pinned_files_build_the_same_database() {
+        let id = "13be4fd7343fe4cee8fa0096fe854b1c5b01b124";
+        let dir = pinned_test_data(id);
+        let pinned = Pinned::open(dir.path()).unwrap();
+        assert_eq!(pinned.id(), id);
+
+        let mut from_pinned = AnimeGameData::new();
+        assert!(from_pinned.needs_update_from(&pinned).await.unwrap());
+        from_pinned.update_from(&pinned).await.unwrap();
+        assert!(!from_pinned.needs_update_from(&pinned).await.unwrap());
+
+        let mut from_source = AnimeGameData::new();
+        from_source.update_impl(&TestDataSource).await.unwrap();
+        let json = |data: &AnimeGameData| {
+            let mut out = Vec::new();
+            data.save_to_writer(&mut out).unwrap();
+            serde_json::from_slice::<serde_json::Value>(&out).unwrap()
+        };
+        assert_eq!(json(&from_pinned), json(&from_source));
+    }
+
+    #[test]
+    fn a_pinned_folder_needs_a_well_formed_id() {
+        let dir = pinned_test_data("not-an-id");
+        let error = Pinned::open(dir.path()).unwrap_err().to_string();
+        assert!(error.contains("not 40 hex digits"), "{error}");
+        assert!(Pinned::open(dir.path().join("missing")).is_err());
+    }
+
     #[tokio::test]
     async fn character_map_returns_correct_character() {
         let source = TestDataSource;
@@ -772,6 +868,18 @@ mod tests {
         let mut data = AnimeGameData::new();
         data.update_impl(&source).await.unwrap();
         assert_eq!(data.get_material(100002).unwrap(), &"Sunsettia".to_string());
+    }
+
+    #[tokio::test]
+    async fn spincrystals_map_music_ids_to_their_items() {
+        let source = TestDataSource;
+        let mut data = AnimeGameData::new();
+        data.update_impl(&source).await.unwrap();
+        // Only the Radiant Spincrystal; the Sunsettia's uses unlock no music.
+        assert_eq!(
+            data.spincrystals().unwrap(),
+            &BTreeMap::from([(101, 141001)])
+        );
     }
 
     #[tokio::test]

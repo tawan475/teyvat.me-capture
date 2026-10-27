@@ -70,5 +70,33 @@
     "useOnGain": false,
     "useTarget": "ITEM_USE_TARGET_SPECIFY_ALIVE_AVATAR",
     "weight": 1
+  },
+  {
+    "descTextMapHash": 1,
+    "icon": "UI_ItemIcon_BGM_Common",
+    "id": 141001,
+    "itemType": "ITEM_MATERIAL",
+    "itemUse": [
+      {
+        "useOp": "ITEM_USE_UNLOCK_HOME_BGM",
+        "useParam": [
+          "101",
+          "",
+          "",
+          "",
+          ""
+        ]
+      },
+      {
+        "useOp": "ITEM_USE_NONE",
+        "useParam": [
+          "",
+          ""
+        ]
+      }
+    ],
+    "materialType": "MATERIAL_BGM",
+    "nameTextMapHash": 2,
+    "rankLevel": 4
   }
 ]

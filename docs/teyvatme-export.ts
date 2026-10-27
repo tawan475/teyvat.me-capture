@@ -52,8 +52,8 @@ export interface TeyvatmeExport {
   // ── GOOD ──────────────────────────────────────────────────────────── [GOOD]
   format: 'GOOD'
   version: 3
-  /** Kept as "Irminsul" on purpose: the tracker and older tools read it. */
-  source: 'Irminsul'
+  /** What wrote the file: "Teyvat.me" from 1.3.0; earlier versions and irminsul wrote "Irminsul". */
+  source: 'Teyvat.me' | 'Irminsul'
   characters: GoodCharacter[]
   artifacts: (GoodArtifact & ItemExtras)[]
   weapons: (GoodWeapon & ItemExtras)[]
@@ -77,6 +77,8 @@ export interface TeyvatmeExport {
   gi_tasks?: GiTasks
   /** [shipped] Why this snapshot was taken (live sync). Tracker uploads only. */
   gi_capture?: GiCapture
+  /** [next] What the player has collected. */
+  gi_collections?: GiCollections
 }
 
 // ── GOOD's own shapes ─────────────────────────────────────────────── [GOOD]
@@ -126,7 +128,7 @@ export interface GoodArtifact {
 export interface ItemExtras {
   /** [shipped] The game's item id. Live sync names items by it. */
   gi_guid?: U64String
-  /** [next] EXP toward the next level: 0 at a cap or never fed. */
+  /** [shipped] EXP toward the next level: 0 at a cap or never fed. */
   gi_exp?: number
 }
 
@@ -151,16 +153,16 @@ export interface GiPlayer {
   gameData?: string
 }
 
-// ── gi_characters ──────────────────────────────────────── [shipped] / [next]
+// ── gi_characters ──────────────────────────────────────────────── [shipped]
 
 export interface GiCharacter {
   /** [shipped] 1–10. The Traveler has none. */
   friendship?: number
   /** [shipped] When the character joined the account. */
   obtainedAt?: UnixSeconds
-  /** [next] EXP toward the next level: 0 at the ascension cap and past 90. */
+  /** [shipped] EXP toward the next level: 0 at the ascension cap and past 90. */
   exp?: number
-  /** [next] Friendship EXP toward the next level: 0 at 10; absent for the Traveler. */
+  /** [shipped] Friendship EXP toward the next level: 0 at 10; absent for the Traveler. */
   friendshipExp?: number
 }
 
@@ -179,7 +181,7 @@ export interface GiAnecdotes {
 /** The game's number, inferred from one account: 3 recorded, 2 in progress, 0 idle. (§4.3) */
 type AnecdoteState = 0 | 2 | 3
 
-// ── gi_tasks ─────────────────────────────────────────────── [shipped] / [next]
+// ── gi_tasks ───────────────────────────────────────────────────── [shipped]
 
 export interface GiTasks {
   /** [shipped] Today's Daily Commissions. */
@@ -199,10 +201,21 @@ export interface GiTasks {
   realm?: { value: number; limit: number }
   /** [shipped] Blessing of the Welkin Moon days left. */
   welkin?: { days: number }
-  /** [next] The weapon banner's Epitomized Path, as the Wish screen last showed it. */
+  /** [shipped] The weapon banner's Epitomized Path, as the Wish screen last showed it. */
   wishPath?: { weapon: GoodKey; points: number; max: number }
-  /** [next] Original Resin and when the next comes (one per 8 minutes; absent at 200+). */
+  /** [shipped] Original Resin and when the next comes (one per 8 minutes; absent at 200+). */
   resin?: { value: number; nextAt: UnixSeconds }
+}
+
+// ── gi_collections ─────────────────────────────────────────────────── [next]
+
+export interface GiCollections {
+  /**
+   * [next] The Radiant Spincrystals in the Serenitea Pot's music list, by item
+   * id (141001 = "Radiant Spincrystal 1"), ascending. From the list the game
+   * sends at every login; absent while the Pot holds none.
+   */
+  spincrystals?: GameId[]
 }
 
 // ── gi_capture ──────────────────────────────────────────────────── [shipped]

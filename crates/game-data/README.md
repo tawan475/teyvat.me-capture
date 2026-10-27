@@ -1,9 +1,11 @@
 # teyvatme-game-data
 
-Downloads Dimbreath's game data dump and indexes what Teyvat.me needs to name
-things (characters, weapons, artifacts, materials, talents). The desktop app's
-`build.rs` uses it to build the blob the binary embeds, and the app uses it to
-look the data up at run time.
+Indexes what Teyvat.me needs to name things (characters, weapons, artifacts,
+materials, talents) from the game data files. The build scripts read the
+repository's pinned copy ([`game-data/`](../../game-data/README.md), through
+`Pinned`) to build the blob the binaries embed, and the apps use it to look the
+data up at run time. The `download` feature (off in the builds) keeps the old
+Dimbreath download for the `cli` binary.
 
 It is the `crates/game-data` member of Teyvat.me's Cargo workspace.
 

@@ -19,7 +19,9 @@ resolver = "3"
 # the other. Declaring them once here and inheriting with `workspace = true`
 # makes that impossible to get wrong.
 [workspace.dependencies]
-teyvatme-game-data = { path = "crates/game-data" }
+# Without its `download` feature (Dimbreath's dump, for the crate's CLI only):
+# the builds read the pinned copy in game-data/.
+teyvatme-game-data = { path = "crates/game-data", default-features = false }
 flate2 = "1.1.9"
 tokio = { version = "1.47.1", features = [
 	"rt",

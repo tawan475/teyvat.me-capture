@@ -3,9 +3,9 @@
 // Portions copyright (c) 2025 Erik Gilling and irminsul contributors
 // See THIRD_PARTY_NOTICES.md.
 
-//! Downloads the game data the decoder embeds, as the desktop app's build.rs
-//! does: `OUT_DIR/game_data.gz` for `include_bytes!`, and the Dimbreath dump
-//! commit it was built from as `TEYVATME_GAME_DATA_SHA`.
+//! Builds the game data the decoder embeds from the repository's pinned copy
+//! (`game-data/`), as the desktop app's build.rs does: `OUT_DIR/game_data.gz`
+//! for `include_bytes!`, and the data set's id as `TEYVATME_GAME_DATA_SHA`.
 
 use std::fs::File;
 use std::io::Read;
@@ -18,40 +18,26 @@ use flate2::write::GzEncoder;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> io::Result<()> {
-    // Refreshed when this script changes, OUT_DIR is wiped or
-    // TEYVATME_REFRESH_GAME_DATA changes, like the desktop build.
+    // Rebuilt when this script or the pinned files change, or OUT_DIR is
+    // wiped, like the desktop build. No network.
     println!("cargo:rerun-if-changed=build.rs");
-    println!("cargo:rerun-if-env-changed=TEYVATME_REFRESH_GAME_DATA");
+    let manifest_dir = env::var_os("CARGO_MANIFEST_DIR").unwrap();
+    let pin_dir = Path::new(&manifest_dir).join("../../../game-data");
+    println!("cargo:rerun-if-changed={}", pin_dir.display());
+    let pinned = teyvatme_game_data::Pinned::open(&pin_dir).map_err(io::Error::other)?;
 
     let out_dir = env::var_os("OUT_DIR").unwrap();
     let cache_path = Path::new(&out_dir).join("game_data.json");
     let gz_path = Path::new(&out_dir).join("game_data.gz");
 
     let mut db = teyvatme_game_data::AnimeGameData::new_with_cache(&cache_path);
-    // A warm OUT_DIR builds offline.
-    let needs_update = match db.needs_update().await {
-        Ok(needs_update) => needs_update,
-        Err(e) => {
-            println!(
-                "cargo:warning=unable to check for new game data ({e}); falling back to the \
-                 cached copy"
-            );
-            false
-        }
-    };
     let mut updated = false;
-    if needs_update {
-        match db.update().await {
-            Ok(()) => updated = true,
-            Err(e) => println!("cargo:warning=unable to download game data ({e})"),
-        }
+    if db.needs_update_from(&pinned).await.map_err(io::Error::other)? {
+        db.update_from(&pinned)
+            .await
+            .map_err(|e| io::Error::other(format!("unable to build the game data: {e:#}")))?;
+        updated = true;
     }
-    assert!(
-        db.has_data(),
-        "no cached game data at {} and the download failed: the first build needs network \
-         access to gitlab.com",
-        cache_path.display()
-    );
     if updated || gz_needs_write(&gz_path, &cache_path) {
         write_game_data_gz(&db, &gz_path)?;
     }
@@ -59,7 +45,7 @@ async fn main() -> io::Result<()> {
     let game_data_sha = match read_game_data_sha(&gz_path) {
         Ok(sha) => sha,
         Err(e) => {
-            println!("cargo:warning=unable to read the game data's dump commit ({e})");
+            println!("cargo:warning=unable to read the game data's data set id ({e})");
             String::new()
         }
     };
@@ -97,7 +83,7 @@ struct GameDataMeta {
     git_hash: String,
 }
 
-/// The dump commit recorded in `game_data.gz`, checked to look like one.
+/// The data set id recorded in `game_data.gz`, checked to look like one.
 fn read_game_data_sha(gz_path: &Path) -> io::Result<String> {
     let reader = io::BufReader::new(GzDecoder::new(File::open(gz_path)?));
     let meta: GameDataMeta = serde_json::from_reader(reader).map_err(io::Error::other)?;
