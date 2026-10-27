@@ -166,6 +166,8 @@
     <string name="open_vpn_settings">VPN-Einstellungen öffnen</string>
     <string name="notifications">Benachrichtigungen</string>
     <string name="notifications_line">Erfassungsstatus beim Spielen</string>
+    <string name="tile_opens_game">Kachel öffnet Genshin</string>
+    <string name="tile_opens_game_line">Die Schnelleinstellungs-Kachel öffnet beim Start der Erfassung auch das Spiel</string>
     <string name="allow">Erlauben</string>
     <string name="setup_vpn_dialog">Android fragt, ob du ein VPN erlaubst: So darf eine App den Datenverkehr einer anderen lesen</string>
 
@@ -304,4 +306,75 @@
     <string name="key_signed_out_only">Nur im abgemeldeten Zustand genutzt</string>
     <string name="clear">Leeren</string>
     <string name="discord_line">Hilfe, Neuigkeiten und Feedback</string>
+
+    <!-- Home layout G (2026-10-27) -->
+    <string name="step_enter_world">Welt betreten</string>
+    <string name="home_login_seen_enter">Betritt die Welt, um deine Daten zu lesen</string>
+    <string name="traveler">Reisender</string>
+    <string name="player_wl">WS %d</string>
+    <string name="player_uid">UID %s</string>
+    <string name="tile_anecdotes">Anekdoten</string>
+    <string name="today">Heute</string>
+    <string name="today_at_login">beim Login %s</string>
+    <string name="resin">Harz</string>
+    <string name="realm_currency">Kannentaler</string>
+    <string name="commissions">Missionen</string>
+    <string name="commissions_done">Heute erledigt</string>
+    <string name="expeditions">Erkundungen</string>
+    <string name="expeditions_out">%d unterwegs</string>
+    <string name="expeditions_first_back">Erste zurück %s</string>
+    <string name="expeditions_all_back">Alle zurück</string>
+    <string name="expeditions_none">Keine</string>
+    <string name="weekly_bosses">Gebietssäuberungen</string>
+    <string name="weekly_discounts_left">Rabatte übrig</string>
+    <string name="spiral_abyss">Gewundener Abgrund</string>
+    <string name="full">Voll</string>
+    <string name="full_at">Voll um %s</string>
+    <string name="full_on">Voll %1$s %2$s</string>
+    <string name="wish_url_ready">URL bereit · %s</string>
+    <string name="wish_send_to">An %s senden</string>
+    <string name="wish_sync_no_account">Aus · verbinde %s, um sie zu senden</string>
+    <string name="wish_sync_off">Aus · die URL funktioniert weiter</string>
+    <string name="wish_syncing_banner">Synchronisiere · %1$s, Seite %2$d</string>
+    <string name="wish_waits_key">Wartet auf einen Gebetsschlüssel</string>
+    <string name="tracker_connect">Verbinden</string>
+    <string name="tracker_row_line">Jede Erfassung hochladen · Live-Sync</string>
+    <string name="tracker_waiting_browser">Warte auf den Browser…</string>
+    <string name="tracker_live_line">✓ Live-Sync · %1$s · %2$s</string>
+    <string name="tracker_uploads_not_chosen">Uploads: nicht gewählt</string>
+    <string name="tracker_upload_to">Zu %s hochladen</string>
+    <string name="tracker_settings_of">%s-Einstellungen</string>
+    <string name="update_banner_title">Update %s</string>
+    <string name="update_you_have">Du hast %s</string>
+    <string name="details">Details</string>
+    <string name="activity_has_error">Aktivität, das neueste Ereignis ist ein Fehler</string>
+    <string name="activity_line">Die letzten 50 Ereignisse</string>
+    <string name="theme_now">Design: %s</string>
+    <string name="section_destinations">Ziele</string>
+    <string name="teyvat_disconnected">Nicht verbunden</string>
+    <string name="teyvat_finish_signing">Schließe die Anmeldung auf der geöffneten Seite ab</string>
+    <string name="teyvat_uploads_turn_on">Uploads starten, sobald du verbunden bist</string>
+    <string name="copy_link">Link kopieren</string>
+    <string name="link_copied">Link kopiert</string>
+    <string name="uploads">Uploads</string>
+    <string name="target_auto">Automatisch (nach UID)</string>
+    <string name="target_not_chosen">Nicht gewählt</string>
+    <string name="chosen_on_website">Wird auf der Website gewählt</string>
+    <string name="tracker_configure_short">Einrichten</string>
+    <string name="target_gone">Das Konto, an das Uploads gingen, gibt es nicht mehr. Wähle ein anderes.</string>
+    <string name="auto_upload">Automatisch hochladen</string>
+    <string name="auto_upload_line">Jede Erfassung geht an %s</string>
+    <string name="last_upload">Letzter Upload</string>
+    <string name="last_upload_none">Noch nichts hochgeladen</string>
+    <string name="retry">Erneut versuchen</string>
+    <string name="refresh">Aktualisieren</string>
+    <string name="advanced_line">Serveradresse · Import-Schlüssel</string>
+    <plurals name="abyss_resets_in">
+        <item quantity="one">Neustart in %d Tag</item>
+        <item quantity="other">Neustart in %d Tagen</item>
+    </plurals>
+    <plurals name="changes">
+        <item quantity="one">%s Änderung</item>
+        <item quantity="other">%s Änderungen</item>
+    </plurals>
 </resources>

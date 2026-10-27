@@ -170,6 +170,8 @@
     <string name="open_vpn_settings">Open VPN settings</string>
     <string name="notifications">Notifications</string>
     <string name="notifications_line">Capture status while you play</string>
+    <string name="tile_opens_game">Tile opens Genshin</string>
+    <string name="tile_opens_game_line">The Quick Settings tile also opens the game when it starts capture</string>
     <string name="allow">Allow</string>
     <string name="setup_vpn_dialog">Android asks you to allow a VPN: it is how an app may read another app\'s traffic</string>
 
@@ -309,4 +311,75 @@
     <string name="key_signed_out_only">Used only while signed out</string>
     <string name="clear">Clear</string>
     <string name="discord_line">Help, news and feedback</string>
+
+    <!-- Home layout G (2026-10-27) -->
+    <string name="step_enter_world">Enter world</string>
+    <string name="home_login_seen_enter">Enter the world to read your data</string>
+    <string name="traveler">Traveler</string>
+    <string name="player_wl">WL %d</string>
+    <string name="player_uid">UID %s</string>
+    <string name="tile_anecdotes">Anecdotes</string>
+    <string name="today">Today</string>
+    <string name="today_at_login">at login %s</string>
+    <string name="resin">Resin</string>
+    <string name="realm_currency">Realm currency</string>
+    <string name="commissions">Commissions</string>
+    <string name="commissions_done">Done today</string>
+    <string name="expeditions">Expeditions</string>
+    <string name="expeditions_out">%d out</string>
+    <string name="expeditions_first_back">First back %s</string>
+    <string name="expeditions_all_back">All back</string>
+    <string name="expeditions_none">None</string>
+    <string name="weekly_bosses">Weekly bosses</string>
+    <string name="weekly_discounts_left">Discounts left</string>
+    <string name="spiral_abyss">Spiral Abyss</string>
+    <string name="full">Full</string>
+    <string name="full_at">Full at %s</string>
+    <string name="full_on">Full %1$s %2$s</string>
+    <string name="wish_url_ready">URL ready · %s</string>
+    <string name="wish_send_to">Send to %s</string>
+    <string name="wish_sync_no_account">Off · connect %s to send them</string>
+    <string name="wish_sync_off">Off · the URL still works</string>
+    <string name="wish_syncing_banner">Syncing · %1$s, page %2$d</string>
+    <string name="wish_waits_key">Waits for a wish key</string>
+    <string name="tracker_connect">Connect</string>
+    <string name="tracker_row_line">Upload each capture · live sync</string>
+    <string name="tracker_waiting_browser">Waiting for the browser…</string>
+    <string name="tracker_live_line">✓ Live sync · %1$s · %2$s</string>
+    <string name="tracker_uploads_not_chosen">Uploads: Not chosen</string>
+    <string name="tracker_upload_to">Upload to %s</string>
+    <string name="tracker_settings_of">%s settings</string>
+    <string name="update_banner_title">Update %s</string>
+    <string name="update_you_have">You have %s</string>
+    <string name="details">Details</string>
+    <string name="activity_has_error">Activity, the newest event is an error</string>
+    <string name="activity_line">The last 50 events</string>
+    <string name="theme_now">Theme: %s</string>
+    <string name="section_destinations">Destinations</string>
+    <string name="teyvat_disconnected">Not connected</string>
+    <string name="teyvat_finish_signing">Finish signing in on the page that opened</string>
+    <string name="teyvat_uploads_turn_on">Uploads turn on when you connect</string>
+    <string name="copy_link">Copy link</string>
+    <string name="link_copied">Link copied</string>
+    <string name="uploads">Uploads</string>
+    <string name="target_auto">Auto (by UID)</string>
+    <string name="target_not_chosen">Not chosen</string>
+    <string name="chosen_on_website">Chosen on the website</string>
+    <string name="tracker_configure_short">Configure</string>
+    <string name="target_gone">The account uploads went to is gone. Choose another.</string>
+    <string name="auto_upload">Auto upload</string>
+    <string name="auto_upload_line">Each capture goes to %s</string>
+    <string name="last_upload">Last upload</string>
+    <string name="last_upload_none">Nothing uploaded yet</string>
+    <string name="retry">Retry</string>
+    <string name="refresh">Refresh</string>
+    <string name="advanced_line">Server address · import key</string>
+    <plurals name="abyss_resets_in">
+        <item quantity="one">Resets in %d day</item>
+        <item quantity="other">Resets in %d days</item>
+    </plurals>
+    <plurals name="changes">
+        <item quantity="one">%s change</item>
+        <item quantity="other">%s changes</item>
+    </plurals>
 </resources>

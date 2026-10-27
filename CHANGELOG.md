@@ -2,6 +2,21 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.12.0
+
+- **New look, desktop and Android.** The home screen is one status strip
+  (Capture · Open Genshin · Enter world, with History, Theme, Settings and
+  Discord beside it), then your account and **Today** side by side (resin
+  counting to full, realm currency, commissions, expeditions, weekly bosses,
+  Spiral Abyss), then Export and Wish history, and teyvat.me at the foot.
+  Narrow windows and phones show the same in one column.
+- Android: a new setting, **Tile opens Genshin** (Settings, off by default).
+  With it on, starting capture from the Quick Settings tile also opens the
+  game.
+- Live sync sends the resin clock (`gi_tasks.resin`, when the next resin
+  comes) with each resin change, so the tracker's resin is exact between
+  snapshots.
+
 ## 1.11.0
 
 - **Serenitea Pot**: the furnishing sets you've learned and the companions'

@@ -104,6 +104,8 @@ data class Settings(
     val liveSync: Boolean = true,
     /** Download and install new releases by themselves. */
     val autoUpdate: Boolean = true,
+    /** The Quick Settings tile also opens Genshin when it starts capture. */
+    val tileOpensGame: Boolean = false,
 )
 
 /** The app's settings, in SharedPreferences, as one observable value. */
@@ -140,6 +142,7 @@ class Prefs(context: Context) {
             sendWishes = store.getBoolean("send_wishes", true),
             liveSync = store.getBoolean("live_sync", true),
             autoUpdate = store.getBoolean("auto_update", true),
+            tileOpensGame = store.getBoolean("tile_opens_game", false),
         )
     }
 
@@ -162,6 +165,7 @@ class Prefs(context: Context) {
             .putBoolean("send_wishes", s.sendWishes)
             .putBoolean("live_sync", s.liveSync)
             .putBoolean("auto_update", s.autoUpdate)
+            .putBoolean("tile_opens_game", s.tileOpensGame)
             .apply()
     }
 }

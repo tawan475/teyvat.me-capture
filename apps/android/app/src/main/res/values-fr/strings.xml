@@ -166,6 +166,8 @@
     <string name="open_vpn_settings">Ouvrir les paramètres VPN</string>
     <string name="notifications">Notifications</string>
     <string name="notifications_line">État de la capture pendant que vous jouez</string>
+    <string name="tile_opens_game">La vignette ouvre Genshin</string>
+    <string name="tile_opens_game_line">La vignette des Réglages rapides ouvre aussi le jeu en lançant la capture</string>
     <string name="allow">Autoriser</string>
     <string name="setup_vpn_dialog">Android vous demande d\'autoriser un VPN : c\'est ainsi qu\'une appli peut lire le trafic d\'une autre</string>
 
@@ -304,4 +306,77 @@
     <string name="key_signed_out_only">Utilisée seulement hors connexion</string>
     <string name="clear">Effacer</string>
     <string name="discord_line">Aide, nouveautés et retours</string>
+
+    <!-- Home layout G (2026-10-27) -->
+    <string name="step_enter_world">Entrer dans le monde</string>
+    <string name="home_login_seen_enter">Entre dans le monde pour lire tes données</string>
+    <string name="traveler">Voyageur</string>
+    <string name="player_wl">WL %d</string>
+    <string name="player_uid">UID %s</string>
+    <string name="tile_anecdotes">Anecdotes</string>
+    <string name="today">Aujourd’hui</string>
+    <string name="today_at_login">à la connexion %s</string>
+    <string name="resin">Résine</string>
+    <string name="realm_currency">Pièces du royaume</string>
+    <string name="commissions">Missions</string>
+    <string name="commissions_done">Faites aujourd’hui</string>
+    <string name="expeditions">Expéditions</string>
+    <string name="expeditions_out">%d en cours</string>
+    <string name="expeditions_first_back">Premier retour %s</string>
+    <string name="expeditions_all_back">Toutes revenues</string>
+    <string name="expeditions_none">Aucune</string>
+    <string name="weekly_bosses">Donjons de la conquête</string>
+    <string name="weekly_discounts_left">Réductions restantes</string>
+    <string name="spiral_abyss">Profondeurs spiralées</string>
+    <string name="full">Plein</string>
+    <string name="full_at">Plein à %s</string>
+    <string name="full_on">Plein %1$s %2$s</string>
+    <string name="wish_url_ready">URL prête · %s</string>
+    <string name="wish_send_to">Envoyer à %s</string>
+    <string name="wish_sync_no_account">Désactivé · connecte %s pour les envoyer</string>
+    <string name="wish_sync_off">Désactivé · l’URL marche toujours</string>
+    <string name="wish_syncing_banner">Synchronisation · %1$s, page %2$d</string>
+    <string name="wish_waits_key">Attend une clé de vœux</string>
+    <string name="tracker_connect">Connecter</string>
+    <string name="tracker_row_line">Envoyer chaque capture · synchro en direct</string>
+    <string name="tracker_waiting_browser">En attente du navigateur…</string>
+    <string name="tracker_live_line">✓ Synchro en direct · %1$s · %2$s</string>
+    <string name="tracker_uploads_not_chosen">Envois : non choisi</string>
+    <string name="tracker_upload_to">Envoyer vers %s</string>
+    <string name="tracker_settings_of">Réglages de %s</string>
+    <string name="update_banner_title">Mise à jour %s</string>
+    <string name="update_you_have">Tu as %s</string>
+    <string name="details">Détails</string>
+    <string name="activity_has_error">Activité, le dernier événement est une erreur</string>
+    <string name="activity_line">Les 50 derniers événements</string>
+    <string name="theme_now">Thème : %s</string>
+    <string name="section_destinations">Destinations</string>
+    <string name="teyvat_disconnected">Non connecté</string>
+    <string name="teyvat_finish_signing">Termine la connexion sur la page qui s’est ouverte</string>
+    <string name="teyvat_uploads_turn_on">Les envois s’activent à la connexion</string>
+    <string name="copy_link">Copier le lien</string>
+    <string name="link_copied">Lien copié</string>
+    <string name="uploads">Envois</string>
+    <string name="target_auto">Auto (par UID)</string>
+    <string name="target_not_chosen">Non choisi</string>
+    <string name="chosen_on_website">Choisi sur le site</string>
+    <string name="tracker_configure_short">Configurer</string>
+    <string name="target_gone">Le compte qui recevait les envois n’existe plus. Choisis-en un autre.</string>
+    <string name="auto_upload">Envoi automatique</string>
+    <string name="auto_upload_line">Chaque capture part vers %s</string>
+    <string name="last_upload">Dernier envoi</string>
+    <string name="last_upload_none">Rien d’envoyé pour l’instant</string>
+    <string name="retry">Réessayer</string>
+    <string name="refresh">Actualiser</string>
+    <string name="advanced_line">Adresse du serveur · clé d’import</string>
+    <plurals name="abyss_resets_in">
+        <item quantity="one">Réinitialisation dans %d jour</item>
+        <item quantity="many">Réinitialisation dans %d jours</item>
+        <item quantity="other">Réinitialisation dans %d jours</item>
+    </plurals>
+    <plurals name="changes">
+        <item quantity="one">%s modification</item>
+        <item quantity="many">%s modifications</item>
+        <item quantity="other">%s modifications</item>
+    </plurals>
 </resources>

@@ -1,18 +1,20 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 tawan475
 
-//! The main window (spec §4): status hero, Captured, Wish history on the
-//! left; Export (the main action) and Destinations (optional) on the right.
-//! One column below the breakpoint. The app exports; it never displays the
-//! account (that is the tracker's job).
+//! The main window, layout G (spec §4): the status strip with the app
+//! buttons, then the Traveler | Today pair, the Export | Wish history pair,
+//! and the Tracker row at the window's foot. The two cards of a pair end on
+//! one line. One column below the breakpoint. The app exports; it shows
+//! only the account line, six counts and today's routine (the rest is the
+//! tracker's job).
 
 use std::time::{Duration, Instant};
 
 use chrono::Local;
-use egui::{Align, Layout, RichText, Ui};
+use egui::{Align, Id, Layout, Margin, Response, RichText, Ui, vec2};
 
 use super::frame::BREAKPOINT;
-use super::{OptimizerExportTarget, Page, TeyvatmeApp, TrackerSignIn};
+use super::{OptimizerExportTarget, Page, TeyvatmeApp, TrackerSignIn, today};
 use crate::AppState;
 use crate::game_watch::{GameStatus, MissedLaunch};
 use crate::i18n::{tr, trf};
@@ -20,60 +22,135 @@ use crate::signin::{AuthStatus, TrackerRequest};
 use crate::ui::icons;
 use crate::ui::theme::Palette;
 use crate::ui::widgets::{
-    self, ButtonKind, Disc, HeroVariant, Step, button, card, divider, icon_button, line, list_row,
-    secondary_text, small_text, strong_text, switch_row, title_text,
+    self, ButtonKind, Disc, HeroVariant, MiniStat, STAT_TILE_HEIGHT, Step, Strip, button, card,
+    divider, icon_button, line, secondary_text, small_text, strong_text, switch_row, title_text,
 };
 use crate::update::UpdateStatus;
 
 /// How long a tile glows after its class updates.
 const TILE_FLASH: Duration = Duration::from_millis(600);
+/// Space between cards and columns.
+const GAP: f32 = 12.0;
+
+/// What the strip's second line asks for (the bad states).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum StripExtra {
+    Admin,
+    Logs,
+    Missed,
+    KeyLost,
+}
+
+/// What a click in the strip's second line asked for.
+enum StripAction {
+    RestartAsAdmin,
+    OpenLogs,
+    CloseGenshin,
+}
 
 impl TeyvatmeApp {
     pub(super) fn home(&mut self, ui: &mut Ui, app_state: &AppState) {
+        let viewport = ui.available_height();
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
+                let content_top = ui.cursor().top();
                 egui::Frame::new()
-                    .inner_margin(egui::Margin::same(16))
+                    .inner_margin(Margin::same(16))
                     .show(ui, |ui| {
-                        ui.spacing_mut().item_spacing.y = 12.0;
+                        ui.spacing_mut().item_spacing.y = GAP;
                         self.crash_banner(ui);
                         self.update_banner(ui);
                         let wide = ui.available_width() >= BREAKPOINT - 32.0;
-                        if wide {
-                            ui.columns(2, |columns| {
-                                let [left, right] = columns else {
-                                    unreachable!("two columns")
-                                };
-                                left.spacing_mut().item_spacing.y = 12.0;
-                                right.spacing_mut().item_spacing.y = 12.0;
-                                self.status_hero(left, app_state);
-                                self.captured_card(left, app_state);
-                                self.wish_card(left, app_state);
-                                self.export_card(right, app_state);
-                                self.destinations_card(right);
-                            });
-                        } else {
-                            self.status_hero(ui, app_state);
-                            self.captured_card(ui, app_state);
-                            self.wish_card(ui, app_state);
-                            self.export_card(ui, app_state);
-                            self.destinations_card(ui);
+                        self.status_strip(ui, app_state, !wide);
+                        self.pair(
+                            ui,
+                            "traveler-today",
+                            wide,
+                            |app, ui, stretch| app.traveler_card(ui, app_state, stretch),
+                            |app, ui, stretch| app.today_card(ui, app_state, stretch),
+                        );
+                        self.pair(
+                            ui,
+                            "export-wishes",
+                            wide,
+                            |app, ui, stretch| app.export_card(ui, app_state, stretch),
+                            |app, ui, stretch| app.wish_card(ui, app_state, stretch),
+                        );
+                        // The Tracker row at the window's foot: the space
+                        // left, if any, goes above it.
+                        let id = Id::new("tracker-row-height");
+                        let height = ui.data(|d| d.get_temp::<f32>(id)).unwrap_or(58.0);
+                        let bottom = content_top + viewport - 16.0;
+                        let room = (bottom - height - ui.cursor().top()).floor() - 1.0;
+                        if room > 0.0 {
+                            ui.add_space(room);
                         }
-                        // Room under the last card for the floating buttons.
-                        ui.add_space(super::frame::QUICK_BAR_HEIGHT);
+                        let row = self.tracker_row(ui);
+                        if (row.rect.height() - height).abs() > 0.5 {
+                            ui.data_mut(|d| d.insert_temp(id, row.rect.height()));
+                            ui.ctx().request_discard("tracker row height");
+                        }
                     });
             });
+    }
+
+    /// Two cards side by side whose frames end on one line: each pass
+    /// measures what each card needs, and the next gives both the taller
+    /// one's height, the shorter card spreading its content into it
+    /// (`stretch`). One under the other when narrow.
+    fn pair(
+        &mut self,
+        ui: &mut Ui,
+        name: &str,
+        wide: bool,
+        left: impl FnOnce(&mut Self, &mut Ui, f32) -> Response,
+        right: impl FnOnce(&mut Self, &mut Ui, f32) -> Response,
+    ) {
+        if !wide {
+            left(self, ui, 0.0);
+            right(self, ui, 0.0);
+            return;
+        }
+        let id = Id::new("pair").with(name);
+        let natural: [f32; 2] = ui.data(|d| d.get_temp(id)).unwrap_or_default();
+        let target = natural[0].max(natural[1]);
+        let stretch = [target - natural[0], target - natural[1]];
+        let mut measured = natural;
+        ui.spacing_mut().item_spacing.x = GAP;
+        ui.columns(2, |columns| {
+            let [l, r] = columns else {
+                unreachable!("two columns")
+            };
+            for column in [&mut *l, &mut *r] {
+                column.spacing_mut().item_spacing = vec2(8.0, GAP);
+            }
+            measured[0] = left(self, l, stretch[0]).rect.height() - stretch[0];
+            measured[1] = right(self, r, stretch[1]).rect.height() - stretch[1];
+        });
+        ui.spacing_mut().item_spacing.x = 8.0;
+        if measured
+            .iter()
+            .zip(natural)
+            .any(|(now, before)| (now - before).abs() > 0.5)
+        {
+            ui.data_mut(|d| d.insert_temp(id, measured));
+            ui.ctx().request_discard("card pair heights");
+        }
     }
 
     /// A newer version found, or installed and waiting for a restart.
     fn update_banner(&mut self, ui: &mut Ui) {
         let status = self.update_status.borrow().clone();
-        let (title, ready) = match &status {
+        let (title, ready, version) = match &status {
             UpdateStatus::Available(v) | UpdateStatus::Installing(v) => {
-                (trf("Update {0}", &[v]), false)
+                (trf("Update {0}", &[v]), false, v.clone())
             }
-            UpdateStatus::Ready(v) => (trf("{0} installed · restart to use it", &[v]), true),
+            UpdateStatus::Ready(v) => (
+                trf("{0} installed · restart to use it", &[v]),
+                true,
+                v.clone(),
+            ),
             _ => return,
         };
         let pal = widgets::p(ui);
@@ -82,21 +159,43 @@ impl TeyvatmeApp {
         egui::Frame::new()
             .fill(pal.ac_con)
             .corner_radius(egui::CornerRadius::same(12))
-            .inner_margin(egui::Margin::symmetric(14, 10))
+            .inner_margin(Margin {
+                left: 14,
+                right: 8,
+                top: 8,
+                bottom: 8,
+            })
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 10.0;
                     ui.add(icons::image(icons::download(), 18.0, pal.ac_on));
-                    line(ui, strong_text(title, pal.ac_on));
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        let outlined = |ui: &mut Ui, text: &str| {
+                            ui.add(
+                                egui::Button::new(
+                                    RichText::new(text)
+                                        .text_style(crate::ui::theme::style::secondary())
+                                        .family(crate::ui::theme::weight::semibold())
+                                        .color(pal.ac_on),
+                                )
+                                .fill(egui::Color32::TRANSPARENT)
+                                .stroke(egui::Stroke::new(1.0_f32, pal.ac_on))
+                                .corner_radius(egui::CornerRadius::same(8))
+                                .min_size(vec2(0.0, 32.0)),
+                            )
+                        };
                         if ready {
-                            restart =
-                                button(ui, ButtonKind::Secondary, None, tr("Restart now"), false)
-                                    .clicked();
+                            restart = outlined(ui, tr("Restart now")).clicked();
                         } else {
-                            open = button(ui, ButtonKind::Secondary, None, tr("Details"), false)
-                                .clicked();
+                            open = outlined(ui, tr("Details")).clicked();
                         }
+                        ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                            line(ui, strong_text(title, pal.ac_on)).on_hover_text(trf(
+                                "Teyvat.me Capture {0} is ready to install · you have {1}",
+                                &[&version, &env!("CARGO_PKG_VERSION")],
+                            ));
+                        });
                     });
                 });
             });
@@ -125,18 +224,11 @@ impl TeyvatmeApp {
         egui::Frame::new()
             .fill(pal.warn_con)
             .corner_radius(egui::CornerRadius::same(12))
-            .inner_margin(egui::Margin::symmetric(14, 10))
+            .inner_margin(Margin::symmetric(14, 10))
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 ui.horizontal(|ui| {
                     ui.add(icons::image(icons::triangle_alert(), 18.0, pal.warn_on));
-                    ui.vertical(|ui| {
-                        ui.spacing_mut().item_spacing.y = 1.0;
-                        line(ui, strong_text(title, pal.warn_on));
-                        line(ui, secondary_text(detail, pal.warn_on));
-                    })
-                    .response
-                    .on_hover_text(&notice);
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         dismiss = icon_button(ui, icons::x(), tr("Dismiss")).clicked();
                         open_logs = button(
@@ -147,6 +239,15 @@ impl TeyvatmeApp {
                             false,
                         )
                         .clicked();
+                        ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                            ui.vertical(|ui| {
+                                ui.spacing_mut().item_spacing.y = 1.0;
+                                line(ui, strong_text(title, pal.warn_on));
+                                line(ui, secondary_text(detail, pal.warn_on));
+                            })
+                            .response
+                            .on_hover_text(&notice);
+                        });
                     });
                 });
             });
@@ -160,7 +261,8 @@ impl TeyvatmeApp {
         }
     }
 
-    fn status_hero(&mut self, ui: &mut Ui, app_state: &AppState) {
+    /// The status strip across the window, with the app buttons at its end.
+    fn status_strip(&mut self, ui: &mut Ui, app_state: &AppState, narrow: bool) {
         use Step::{Done, Failed, Now, Pending};
         let status = app_state.game_status;
         let ok_disc = Disc::Icon {
@@ -178,197 +280,210 @@ impl TeyvatmeApp {
             fill: |p: &Palette| p.over,
             ink: |p: &Palette| p.tx2,
         };
-
-        if !self.is_admin {
-            let response = widgets::status_hero(
-                ui,
-                HeroVariant::Bad,
-                bad(icons::shield_alert),
-                tr("Capture needs administrator"),
-                tr("Started without admin rights"),
-                [Failed, Pending, Pending],
-                |ui| {
-                    if button(
-                        ui,
-                        ButtonKind::Fill,
-                        Some(icons::shield_check()),
-                        tr("Restart as administrator"),
-                        false,
-                    )
-                    .clicked()
-                    {
-                        self.restart_as_admin(ui.ctx());
-                    }
-                },
-            );
-            self.hero_actions(
-                ui,
-                response,
-                tr("Windows lets only administrators read network packets"),
-            );
-            return;
-        }
-
         let decoding_since = self
             .decoding_since
             .map(|at| at.format("%H:%M").to_string())
             .unwrap_or_default();
-        let since_start = self.started_at.elapsed();
-        let response = match status {
-            GameStatus::NotRunning => widgets::status_hero(
-                ui,
-                HeroVariant::Neutral,
-                neutral(icons::gamepad),
-                tr("Waiting for the game"),
-                tr("Genshin isn't running · start it now"),
-                [Done, Pending, Pending],
-                |_| {},
-            ),
-            GameStatus::AwaitingLogin => widgets::status_hero(
-                ui,
-                HeroVariant::Neutral,
-                neutral(icons::gamepad),
-                tr("Game detected"),
-                tr("Already open · enter the world now"),
-                [Done, Now, Pending],
-                |_| {},
-            ),
-            GameStatus::LaunchCaptured => widgets::status_hero(
-                ui,
-                HeroVariant::Neutral,
-                Disc::Icon {
-                    icon: icons::gamepad,
-                    fill: |p: &Palette| p.fill,
-                    ink: |_: &Palette| egui::Color32::WHITE,
-                },
-                tr("Game detected"),
-                tr("Launch captured · enter the world now"),
-                [Done, Now, Pending],
-                |_| {},
-            ),
-            GameStatus::Decoding => widgets::status_hero(
-                ui,
-                HeroVariant::Ok,
-                ok_disc,
-                tr("Data decrypting"),
-                &trf("Session key found · {0}", &[&decoding_since]),
-                [Done, Done, Done],
-                |_| {},
-            ),
-            GameStatus::CaptureOff => widgets::status_hero(
-                ui,
-                HeroVariant::Neutral,
-                Disc::Spinner,
-                tr("Starting capture"),
-                tr("Packet capture restarts itself within seconds"),
-                [Now, Pending, Pending],
-                |ui| {
-                    if since_start > Duration::from_secs(30) {
-                        ui.horizontal(|ui| {
-                            if button(
-                                ui,
-                                ButtonKind::Secondary,
-                                Some(icons::folder_open()),
-                                tr("Open log folder"),
-                                false,
-                            )
-                            .clicked()
-                            {
-                                std::thread::spawn(|| {
-                                    let _ = crate::open_log_dir();
-                                });
-                            }
-                        });
-                    }
-                },
-            ),
-            GameStatus::LaunchMissed(cause) => {
-                let (line_text, steps) = match cause {
-                    MissedLaunch::AlreadyRunning => (
-                        tr("Genshin started before Teyvat.me"),
-                        [Done, Failed, Pending],
-                    ),
-                    MissedLaunch::CaptureStopped => (
-                        tr("Capture was off when you logged in"),
-                        [Failed, Pending, Pending],
-                    ),
-                };
-                widgets::status_hero(
-                    ui,
+        let session_line = trf("Session key found · {0}", &[&decoding_since]);
+
+        let title = strip_title(self.is_admin, status);
+        let (variant, disc, subtitle, steps, extra): (_, _, &str, _, _) = if !self.is_admin {
+            (
+                HeroVariant::Bad,
+                bad(icons::shield_alert),
+                tr("Started without admin rights"),
+                [Failed, Pending, Pending],
+                Some(StripExtra::Admin),
+            )
+        } else {
+            match status {
+                GameStatus::NotRunning => (
+                    HeroVariant::Neutral,
+                    neutral(icons::gamepad),
+                    tr("Genshin isn't running · start it now"),
+                    [Done, Pending, Pending],
+                    None,
+                ),
+                GameStatus::AwaitingLogin => (
+                    HeroVariant::Neutral,
+                    neutral(icons::gamepad),
+                    tr("Already open · enter the world now"),
+                    [Done, Now, Pending],
+                    None,
+                ),
+                GameStatus::LaunchCaptured => (
+                    HeroVariant::Neutral,
+                    Disc::Icon {
+                        icon: icons::gamepad,
+                        fill: |p: &Palette| p.fill,
+                        ink: |_: &Palette| egui::Color32::WHITE,
+                    },
+                    tr("Launch captured · enter the world now"),
+                    [Done, Now, Pending],
+                    None,
+                ),
+                GameStatus::Decoding => (
+                    HeroVariant::Ok,
+                    ok_disc,
+                    session_line.as_str(),
+                    [Done, Done, Done],
+                    None,
+                ),
+                GameStatus::CaptureOff => (
+                    HeroVariant::Neutral,
+                    Disc::Spinner,
+                    tr("Packet capture restarts itself within seconds"),
+                    [Now, Pending, Pending],
+                    (self.started_at.elapsed() > Duration::from_secs(30))
+                        .then_some(StripExtra::Logs),
+                ),
+                GameStatus::LaunchMissed(cause) => {
+                    let (line_text, steps) = match cause {
+                        MissedLaunch::AlreadyRunning => (
+                            tr("Genshin started before Teyvat.me"),
+                            [Done, Failed, Pending],
+                        ),
+                        MissedLaunch::CaptureStopped => (
+                            tr("Capture was off when you logged in"),
+                            [Failed, Pending, Pending],
+                        ),
+                    };
+                    (
+                        HeroVariant::Bad,
+                        bad(icons::triangle_alert),
+                        line_text,
+                        steps,
+                        Some(StripExtra::Missed),
+                    )
+                }
+                GameStatus::KeyLost => (
                     HeroVariant::Bad,
                     bad(icons::triangle_alert),
-                    tr("Launch missed"),
-                    line_text,
-                    steps,
-                    |ui| {
-                        let pal = widgets::p(ui);
-                        ui.label(strong_text(
-                            tr("Back to the title screen and enter again"),
-                            pal.tx,
-                        ));
-                        ui.horizontal(|ui| {
-                            let kill = ui.add_enabled_ui(self.game_kill_rx.is_none(), |ui| {
-                                button(
-                                    ui,
-                                    ButtonKind::Danger,
-                                    Some(icons::power()),
-                                    tr("Close Genshin"),
-                                    false,
-                                )
-                                .on_hover_text(
-                                    tr("Force-quits the game. Progress is safe; a domain run in progress is lost."),
-                                )
-                            });
-                            if kill.inner.clicked() {
-                                self.kill_game();
-                            }
-                            ui.label(small_text(tr("or restart Genshin"), pal.tx3));
-                        });
-                    },
-                )
+                    tr("Session key not found"),
+                    [Done, Done, Failed],
+                    Some(StripExtra::KeyLost),
+                ),
             }
-            GameStatus::KeyLost => widgets::status_hero(
-                ui,
-                HeroVariant::Bad,
-                bad(icons::triangle_alert),
-                tr("Login not read"),
-                tr("Session key not found"),
-                [Done, Done, Failed],
-                |ui| {
-                    let pal = widgets::p(ui);
-                    ui.label(strong_text(
-                        tr("Back to the title screen and enter again"),
-                        pal.tx,
-                    ));
-                    ui.label(small_text(tr("Captured data is kept"), pal.tx3));
-                },
-            ),
         };
-        self.hero_actions(ui, response, status.tooltip());
-    }
+        let tooltip = if self.is_admin {
+            status.tooltip()
+        } else {
+            tr("Windows lets only administrators read network packets")
+        };
 
-    /// The status card's tooltip.
-    fn hero_actions(&mut self, _ui: &mut Ui, hero: egui::Response, tooltip: &str) {
-        hero.on_hover_text(tooltip);
-    }
-
-    fn captured_card(&mut self, ui: &mut Ui, app_state: &AppState) {
         let pal = widgets::p(ui);
-        let (title, suffix) = match &app_state.player {
+        let killing = self.game_kill_rx.is_some();
+        let mut action = None;
+        let mut second_line = |ui: &mut Ui| match extra {
+            Some(StripExtra::Admin) => {
+                if button(
+                    ui,
+                    ButtonKind::Fill,
+                    Some(icons::shield_check()),
+                    tr("Restart as administrator"),
+                    false,
+                )
+                .clicked()
+                {
+                    action = Some(StripAction::RestartAsAdmin);
+                }
+            }
+            Some(StripExtra::Logs) => {
+                ui.horizontal(|ui| {
+                    if button(
+                        ui,
+                        ButtonKind::Secondary,
+                        Some(icons::folder_open()),
+                        tr("Open log folder"),
+                        false,
+                    )
+                    .clicked()
+                    {
+                        action = Some(StripAction::OpenLogs);
+                    }
+                    ui.label(small_text(tr("after 30 s"), pal.tx3));
+                });
+            }
+            Some(StripExtra::Missed) => {
+                line(
+                    ui,
+                    strong_text(tr("Back to the title screen and enter again"), pal.tx),
+                );
+                ui.horizontal(|ui| {
+                    let kill = ui.add_enabled_ui(!killing, |ui| {
+                        button(
+                            ui,
+                            ButtonKind::Danger,
+                            Some(icons::power()),
+                            tr("Close Genshin"),
+                            false,
+                        )
+                        .on_hover_text(tr(
+                            "Force-quits the game. Progress is safe; a domain run in progress is lost.",
+                        ))
+                    });
+                    if kill.inner.clicked() {
+                        action = Some(StripAction::CloseGenshin);
+                    }
+                    ui.label(small_text(tr("or restart Genshin"), pal.tx3));
+                });
+            }
+            Some(StripExtra::KeyLost) => {
+                line(
+                    ui,
+                    strong_text(tr("Back to the title screen and enter again"), pal.tx),
+                );
+                ui.label(small_text(tr("Captured data is kept"), pal.tx3));
+            }
+            None => {}
+        };
+        widgets::status_strip(
+            ui,
+            Strip {
+                variant,
+                disc,
+                title,
+                subtitle,
+                steps,
+                tooltip,
+            },
+            narrow,
+            |ui| self.app_buttons(ui),
+            extra
+                .is_some()
+                .then_some(&mut second_line as &mut dyn FnMut(&mut Ui)),
+        );
+        match action {
+            Some(StripAction::RestartAsAdmin) => self.restart_as_admin(ui.ctx()),
+            Some(StripAction::OpenLogs) => {
+                std::thread::spawn(|| {
+                    let _ = crate::open_log_dir();
+                });
+            }
+            Some(StripAction::CloseGenshin) => self.kill_game(),
+            None => {}
+        }
+    }
+
+    /// The account line and six counts (spec §4.2).
+    fn traveler_card(&mut self, ui: &mut Ui, app_state: &AppState, stretch: f32) -> Response {
+        let pal = widgets::p(ui);
+        let suffix = match &app_state.player {
             Some(player) => {
                 let mut parts = Vec::new();
                 if let Some(ar) = player.ar {
                     parts.push(trf("AR {0}", &[&ar]));
                 }
+                if let Some(wl) = player.wl {
+                    parts.push(trf("WL {0}", &[&wl]));
+                }
                 if let Some(server) = player.uid.and_then(server_of) {
                     parts.push(server.to_owned());
                 }
-                (tr("Captured"), Some(parts.join(" · ")))
+                Some(parts.join(" · "))
             }
-            None if app_state.counts.is_none() => {
-                (tr("Captured"), Some(tr("Nothing yet").to_owned()))
-            }
-            None => (tr("Captured"), None),
+            None if app_state.counts.is_none() => Some(tr("Nothing yet").to_owned()),
+            None => None,
         };
         let uid = app_state.player.as_ref().and_then(|player| player.uid);
         let time = app_state.captured_at.map(|at| {
@@ -378,6 +493,10 @@ impl TeyvatmeApp {
                 at.format("%Y-%m-%d %H:%M:%S").to_string(),
             )
         });
+        if app_state.captured_at.is_some() {
+            // "just now" turns into "1 min ago" by itself.
+            ui.ctx().request_repaint_after(Duration::from_secs(30));
+        }
         let counts = app_state.counts;
         let updated = &app_state.updated;
         let flash = |at: Option<Instant>| {
@@ -390,20 +509,42 @@ impl TeyvatmeApp {
                 }
             })
         };
-        let flashes = [
-            flash(updated.characters_updated),
-            flash(updated.items_updated),
-            flash(updated.items_updated),
-            flash(updated.items_updated),
-            flash(updated.achievements_updated),
+        let value = |pick: fn(&crate::player_data::ExportCounts) -> usize| counts.map(|c| pick(&c));
+        let tiles = [
+            (
+                value(|c| c.characters),
+                tr("Characters"),
+                flash(updated.characters_updated),
+            ),
+            (
+                value(|c| c.weapons),
+                tr("Weapons"),
+                flash(updated.items_updated),
+            ),
+            (
+                value(|c| c.artifacts),
+                tr("Artifacts"),
+                flash(updated.items_updated),
+            ),
+            (
+                value(|c| c.materials),
+                tr("Materials"),
+                flash(updated.items_updated),
+            ),
+            (
+                value(|c| c.achievements),
+                tr("Achievements"),
+                flash(updated.achievements_updated),
+            ),
+            (app_state.anecdotes, tr("Anecdotes"), 0.0),
         ];
-        if flashes.iter().any(|f| *f > 0.0) {
+        if tiles.iter().any(|(_, _, f)| *f > 0.0) {
             ui.ctx().request_repaint_after(Duration::from_millis(33));
         }
 
         let card = card(
             ui,
-            title,
+            tr("Captured"),
             suffix.as_deref().filter(|s| !s.is_empty()),
             |ui| {
                 if let Some((time, full)) = &time {
@@ -413,60 +554,128 @@ impl TeyvatmeApp {
             |ui| {
                 let gap = 8.0;
                 let width = ui.available_width();
-                let unit = (width - 5.0 * gap) / 6.0;
-                let value =
-                    |pick: fn(&crate::player_data::ExportCounts) -> usize| counts.map(|c| pick(&c));
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = gap;
-                    widgets::stat_tile(
-                        ui,
-                        unit * 2.0 + gap,
-                        value(|c| c.characters),
-                        tr("Characters"),
-                        flashes[0],
-                    );
-                    widgets::stat_tile(
-                        ui,
-                        unit * 2.0 + gap,
-                        value(|c| c.weapons),
-                        tr("Weapons"),
-                        flashes[1],
-                    );
-                    widgets::stat_tile(
-                        ui,
-                        unit * 2.0 + gap,
-                        value(|c| c.artifacts),
-                        tr("Artifacts"),
-                        flashes[2],
-                    );
-                });
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = gap;
-                    let half = (width - gap) / 2.0;
-                    widgets::stat_tile(
-                        ui,
-                        half,
-                        value(|c| c.materials),
-                        tr("Materials"),
-                        flashes[3],
-                    );
-                    widgets::stat_tile(
-                        ui,
-                        half,
-                        value(|c| c.achievements),
-                        tr("Achievements"),
-                        flashes[4],
-                    );
-                });
+                let size = vec2(
+                    ((width - 2.0 * gap) / 3.0).floor(),
+                    STAT_TILE_HEIGHT + stretch / 2.0,
+                );
+                for row in tiles.chunks(3) {
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = gap;
+                        for (value, label, flash) in row {
+                            widgets::stat_tile(ui, size, *value, label, *flash);
+                        }
+                    });
+                }
             },
         );
         // The UID only on hover, so streams and screenshots don't show it.
-        if let Some(uid) = uid {
-            card.response.on_hover_text(trf("UID {0}", &[&uid]));
+        let response = card.response;
+        match uid {
+            Some(uid) => response.on_hover_text(trf("UID {0}", &[&uid])),
+            None => response,
         }
     }
 
-    fn wish_card(&mut self, ui: &mut Ui, app_state: &AppState) {
+    /// Today's routine at login (spec §4.2b): Resin and realm currency side
+    /// by side with their bars, the four counters under them.
+    fn today_card(&mut self, ui: &mut Ui, app_state: &AppState, stretch: f32) -> Response {
+        let pal = widgets::p(ui);
+        let now = chrono::Utc::now().timestamp().max(0) as u64;
+        let login_resin = app_state.player.as_ref().and_then(|player| player.resin);
+        let figures = today::figures(app_state.tasks.as_ref(), login_resin, now);
+        if app_state.tasks.is_some() {
+            // Resin's clock and the expeditions' times move on by themselves.
+            ui.ctx().request_repaint_after(Duration::from_secs(30));
+        }
+        let [resin, realm, commissions, expeditions, bosses, abyss] = figures;
+        let stat = |icon, label, figure: today::Figure, tooltip| MiniStat {
+            icon,
+            label,
+            value: figure.value,
+            bar: figure.bar,
+            line: figure.line,
+            tooltip,
+        };
+        let stats = [
+            stat(
+                icons::droplet(),
+                tr("Resin"),
+                resin,
+                tr("Original Resin · one every 8 minutes · counted on from the login"),
+            ),
+            stat(
+                icons::house(),
+                tr("Realm currency"),
+                realm,
+                tr("Serenitea Pot · the jar at login"),
+            ),
+            stat(
+                icons::list_checks(),
+                tr("Commissions"),
+                commissions,
+                tr("Daily Commissions at login"),
+            ),
+            stat(
+                icons::hourglass(),
+                tr("Expeditions"),
+                expeditions,
+                tr("Who is out and when the first is back"),
+            ),
+            stat(
+                icons::swords(),
+                tr("Weekly bosses"),
+                bosses,
+                tr("Half-price weekly bosses left this week"),
+            ),
+            stat(
+                icons::star(),
+                tr("Spiral Abyss"),
+                abyss,
+                tr("Stars this period"),
+            ),
+        ];
+        let at = app_state.tasks_at.map(|at| at.format("%H:%M").to_string());
+        card(
+            ui,
+            tr("Today"),
+            None,
+            |ui| {
+                if let Some(at) = &at {
+                    ui.label(small_text(trf("at login {0}", &[at]), pal.tx3))
+                        .on_hover_text(tr(
+                            "The game's state at login; Resin and realm currency count on by themselves",
+                        ));
+                }
+            },
+            |ui| {
+                ui.spacing_mut().item_spacing.y = 2.0;
+                let width = ui.available_width();
+                let columns = if width >= 360.0 { 2 } else { 1 };
+                let gap = 20.0;
+                let cell = (width - gap * (columns - 1) as f32) / columns as f32;
+                let rows: Vec<&[MiniStat]> = stats.chunks(columns).collect();
+                let extra = stretch / rows.len() as f32;
+                for row in rows {
+                    let natural = row.iter().map(MiniStat::height).fold(0.0, f32::max);
+                    let (rect, _) = ui.allocate_exact_size(
+                        vec2(width, natural + 8.0 + extra),
+                        egui::Sense::hover(),
+                    );
+                    for (i, stat) in row.iter().enumerate() {
+                        let left = rect.left() + i as f32 * (cell + gap);
+                        let cell_rect = egui::Rect::from_min_max(
+                            egui::pos2(left, rect.top()),
+                            egui::pos2(left + cell, rect.bottom()),
+                        );
+                        stat.show(ui, cell_rect, natural);
+                    }
+                }
+            },
+        )
+        .response
+    }
+
+    fn wish_card(&mut self, ui: &mut Ui, app_state: &AppState, stretch: f32) -> Response {
         let pal = widgets::p(ui);
         let now = Instant::now();
         let url = self.wishes.wish_url(now);
@@ -475,162 +684,185 @@ impl TeyvatmeApp {
             .as_ref()
             .is_some_and(|player| player.uid.is_some());
         let status = self.wishes.status(now, app_state.game_status, uid_known);
-
-        let Some(url) = url else {
-            // Greyed: the key comes from the game's wish history page.
-            let secondary = if self.wishes.key_expired(now) {
-                tr("Key expired · open the wish history in game again")
-            } else {
-                tr("Open the wish history in game first")
-            };
-            // A card like the others, its button there but not yet usable,
-            // so it reads as "coming", not as part of the background.
-            widgets::card_frame(ui)
-                .show(ui, |ui| {
-                    ui.set_width(ui.available_width());
-                    list_row(
-                        ui,
-                        Some((icons::sparkles(), pal.tx3)),
-                        title_text(tr("Wish history"), pal.tx),
-                        Some(secondary_text(secondary, pal.tx2)),
-                        |ui| {
-                            ui.add_enabled_ui(false, |ui| {
-                                button(
-                                    ui,
-                                    ButtonKind::Secondary,
-                                    Some(icons::copy()),
-                                    tr("Copy URL"),
-                                    false,
-                                )
-                            });
-                        },
-                    );
-                })
-                .response
-                .on_hover_text(
-                    tr("The wish URL needs the key the game sends when its wish history page opens, once per login."),
-                );
-            return;
-        };
-
         let linked = crate::app::can_upload_to_tracker(&self.saved_state);
         let host = self.tracker_host();
-        widgets::card_frame(ui).show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            let mut copy = false;
-            let mut open = None;
-            list_row(
-                ui,
-                Some((icons::sparkles(), pal.ac_tx)),
-                title_text(tr("Wish history"), pal.tx),
-                Some(secondary_text(tr("URL ready for paimon.moe, StarDB…"), pal.tx2)),
-                |ui| {
-                    let more = icon_button(ui, icons::ellipsis(), tr("More"));
-                    egui::Popup::menu(&more).show(|ui| {
-                        ui.set_min_width(180.0);
+
+        // The whole history as a UIGF file, read here and saved locally.
+        let save = self.wishes.save.state();
+        match &save {
+            crate::wish_history::SaveState::Done { path, records } => {
+                self.toasts
+                    .success(trf("Saved {0} wishes", &[&records]))
+                    .action(crate::ui::toast::Action::Show(path.clone()))
+                    .saved();
+                self.wishes.save.clear();
+            }
+            crate::wish_history::SaveState::Failed(why) => {
+                self.toasts
+                    .error(trf("Wish history not saved · {0}", &[&why]));
+                self.wishes.save.clear();
+            }
+            _ => {}
+        }
+        let reading = self.wishes.save.reading();
+
+        let no_key = if self.wishes.key_expired(now) {
+            tr("Key expired · open the wish history in game again")
+        } else {
+            tr("Open the wish history in game first")
+        };
+        let header = if reading {
+            save.line().unwrap_or_default()
+        } else {
+            match self.wishes.key_received(now) {
+                Some(at) if url.is_some() => trf("URL ready · {0}", &[&at.format("%H:%M")]),
+                _ if url.is_some() => tr("URL ready").to_owned(),
+                _ => no_key.to_owned(),
+            }
+        };
+        let header_tip = if url.is_some() {
+            status.tooltip.clone()
+        } else {
+            tr("The wish URL needs the key the game sends when its wish history page opens, once per login.")
+                .to_owned()
+        };
+
+        let mut copy = false;
+        let mut open = None;
+        let mut open_menu = None;
+        let mut save_now = false;
+        let mut cancel_save = false;
+        let ready = url.is_some();
+        let response = card(
+            ui,
+            tr("Wish history"),
+            None,
+            |ui| {
+                let more = icon_button(ui, icons::ellipsis(), tr("More"));
+                egui::Popup::menu(&more).show(|ui| {
+                    ui.set_min_width(200.0);
+                    ui.add_enabled_ui(ready, |ui| {
                         if ui.button(tr("Open paimon.moe")).clicked() {
-                            open = Some("https://paimon.moe/wish/import");
+                            open_menu = Some("https://paimon.moe/wish/import");
                         }
                         if ui.button(tr("Open StarDB")).clicked() {
+                            open_menu = Some("https://stardb.gg/en/genshin/wish-import");
+                        }
+                    });
+                    ui.separator();
+                    if reading {
+                        cancel_save = ui.button(tr("Stop saving")).clicked();
+                    } else {
+                        let save = ui
+                            .add_enabled_ui(ready, |ui| ui.button(tr("Save history…")))
+                            .inner
+                            .on_hover_text(tr(
+                                "Reads every banner from the game's wish API (1 s a page, a few minutes for a long history) and saves it as UIGF JSON",
+                            ))
+                            .on_disabled_hover_text(no_key);
+                        save_now = save.clicked();
+                    }
+                });
+                if reading {
+                    ui.add(egui::Spinner::new().size(14.0).color(pal.ac_tx));
+                }
+                ui.add(egui::Label::new(small_text(&header, pal.tx3)).truncate())
+                    .on_hover_text(&header_tip);
+            },
+            |ui| {
+                ui.add_space(stretch / 2.0);
+                ui.horizontal(|ui| {
+                    ui.add_enabled_ui(ready, |ui| {
+                        copy = button(
+                            ui,
+                            ButtonKind::Secondary,
+                            Some(icons::copy()),
+                            tr("Copy URL"),
+                            false,
+                        )
+                        .on_hover_text(tr("Copy wish URL, for paimon.moe, StarDB or any wish importer"))
+                        .on_disabled_hover_text(no_key)
+                        .clicked();
+                        if button(ui, ButtonKind::Ghost, None, "paimon.moe", false)
+                            .on_hover_text(tr("Copies the URL, then opens paimon.moe"))
+                            .on_disabled_hover_text(no_key)
+                            .clicked()
+                        {
+                            open = Some("https://paimon.moe/wish/import");
+                        }
+                        if button(ui, ButtonKind::Ghost, None, "StarDB", false)
+                            .on_hover_text(tr("Copies the URL, then opens StarDB"))
+                            .on_disabled_hover_text(no_key)
+                            .clicked()
+                        {
                             open = Some("https://stardb.gg/en/genshin/wish-import");
                         }
                     });
-                    copy = button(
+                });
+                ui.add_space(stretch - stretch / 2.0);
+                divider(ui);
+                let title = trf("Send to {0}", &[&host]);
+                if linked {
+                    let sync = self.wishes.sync_line(now);
+                    let secondary = if self.saved_state.send_wishes {
+                        sync.unwrap_or_else(|| tr("Sends new wishes as they appear").to_owned())
+                    } else {
+                        tr("Off · the URL still works").to_owned()
+                    };
+                    let is_problem = self.saved_state.send_wishes && self.wishes.sync_problem(now);
+                    let color = if is_problem { pal.bad } else { pal.tx2 };
+                    switch_row(
                         ui,
-                        ButtonKind::Secondary,
-                        Some(icons::copy()),
-                        tr("Copy URL"),
-                        false,
+                        &title,
+                        Some(secondary_text(secondary, color)),
+                        &mut self.saved_state.send_wishes,
+                        true,
                     )
-                    .clicked();
-                },
-            )
-            .0
-            .on_hover_text(&status.tooltip);
-            if copy || open.is_some() {
-                ui.ctx().copy_text(url.clone());
-                self.toasts.info(tr("Wish URL copied"));
-            }
+                    .on_hover_text(tr(
+                        "Only wishes the tracker doesn't have yet are read, 1 s per page",
+                    ));
+                } else {
+                    let mut off = false;
+                    switch_row(
+                        ui,
+                        &title,
+                        Some(secondary_text(
+                            trf("Off · connect {0} to send them", &[&host]),
+                            pal.tx2,
+                        )),
+                        &mut off,
+                        false,
+                    );
+                }
+            },
+        )
+        .response;
+
+        let open = open.or(open_menu);
+        if (copy || open.is_some())
+            && let Some(url) = &url
+        {
+            ui.ctx().copy_text(url.clone());
+            self.toasts.info(tr("Wish URL copied"));
             if let Some(page) = open {
                 ui.ctx().open_url(egui::OpenUrl::new_tab(page));
             }
-
-            // The whole history as a UIGF file, read here and saved locally.
-            divider(ui);
-            let save = self.wishes.save.state();
-            match &save {
-                crate::wish_history::SaveState::Done { path, records } => {
-                    self.toasts
-                        .success(trf("Saved {0} wishes", &[&records]))
-                        .action(crate::ui::toast::Action::Show(path.clone()))
-                        .saved();
-                    self.wishes.save.clear();
-                }
-                crate::wish_history::SaveState::Failed(why) => {
-                    self.toasts.error(trf("Wish history not saved · {0}", &[&why]));
-                    self.wishes.save.clear();
-                }
-                _ => {}
-            }
-            let reading = self.wishes.save.reading();
-            let line = save
-                .line()
-                .filter(|_| reading)
-                .unwrap_or_else(|| tr("Every banner as UIGF, for any wish tracker").to_owned());
-            list_row(
-                ui,
-                None,
-                title_text(tr("Save history"), pal.tx),
-                Some(secondary_text(line, pal.tx2)),
-                |ui| {
-                    if reading {
-                        if button(ui, ButtonKind::Ghost, None, tr("Cancel"), false).clicked() {
-                            self.wishes.save.cancel();
-                        }
-                        ui.add(egui::Spinner::new().size(16.0).color(pal.ac_tx));
-                    } else if button(
-                        ui,
-                        ButtonKind::Secondary,
-                        Some(icons::download()),
-                        tr("Save…"),
-                        false,
-                    )
-                    .on_hover_text(
-                        tr("Reads every banner from the game's wish API (1 s a page, a few minutes for a long history) and saves it as UIGF JSON"),
-                    )
-                    .clicked()
-                    {
-                        self.file_request = Some(super::FileRequest::SaveWishes {
-                            name: format!(
-                                "teyvatme_wishes_{}.json",
-                                Local::now().format("%Y-%m-%d_%H-%M")
-                            ),
-                        });
-                    }
-                },
-            );
-            if linked {
-                divider(ui);
-                let sync = self.wishes.sync_line(now);
-                let secondary = if self.saved_state.send_wishes {
-                    sync.unwrap_or_else(|| tr("Sends new wishes as they appear").to_owned())
-                } else {
-                    tr("Off · the URL still works").to_owned()
-                };
-                let is_problem = self.saved_state.send_wishes && self.wishes.sync_problem(now);
-                let color = if is_problem { pal.bad } else { pal.tx2 };
-                switch_row(
-                    ui,
-                    &trf("Send wishes to {0}", &[&host]),
-                    Some(secondary_text(secondary, color)),
-                    &mut self.saved_state.send_wishes,
-                    true,
-                );
-            }
-        });
+        }
+        if cancel_save {
+            self.wishes.save.cancel();
+        }
+        if save_now {
+            self.file_request = Some(super::FileRequest::SaveWishes {
+                name: format!(
+                    "teyvatme_wishes_{}.json",
+                    Local::now().format("%Y-%m-%d_%H-%M")
+                ),
+            });
+        }
+        response
     }
 
-    fn export_card(&mut self, ui: &mut Ui, app_state: &AppState) {
+    fn export_card(&mut self, ui: &mut Ui, app_state: &AppState, stretch: f32) -> Response {
         let pal = widgets::p(ui);
         let missing =
             crate::app::missing_export_data(&self.saved_state.export_settings, &app_state.updated);
@@ -639,7 +871,7 @@ impl TeyvatmeApp {
         let folder = self.export_folder();
         let mut open_folder = false;
         let mut more_action = None;
-        card(
+        let response = card(
             ui,
             tr("Export"),
             None,
@@ -671,6 +903,7 @@ impl TeyvatmeApp {
                 open_folder = open.inner.clicked();
             },
             |ui| {
+                ui.add_space(stretch / 2.0);
                 ui.horizontal(|ui| {
                     let enabled = !nothing && !busy;
                     let reason = if nothing {
@@ -705,6 +938,7 @@ impl TeyvatmeApp {
                             tr("Copy"),
                             false,
                         )
+                        .on_hover_text(tr("GOOD JSON to the clipboard"))
                         .on_disabled_hover_text(reason)
                     });
                     if copy.inner.clicked() {
@@ -716,6 +950,7 @@ impl TeyvatmeApp {
                         }
                     }
                 });
+                ui.add_space(stretch - stretch / 2.0);
                 divider(ui);
                 let secondary = self.auto_export_line(&pal);
                 let was_on = self.saved_state.save_result_to_file;
@@ -740,7 +975,8 @@ impl TeyvatmeApp {
                     self.pick_export_folder();
                 }
             },
-        );
+        )
+        .response;
         if open_folder && let Some(folder) = folder {
             open_folder_in_explorer(folder);
         }
@@ -749,6 +985,7 @@ impl TeyvatmeApp {
             Some(MoreExport::Settings) => self.open_settings(Page::Export),
             None => {}
         }
+        response
     }
 
     /// The Auto-export row's second line.
@@ -783,123 +1020,131 @@ impl TeyvatmeApp {
         }
     }
 
-    fn destinations_card(&mut self, ui: &mut Ui) {
+    /// The Tracker row across the window's foot (spec §4.5): one slim card,
+    /// a row per destination (teyvat.me today).
+    fn tracker_row(&mut self, ui: &mut Ui) -> Response {
         let pal = widgets::p(ui);
         let status = self.auth_status_rx.borrow().clone();
         let host = self.tracker_host();
+        let key_linked = self.saved_state.tracker_sign_in == TrackerSignIn::SignedOut
+            && self.tracker_account.is_some();
         let mut action = None;
-        card(
-            ui,
-            tr("Tracker"),
-            Some(tr("Optional")),
-            |_| {},
-            |ui| {
-                let (avatar, title, secondary, color) = match &status {
-                    AuthStatus::SignedIn { whoami, error } => {
-                        let user = whoami.as_ref().map_or("…", |w| w.user.as_str());
-                        let line = self.destination_result_line();
-                        let color = if error.is_some() || line.1 {
-                            pal.bad
-                        } else {
-                            pal.tx2
-                        };
-                        (
-                            Avatar::Initial(user.chars().next().unwrap_or('?')),
-                            format!("{host} ↗ · {user}"),
-                            line.0,
-                            color,
-                        )
-                    }
-                    AuthStatus::Waiting { .. } => (
-                        Avatar::Waiting,
-                        host.clone(),
-                        tr("Waiting for the browser…").to_owned(),
-                        pal.tx2,
-                    ),
-                    _ if self.saved_state.tracker_sign_in == TrackerSignIn::SignedOut
-                        && self.tracker_account.is_some() =>
-                    {
-                        let name = self
-                            .tracker_account
-                            .as_ref()
-                            .map(|a| a.name.clone())
-                            .unwrap_or_default();
-                        (
-                            Avatar::Key,
-                            format!("{host} ↗ · {name}"),
-                            self.destination_result_line().0,
-                            pal.tx2,
-                        )
-                    }
-                    _ => (
-                        Avatar::Cloud,
-                        format!("{host} ↗"),
-                        tr("Upload each capture · live sync").to_owned(),
-                        pal.tx2,
-                    ),
+        let (avatar, title, secondary, color) = match &status {
+            AuthStatus::SignedIn { whoami, error } => {
+                let user = whoami.as_ref().map_or("…", |w| w.user.as_str());
+                let line = self.destination_result_line();
+                let color = if error.is_some() || line.1 {
+                    pal.bad
+                } else {
+                    pal.tx2
                 };
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 10.0;
-                    avatar.show(ui, &pal);
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        ui.spacing_mut().item_spacing.x = 6.0;
-                        match &status {
-                            AuthStatus::SignedIn { .. } => {
-                                if icon_button(ui, icons::settings(), tr("teyvat.me settings"))
+                (
+                    Avatar::Initial(user.chars().next().unwrap_or('?')),
+                    format!("{host} ↗ · {user}"),
+                    line.0,
+                    color,
+                )
+            }
+            AuthStatus::Waiting { .. } => (
+                Avatar::Waiting,
+                host.clone(),
+                tr("Waiting for the browser…").to_owned(),
+                pal.tx2,
+            ),
+            _ if key_linked => {
+                let name = self
+                    .tracker_account
+                    .as_ref()
+                    .map(|a| a.name.clone())
+                    .unwrap_or_default();
+                let line = self.destination_result_line();
+                (
+                    Avatar::Key,
+                    format!("{host} ↗ · {name}"),
+                    line.0,
+                    if line.1 { pal.bad } else { pal.tx2 },
+                )
+            }
+            _ => (
+                Avatar::Cloud,
+                format!("{host} ↗"),
+                tr("Upload each capture · live sync").to_owned(),
+                pal.tx2,
+            ),
+        };
+        let connected = matches!(status, AuthStatus::SignedIn { .. }) || key_linked;
+        let response = widgets::card_frame(ui)
+            .inner_margin(Margin::symmetric(16, 6))
+            .show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                ui.allocate_ui_with_layout(
+                    vec2(ui.available_width(), 44.0),
+                    Layout::left_to_right(Align::Center),
+                    |ui| {
+                        ui.spacing_mut().item_spacing.x = 12.0;
+                        avatar.show(ui, &pal);
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            ui.spacing_mut().item_spacing.x = 6.0;
+                            match &status {
+                                AuthStatus::Waiting { .. } => {
+                                    if button(ui, ButtonKind::Ghost, None, tr("Cancel"), false)
+                                        .clicked()
+                                    {
+                                        action = Some(DestAction::Cancel);
+                                    }
+                                }
+                                _ => {
+                                    let gear = trf("{0} settings", &[&host]);
+                                    if icon_button(ui, icons::settings(), &gear).clicked() {
+                                        action = Some(DestAction::Page);
+                                    }
+                                    if connected {
+                                        let upload = trf("Upload each capture to {0}", &[&host]);
+                                        widgets::switch(
+                                            ui,
+                                            &mut self.saved_state.auto_export_to_tracker,
+                                        )
+                                        .on_hover_text(&upload);
+                                        ui.label(small_text(tr("Tracker"), pal.tx3))
+                                            .on_hover_text(&upload);
+                                    } else if button(
+                                        ui,
+                                        ButtonKind::Secondary,
+                                        Some(icons::log_in()),
+                                        tr("Connect"),
+                                        false,
+                                    )
+                                    .on_hover_text(trf("Sign in to {0} in your browser", &[&host]))
                                     .clicked()
-                                {
-                                    action = Some(DestAction::Page);
-                                }
-                                widgets::switch(ui, &mut self.saved_state.auto_export_to_tracker)
-                                    .on_hover_text(tr("Auto upload"));
-                            }
-                            AuthStatus::Waiting { .. } => {
-                                if button(ui, ButtonKind::Ghost, None, tr("Cancel"), false)
-                                    .clicked()
-                                {
-                                    action = Some(DestAction::Cancel);
+                                    {
+                                        action = Some(DestAction::Connect);
+                                    }
                                 }
                             }
-                            _ => {
-                                if icon_button(ui, icons::settings(), tr("teyvat.me settings"))
-                                    .clicked()
-                                {
-                                    action = Some(DestAction::Page);
-                                }
-                                if button(
-                                    ui,
-                                    ButtonKind::Secondary,
-                                    Some(icons::log_in()),
-                                    tr("Connect"),
-                                    false,
-                                )
-                                .on_hover_text(trf("Sign in to {0} in your browser", &[&host]))
-                                .clicked()
-                                {
-                                    action = Some(DestAction::Connect);
-                                }
-                            }
-                        }
-                        ui.with_layout(Layout::top_down(Align::LEFT), |ui| {
-                            ui.spacing_mut().item_spacing.y = 1.0;
-                            let name = ui.add(
-                                egui::Label::new(title_text(title, pal.tx))
-                                    .truncate()
-                                    .sense(egui::Sense::click()),
-                            );
-                            if name
-                                .on_hover_cursor(egui::CursorIcon::PointingHand)
-                                .on_hover_text(trf("Open {0}", &[&host]))
-                                .clicked()
-                            {
-                                action = Some(DestAction::OpenSite);
-                            }
-                            line(ui, secondary_text(secondary, color));
+                            ui.add_space(6.0);
+                            ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                                ui.vertical(|ui| {
+                                    ui.spacing_mut().item_spacing.y = 1.0;
+                                    let name = ui.add(
+                                        egui::Label::new(title_text(&title, pal.tx))
+                                            .truncate()
+                                            .sense(egui::Sense::click()),
+                                    );
+                                    if name
+                                        .on_hover_cursor(egui::CursorIcon::PointingHand)
+                                        .on_hover_text(trf("Open {0}", &[&host]))
+                                        .clicked()
+                                    {
+                                        action = Some(DestAction::OpenSite);
+                                    }
+                                    line(ui, secondary_text(&secondary, color));
+                                });
+                            });
                         });
-                    });
-                });
-            },
-        );
+                    },
+                );
+            })
+            .response;
         match action {
             Some(DestAction::Connect) => self.send_tracker(TrackerRequest::SignIn),
             Some(DestAction::Cancel) => self.send_tracker(TrackerRequest::CancelSignIn),
@@ -910,6 +1155,7 @@ impl TeyvatmeApp {
             }
             None => {}
         }
+        response
     }
 
     /// The destination's last result: (line, is a problem).
@@ -1044,6 +1290,21 @@ impl TeyvatmeApp {
             .send(crate::Message::ExportAchievements(tx));
         self.achievements_export_rx = Some(rx);
         self.pending_open_url = open.map(str::to_owned);
+    }
+}
+
+/// The status strip's title, also the tray icon's tooltip.
+pub(super) fn strip_title(is_admin: bool, status: GameStatus) -> &'static str {
+    if !is_admin {
+        return tr("Capture needs administrator");
+    }
+    match status {
+        GameStatus::NotRunning => tr("Waiting for the game"),
+        GameStatus::AwaitingLogin | GameStatus::LaunchCaptured => tr("Game detected"),
+        GameStatus::Decoding => tr("Data decrypting"),
+        GameStatus::CaptureOff => tr("Starting capture"),
+        GameStatus::LaunchMissed(_) => tr("Launch missed"),
+        GameStatus::KeyLost => tr("Login not read"),
     }
 }
 

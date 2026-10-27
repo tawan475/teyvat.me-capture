@@ -166,6 +166,8 @@
     <string name="open_vpn_settings">VPN ayarlarını aç</string>
     <string name="notifications">Bildirimler</string>
     <string name="notifications_line">Oynarken tarama durumu</string>
+    <string name="tile_opens_game">Kutucuk Genshin\'i açar</string>
+    <string name="tile_opens_game_line">Hızlı Ayarlar kutucuğu yakalamayı başlatırken oyunu da açar</string>
     <string name="allow">İzin ver</string>
     <string name="setup_vpn_dialog">Android bir VPN\'e izin vermeni ister: bir uygulama başka bir uygulamanın trafiğini ancak böyle okuyabilir</string>
 
@@ -304,4 +306,75 @@
     <string name="key_signed_out_only">Yalnızca çıkış yapılmışken kullanılır</string>
     <string name="clear">Temizle</string>
     <string name="discord_line">Yardım, haberler ve geri bildirim</string>
+
+    <!-- Home layout G (2026-10-27) -->
+    <string name="step_enter_world">Dünyaya gir</string>
+    <string name="home_login_seen_enter">Verilerini okumak için dünyaya gir</string>
+    <string name="traveler">Gezgin</string>
+    <string name="player_wl">WL %d</string>
+    <string name="player_uid">UID %s</string>
+    <string name="tile_anecdotes">Seyahat Notları</string>
+    <string name="today">Bugün</string>
+    <string name="today_at_login">girişte %s</string>
+    <string name="resin">Reçine</string>
+    <string name="realm_currency">Çaydanlık Parası</string>
+    <string name="commissions">Özel Görevler</string>
+    <string name="commissions_done">Bugün bitti</string>
+    <string name="expeditions">Keşifler</string>
+    <string name="expeditions_out">%d dışarıda</string>
+    <string name="expeditions_first_back">İlk dönüş %s</string>
+    <string name="expeditions_all_back">Hepsi döndü</string>
+    <string name="expeditions_none">Yok</string>
+    <string name="weekly_bosses">Ezici Zindanlar</string>
+    <string name="weekly_discounts_left">Kalan indirim</string>
+    <string name="spiral_abyss">Hiçlik Sarmalı</string>
+    <string name="full">Dolu</string>
+    <string name="full_at">%s saatinde dolu</string>
+    <string name="full_on">%1$s %2$s dolu</string>
+    <string name="wish_url_ready">URL hazır · %s</string>
+    <string name="wish_send_to">%s adresine gönder</string>
+    <string name="wish_sync_no_account">Kapalı · göndermek için %s bağla</string>
+    <string name="wish_sync_off">Kapalı · URL yine çalışır</string>
+    <string name="wish_syncing_banner">Eşitleniyor · %1$s, sayfa %2$d</string>
+    <string name="wish_waits_key">Dilek anahtarı bekleniyor</string>
+    <string name="tracker_connect">Bağla</string>
+    <string name="tracker_row_line">Her yakalamayı yükle · canlı eşitleme</string>
+    <string name="tracker_waiting_browser">Tarayıcı bekleniyor…</string>
+    <string name="tracker_live_line">✓ Canlı eşitleme · %1$s · %2$s</string>
+    <string name="tracker_uploads_not_chosen">Yüklemeler: seçilmedi</string>
+    <string name="tracker_upload_to">%s adresine yükle</string>
+    <string name="tracker_settings_of">%s ayarları</string>
+    <string name="update_banner_title">Güncelleme %s</string>
+    <string name="update_you_have">Sende %s var</string>
+    <string name="details">Ayrıntılar</string>
+    <string name="activity_has_error">Etkinlik, en yeni olay bir hata</string>
+    <string name="activity_line">Son 50 olay</string>
+    <string name="theme_now">Tema: %s</string>
+    <string name="section_destinations">Hedefler</string>
+    <string name="teyvat_disconnected">Bağlı değil</string>
+    <string name="teyvat_finish_signing">Açılan sayfada girişi tamamla</string>
+    <string name="teyvat_uploads_turn_on">Bağlanınca yüklemeler açılır</string>
+    <string name="copy_link">Bağlantıyı kopyala</string>
+    <string name="link_copied">Bağlantı kopyalandı</string>
+    <string name="uploads">Yüklemeler</string>
+    <string name="target_auto">Otomatik (UID’ye göre)</string>
+    <string name="target_not_chosen">Seçilmedi</string>
+    <string name="chosen_on_website">Web sitesinde seçilir</string>
+    <string name="tracker_configure_short">Yapılandır</string>
+    <string name="target_gone">Yüklemelerin gittiği hesap artık yok. Başka birini seç.</string>
+    <string name="auto_upload">Otomatik yükleme</string>
+    <string name="auto_upload_line">Her yakalama %s adresine gider</string>
+    <string name="last_upload">Son yükleme</string>
+    <string name="last_upload_none">Henüz yükleme yok</string>
+    <string name="retry">Yeniden dene</string>
+    <string name="refresh">Yenile</string>
+    <string name="advanced_line">Sunucu adresi · içe aktarma anahtarı</string>
+    <plurals name="abyss_resets_in">
+        <item quantity="one">%d gün sonra sıfırlanır</item>
+        <item quantity="other">%d gün sonra sıfırlanır</item>
+    </plurals>
+    <plurals name="changes">
+        <item quantity="one">%s değişiklik</item>
+        <item quantity="other">%s değişiklik</item>
+    </plurals>
 </resources>

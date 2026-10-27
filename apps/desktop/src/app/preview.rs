@@ -4,7 +4,9 @@
 //! Debug builds only: `TEYVATME_PREVIEW=<state>` draws a made-up state, for
 //! screenshots of every screen without a game session. Placeholder data only
 //! (UID 812345678). `TEYVATME_PREVIEW_THEME=light|dark` picks the theme,
-//! `TEYVATME_PREVIEW_UPDATE` the updater's state.
+//! `TEYVATME_PREVIEW_UPDATE` the updater's state. `full` is `decoding` with a
+//! wish key, teyvat.me signed in (as `player01`) and auto-export on, as
+//! board 12 draws it.
 
 use std::time::{Duration, Instant};
 
@@ -58,8 +60,47 @@ impl TeyvatmeApp {
             state.player = Some(crate::good::GiPlayer {
                 uid: Some(812_345_678),
                 ar: Some(60),
+                wl: Some(9),
                 ..Default::default()
             });
+            state.anecdotes = Some(86);
+            let now = chrono::Utc::now().timestamp() as u32;
+            state.tasks = Some(crate::good::GiTasks {
+                resin: Some(crate::good::GiResin {
+                    value: 142,
+                    next_at: now + 300,
+                }),
+                realm: Some(crate::good::GiRealm {
+                    value: 1_820,
+                    limit: 2_400,
+                }),
+                commissions: Some(crate::good::GiCommissions {
+                    finished: 4,
+                    total: 4,
+                }),
+                expeditions: Some(
+                    [40, 95, 180, 300, 600]
+                        .map(|minutes| crate::good::GiExpedition {
+                            done_at: now + minutes * 60,
+                            ..Default::default()
+                        })
+                        .to_vec(),
+                ),
+                weekly_bosses: Some(crate::good::GiWeeklyBosses {
+                    left: 2,
+                    limit: 3,
+                    cost: 30,
+                    full_cost: 60,
+                }),
+                abyss: Some(crate::good::GiAbyss {
+                    start: now - 6 * 86_400,
+                    end: now + 9 * 86_400 - 3_600,
+                    stars: 27,
+                    max_stars: 36,
+                }),
+                ..Default::default()
+            });
+            state.tasks_at = Some(chrono::Local::now() - chrono::TimeDelta::minutes(3));
             state.captured_at = Some(chrono::Local::now() - chrono::TimeDelta::minutes(2));
             state.updated.items_updated = Some(Instant::now() - Duration::from_secs(120));
             state.updated.characters_updated = state.updated.items_updated;
@@ -77,6 +118,12 @@ impl TeyvatmeApp {
                 state.game_status = GameStatus::Decoding;
                 self.decoding_since = Some(chrono::Local::now() - chrono::TimeDelta::minutes(3));
                 captured(&mut state);
+            }
+            "full" => {
+                state.game_status = GameStatus::Decoding;
+                self.decoding_since = Some(chrono::Local::now() - chrono::TimeDelta::minutes(3));
+                captured(&mut state);
+                self.preview_linked();
             }
             "toasts" => {
                 state.game_status = GameStatus::Decoding;
@@ -125,5 +172,40 @@ impl TeyvatmeApp {
             _ => {}
         }
         state
+    }
+
+    /// A wish key, teyvat.me signed in and auto-export on, for `full`.
+    fn preview_linked(&mut self) {
+        use crate::activity::{Event, Topic};
+        use crate::signin::{AuthStatus, UploadScope, Whoami};
+        self.wishes
+            .preview_key(Instant::now() - Duration::from_secs(60));
+        if !matches!(*self.auth_status_rx.borrow(), AuthStatus::SignedIn { .. }) {
+            let whoami = Whoami {
+                scope: UploadScope::Uid,
+                user: "player01".to_owned(),
+                account_id: None,
+                account_name: None,
+                uid: None,
+                server: None,
+                dashboard_url: Some("https://teyvat.me/app".to_owned()),
+                config_url: None,
+            };
+            self.auth_status_rx = tokio::sync::watch::channel(AuthStatus::SignedIn {
+                whoami: Some(whoami),
+                error: None,
+            })
+            .1;
+            self.saved_state.tracker_sign_in = super::TrackerSignIn::SignedIn;
+            self.saved_state.auto_export_to_tracker = true;
+            self.saved_state.save_result_to_file = true;
+            self.saved_state.save_result_folder = Some(r"D:\Captures\Teyvatme".into());
+            self.activity.push(
+                Event::ok(Topic::Export, "Auto-exported")
+                    .with_path(r"D:\Captures\Teyvatme\teyvatme_2026-10-25_21-04.json".into()),
+            );
+            self.activity
+                .push(Event::ok(Topic::Destination, "Live sync · 12 changes"));
+        }
     }
 }

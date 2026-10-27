@@ -86,6 +86,9 @@ data class ImportKey(
 
 data class UploadResult(val at: Long, val ok: Boolean, val text: String)
 
+/** The last live sync batch the tracker stored, for the Tracker row's line. */
+data class LiveResult(val at: Long, val changes: Int)
+
 sealed class TrackerState {
     data object SignedOut : TrackerState()
     /** The browser is open on the tracker's sign-in page. */
@@ -114,6 +117,12 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
     val importKey: StateFlow<ImportKey> = keyFlow.asStateFlow()
     private val uploadingFlow = MutableStateFlow(false)
     val uploading: StateFlow<Boolean> = uploadingFlow.asStateFlow()
+    private val liveFlow = MutableStateFlow<LiveResult?>(null)
+    /** The last stored live sync batch (this process only). */
+    val lastLive: StateFlow<LiveResult?> = liveFlow.asStateFlow()
+    private val signInUrlFlow = MutableStateFlow<String?>(null)
+    /** The sign-in page while the browser is open on it, for Copy link. */
+    val signInUrl: StateFlow<String?> = signInUrlFlow.asStateFlow()
 
     private val lock = Mutex()
     private var access: String? = null
@@ -150,6 +159,7 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
             val error = withContext(Dispatchers.IO) {
                 runCatching { runSignIn(openUrl) }.exceptionOrNull()
             }
+            signInUrlFlow.value = null
             if (!isActive) return@launch
             if (error != null) {
                 Log.w(TAG, "sign-in failed: $error")
@@ -164,6 +174,7 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
     fun cancelSignIn() {
         signIn?.cancel()
         signIn = null
+        signInUrlFlow.value = null
         stateFlow.value = signedInOrOut()
     }
 
@@ -190,6 +201,7 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
                 "device" to deviceName(),
                 "app" to CLIENT_APP,
             )
+            signInUrlFlow.value = url
             withContext(Dispatchers.Main) { openUrl(url) }
             val deadline = System.currentTimeMillis() + SIGN_IN_TIMEOUT_MS
             var code: String? = null
@@ -498,6 +510,7 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
             val stored = status in 200..299 && runCatching { JSONObject(body).optBoolean("ok") && !JSONObject(body).optBoolean("duplicate") }.getOrDefault(false)
             if (stored) {
                 val changes = runCatching { JSONObject(delta).optJSONArray("changes")?.length() ?: 0 }.getOrDefault(0)
+                liveFlow.value = LiveResult(System.currentTimeMillis(), changes)
                 NativeBridge.note("ok", context.getString(R.string.live_changes_sent, grouped(changes), Links.trackerHost))
             }
         }

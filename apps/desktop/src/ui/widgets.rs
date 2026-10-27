@@ -136,17 +136,20 @@ pub fn card<R>(
     let pal = p(ui);
     card_frame(ui).show(ui, |ui| {
         ui.set_width(ui.available_width());
+        // The actions first (right to left), so the title and its suffix
+        // are cut at what they leave, never drawn under them.
         ui.allocate_ui_with_layout(
             vec2(ui.available_width(), 32.0),
-            Layout::left_to_right(Align::Center),
+            Layout::right_to_left(Align::Center),
             |ui| {
-                ui.label(strong_text(title, pal.tx));
-                if let Some(suffix) = suffix {
-                    line(ui, small_text(suffix, pal.tx3));
-                }
-                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    ui.spacing_mut().item_spacing.x = 4.0;
-                    actions(ui);
+                ui.spacing_mut().item_spacing.x = 4.0;
+                actions(ui);
+                ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                    ui.spacing_mut().item_spacing.x = 6.0;
+                    line(ui, strong_text(title, pal.tx));
+                    if let Some(suffix) = suffix {
+                        line(ui, small_text(suffix, pal.tx3));
+                    }
                 });
             },
         );
@@ -212,18 +215,39 @@ pub fn animated_color(ui: &Ui, id: egui::Id, target: Color32) -> Color32 {
     )
 }
 
-/// The capture status hero: disc, title, line, the three steps, and an
-/// optional body (chip, instruction, buttons).
-pub fn status_hero(
+/// The capture status strip across the window (layout G): disc, title over
+/// its line, the three steps, then `actions` at the right end (added right
+/// to left: the first is the rightmost). `extra` (the bad states'
+/// instruction and buttons) goes on a second line under the title. Narrow,
+/// the steps wrap under the title too. `tooltip` is on the disc and text.
+pub struct Strip<'a> {
+    pub variant: HeroVariant,
+    pub disc: Disc,
+    pub title: &'a str,
+    pub subtitle: &'a str,
+    pub steps: [Step; 3],
+    pub tooltip: &'a str,
+}
+
+pub fn status_strip(
     ui: &mut Ui,
-    variant: HeroVariant,
-    disc: Disc,
-    title: &str,
-    subtitle: &str,
-    steps: [Step; 3],
-    extra: impl FnOnce(&mut Ui),
+    strip: Strip<'_>,
+    narrow: bool,
+    actions: impl FnOnce(&mut Ui),
+    extra: Option<&mut dyn FnMut(&mut Ui)>,
 ) -> Response {
+    const DISC: f32 = 36.0;
+    const GAP: f32 = 14.0;
+    const STEPS: f32 = 300.0;
     let pal = p(ui);
+    let Strip {
+        variant,
+        disc,
+        title,
+        subtitle,
+        steps,
+        tooltip,
+    } = strip;
     let (fill, line_color) = match variant {
         HeroVariant::Neutral => (pal.card, pal.line),
         HeroVariant::Ok => (pal.ok_con, pal.ok_line),
@@ -233,50 +257,111 @@ pub fn status_hero(
     let id = egui::Id::new("status_hero");
     let fill = animated_color(ui, id.with("fill"), fill);
     let line_color = animated_color(ui, id.with("line"), line_color);
-    Frame::new()
+    let mut frame = Frame::new()
         .fill(fill)
         .stroke(Stroke::new(1.0_f32, line_color))
         .corner_radius(CornerRadius::same(radius::HERO))
-        .inner_margin(Margin::same(16))
+        .inner_margin(Margin {
+            left: 14,
+            right: 10,
+            top: 8,
+            bottom: 8,
+        });
+    if variant == HeroVariant::Neutral {
+        frame = frame.shadow(Shadow {
+            offset: [0, 1],
+            blur: 2,
+            spread: 0,
+            color: pal.card_shadow,
+        });
+    }
+    frame
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
-            ui.spacing_mut().item_spacing.y = 14.0;
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 12.0;
-                let (rect, _) = ui.allocate_exact_size(Vec2::splat(44.0), Sense::hover());
-                match disc {
-                    Disc::Icon { icon, fill, ink } => {
-                        let disc = animated_color(ui, id.with("disc"), fill(&pal));
-                        ui.painter().circle_filled(rect.center(), 22.0, disc);
-                        let icon_rect =
-                            egui::Rect::from_center_size(rect.center(), Vec2::splat(22.0));
-                        icons::image(icon(), 22.0, ink(&pal)).paint_at(ui, icon_rect);
+            ui.spacing_mut().item_spacing.y = 8.0;
+            let width = ui.available_width();
+            let row = ui.allocate_ui_with_layout(
+                vec2(width, 36.0),
+                Layout::left_to_right(Align::Center),
+                |ui| {
+                    ui.spacing_mut().item_spacing.x = GAP;
+                    let (rect, disc_response) =
+                        ui.allocate_exact_size(Vec2::splat(DISC), Sense::hover());
+                    let r = DISC / 2.0;
+                    match disc {
+                        Disc::Icon { icon, fill, ink } => {
+                            let disc = animated_color(ui, id.with("disc"), fill(&pal));
+                            ui.painter().circle_filled(rect.center(), r, disc);
+                            let icon_rect =
+                                egui::Rect::from_center_size(rect.center(), Vec2::splat(20.0));
+                            icons::image(icon(), 20.0, ink(&pal)).paint_at(ui, icon_rect);
+                        }
+                        Disc::Spinner => {
+                            ui.painter().circle_filled(rect.center(), r, pal.over);
+                            let spin =
+                                egui::Rect::from_center_size(rect.center(), Vec2::splat(20.0));
+                            ui.put(spin, egui::Spinner::new().size(20.0).color(pal.ac_tx));
+                        }
                     }
-                    Disc::Spinner => {
-                        ui.painter().circle_filled(rect.center(), 22.0, pal.over);
-                        let spin = egui::Rect::from_center_size(rect.center(), Vec2::splat(22.0));
-                        ui.put(spin, egui::Spinner::new().size(22.0).color(pal.ac_tx));
-                    }
-                }
-                ui.vertical(|ui| {
-                    ui.spacing_mut().item_spacing.y = 2.0;
-                    line(
-                        ui,
-                        RichText::new(title).text_style(style::hero()).color(pal.tx),
+                    disc_response.on_hover_text(tooltip);
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        ui.spacing_mut().item_spacing.x = 2.0;
+                        actions(ui);
+                        ui.add_space(GAP - 2.0);
+                        ui.spacing_mut().item_spacing.x = GAP;
+                        if !narrow {
+                            ui.allocate_ui_with_layout(
+                                vec2(STEPS, 26.0),
+                                Layout::left_to_right(Align::Center),
+                                |ui| stepper(ui, steps),
+                            );
+                        }
+                        ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                            ui.vertical(|ui| {
+                                ui.spacing_mut().item_spacing.y = 0.0;
+                                line(
+                                    ui,
+                                    RichText::new(title)
+                                        .text_style(style::dialog())
+                                        .color(pal.tx),
+                                );
+                                line(ui, secondary_text(subtitle, pal.tx2));
+                            })
+                            .response
+                            .on_hover_text(tooltip);
+                        });
+                    });
+                },
+            );
+            let indent = DISC + GAP;
+            if narrow {
+                ui.horizontal(|ui| {
+                    ui.add_space(indent);
+                    ui.allocate_ui_with_layout(
+                        vec2((ui.available_width() - 4.0).max(0.0), 26.0),
+                        Layout::left_to_right(Align::Center),
+                        |ui| stepper(ui, steps),
                     );
-                    line(ui, secondary_text(subtitle, pal.tx2));
                 });
-            });
-            stepper(ui, steps);
-            extra(ui);
+            }
+            if let Some(extra) = extra {
+                ui.horizontal(|ui| {
+                    ui.add_space(indent);
+                    ui.vertical(|ui| {
+                        ui.spacing_mut().item_spacing.y = 6.0;
+                        extra(ui);
+                    });
+                });
+            }
+            row.response
         })
-        .response
+        .inner
 }
 
 /// Capture · Open Genshin · Enter world, each a 4 px bar over a label.
 pub fn stepper(ui: &mut Ui, steps: [Step; 3]) {
     let pal = p(ui);
-    let gap = 8.0;
+    let gap = 6.0;
     let width = (ui.available_width() - 2.0 * gap) / 3.0;
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = gap;
@@ -322,40 +407,182 @@ pub fn stepper(ui: &mut Ui, steps: [Step; 3]) {
 // Rows, tiles, switches
 // ---------------------------------------------------------------------------
 
-/// A stat tile: value over label, `—` when there is none.
-pub fn stat_tile(ui: &mut Ui, width: f32, value: Option<usize>, label: &str, flash: f32) {
+/// A stat tile `size` big: value over label, centred on its height, `—`
+/// when there is none. `flash` (0–1) tints it `okCon` after an update.
+pub fn stat_tile(ui: &mut Ui, size: Vec2, value: Option<usize>, label: &str, flash: f32) {
     let pal = p(ui);
     let fill = if flash > 0.0 {
         lerp_color(pal.over, pal.ok_con, flash)
     } else {
         pal.over
     };
-    Frame::new()
-        .fill(fill)
-        .corner_radius(CornerRadius::same(8))
-        .inner_margin(Margin::symmetric(10, 7))
-        .show(ui, |ui| {
-            ui.set_width(width - 20.0);
-            ui.vertical(|ui| {
-                ui.spacing_mut().item_spacing.y = 0.0;
-                match value {
-                    Some(value) => line(
-                        ui,
-                        RichText::new(group_thousands(value))
-                            .text_style(style::tile())
-                            .color(pal.tx),
-                    ),
-                    None => line(
-                        ui,
-                        RichText::new("—")
-                            .text_style(style::tile())
-                            .family(weight::medium())
-                            .color(pal.tx2),
-                    ),
-                };
-                line(ui, small_text(label, pal.tx2));
-            });
-        });
+    let (rect, response) = ui.allocate_exact_size(size, Sense::hover());
+    ui.painter().rect_filled(rect, CornerRadius::same(8), fill);
+    let inner = (size.x - 20.0).max(0.0);
+    let shown = value.map_or_else(|| "—".to_owned(), group_thousands);
+    let value_text = match value {
+        Some(_) => RichText::new(&shown)
+            .text_style(style::tile())
+            .color(pal.tx),
+        None => RichText::new(&shown)
+            .text_style(style::tile())
+            .family(weight::medium())
+            .color(pal.tx2),
+    };
+    let value_galley = one_line(ui, value_text, inner);
+    let label_galley = one_line(ui, small_text(label, pal.tx2), inner);
+    let top = rect.center().y - (value_galley.size().y + label_galley.size().y) / 2.0;
+    let left = rect.left() + 10.0;
+    let value_height = value_galley.size().y;
+    let painter = ui.painter();
+    painter.galley(egui::pos2(left, top), value_galley, pal.tx);
+    painter.galley(egui::pos2(left, top + value_height), label_galley, pal.tx2);
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::WidgetType::Label, true, format!("{label}: {shown}"))
+    });
+}
+
+/// The height a stat tile needs: padding 7 a side, value and label.
+pub const STAT_TILE_HEIGHT: f32 = 7.0 + 24.0 + 16.0 + 7.0;
+
+/// `text` laid out on one line, cut with an ellipsis at `width`.
+pub fn one_line(ui: &Ui, text: RichText, width: f32) -> std::sync::Arc<egui::Galley> {
+    WidgetText::from(text).into_galley(
+        ui,
+        Some(TextWrapMode::Truncate),
+        width,
+        egui::TextStyle::Body,
+    )
+}
+
+/// One of the Today card's figures (spec §4.2b): icon, label, the value at
+/// the right, then an optional bar and an optional small line.
+pub struct MiniStat<'a> {
+    pub icon: ImageSource<'static>,
+    pub label: &'a str,
+    /// The value, and the total its "/ total" part names.
+    pub value: Option<(String, Option<String>)>,
+    /// A 0–1 bar under it.
+    pub bar: Option<f32>,
+    /// A small line under it, and whether it says "done" (`ok`).
+    pub line: Option<(String, bool)>,
+    pub tooltip: &'a str,
+}
+
+impl MiniStat<'_> {
+    const ROW: f32 = 18.0;
+    const BAR: f32 = 6.0;
+    const LINE: f32 = 16.0;
+    const GAP: f32 = 4.0;
+    const INDENT: f32 = 24.0;
+
+    /// Its content's height, without padding.
+    pub fn height(&self) -> f32 {
+        let mut h = Self::ROW;
+        if self.bar.is_some() {
+            h += Self::GAP + Self::BAR;
+        }
+        if self.line.is_some() {
+            h += Self::GAP + Self::LINE;
+        }
+        h
+    }
+
+    /// Drawn in `rect`: a block `block` tall (the row's tallest figure)
+    /// centred on the rect's height, this figure at its top, so the figures
+    /// of a row line up.
+    pub fn show(&self, ui: &mut Ui, rect: egui::Rect, block: f32) {
+        let pal = p(ui);
+        let response = ui.interact(rect, ui.id().with(self.label), Sense::hover());
+        let spoken = match &self.value {
+            Some((value, Some(total))) => format!("{}: {value} / {total}", self.label),
+            Some((value, None)) => format!("{}: {value}", self.label),
+            None => format!("{}: —", self.label),
+        };
+        response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, &spoken));
+        if !self.tooltip.is_empty() {
+            response.on_hover_text(self.tooltip);
+        }
+        let painter = ui.painter_at(rect);
+        let mut y = rect.center().y - block.max(self.height()) / 2.0;
+        let row_mid = y + Self::ROW / 2.0;
+        let icon_rect =
+            egui::Rect::from_center_size(egui::pos2(rect.left() + 8.0, row_mid), Vec2::splat(16.0));
+        icons::image(self.icon.clone(), 16.0, pal.tx3).paint_at(ui, icon_rect);
+
+        let value = match &self.value {
+            Some((value, total)) => {
+                let mut job = egui::text::LayoutJob::default();
+                job.append(
+                    value,
+                    0.0,
+                    egui::TextFormat::simple(egui::FontId::new(14.0, weight::semibold()), pal.tx),
+                );
+                if let Some(total) = total {
+                    job.append(
+                        &format!(" / {total}"),
+                        0.0,
+                        egui::TextFormat::simple(
+                            egui::FontId::new(12.0, egui::FontFamily::Proportional),
+                            pal.tx3,
+                        ),
+                    );
+                }
+                ui.fonts(|fonts| fonts.layout_job(job))
+            }
+            None => one_line(
+                ui,
+                RichText::new("—")
+                    .size(14.0)
+                    .family(weight::medium())
+                    .color(pal.tx2),
+                rect.width(),
+            ),
+        };
+        let value_left = rect.right() - value.size().x;
+        painter.galley(
+            egui::pos2(value_left, row_mid - value.size().y / 2.0),
+            value,
+            pal.tx,
+        );
+        let label_left = rect.left() + Self::INDENT;
+        let label = one_line(
+            ui,
+            secondary_text(self.label, pal.tx2),
+            (value_left - 8.0 - label_left).max(0.0),
+        );
+        painter.galley(
+            egui::pos2(label_left, row_mid - label.size().y / 2.0),
+            label,
+            pal.tx2,
+        );
+        y += Self::ROW;
+
+        if let Some(fraction) = self.bar {
+            y += Self::GAP;
+            let track = egui::Rect::from_min_max(
+                egui::pos2(label_left, y),
+                egui::pos2(rect.right(), y + Self::BAR),
+            );
+            painter.rect_filled(track, 3.0, pal.over);
+            let mut filled = track;
+            filled.set_width(track.width() * fraction.clamp(0.0, 1.0));
+            if filled.width() > 0.5 {
+                painter.rect_filled(filled, 3.0, pal.ac_tx);
+            }
+            y += Self::BAR;
+        }
+        if let Some((text, ok)) = &self.line {
+            y += Self::GAP;
+            let color = if *ok { pal.ok } else { pal.tx3 };
+            let galley = one_line(
+                ui,
+                small_text(text, color),
+                (rect.right() - label_left).max(0.0),
+            );
+            painter.galley(egui::pos2(label_left, y), galley, color);
+        }
+    }
 }
 
 fn lerp_color(a: Color32, b: Color32, t: f32) -> Color32 {

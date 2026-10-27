@@ -31,7 +31,75 @@ data class Counts(
     val artifacts: Int = 0,
     val materials: Int = 0,
     val achievements: Int = 0,
+    /** Travel Accounts recorded. */
+    val anecdotes: Int = 0,
 )
+
+/** A value of a limit (realm currency, commissions, weekly boss discounts, Abyss stars). */
+data class OfLimit(val value: Int, val limit: Int)
+
+/**
+ * Today on the home screen (native `decoder::Today`, from `gi_tasks`): each
+ * part null when the capture does not have it. Times are unix seconds.
+ */
+data class Today(
+    val resin: Int? = null,
+    val resinNextAt: Long? = null,
+    val realm: OfLimit? = null,
+    val commissions: OfLimit? = null,
+    /** When each expedition out is done; empty: nobody is out. */
+    val expeditions: List<Long>? = null,
+    val weeklyBosses: OfLimit? = null,
+    val abyssStars: OfLimit? = null,
+    val abyssEnd: Long? = null,
+) {
+    /** Original Resin at [nowS]: +1 every 8 min from `nextAt`, up to the cap. */
+    fun resinAt(nowS: Long): Int? {
+        val value = resin ?: return null
+        val next = resinNextAt?.takeIf { it > 0 }
+        if (value >= RESIN_MAX || next == null || nowS < next) return value
+        return (value + 1 + ((nowS - next) / RESIN_EVERY_S).toInt()).coerceAtMost(RESIN_MAX)
+    }
+
+    /** When resin reaches the cap (unix s); null when full already or the clock is unknown. */
+    fun resinFullAt(): Long? {
+        val value = resin ?: return null
+        val next = resinNextAt?.takeIf { it > 0 } ?: return null
+        if (value >= RESIN_MAX) return null
+        return next + (RESIN_MAX - value - 1) * RESIN_EVERY_S
+    }
+
+    /** The first expedition still out at [nowS] comes back then (unix s), or null. */
+    fun firstBack(nowS: Long): Long? = expeditions?.filter { it > nowS }?.minOrNull()
+
+    /** Whole days, rounded up, until the Abyss period ends; null once it has. */
+    fun abyssDaysLeft(nowS: Long): Int? = abyssEnd?.takeIf { it > nowS }?.let { ((it - nowS + 86_399) / 86_400).toInt() }
+
+    companion object {
+        const val RESIN_MAX = 200
+        const val RESIN_EVERY_S = 8 * 60L
+
+        fun parse(o: JSONObject?): Today? {
+            o ?: return null
+            fun part(key: String) = o.optJSONObject(key)
+            fun of(key: String, value: String, limit: String) =
+                part(key)?.let { OfLimit(it.optInt(value), it.optInt(limit)) }
+            val resin = part("resin")
+            val abyss = part("abyss")
+            val expeditions = o.optJSONArray("expeditions")
+            return Today(
+                resin = resin?.optInt("value"),
+                resinNextAt = resin?.optLong("nextAt"),
+                realm = of("realm", "value", "limit"),
+                commissions = of("commissions", "finished", "total"),
+                expeditions = expeditions?.let { list -> List(list.length()) { list.optLong(it) } },
+                weeklyBosses = of("weeklyBosses", "left", "limit"),
+                abyssStars = abyss?.let { OfLimit(it.optInt("stars"), it.optInt("maxStars")) },
+                abyssEnd = abyss?.optLong("end"),
+            )
+        }
+    }
+}
 
 data class Player(val ar: Int?, val wl: Int?, val server: String?, val uid: Long? = null)
 
@@ -70,6 +138,8 @@ data class WishInfo(
     /** `none`, `ready` or `expired`. */
     val key: String = "none",
     val uidKnown: Boolean = false,
+    /** When the held key arrived (Unix ms). */
+    val keyAt: Long? = null,
     val read: WishRead = WishRead(),
     val sync: WishSync = WishSync(),
 )
@@ -95,6 +165,9 @@ data class Summary(
     val login: Long = 0,
     val counts: Counts = Counts(),
     val player: Player? = null,
+    val today: Today? = null,
+    /** When this login's tasks were first read. */
+    val tasksAt: Long? = null,
     val gameData: String? = null,
     val events: List<ActivityEvent> = emptyList(),
     val wish: WishInfo = WishInfo(),
@@ -133,7 +206,10 @@ data class Summary(
                     artifacts = counts?.optInt("artifacts") ?: 0,
                     materials = counts?.optInt("materials") ?: 0,
                     achievements = counts?.optInt("achievements") ?: 0,
+                    anecdotes = counts?.optInt("anecdotes") ?: 0,
                 ),
+                today = Today.parse(o.optJSONObject("today")),
+                tasksAt = o.long("tasksAt"),
                 player = player?.let {
                     Player(
                         it.int("ar"), it.int("wl"), if (it.isNull("server")) null else it.optString("server"),
@@ -144,6 +220,7 @@ data class Summary(
                 wish = WishInfo(
                     key = wish?.optString("key", "none") ?: "none",
                     uidKnown = wish?.optBoolean("uidKnown") ?: false,
+                    keyAt = wish?.long("keyAt"),
                     read = WishRead(
                         state = read?.optString("state", "idle") ?: "idle",
                         banner = read?.optInt("banner") ?: 0,

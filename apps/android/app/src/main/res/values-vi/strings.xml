@@ -166,6 +166,8 @@
     <string name="open_vpn_settings">Mở cài đặt VPN</string>
     <string name="notifications">Thông báo</string>
     <string name="notifications_line">Trạng thái ghi khi bạn chơi</string>
+    <string name="tile_opens_game">Ô mở Genshin</string>
+    <string name="tile_opens_game_line">Ô Cài đặt nhanh cũng mở game khi bắt đầu thu thập</string>
     <string name="allow">Cho phép</string>
     <string name="setup_vpn_dialog">Android sẽ hỏi cho phép VPN: đó là cách một ứng dụng được đọc lưu lượng của ứng dụng khác</string>
 
@@ -304,4 +306,73 @@
     <string name="key_signed_out_only">Chỉ dùng khi chưa đăng nhập</string>
     <string name="clear">Xóa</string>
     <string name="discord_line">Trợ giúp, tin tức và góp ý</string>
+
+    <!-- Home layout G (2026-10-27) -->
+    <string name="step_enter_world">Vào thế giới</string>
+    <string name="home_login_seen_enter">Vào thế giới để đọc dữ liệu</string>
+    <string name="traveler">Nhà Lữ Hành</string>
+    <string name="player_wl">WL %d</string>
+    <string name="player_uid">UID %s</string>
+    <string name="tile_anecdotes">Giai Thoại</string>
+    <string name="today">Hôm nay</string>
+    <string name="today_at_login">lúc đăng nhập %s</string>
+    <string name="resin">Nhựa</string>
+    <string name="realm_currency">Tiền Động Tiên</string>
+    <string name="commissions">Ủy Thác</string>
+    <string name="commissions_done">Đã xong hôm nay</string>
+    <string name="expeditions">Phái Đi</string>
+    <string name="expeditions_out">%d đang đi</string>
+    <string name="expeditions_first_back">Về sớm nhất %s</string>
+    <string name="expeditions_all_back">Đã về hết</string>
+    <string name="expeditions_none">Không có</string>
+    <string name="weekly_bosses">Vùng Đất Thảo Phạt</string>
+    <string name="weekly_discounts_left">Lượt giảm giá còn lại</string>
+    <string name="spiral_abyss">La Hoàn Thâm Cảnh</string>
+    <string name="full">Đã đầy</string>
+    <string name="full_at">Đầy lúc %s</string>
+    <string name="full_on">Đầy %1$s %2$s</string>
+    <string name="wish_url_ready">URL sẵn sàng · %s</string>
+    <string name="wish_send_to">Gửi đến %s</string>
+    <string name="wish_sync_no_account">Tắt · kết nối %s để gửi</string>
+    <string name="wish_sync_off">Tắt · URL vẫn dùng được</string>
+    <string name="wish_syncing_banner">Đang đồng bộ · %1$s, trang %2$d</string>
+    <string name="wish_waits_key">Đang chờ khóa cầu nguyện</string>
+    <string name="tracker_connect">Kết nối</string>
+    <string name="tracker_row_line">Tải lên mỗi lần chụp · đồng bộ trực tiếp</string>
+    <string name="tracker_waiting_browser">Đang chờ trình duyệt…</string>
+    <string name="tracker_live_line">✓ Đồng bộ trực tiếp · %1$s · %2$s</string>
+    <string name="tracker_uploads_not_chosen">Tải lên: chưa chọn</string>
+    <string name="tracker_upload_to">Tải lên %s</string>
+    <string name="tracker_settings_of">Cài đặt %s</string>
+    <string name="update_banner_title">Bản cập nhật %s</string>
+    <string name="update_you_have">Bạn đang dùng %s</string>
+    <string name="details">Chi tiết</string>
+    <string name="activity_has_error">Hoạt động, sự kiện mới nhất là lỗi</string>
+    <string name="activity_line">50 sự kiện gần nhất</string>
+    <string name="theme_now">Giao diện: %s</string>
+    <string name="section_destinations">Đích đến</string>
+    <string name="teyvat_disconnected">Chưa kết nối</string>
+    <string name="teyvat_finish_signing">Hoàn tất đăng nhập trên trang vừa mở</string>
+    <string name="teyvat_uploads_turn_on">Tải lên sẽ bật khi bạn kết nối</string>
+    <string name="copy_link">Sao chép liên kết</string>
+    <string name="link_copied">Đã sao chép liên kết</string>
+    <string name="uploads">Tải lên</string>
+    <string name="target_auto">Tự động (theo UID)</string>
+    <string name="target_not_chosen">Chưa chọn</string>
+    <string name="chosen_on_website">Chọn trên trang web</string>
+    <string name="tracker_configure_short">Cấu hình</string>
+    <string name="target_gone">Tài khoản nhận tải lên không còn nữa. Hãy chọn tài khoản khác.</string>
+    <string name="auto_upload">Tự động tải lên</string>
+    <string name="auto_upload_line">Mỗi lần chụp được gửi đến %s</string>
+    <string name="last_upload">Lần tải lên gần nhất</string>
+    <string name="last_upload_none">Chưa tải lên gì</string>
+    <string name="retry">Thử lại</string>
+    <string name="refresh">Làm mới</string>
+    <string name="advanced_line">Địa chỉ máy chủ · khóa nhập</string>
+    <plurals name="abyss_resets_in">
+        <item quantity="other">Đặt lại sau %d ngày</item>
+    </plurals>
+    <plurals name="changes">
+        <item quantity="other">%s thay đổi</item>
+    </plurals>
 </resources>

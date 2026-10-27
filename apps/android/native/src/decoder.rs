@@ -24,6 +24,7 @@ use serde::Serialize;
 use teyvatme_core::decode::{
     self, AppliedData, DataReplacement, DataVerdict, KeyReport, SnifferEvent, SnifferStats,
 };
+use teyvatme_core::good::{GiAbyss, GiCommissions, GiRealm, GiResin, GiTasks, GiWeeklyBosses};
 use teyvatme_core::live::{Action, BatchAnswer, ImportAnswer, LiveSync, Reason};
 use teyvatme_core::player_data::{ExportSettings, PlayerData};
 use teyvatme_core::recording;
@@ -87,6 +88,8 @@ pub struct Counts {
     pub artifacts: usize,
     pub materials: usize,
     pub achievements: usize,
+    /// Travel Accounts recorded (`gi_anecdotes`: finished once, or state 3).
+    pub anecdotes: usize,
 }
 
 /// When each class of data last changed (Unix ms), as the desktop's
@@ -108,6 +111,43 @@ pub struct Player {
     pub server: Option<&'static str>,
     /// For the tracker card's UID check (never logged).
     pub uid: Option<u32>,
+}
+
+/// Today on the home screen: the parts of `gi_tasks` it shows, each `None`
+/// when the capture does not have it (never a guess).
+#[derive(Clone, Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Today {
+    pub resin: Option<GiResin>,
+    pub realm: Option<GiRealm>,
+    pub commissions: Option<GiCommissions>,
+    /// When each expedition out is done (unix s); empty: nobody is out.
+    pub expeditions: Option<Vec<u32>>,
+    pub weekly_bosses: Option<GiWeeklyBosses>,
+    pub abyss: Option<GiAbyss>,
+}
+
+impl Today {
+    fn of(tasks: &GiTasks) -> Option<Self> {
+        let today = Self {
+            resin: tasks.resin,
+            realm: tasks.realm,
+            commissions: tasks.commissions,
+            expeditions: tasks
+                .expeditions
+                .as_ref()
+                .map(|list| list.iter().map(|e| e.done_at).collect()),
+            weekly_bosses: tasks.weekly_bosses,
+            abyss: tasks.abyss,
+        };
+        let any = today.resin.is_some()
+            || today.realm.is_some()
+            || today.commissions.is_some()
+            || today.expeditions.is_some()
+            || today.weekly_bosses.is_some()
+            || today.abyss.is_some();
+        any.then_some(today)
+    }
 }
 
 /// What [`Decoder::summary`] answers, as JSON for Kotlin.
@@ -135,6 +175,10 @@ pub struct Summary {
     pub login: u64,
     pub counts: Counts,
     pub player: Option<Player>,
+    /// Today on the home screen, from the export's `gi_tasks`.
+    pub today: Option<Today>,
+    /// When this login's tasks were first read.
+    pub tasks_at: Option<u64>,
     pub game_data: Option<&'static str>,
     pub events: Vec<Event>,
     /// The wish card ([`Wishes::summary`]), filled in by the decoder.
@@ -181,6 +225,11 @@ struct State {
     counts: Counts,
     counts_version: u64,
     counts_at: u64,
+    /// The newest export's `gi_tasks`, and when (and for which login) they
+    /// were first read.
+    tasks: Option<Today>,
+    tasks_at: Option<u64>,
+    tasks_login: Option<u64>,
     events: VecDeque<Event>,
     /// Live sync's sender (`teyvatme_core::live`); the app sends what it
     /// decides through the tracker sign-in.
@@ -206,6 +255,9 @@ impl State {
             counts: Counts::default(),
             counts_version: 0,
             counts_at: 0,
+            tasks: None,
+            tasks_at: None,
+            tasks_login: None,
             events: VecDeque::new(),
             live: LiveSync::new(),
         }
@@ -296,6 +348,8 @@ impl State {
                 server: player.uid.and_then(server_of),
                 uid: player.uid,
             }),
+            today: self.tasks.clone(),
+            tasks_at: self.tasks_at,
             game_data: embedded_game_data_sha(),
             events: self.events.iter().cloned().collect(),
             wish: None,
@@ -314,7 +368,7 @@ impl State {
         let Some(data) = &self.player_data else {
             return;
         };
-        let (_, report) = data.export_at(&ExportSettings::for_tracker(), now);
+        let (good, report) = data.export_at(&ExportSettings::for_tracker(), now);
         let counts = report.counts();
         self.counts = Counts {
             characters: counts.characters,
@@ -322,7 +376,18 @@ impl State {
             artifacts: counts.artifacts,
             materials: counts.materials,
             achievements: counts.achievements,
+            anecdotes: good.gi_anecdotes.as_ref().map_or(0, |book| {
+                book.anecdotes
+                    .values()
+                    .filter(|a| a.finish_count > 0 || a.state == 3)
+                    .count()
+            }),
         };
+        self.tasks = good.gi_tasks.as_ref().and_then(Today::of);
+        if self.tasks.is_some() && self.tasks_login != Some(self.login) {
+            self.tasks_login = Some(self.login);
+            self.tasks_at = Some(now);
+        }
         self.counts_version = self.data_version;
         self.counts_at = now;
     }

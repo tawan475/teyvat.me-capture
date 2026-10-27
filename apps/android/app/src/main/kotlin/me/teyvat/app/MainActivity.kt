@@ -39,18 +39,22 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import me.teyvat.app.ui.AboutScreen
 import me.teyvat.app.ui.ActivityScreen
 import me.teyvat.app.ui.ExportSettingsActions
 import me.teyvat.app.ui.ExportSettingsScreen
 import me.teyvat.app.ui.HomeActions
 import me.teyvat.app.ui.HomeContent
-import me.teyvat.app.ui.HomeFooter
+import me.teyvat.app.ui.HomeTopBar
 import me.teyvat.app.ui.LicencesScreen
 import me.teyvat.app.ui.SettingsActions
 import me.teyvat.app.ui.SettingsScreen
@@ -155,7 +159,7 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
                 ThemeMode.Light -> false
                 ThemeMode.Dark -> true
             }
-            TeyvatTheme(dark) { Root(settings) }
+            TeyvatTheme(dark) { Root(settings, dark) }
         }
     }
 
@@ -193,7 +197,10 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
     private fun handle(intent: Intent?) {
         when (intent?.action) {
             ACTION_SHARE_GOOD -> shareGood()
-            ACTION_START_CAPTURE -> startCapture()
+            ACTION_START_CAPTURE -> {
+                openGameAfterStart = intent.getBooleanExtra(EXTRA_OPEN_GAME, false)
+                startCapture()
+            }
             ACTION_INSTALL_UPDATE -> updater.installNow()
             else -> return
         }
@@ -213,7 +220,7 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
     }
 
     @Composable
-    private fun Root(settings: Settings) {
+    private fun Root(settings: Settings, dark: Boolean) {
         val screen = stack.lastOrNull() ?: Screen.Home
         BackHandler(enabled = stack.size > 1) { pop() }
         val vpn by capture.vpn.collectAsState()
@@ -226,6 +233,8 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
         val uploading by tracker.uploading.collectAsState()
         val revoked by tracker.revoked.collectAsState()
         val importKey by tracker.importKey.collectAsState()
+        val lastLive by tracker.lastLive.collectAsState()
+        val signInUrl by tracker.signInUrl.collectAsState()
         // whoami every 5 min too (the desktop's), not only on resume: the
         // upload target may change on the website while the app is open.
         androidx.compose.runtime.LaunchedEffect(Unit) {
@@ -237,6 +246,7 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
         val trackerView = TrackerView(
             trackerState, lastUpload, uploading, settings.trackerUpload, settings.sendWishes, settings.liveSync,
             revoked = revoked, capturedUid = summary.player?.uid, key = importKey, api = Links.trackerApi,
+            lastLive = lastLive, signInUrl = signInUrl,
         )
         val update by updater.state.collectAsState()
         Scaffold(
@@ -248,31 +258,29 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
                     when (screen) {
                         Screen.Welcome -> {}
                         Screen.SetUp -> TmTopBar(onBack = ::pop, title = "")
-                        Screen.Home -> TmTopBar(actions = {
-                            IconButton(onClick = ::openSettings) { TmIcon(R.drawable.ic_settings, stringResource(R.string.settings)) }
-                        })
+                        Screen.Home -> HomeTopBar(
+                            error = activityLine(summary)?.isError == true, dark = dark,
+                            onHistory = ::openActivity, onTheme = ::cycleTheme, onSettings = ::openSettings,
+                            onDiscord = { openUrl(Links.DISCORD) },
+                        )
                         Screen.Activity -> TmTopBar(stringResource(R.string.activity), ::pop) {
                             IconButton(onClick = ::shareLog) { TmIcon(R.drawable.ic_share, stringResource(R.string.share_log)) }
                         }
                         Screen.Settings -> TmTopBar(stringResource(R.string.settings), ::pop)
                         Screen.ExportSettings -> TmTopBar(stringResource(R.string.export_title), ::pop)
-                        Screen.Teyvat -> TmTopBar(stringResource(R.string.tracker), ::pop)
+                        Screen.Teyvat -> TmTopBar(Links.trackerHost, ::pop) {
+                            (trackerState as? TrackerState.SignedIn)?.let { signedIn ->
+                                IconButton(onClick = ::refreshTracker) { TmIcon(R.drawable.ic_refresh, stringResource(R.string.refresh)) }
+                                IconButton(onClick = { openUrl(signedIn.who.dashboardUrl) }) {
+                                    TmIcon(R.drawable.ic_external_link, stringResource(R.string.tracker_dashboard))
+                                }
+                            }
+                        }
                         Screen.About -> TmTopBar(stringResource(R.string.about), ::pop)
                         Screen.Thanks -> TmTopBar(stringResource(R.string.thanks), ::pop)
                         Screen.Licences -> TmTopBar(stringResource(R.string.licences), ::pop)
                         Screen.Notices -> TmTopBar(stringResource(R.string.third_party_notices), ::pop)
                     }
-                }
-            },
-            bottomBar = {
-                if (screen == Screen.Home) {
-                    val event = activityLine(summary)
-                    val dot = when (vpn) {
-                        VpnState.On -> Tm.colors.success
-                        VpnState.Starting -> MaterialTheme.colorScheme.outline
-                        VpnState.Off -> MaterialTheme.colorScheme.error
-                    }
-                    HomeFooter(dot, event?.line() ?: stringResource(R.string.footer_idle), event?.isError == true, ::openActivity)
                 }
             },
             snackbarHost = {
@@ -293,9 +301,11 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
                 Screen.Home -> HomeContent(hero, summary, settings, capture.startingSince, folder, trackerView, update, vpn != VpnState.Off, backgroundAllowed, crashed, this, padding)
                 Screen.Settings -> SettingsScreen(padding, settings, trackerView, update, backgroundAllowed, this)
                 Screen.ExportSettings -> ExportSettingsScreen(padding, settings, folder, this)
-                Screen.Teyvat -> TeyvatScreen(padding, trackerView, summary.captured, this)
+                Screen.Teyvat -> TeyvatScreen(padding, trackerView, summary.captured, settings, this)
                 Screen.Activity -> ActivityScreen(padding, summary.events)
-                Screen.About -> AboutScreen(padding, BuildConfig.VERSION_NAME, gameDataLabel(summary), ::openUrl) { push(Screen.Thanks) }
+                Screen.About -> AboutScreen(padding, BuildConfig.VERSION_NAME, gameDataLabel(summary), ::openUrl, {
+                    me.teyvat.app.ui.UpdateBannerFor(update, vpn != VpnState.Off, this, Modifier.padding(horizontal = 16.dp), details = false)
+                }) { push(Screen.Thanks) }
                 Screen.Thanks -> ThanksScreen(padding) { push(Screen.Licences) }
                 Screen.Licences -> LicencesScreen(padding, ::openUrl) { push(Screen.Notices) }
                 Screen.Notices -> me.teyvat.app.ui.NoticesScreen(padding)
@@ -350,7 +360,18 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
         }
         capture.setVpn(VpnState.Starting)
         GameVpnService.start(this)
+        if (openGameAfterStart) {
+            openGameAfterStart = false
+            // The game must connect after the VPN is up, for its login's key.
+            lifecycleScope.launch {
+                val up = withTimeoutOrNull(OPEN_GAME_WAIT_MS) { capture.vpn.first { it == VpnState.On } }
+                if (up != null) openGenshin()
+            }
+        }
     }
+
+    /** Start capture came from the tile with "Tile opens Genshin" on: the game opens once the VPN is up. */
+    private var openGameAfterStart = false
 
     override fun gameInstalled() = Links.gameLaunch(this) != null
 
@@ -392,6 +413,10 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
         runCatching { startActivity(updater.permissionIntent()) }
     }
 
+    override fun setTileOpensGame(on: Boolean) {
+        prefs.update { it.copy(tileOpensGame = on) }
+    }
+
     override fun setAutoUpdate(on: Boolean) {
         prefs.update { it.copy(autoUpdate = on) }
         if (on) updater.check(manual = false)
@@ -409,6 +434,8 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
                     .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
             )
             if (error == null) {
+                // Connecting turns uploads on (spec 7).
+                prefs.update { it.copy(trackerUpload = true) }
                 snack(getString(R.string.tracker_signed_in_toast, Links.trackerHost))
                 tracker.uploadNow(capture.summary.value)
             } else {
@@ -418,6 +445,36 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
     }
 
     override fun trackerCancelSignIn() = tracker.cancelSignIn()
+
+    override fun copySignInLink() {
+        val url = tracker.signInUrl.value ?: return
+        Exports.copy(this, "Sign-in link", url, sensitive = true)
+        snack(getString(R.string.link_copied))
+    }
+
+    /** whoami again (the upload target is chosen on the website). */
+    private fun refreshTracker() {
+        whoAt = System.currentTimeMillis()
+        tracker.refreshWho()
+    }
+
+    /** The top bar's Theme button: System → Light → Dark, and a snackbar names the new one. */
+    private fun cycleTheme() {
+        val next = when (prefs.value.theme) {
+            ThemeMode.System -> ThemeMode.Light
+            ThemeMode.Light -> ThemeMode.Dark
+            ThemeMode.Dark -> ThemeMode.System
+        }
+        setTheme(next)
+        val name = getString(
+            when (next) {
+                ThemeMode.System -> R.string.theme_system
+                ThemeMode.Light -> R.string.theme_light
+                ThemeMode.Dark -> R.string.theme_dark
+            },
+        )
+        snack(getString(R.string.theme_now, name))
+    }
 
     override fun trackerUploadNow() {
         if (!tracker.uploadNow(capture.summary.value)) snack(getString(R.string.tracker_nothing_to_upload))
@@ -668,6 +725,10 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
         const val ACTION_SHARE_GOOD = "me.teyvat.app.SHARE_GOOD"
         const val ACTION_START_CAPTURE = "me.teyvat.app.START_CAPTURE"
         const val ACTION_INSTALL_UPDATE = "me.teyvat.app.INSTALL_UPDATE"
+        const val EXTRA_OPEN_GAME = "open_game"
+
+        /** How long the tile's Start waits for the VPN before giving up on opening the game. */
+        private const val OPEN_GAME_WAIT_MS = 15_000L
 
     }
 }

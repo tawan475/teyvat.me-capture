@@ -166,6 +166,8 @@
     <string name="open_vpn_settings">VPN 설정 열기</string>
     <string name="notifications">알림</string>
     <string name="notifications_line">플레이 중 캡처 상태</string>
+    <string name="tile_opens_game">타일로 원신 열기</string>
+    <string name="tile_opens_game_line">빠른 설정 타일로 캡처를 시작하면 게임도 엽니다</string>
     <string name="allow">허용</string>
     <string name="setup_vpn_dialog">Android가 VPN 허용을 요청합니다: 앱이 다른 앱의 통신을 읽는 방법입니다</string>
 
@@ -304,4 +306,73 @@
     <string name="key_signed_out_only">로그아웃 상태에서만 사용</string>
     <string name="clear">지우기</string>
     <string name="discord_line">도움말, 소식, 피드백</string>
+
+    <!-- Home layout G (2026-10-27) -->
+    <string name="step_enter_world">월드 입장</string>
+    <string name="home_login_seen_enter">월드에 입장하면 데이터를 읽습니다</string>
+    <string name="traveler">주인공</string>
+    <string name="player_wl">WL %d</string>
+    <string name="player_uid">UID %s</string>
+    <string name="tile_anecdotes">여행 일화집</string>
+    <string name="today">오늘</string>
+    <string name="today_at_login">로그인 시 %s</string>
+    <string name="resin">레진</string>
+    <string name="realm_currency">선계 화폐</string>
+    <string name="commissions">일일 의뢰</string>
+    <string name="commissions_done">오늘 완료</string>
+    <string name="expeditions">탐사 파견</string>
+    <string name="expeditions_out">%d명 파견 중</string>
+    <string name="expeditions_first_back">첫 귀환 %s</string>
+    <string name="expeditions_all_back">모두 귀환</string>
+    <string name="expeditions_none">없음</string>
+    <string name="weekly_bosses">영역 토벌</string>
+    <string name="weekly_discounts_left">남은 할인</string>
+    <string name="spiral_abyss">나선 비경</string>
+    <string name="full">가득 참</string>
+    <string name="full_at">%s 가득 참</string>
+    <string name="full_on">%1$s %2$s 가득 참</string>
+    <string name="wish_url_ready">URL 준비됨 · %s</string>
+    <string name="wish_send_to">%s(으)로 보내기</string>
+    <string name="wish_sync_no_account">꺼짐 · 보내려면 %s 연결</string>
+    <string name="wish_sync_off">꺼짐 · URL은 계속 사용 가능</string>
+    <string name="wish_syncing_banner">동기화 중 · %1$s, %2$d페이지</string>
+    <string name="wish_waits_key">기원 키를 기다리는 중</string>
+    <string name="tracker_connect">연결</string>
+    <string name="tracker_row_line">캡처마다 업로드 · 실시간 동기화</string>
+    <string name="tracker_waiting_browser">브라우저를 기다리는 중…</string>
+    <string name="tracker_live_line">✓ 실시간 동기화 · %1$s · %2$s</string>
+    <string name="tracker_uploads_not_chosen">업로드 대상: 선택 안 됨</string>
+    <string name="tracker_upload_to">%s에 업로드</string>
+    <string name="tracker_settings_of">%s 설정</string>
+    <string name="update_banner_title">업데이트 %s</string>
+    <string name="update_you_have">현재 %s</string>
+    <string name="details">자세히</string>
+    <string name="activity_has_error">활동, 최근 이벤트가 오류</string>
+    <string name="activity_line">최근 이벤트 50개</string>
+    <string name="theme_now">테마: %s</string>
+    <string name="section_destinations">대상</string>
+    <string name="teyvat_disconnected">연결 안 됨</string>
+    <string name="teyvat_finish_signing">열린 페이지에서 로그인을 마치세요</string>
+    <string name="teyvat_uploads_turn_on">연결하면 업로드가 켜집니다</string>
+    <string name="copy_link">링크 복사</string>
+    <string name="link_copied">링크를 복사했습니다</string>
+    <string name="uploads">업로드 대상</string>
+    <string name="target_auto">자동 (UID 기준)</string>
+    <string name="target_not_chosen">선택 안 됨</string>
+    <string name="chosen_on_website">웹사이트에서 선택</string>
+    <string name="tracker_configure_short">설정</string>
+    <string name="target_gone">업로드하던 계정이 사라졌습니다. 다른 계정을 선택하세요.</string>
+    <string name="auto_upload">자동 업로드</string>
+    <string name="auto_upload_line">캡처마다 %s(으)로 전송</string>
+    <string name="last_upload">마지막 업로드</string>
+    <string name="last_upload_none">아직 업로드한 것이 없습니다</string>
+    <string name="retry">다시 시도</string>
+    <string name="refresh">새로고침</string>
+    <string name="advanced_line">서버 주소 · 가져오기 키</string>
+    <plurals name="abyss_resets_in">
+        <item quantity="other">%d일 후 초기화</item>
+    </plurals>
+    <plurals name="changes">
+        <item quantity="other">변경 %s건</item>
+    </plurals>
 </resources>

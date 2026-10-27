@@ -260,6 +260,13 @@ impl Keyed {
                 }
             }
         }
+        // The resin clock, whole: the regen notify moves it within a session,
+        // and it says to the second when the next resin comes (the batch
+        // carrying `gi_player.resin` can go out minutes after the tick).
+        // The rest of `gi_tasks` rides on snapshots only.
+        if let Some(resin) = good.get("gi_tasks").and_then(|tasks| tasks.get("resin")) {
+            entries.insert(path(&["gi_tasks", "resin"]), resin.clone());
+        }
     }
 
     fn hint(&self, at: &Path, value: &Value) -> Option<Value> {

@@ -4,6 +4,12 @@
 package me.teyvat.app.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import me.teyvat.app.Whoami
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -77,6 +83,7 @@ interface SettingsActions {
     fun setRecordCapture(on: Boolean)
     fun openAbout()
     fun setAutoUpdate(on: Boolean)
+    fun setTileOpensGame(on: Boolean)
     fun checkForUpdates()
     fun allowBackground()
     fun openUrl(url: String)
@@ -97,6 +104,11 @@ fun SettingsScreen(
         ListRow(stringResource(R.string.always_on_vpn), stringResource(R.string.always_on_vpn_line), R.drawable.ic_power, onClick = actions::openAlwaysOnVpn) { External() }
         CardDivider()
         ListRow(stringResource(R.string.notifications), stringResource(R.string.notifications_line), R.drawable.ic_bell, onClick = actions::openNotificationSettings) { External() }
+        CardDivider()
+        SwitchRow(
+            stringResource(R.string.tile_opens_game), stringResource(R.string.tile_opens_game_line), settings.tileOpensGame,
+            actions::setTileOpensGame, icon = R.drawable.ic_gamepad,
+        )
         CardDivider()
         ListRow(
             stringResource(R.string.battery_title),
@@ -136,11 +148,11 @@ fun SettingsScreen(
     Group {
         ListRow(stringResource(R.string.export_filters), null, R.drawable.ic_sliders, onClick = actions::openExportSettings) { Chevron() }
     }
-    SectionLabel(stringResource(R.string.section_tracker))
+    SectionLabel(stringResource(R.string.section_destinations))
     Group {
         val line = when (val state = tracker.state) {
-            TrackerState.SignedOut -> stringResource(R.string.tracker_signed_out_line)
-            TrackerState.SigningIn -> stringResource(R.string.tracker_signing_in)
+            TrackerState.SignedOut -> stringResource(R.string.teyvat_disconnected)
+            TrackerState.SigningIn -> stringResource(R.string.tracker_waiting_browser)
             is TrackerState.SignedIn -> stringResource(R.string.tracker_signed_in_as, state.who.user)
         }
         ListRow(Links.trackerHost, line, R.drawable.ic_cloud_upload, onClick = actions::openTeyvat) { Chevron() }
@@ -171,7 +183,7 @@ fun SettingsScreen(
     }
     SectionLabel(stringResource(R.string.section_diagnostics))
     Group {
-        ListRow(stringResource(R.string.activity), null, R.drawable.ic_clock, onClick = actions::openActivity) { Chevron() }
+        ListRow(stringResource(R.string.activity), stringResource(R.string.activity_line), R.drawable.ic_history, onClick = actions::openActivity) { Chevron() }
         CardDivider()
         SwitchRow(
             stringResource(R.string.record_capture), stringResource(R.string.record_capture_line), settings.recordCapture,
@@ -180,7 +192,7 @@ fun SettingsScreen(
         CardDivider()
         ListRow("Discord", stringResource(R.string.discord_line), R.drawable.ic_discord, onClick = { actions.openUrl(Links.DISCORD) }) { External() }
         CardDivider()
-        ListRow(stringResource(R.string.about), null, R.drawable.ic_info, onClick = actions::openAbout) { Chevron() }
+        ListRow(stringResource(R.string.about), me.teyvat.app.BuildConfig.VERSION_NAME, R.drawable.ic_info, onClick = actions::openAbout) { Chevron() }
     }
 }
 
@@ -315,6 +327,7 @@ fun ExportSettingsScreen(padding: PaddingValues, settings: Settings, folderLabel
 interface TeyvatActions {
     fun trackerSignIn()
     fun trackerCancelSignIn()
+    fun copySignInLink()
     fun trackerUploadNow()
     fun setTrackerUpload(on: Boolean)
     fun setSendWishes(on: Boolean)
@@ -326,54 +339,137 @@ interface TeyvatActions {
     fun setTrackerApi(api: String)
 }
 
-/** teyvat.me: sign in, where uploads go, upload now, sign out. */
+/** Where uploads go, in a word or two: "Auto (by UID)", the account, or "Not chosen". */
 @Composable
-fun TeyvatScreen(padding: PaddingValues, tracker: TrackerView, captured: Boolean, actions: TeyvatActions) = Scrolling(padding) {
+private fun targetShort(who: Whoami): String = when {
+    who.scope != "account" -> stringResource(R.string.target_auto)
+    targetMissing(who) -> stringResource(R.string.target_not_chosen)
+    who.accountName != null && who.uid != null -> stringResource(R.string.target_name_uid, who.accountName, who.uid)
+    who.accountName != null -> who.accountName
+    else -> stringResource(R.string.target_uid, who.uid.orEmpty())
+}
+
+/**
+ * The teyvat.me page (spec section 4.4, board 4): Connect; while the
+ * browser is open, Cancel and Copy link; connected, the account, where
+ * uploads go (chosen on the website), the switches and the last upload.
+ */
+@Composable
+fun TeyvatScreen(padding: PaddingValues, tracker: TrackerView, captured: Boolean, settings: Settings, actions: TeyvatActions) = Scrolling(padding) {
     Spacer(Modifier.height(8.dp))
     val state = tracker.state
+    val scheme = MaterialTheme.colorScheme
     Group {
-        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Avatar(icon = R.drawable.ic_user)
-            Spacer(Modifier.width(16.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    if (state is TrackerState.SignedIn) stringResource(R.string.tracker_signed_in_as, state.who.user)
-                    else stringResource(R.string.teyvat_not_connected),
-                    style = MaterialTheme.typography.bodyLarge,
-                )
-                Text(
-                    when (state) {
-                        TrackerState.SignedOut -> stringResource(R.string.teyvat_browser_line)
-                        TrackerState.SigningIn -> stringResource(R.string.tracker_signing_in)
-                        is TrackerState.SignedIn -> targetLine(state.who)
-                    },
-                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+        when {
+            state == TrackerState.SigningIn -> {
+                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Avatar(spinning = true)
+                    Spacer(Modifier.width(16.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(stringResource(R.string.tracker_waiting_browser), style = MaterialTheme.typography.bodyLarge)
+                        Text(stringResource(R.string.teyvat_finish_signing), style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant)
+                    }
+                }
+                Row(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TmButton(stringResource(R.string.cancel), actions::trackerCancelSignIn, kind = ButtonKind.Text)
+                    TmButton(
+                        stringResource(R.string.copy_link), actions::copySignInLink, kind = ButtonKind.Outlined, icon = R.drawable.ic_copy,
+                        enabled = tracker.signInUrl != null,
+                    )
+                }
             }
-        }
-        Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            when (state) {
-                TrackerState.SignedOut -> TmButton(stringResource(R.string.tracker_sign_in), actions::trackerSignIn, large = true)
-                TrackerState.SigningIn -> TmButton(stringResource(R.string.cancel), actions::trackerCancelSignIn, kind = ButtonKind.Outlined, large = true)
-                is TrackerState.SignedIn -> {}
+            state is TrackerState.SignedIn -> {
+                val who = state.who
+                Row(Modifier.padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Avatar(letter = who.user.take(1).uppercase().ifEmpty { "?" })
+                    Spacer(Modifier.width(16.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(who.user, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(Links.trackerHost, style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant)
+                    }
+                    IconButton(onClick = actions::trackerSignOut) {
+                        TmIcon(R.drawable.ic_log_out, stringResource(R.string.tracker_sign_out))
+                    }
+                }
+                CardDivider()
+                val missing = targetMissing(who)
+                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(stringResource(R.string.uploads), style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant)
+                        Text(
+                            targetShort(who), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold,
+                            color = if (missing) scheme.error else scheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(stringResource(R.string.chosen_on_website), style = MaterialTheme.typography.bodySmall, color = scheme.outline)
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    TmButton(
+                        stringResource(R.string.tracker_configure_short), { actions.openUrl(who.configUrl) },
+                        kind = if (missing) ButtonKind.Filled else ButtonKind.Outlined, trailingIcon = R.drawable.ic_external_link,
+                    )
+                }
+                if (missing) {
+                    Row(
+                        Modifier
+                            .padding(start = 16.dp, end = 16.dp, bottom = 16.dp)
+                            .fillMaxWidth()
+                            .clip(MaterialTheme.shapes.medium)
+                            .background(scheme.errorContainer)
+                            .border(1.dp, Tm.colors.errorBorder, MaterialTheme.shapes.medium)
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.Top,
+                    ) {
+                        TmIcon(R.drawable.ic_triangle_alert, null, tint = scheme.error, size = 20.dp)
+                        Spacer(Modifier.width(12.dp))
+                        Text(stringResource(R.string.target_gone), style = MaterialTheme.typography.bodyMedium, color = scheme.error)
+                    }
+                }
             }
-            if (tracker.canUpload) {
-                TmButton(
-                    stringResource(if (tracker.uploading) R.string.tracker_uploading else R.string.tracker_upload_now),
-                    actions::trackerUploadNow, large = true, enabled = captured && !tracker.uploading,
-                )
-                tracker.last?.let { last ->
+            tracker.key.verified -> {
+                // Signed out, uploading with the import key (Advanced).
+                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Avatar(icon = R.drawable.ic_key)
+                    Spacer(Modifier.width(16.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(stringResource(R.string.import_key), style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            stringResource(R.string.key_valid, tracker.key.account!!.name, tracker.key.account.uid),
+                            style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp)) {
+                    TmButton(stringResource(R.string.tracker_connect), actions::trackerSignIn, kind = ButtonKind.Tonal, large = true)
+                }
+            }
+            else -> {
+                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Avatar(icon = R.drawable.ic_user)
+                    Spacer(Modifier.width(16.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(stringResource(R.string.teyvat_disconnected), style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            stringResource(if (tracker.revoked) R.string.tracker_revoked else R.string.teyvat_browser_line),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (tracker.revoked) scheme.error else scheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TmButton(stringResource(R.string.tracker_connect), actions::trackerSignIn, large = true)
                     Text(
-                        last.text, style = MaterialTheme.typography.bodySmall,
-                        color = if (last.ok) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.error,
+                        stringResource(R.string.teyvat_uploads_turn_on), style = MaterialTheme.typography.bodySmall, color = scheme.outline,
+                        textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(),
                     )
                 }
             }
         }
-        if (tracker.canUpload) {
-            CardDivider()
+    }
+    if (tracker.canUpload) {
+        Spacer(Modifier.height(12.dp))
+        Group {
             SwitchRow(
-                stringResource(R.string.tracker_upload_switch), stringResource(R.string.tracker_upload_switch_line), tracker.uploadOn,
+                stringResource(R.string.auto_upload), stringResource(R.string.auto_upload_line, Links.trackerHost), tracker.uploadOn,
                 actions::setTrackerUpload, icon = R.drawable.ic_cloud_upload,
             )
             CardDivider()
@@ -383,32 +479,58 @@ fun TeyvatScreen(padding: PaddingValues, tracker: TrackerView, captured: Boolean
             )
             CardDivider()
             SwitchRow(
-                stringResource(R.string.wish_send, Links.trackerHost), stringResource(R.string.wish_send_line), tracker.wishesOn,
+                stringResource(R.string.wish_send, Links.trackerHost), stringResource(R.string.wish_send_line), settings.sendWishes,
                 actions::setSendWishes, icon = R.drawable.ic_sparkles,
             )
         }
-        if (state is TrackerState.SignedIn) {
-            CardDivider()
-            ListRow(
-                stringResource(R.string.tracker_configure), stringResource(R.string.tracker_configure_line), R.drawable.ic_sliders,
-                onClick = { actions.openUrl(state.who.configUrl) },
-            ) { External() }
-            CardDivider()
-            ListRow(stringResource(R.string.tracker_dashboard), null, R.drawable.ic_globe, onClick = { actions.openUrl(state.who.dashboardUrl) }) { External() }
-            CardDivider()
-            ListRow(stringResource(R.string.tracker_sign_out), null, R.drawable.ic_log_in, onClick = actions::trackerSignOut)
-        } else {
-            CardDivider()
-            ListRow(Links.trackerHost, stringResource(R.string.teyvat_site_line), R.drawable.ic_globe, onClick = { actions.openUrl(Links.trackerSite) }) { External() }
+        Spacer(Modifier.height(12.dp))
+        Group {
+            Row(Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.last_upload), style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                val at = listOfNotNull(tracker.last?.at, tracker.lastLive?.at).maxOrNull()
+                if (at != null) Text(hhmm(at), style = MaterialTheme.typography.bodySmall, color = scheme.outline)
+            }
+            val result = resultLine(tracker)
+            val failed = result?.second == true && !tracker.uploading
+            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                when {
+                    tracker.uploading -> Spinner(size = 20.dp)
+                    result == null -> TmIcon(R.drawable.ic_info, null, size = 20.dp)
+                    failed -> TmIcon(R.drawable.ic_circle_x, null, tint = scheme.error, size = 20.dp)
+                    else -> TmIcon(R.drawable.ic_circle_check, null, tint = Tm.colors.success, size = 20.dp)
+                }
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    when {
+                        tracker.uploading -> stringResource(R.string.tracker_uploading)
+                        result != null -> result.first
+                        else -> stringResource(R.string.last_upload_none)
+                    },
+                    style = MaterialTheme.typography.bodyMedium, color = if (failed) scheme.error else scheme.onSurface,
+                    maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+                )
+                Spacer(Modifier.width(8.dp))
+                TmButton(
+                    stringResource(if (failed) R.string.retry else R.string.tracker_upload_now), actions::trackerUploadNow,
+                    kind = ButtonKind.Tonal, enabled = captured && !tracker.uploading,
+                )
+            }
         }
     }
-    AdvancedTracker(tracker, actions)
+    var advanced by remember { mutableStateOf(false) }
+    Spacer(Modifier.height(12.dp))
+    Group {
+        ListRow(stringResource(R.string.advanced), stringResource(R.string.advanced_line), R.drawable.ic_sliders, onClick = { advanced = !advanced }) {
+            TmIcon(if (advanced) R.drawable.ic_chevron_up else R.drawable.ic_chevron_down, null)
+        }
+    }
+    if (advanced) AdvancedTracker(tracker, actions)
 }
 
 /** The desktop's Advanced: the tracker address, and the import key used while signed out. */
 @Composable
 private fun AdvancedTracker(tracker: TrackerView, actions: TeyvatActions) {
-    SectionLabel(stringResource(R.string.advanced))
+    Spacer(Modifier.height(12.dp))
     Group {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(stringResource(R.string.tracker_address), style = MaterialTheme.typography.bodyLarge)
@@ -535,13 +657,22 @@ fun ActivityScreen(padding: PaddingValues, events: List<ActivityEvent>) {
 }
 
 @Composable
-fun AboutScreen(padding: PaddingValues, version: String, gameData: String, openUrl: (String) -> Unit, openThanks: () -> Unit) = Scrolling(padding) {
+fun AboutScreen(
+    padding: PaddingValues,
+    version: String,
+    gameData: String,
+    openUrl: (String) -> Unit,
+    update: @Composable () -> Unit,
+    openThanks: () -> Unit,
+) = Scrolling(padding) {
     Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Spark(40)
         Spacer(Modifier.height(8.dp))
         Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineSmall)
         Text(stringResource(R.string.about_version, version, gameData), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
+    update()
+    Spacer(Modifier.height(12.dp))
     Group {
         ListRow(stringResource(R.string.source_code), "tawan475/teyvat.me-capture", R.drawable.ic_github, onClick = { openUrl(Links.SOURCE) }) { External() }
         CardDivider()

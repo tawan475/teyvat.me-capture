@@ -149,11 +149,28 @@ impl AppStateManager {
         updated: DataUpdated,
         player: Option<crate::good::GiPlayer>,
         counts: Option<crate::player_data::ExportCounts>,
+        tasks: Option<crate::good::GiTasks>,
+        anecdotes: Option<usize>,
     ) {
         self.app_state.updated = updated;
         self.app_state.player = player;
         self.app_state.captured_at = counts.map(|_| chrono::Local::now());
         self.app_state.counts = counts;
+        // The resin clock moves on its own; anything else is a new login's
+        // (or world change's) routine.
+        let routine = |tasks: &Option<crate::good::GiTasks>| {
+            tasks.clone().map(|tasks| crate::good::GiTasks {
+                resin: None,
+                ..tasks
+            })
+        };
+        if tasks.is_none() {
+            self.app_state.tasks_at = None;
+        } else if routine(&tasks) != routine(&self.app_state.tasks) {
+            self.app_state.tasks_at = Some(chrono::Local::now());
+        }
+        self.app_state.tasks = tasks;
+        self.app_state.anecdotes = anecdotes;
         let _ = self.state_tx.send(self.app_state.clone());
     }
 
@@ -1351,8 +1368,12 @@ impl Monitor {
             hub.note_uid(player.as_ref().and_then(|player| player.uid));
         }
         let counts = self.player_data.held_counts();
+        let tasks = self
+            .player_data
+            .gi_tasks(chrono::Utc::now().timestamp().max(0) as u64);
+        let anecdotes = self.player_data.recorded_anecdotes();
         self.app_state
-            .update_captured(updated, player, Some(counts));
+            .update_captured(updated, player, Some(counts), tasks, anecdotes);
         self.check_automation_trigger();
     }
 
@@ -1403,7 +1424,7 @@ impl Monitor {
         self.player_data.reset();
         self.live.note_data_replaced();
         self.app_state
-            .update_captured(DataUpdated::new(), None, None);
+            .update_captured(DataUpdated::new(), None, None, None, None);
         self.capture_timestamp_ms = None;
         // Without these the signature check can suppress the first export after
         // an account switch, because it still matches the previous account's.

@@ -166,6 +166,8 @@
     <string name="open_vpn_settings">VPN 設定を開く</string>
     <string name="notifications">通知</string>
     <string name="notifications_line">プレイ中のキャプチャ状況</string>
+    <string name="tile_opens_game">タイルで原神を開く</string>
+    <string name="tile_opens_game_line">クイック設定のタイルでキャプチャを開始すると、ゲームも開きます</string>
     <string name="allow">許可</string>
     <string name="setup_vpn_dialog">Android から VPN の許可を求められます：アプリがほかのアプリの通信を読むための仕組みです</string>
 
@@ -304,4 +306,73 @@
     <string name="key_signed_out_only">ログアウト中のみ使用</string>
     <string name="clear">クリア</string>
     <string name="discord_line">ヘルプ・お知らせ・フィードバック</string>
+
+    <!-- Home layout G (2026-10-27) -->
+    <string name="step_enter_world">ワールドに入る</string>
+    <string name="home_login_seen_enter">ワールドに入るとデータを読み取ります</string>
+    <string name="traveler">主人公</string>
+    <string name="player_wl">WL %d</string>
+    <string name="player_uid">UID %s</string>
+    <string name="tile_anecdotes">秘話</string>
+    <string name="today">今日</string>
+    <string name="today_at_login">ログイン時 %s</string>
+    <string name="resin">樹脂</string>
+    <string name="realm_currency">洞天宝銭</string>
+    <string name="commissions">デイリー依頼</string>
+    <string name="commissions_done">本日完了</string>
+    <string name="expeditions">派遣</string>
+    <string name="expeditions_out">%d 人派遣中</string>
+    <string name="expeditions_first_back">最初の帰還 %s</string>
+    <string name="expeditions_all_back">全員帰還</string>
+    <string name="expeditions_none">なし</string>
+    <string name="weekly_bosses">征討領域</string>
+    <string name="weekly_discounts_left">残りの半減回数</string>
+    <string name="spiral_abyss">深境螺旋</string>
+    <string name="full">満タン</string>
+    <string name="full_at">%s に満タン</string>
+    <string name="full_on">%1$s %2$s に満タン</string>
+    <string name="wish_url_ready">URL 準備完了 · %s</string>
+    <string name="wish_send_to">%s に送信</string>
+    <string name="wish_sync_no_account">オフ · 送信するには %s に接続</string>
+    <string name="wish_sync_off">オフ · URL はそのまま使えます</string>
+    <string name="wish_syncing_banner">同期中 · %1$s、%2$d ページ</string>
+    <string name="wish_waits_key">祈願キーを待機中</string>
+    <string name="tracker_connect">接続</string>
+    <string name="tracker_row_line">キャプチャごとにアップロード · ライブ同期</string>
+    <string name="tracker_waiting_browser">ブラウザを待機中…</string>
+    <string name="tracker_live_line">✓ ライブ同期 · %1$s · %2$s</string>
+    <string name="tracker_uploads_not_chosen">アップロード先: 未選択</string>
+    <string name="tracker_upload_to">%s にアップロード</string>
+    <string name="tracker_settings_of">%s の設定</string>
+    <string name="update_banner_title">アップデート %s</string>
+    <string name="update_you_have">現在 %s</string>
+    <string name="details">詳細</string>
+    <string name="activity_has_error">アクティビティ、最新のイベントはエラー</string>
+    <string name="activity_line">直近 50 件のイベント</string>
+    <string name="theme_now">テーマ: %s</string>
+    <string name="section_destinations">送信先</string>
+    <string name="teyvat_disconnected">未接続</string>
+    <string name="teyvat_finish_signing">開いたページでログインを完了してください</string>
+    <string name="teyvat_uploads_turn_on">接続するとアップロードがオンになります</string>
+    <string name="copy_link">リンクをコピー</string>
+    <string name="link_copied">リンクをコピーしました</string>
+    <string name="uploads">アップロード先</string>
+    <string name="target_auto">自動 (UID で)</string>
+    <string name="target_not_chosen">未選択</string>
+    <string name="chosen_on_website">ウェブサイトで選択</string>
+    <string name="tracker_configure_short">設定</string>
+    <string name="target_gone">アップロード先のアカウントがなくなりました。別のアカウントを選んでください。</string>
+    <string name="auto_upload">自動アップロード</string>
+    <string name="auto_upload_line">キャプチャごとに %s へ</string>
+    <string name="last_upload">最後のアップロード</string>
+    <string name="last_upload_none">まだアップロードしていません</string>
+    <string name="retry">再試行</string>
+    <string name="refresh">更新</string>
+    <string name="advanced_line">サーバーアドレス · インポートキー</string>
+    <plurals name="abyss_resets_in">
+        <item quantity="other">あと %d 日でリセット</item>
+    </plurals>
+    <plurals name="changes">
+        <item quantity="other">%s 件の変更</item>
+    </plurals>
 </resources>
