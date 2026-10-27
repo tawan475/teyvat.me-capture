@@ -172,7 +172,6 @@ private fun HeroCard(hero: Hero, summary: Summary, startingSince: Long, now: Lon
             }
         }
         Hero.Waiting -> StatusHero(stop, R.drawable.ic_gamepad, DiscKind.Neutral, title, line, steps(Step.Done, Step.Pending, Step.Pending)) {
-            InfoChip(stringResource(R.string.home_open_before))
             if (actions.gameInstalled()) {
                 TmButton(stringResource(R.string.home_open_genshin), actions::openGenshin, kind = ButtonKind.Tonal, large = true, icon = R.drawable.ic_play)
             }
@@ -205,21 +204,6 @@ private fun HeroCard(hero: Hero, summary: Summary, startingSince: Long, now: Lon
             Text(stringResource(R.string.home_reenter), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
             Text(stringResource(R.string.home_data_kept), style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant)
         }
-    }
-}
-
-@Composable
-private fun InfoChip(text: String) {
-    Row(
-        Modifier
-            .clip(RoundedCornerShape(8.dp))
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
-            .padding(horizontal = 10.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        TmIcon(R.drawable.ic_info, null, size = 16.dp)
-        Spacer(Modifier.width(6.dp))
-        Text(text, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

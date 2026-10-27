@@ -286,7 +286,6 @@
   "Teyvat.me {0} is out · install it by hand on this platform: {1}": "Teyvat.me {0} 已發布 · 此平台需手動安裝：{1}",
   "Thanks and licences": "致謝與授權",
   "The browser answered for another sign-in; try again": "瀏覽器回應的是另一次登入；請重試",
-  "The login is the only moment the session key can be read": "只有在登入時才能讀取工作階段金鑰",
   "The status stays red until a session Teyvat.me watched starts": "狀態會保持紅色，直到 Teyvat.me 從頭看到的遊戲工作階段開始",
   "The tracker address changed": "追蹤器位址已變更",
   "The tracker address changed during the sign-in": "登入期間追蹤器位址已變更",

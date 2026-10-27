@@ -286,7 +286,6 @@
   "Teyvat.me {0} is out · install it by hand on this platform: {1}": "Teyvat.me {0} 출시 · 이 플랫폼에서는 직접 설치하세요: {1}",
   "Thanks and licences": "감사의 말 및 라이선스",
   "The browser answered for another sign-in; try again": "브라우저가 다른 로그인에 응답했습니다. 다시 시도하세요",
-  "The login is the only moment the session key can be read": "세션 키는 로그인할 때만 읽을 수 있음",
   "The status stays red until a session Teyvat.me watched starts": "Teyvat.me가 처음부터 지켜본 세션이 시작될 때까지 상태는 빨간색으로 유지됨",
   "The tracker address changed": "트래커 주소가 변경됨",
   "The tracker address changed during the sign-in": "로그인 중에 트래커 주소가 변경됨",

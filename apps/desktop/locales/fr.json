@@ -286,7 +286,6 @@
   "Teyvat.me {0} is out · install it by hand on this platform: {1}": "Teyvat.me {0} est sorti · installez-le à la main sur cette plateforme : {1}",
   "Thanks and licences": "Remerciements et licences",
   "The browser answered for another sign-in; try again": "Le navigateur a répondu pour une autre connexion ; réessayez",
-  "The login is the only moment the session key can be read": "La connexion est le seul moment où la clé de session peut être lue",
   "The status stays red until a session Teyvat.me watched starts": "L'état reste rouge jusqu'au début d'une session suivie par Teyvat.me",
   "The tracker address changed": "L'adresse du tracker a changé",
   "The tracker address changed during the sign-in": "L'adresse du tracker a changé pendant la connexion",

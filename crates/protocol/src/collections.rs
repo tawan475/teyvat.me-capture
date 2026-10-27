@@ -1647,6 +1647,238 @@ pub fn matches_tcg_tavern(data: &[u8]) -> Option<BTreeMap<u32, Vec<u32>>> {
         .then_some(found)
 }
 
+// --------------------------------------------------------------- music game
+
+/// One song of the music game (`_MusicGameBookAllDataNotify`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct MusicSong {
+    /// Best score; 0 when never played.
+    pub score: u32,
+    pub claimed: bool,
+}
+
+/// Recover the music game's songs, by beatmap id, from a
+/// `_MusicGameBookAllDataNotify` payload, or `None` if it is not one: a
+/// repeated field of at least 20 varint-only songs (a unique beatmap id,
+/// 1-99,999, on every one; a best score past 100 on some; a claimed flag of 1
+/// on some) beside a settings submessage and number lists.
+pub fn matches_music_game_notify(data: &[u8]) -> Option<BTreeMap<u32, MusicSong>> {
+    let msg = parse(data)?;
+    let mut songs = None;
+    let mut settings = false;
+    for values in fields_by_tag(&msg).values() {
+        match values.first()? {
+            Varint(_) => {}
+            Fixed32(_) | Fixed64(_) => return None,
+            LengthDelimited(_) if values.len() >= 20 => {
+                let list = entries(values)?;
+                if list.iter().any(|e| {
+                    !e.lists.is_empty() || !e.other.is_empty() || e.fixed || e.varints.len() > 3
+                }) {
+                    return None;
+                }
+                let id_tag = only_tag(&list, &[], |v| {
+                    all_distinct(v) && v.iter().all(|id| (1..=99_999).contains(id))
+                })?;
+                let tags: BTreeSet<u32> = list
+                    .iter()
+                    .flat_map(|e| e.varints.keys().copied())
+                    .filter(|t| *t != id_tag)
+                    .collect();
+                if tags.len() > 2 {
+                    return None;
+                }
+                let values_of =
+                    |t: u32| list.iter().filter_map(move |e| e.varints.get(&t).copied());
+                let score_tag = tags
+                    .iter()
+                    .copied()
+                    .find(|t| values_of(*t).all(|v| (100..=10_000_000).contains(&v)));
+                let flag_tag = tags
+                    .iter()
+                    .copied()
+                    .find(|t| Some(*t) != score_tag && values_of(*t).all(|v| v == 1));
+                if tags.len() != usize::from(score_tag.is_some()) + usize::from(flag_tag.is_some())
+                {
+                    return None;
+                }
+                let found: BTreeMap<u32, MusicSong> = list
+                    .iter()
+                    .map(|e| {
+                        (
+                            e.varints[&id_tag] as u32,
+                            MusicSong {
+                                score: score_tag
+                                    .and_then(|t| e.varints.get(&t))
+                                    .map_or(0, |v| *v as u32),
+                                claimed: flag_tag.is_some_and(|t| e.varints.contains_key(&t)),
+                            },
+                        )
+                    })
+                    .collect();
+                if songs.replace(found).is_some() {
+                    return None;
+                }
+            }
+            LengthDelimited(_) => {
+                if let [LengthDelimited(bytes)] = values.as_slice()
+                    && entry(bytes).is_some_and(|e| e.varints.len() >= 3)
+                {
+                    settings = true;
+                }
+            }
+        }
+    }
+    songs.filter(|_| settings)
+}
+
+// ---------------------------------------------------------------- miliastra
+
+/// Miliastra Wonderland cosmetic ids: six digits (7.1: 260 087-550 912).
+const BEYOND_COSMETIC_IDS: RangeInclusive<u64> = 200_000..=999_999;
+
+/// Recover the Miliastra Wonderland cosmetics owned, by id with when each was
+/// obtained (0 when the game sent no time), from a `_BeyondCosmeticDataNotify`
+/// payload, or `None` if it is not one: at least two repeated fields of
+/// entries, each one cosmetic id (unique, `BEYOND_COSMETIC_IDS`) and maybe a
+/// time and a small flag, beside number lists (emotes, poses).
+pub fn matches_beyond_cosmetic_notify(data: &[u8]) -> Option<BTreeMap<u32, u32>> {
+    let msg = parse(data)?;
+    let mut out = BTreeMap::new();
+    let mut kinds = 0;
+    for values in fields_by_tag(&msg).values() {
+        if values.len() < 2 {
+            continue;
+        }
+        let LengthDelimited(_) = values.first()? else {
+            continue;
+        };
+        let Some(list) = entries(values) else {
+            continue;
+        };
+        let mut found = BTreeMap::new();
+        let ok = list.iter().all(|e| {
+            if e.fixed || !e.lists.is_empty() || !e.other.is_empty() || e.varints.len() > 3 {
+                return false;
+            }
+            let ids: Vec<u64> = e
+                .varints
+                .values()
+                .copied()
+                .filter(|v| BEYOND_COSMETIC_IDS.contains(v))
+                .collect();
+            let [id] = ids.as_slice() else {
+                return false;
+            };
+            let time = e
+                .varints
+                .values()
+                .copied()
+                .find(|v| EXPIRY.contains(v))
+                .unwrap_or(0);
+            if e.varints.values().any(|v| v != id && *v != time && *v > 10) {
+                return false;
+            }
+            found.insert(*id as u32, time as u32).is_none()
+        });
+        if !ok {
+            return None;
+        }
+        kinds += 1;
+        out.extend(found);
+    }
+    (kinds >= 2).then_some(out)
+}
+
+// ------------------------------------------------------------------ sign-in
+
+/// One login event's calendar (`SignInInfo`).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SignIn {
+    /// Days signed in.
+    pub days: u32,
+    /// Days whose reward was taken.
+    pub claimed: Vec<u32>,
+    pub last_at: u32,
+    pub start: u32,
+    pub end: u32,
+}
+
+/// Recover the login events, by config id, from a `SignInInfoRsp` payload, or
+/// `None` if it is not one: a repeated field of calendars, each with a config
+/// id (4-6 digits), three times (the last sign-in, when it opened, when it
+/// closes), the days signed in (1-31) and the list of days claimed (each no
+/// later than the days signed in), beside the calendar's days (submessages).
+pub fn matches_sign_in_rsp(data: &[u8]) -> Option<BTreeMap<u32, SignIn>> {
+    let msg = parse(data)?;
+    for values in fields_by_tag(&msg).values() {
+        let Some(list) = entries(values) else {
+            continue;
+        };
+        let mut out = BTreeMap::new();
+        let ok = !list.is_empty()
+            && list.iter().all(|e| {
+                let mut times: Vec<u64> = e
+                    .varints
+                    .values()
+                    .copied()
+                    .filter(|v| EXPIRY.contains(v))
+                    .collect();
+                if times.len() != 3 || e.other.is_empty() {
+                    return false;
+                }
+                times.sort_unstable();
+                let Some(id) = e
+                    .varints
+                    .values()
+                    .copied()
+                    .find(|v| (1_000..=999_999).contains(v))
+                else {
+                    return false;
+                };
+                let claimed: Vec<&Vec<u64>> = e
+                    .lists
+                    .values()
+                    .filter(|l| l.iter().all(|d| (1..=31).contains(d)))
+                    .collect();
+                let [claimed] = claimed.as_slice() else {
+                    return false;
+                };
+                let max = claimed.iter().copied().max().unwrap_or(0);
+                let Some(days) = e
+                    .varints
+                    .values()
+                    .copied()
+                    .find(|v| (1..=31).contains(v) && *v >= max)
+                else {
+                    return false;
+                };
+                // The last sign-in falls inside the event; it opened before it closes.
+                let (last, start, end) = if times[0] < times[1] && times[1] <= times[2] {
+                    // Opened, last, closes.
+                    (times[1], times[0], times[2])
+                } else {
+                    return false;
+                };
+                out.insert(
+                    id as u32,
+                    SignIn {
+                        days: days as u32,
+                        claimed: claimed.iter().map(|d| *d as u32).collect(),
+                        last_at: last as u32,
+                        start: start as u32,
+                        end: end as u32,
+                    },
+                )
+                .is_none()
+            });
+        if ok {
+            return Some(out);
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2175,5 +2407,78 @@ mod tests {
             ),
             None
         );
+    }
+
+    #[test]
+    fn songs_cosmetics_and_sign_ins_are_read() {
+        let song = |id: u64, score: u64, claimed: bool| {
+            let mut e = v(4, id);
+            if score > 0 {
+                e.extend(v(9, score));
+            }
+            if claimed {
+                e.extend(v(2, 1));
+            }
+            b(3, &e)
+        };
+        let mut music = [
+            v(1, 23),
+            list(2, &[1, 2, 3]),
+            b(5, &[v(1, 1), v(2, 4), v(3, 100)].concat()),
+        ]
+        .concat();
+        for id in 33..60 {
+            music.extend(song(id, if id % 2 == 0 { 25_175 } else { 0 }, id % 3 == 0));
+        }
+        let songs = matches_music_game_notify(&music).unwrap();
+        assert_eq!(
+            songs[&34],
+            MusicSong {
+                score: 25_175,
+                claimed: false
+            }
+        );
+        assert_eq!(
+            songs[&33],
+            MusicSong {
+                score: 0,
+                claimed: true
+            }
+        );
+
+        let cosmetic = |tag: u32, id: u64, time: u64| b(tag, &[v(1, id), v(3, time)].concat());
+        let beyond = [
+            cosmetic(5, 260_087, 1_790_000_000),
+            cosmetic(5, 550_912, 0),
+            cosmetic(6, 270_002, 1_790_000_100),
+            cosmetic(6, 275_250, 1_790_000_200),
+            list(8, &[1001, 3022]),
+        ]
+        .concat();
+        let owned = matches_beyond_cosmetic_notify(&beyond).unwrap();
+        assert_eq!(owned.len(), 4);
+        assert_eq!(owned[&270_002], 1_790_000_100);
+
+        let calendar = b(
+            1,
+            &[
+                v(3, 10_019),
+                v(4, 1_791_087_107),
+                v(5, 4),
+                list(6, &[1, 2, 3, 4]),
+                v(7, 316),
+                v(8, 1_790_020_800),
+                v(9, 1_792_353_599),
+                b(
+                    10,
+                    &[v(1, 1), b(2, &[v(1, 202), v(2, 80_000)].concat())].concat(),
+                ),
+            ]
+            .concat(),
+        );
+        let sign_ins = matches_sign_in_rsp(&calendar).unwrap();
+        assert_eq!(sign_ins[&10_019].days, 4);
+        assert_eq!(sign_ins[&10_019].claimed, vec![1, 2, 3, 4]);
+        assert_eq!(sign_ins[&10_019].end, 1_792_353_599);
     }
 }

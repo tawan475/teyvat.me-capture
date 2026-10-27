@@ -610,23 +610,6 @@ pub fn callout(ui: &mut Ui, kind: CalloutKind, text: &str) -> Response {
         .response
 }
 
-/// A 26 px chip.
-pub fn chip(ui: &mut Ui, icon: ImageSource<'static>, text: &str) -> Response {
-    let pal = p(ui);
-    Frame::new()
-        .stroke(Stroke::new(1.0_f32, pal.line2))
-        .corner_radius(CornerRadius::same(6))
-        .inner_margin(Margin::symmetric(8, 4))
-        .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 5.0;
-                ui.add(icons::image(icon, 14.0, pal.tx2));
-                ui.label(small_text(text, pal.tx2).family(weight::medium()));
-            });
-        })
-        .response
-}
-
 /// Choices on an `over` ground; the selected one on `card`.
 pub fn segmented<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(T, &str)]) -> bool {
     let pal = p(ui);

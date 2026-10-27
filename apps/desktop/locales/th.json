@@ -286,7 +286,6 @@
   "Teyvat.me {0} is out · install it by hand on this platform: {1}": "Teyvat.me {0} ออกแล้ว · บนแพลตฟอร์มนี้ต้องติดตั้งเอง: {1}",
   "Thanks and licences": "ขอบคุณและสัญญาอนุญาต",
   "The browser answered for another sign-in; try again": "เบราว์เซอร์ตอบกลับการเข้าสู่ระบบอื่น ลองอีกครั้ง",
-  "The login is the only moment the session key can be read": "อ่านคีย์เซสชันได้เฉพาะตอนล็อกอินเท่านั้น",
   "The status stays red until a session Teyvat.me watched starts": "สถานะจะเป็นสีแดงจนกว่าจะเริ่มเซสชันที่ Teyvat.me เห็นตั้งแต่ต้น",
   "The tracker address changed": "ที่อยู่ Tracker เปลี่ยนไป",
   "The tracker address changed during the sign-in": "ที่อยู่ Tracker เปลี่ยนระหว่างการเข้าสู่ระบบ",

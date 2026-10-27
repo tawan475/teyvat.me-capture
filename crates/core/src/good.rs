@@ -143,6 +143,9 @@ pub struct Good {
     /// The Serenitea Pot (its Trust Rank follows from `gi_tasks.realm.limit`).
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub gi_teapot: Option<GiTeapot>,
+    /// Miliastra Wonderland.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub gi_miliastra: Option<GiMiliastra>,
     /// Exploration: the Statues of The Seven, offerings, map points,
     /// exploration progress and reputation, as the game last sent each part.
     #[serde(skip_serializing_if = "Option::is_none", default)]
@@ -193,6 +196,19 @@ pub struct GiCollections {
     /// Recipes unlocked at the crafting bench, the blacksmith and processing.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub crafting: Option<GiCrafting>,
+    /// The music game's songs by beatmap id.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub music_game: Option<BTreeMap<u32, GiSong>>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiSong {
+    /// Best score; absent when never played.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub score: Option<u32>,
+    /// Its reward taken.
+    pub claimed: bool,
 }
 
 /// `gi_collections.crafting`: recipe ids unlocked, ascending, by bench.
@@ -305,6 +321,16 @@ pub struct GiTcgDeck {
     pub characters: Vec<u32>,
     pub cards: Vec<u32>,
     pub valid: bool,
+}
+
+/// `gi_miliastra`: Miliastra Wonderland. Append fields only.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiMiliastra {
+    /// Cosmetics owned (outfits, effects...) by id: when each was obtained,
+    /// 0 when the game sent no time.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub cosmetics: Option<BTreeMap<u32, u32>>,
 }
 
 /// `gi_teapot`: the Serenitea Pot. Append fields only.
@@ -619,11 +645,27 @@ pub struct GiTasks {
     /// Adventure Ranks whose reward was claimed (2-60, ascending).
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub ar_rewards: Option<Vec<u32>>,
+    /// Login events' calendars by config id.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub sign_ins: Option<BTreeMap<u32, GiSignIn>>,
     /// When each boss and elite of the Adventurer Handbook respawns, by its
     /// Handbook id (`InvestigationMonsterConfigData`): one time per spot, unix
     /// seconds, ascending; a time already past means it is up.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub respawns: Option<BTreeMap<u32, Vec<u32>>>,
+}
+
+/// `gi_tasks.signIns`: one login event's calendar.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiSignIn {
+    /// Days signed in.
+    pub days: u32,
+    /// Days whose reward was taken.
+    pub claimed: Vec<u32>,
+    pub last_at: u32,
+    pub start: u32,
+    pub end: u32,
 }
 
 /// `gi_tasks.weeklyBosses`.
@@ -649,6 +691,7 @@ impl GiTasks {
             && self.resin.is_none()
             && self.weekly_bosses.is_none()
             && self.ar_rewards.is_none()
+            && self.sign_ins.is_none()
             && self.respawns.is_none()
     }
 }
@@ -1009,6 +1052,7 @@ mod tests {
                 }),
                 weekly_bosses: None,
                 ar_rewards: None,
+                sign_ins: None,
                 respawns: None,
             }),
             gi_collections: Some(GiCollections {
@@ -1018,6 +1062,9 @@ mod tests {
             gi_wardrobe: Some(GiWardrobe {
                 current_team: Some(1),
                 ..Default::default()
+            }),
+            gi_miliastra: Some(GiMiliastra {
+                cosmetics: Some(BTreeMap::from([(260_087, 1_790_000_000)])),
             }),
             gi_teapot: Some(GiTeapot {
                 comfort: Some(BTreeMap::from([(
@@ -1096,6 +1143,7 @@ mod tests {
                 "gi_collections",
                 "gi_events",
                 "gi_exploration",
+                "gi_miliastra",
                 "gi_player",
                 "gi_tasks",
                 "gi_teapot",
@@ -1310,6 +1358,7 @@ mod tests {
             gi_achievement_progress: None,
             gi_events: None,
             gi_teapot: None,
+            gi_miliastra: None,
             gi_exploration: None,
         };
 

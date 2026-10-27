@@ -286,7 +286,6 @@
   "Teyvat.me {0} is out · install it by hand on this platform: {1}": "Teyvat.me {0} が公開されました · このプラットフォームでは手動でインストールしてください：{1}",
   "Thanks and licences": "謝辞とライセンス",
   "The browser answered for another sign-in; try again": "ブラウザが別のログインに応答しました。もう一度お試しください",
-  "The login is the only moment the session key can be read": "セッションキーを読み取れるのはログインの瞬間だけです",
   "The status stays red until a session Teyvat.me watched starts": "Teyvat.me が最初から見ているセッションが始まるまで、状態は赤のままです",
   "The tracker address changed": "トラッカーのアドレスが変更されました",
   "The tracker address changed during the sign-in": "ログイン中にトラッカーのアドレスが変更されました",

@@ -286,7 +286,6 @@
   "Teyvat.me {0} is out · install it by hand on this platform: {1}": "Вышел Teyvat.me {0} · на этой платформе установите его вручную: {1}",
   "Thanks and licences": "Благодарности и лицензии",
   "The browser answered for another sign-in; try again": "Браузер ответил для другого входа; повторите",
-  "The login is the only moment the session key can be read": "Ключ сессии можно прочитать только в момент входа",
   "The status stays red until a session Teyvat.me watched starts": "Статус остаётся красным, пока не начнётся сессия, которую видел Teyvat.me",
   "The tracker address changed": "Адрес трекера изменился",
   "The tracker address changed during the sign-in": "Адрес трекера изменился во время входа",

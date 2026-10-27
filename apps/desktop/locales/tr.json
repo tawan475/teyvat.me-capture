@@ -286,7 +286,6 @@
   "Teyvat.me {0} is out · install it by hand on this platform: {1}": "Teyvat.me {0} çıktı · bu platformda elle yükle: {1}",
   "Thanks and licences": "Teşekkürler ve lisanslar",
   "The browser answered for another sign-in; try again": "Tarayıcı başka bir giriş için yanıt verdi; tekrar dene",
-  "The login is the only moment the session key can be read": "Oturum anahtarı yalnızca giriş anında okunabilir",
   "The status stays red until a session Teyvat.me watched starts": "Teyvat.me'nin izlediği bir oturum başlayana kadar durum kırmızı kalır",
   "The tracker address changed": "Tracker adresi değişti",
   "The tracker address changed during the sign-in": "Giriş sırasında tracker adresi değişti",

@@ -61,6 +61,16 @@ EXCEL = [
     "CombineExcelConfigData",
     "ForgeExcelConfigData",
     "CompoundExcelConfigData",
+    # More lone id lists: the Battle Pass schedule among 4-digit numbers and its missions, furnishing sets,
+    # companion reward events, domain first-clear rewards, NPCs met (NpcFirstMet ids 2-1,052) and the Natlan
+    # tribal chapters (1-18).
+    "BattlePassScheduleExcelConfigData",
+    "BattlePassMissionExcelConfigData",
+    "FurnitureSuiteExcelConfigData",
+    "HomeWorldEventExcelConfigData",
+    "DungeonEntryExcelConfigData",
+    "NpcFirstMetExcelConfigData",
+    "TribalQuestChapterExcelConfigData",
 ]
 TEXT_MAP = "TextMap/TextMap_MediumEN.json"
 WORLD_AREAS = "ExcelBinOutput/WorldAreaConfigData.json"

@@ -286,7 +286,6 @@
   "Teyvat.me {0} is out · install it by hand on this platform: {1}": "Teyvat.me {0} 已发布 · 此平台需手动安装：{1}",
   "Thanks and licences": "致谢与许可",
   "The browser answered for another sign-in; try again": "浏览器返回的是另一次登录；请重试",
-  "The login is the only moment the session key can be read": "只有在登录时才能读取会话密钥",
   "The status stays red until a session Teyvat.me watched starts": "状态会保持红色，直到 Teyvat.me 从头看到的游戏会话开始",
   "The tracker address changed": "追踪器地址已更改",
   "The tracker address changed during the sign-in": "登录期间追踪器地址已更改",

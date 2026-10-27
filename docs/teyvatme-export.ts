@@ -99,10 +99,15 @@ export interface TeyvatmeExport {
       progress?: Record<IdKey, { progress: number; total: number; claimed: boolean }>
     }
   >
-  /** [next] The Serenitea Pot. Its Trust Rank follows from `gi_tasks.realm.limit` (HomeWorldLevel). */
+  /** [shipped] The Serenitea Pot. Its Trust Rank follows from `gi_tasks.realm.limit` (HomeWorldLevel). */
   gi_teapot?: {
     /** Comfort by realm (HomeWorldModule id): the mansion's and each outdoor block's. */
     comfort?: Record<IdKey, { mansion: number; blocks: number[] }>
+  }
+  /** [next] Miliastra Wonderland. */
+  gi_miliastra?: {
+    /** Cosmetics owned by id (outfits, effects...): when obtained, 0 when the game sent no time. */
+    cosmetics?: Record<IdKey, UnixSeconds | 0>
   }
 }
 
@@ -239,6 +244,8 @@ export interface GiTasks {
    * (InvestigationMonsterConfigData): one time per spot, ascending; a time already past = up now.
    */
   respawns?: Record<IdKey, UnixSeconds[]>
+  /** [next] Login events' calendars by config id: days signed in, days claimed, last sign-in, open/close. */
+  signIns?: Record<IdKey, { days: number; claimed: number[]; lastAt: UnixSeconds; start: UnixSeconds; end: UnixSeconds }>
 }
 
 // ── gi_collections ─────────────────────────────────────── [shipped] / [next]
@@ -279,11 +286,11 @@ export interface GiCollections {
     decks?: Record<IdKey, { name: string; characters: GameId[]; cards: GameId[]; valid: boolean }>
     /** The deck in use. */
     currentDeck?: GameId
-    /** [next] Challenge levels played (GCGLevelExcelConfigData) → the challenge ids finished in each. */
+    /** [shipped] Challenge levels played (GCGLevelExcelConfigData) → the challenge ids finished in each. */
     levels?: Record<IdKey, GameId[]>
-    /** [next] Boss challenges unlocked (GCGBossLevelExcelConfigData ids). */
+    /** [shipped] Boss challenges unlocked (GCGBossLevelExcelConfigData ids). */
     bosses?: GameId[]
-    /** [next] The Tavern: by character, the level ids unlocked with them. */
+    /** [shipped] The Tavern: by character, the level ids unlocked with them. */
     tavern?: Record<IdKey, GameId[]>
   }
   /** [shipped] Every recipe unlocked → its proficiency (0 when none yet; the most is in the game data). */
@@ -305,8 +312,10 @@ export interface GiCollections {
   monstersSeen?: GameId[]
   /** [shipped] Furnishing blueprints learned: the furnishings' item ids, ascending. */
   blueprints?: GameId[]
-  /** [next] Recipes unlocked, ascending: at the crafting bench (Combine), the blacksmith (Forge), processing (Compound). */
+  /** [shipped] Recipes unlocked, ascending: at the crafting bench (Combine), the blacksmith (Forge), processing (Compound). */
   crafting?: { crafting?: GameId[]; forging?: GameId[]; processing?: GameId[] }
+  /** [next] The music game's songs by beatmap id: best score (absent if never played) and reward taken. */
+  musicGame?: Record<IdKey, { score?: number; claimed: boolean }>
 }
 interface Progress {
   progress: number

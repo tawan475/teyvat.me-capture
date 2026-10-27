@@ -1,8 +1,8 @@
 {
-  "id": "9db06f3324ef052fac20e75bb0f8b7ea389d2a0a",
+  "id": "29d73a484c855c09523c6249b919f374624e3bb6",
   "client": "ClientWin7.1.0_R48652077_S48511369_D48533839",
   "gameVersion": "7.1.0",
-  "release": "client-7.1.0-9db06f33",
+  "release": "client-7.1.0-29d73a48",
   "files": {
     "BinOutput/Scene/Point/scene100_point.json": "7729f92e3deba4a150557257761299cd744de2db5d14a52405a57b9dd7adce16",
     "BinOutput/Scene/Point/scene101_point.json": "5e608bbd7df57e3b4d46f43d5fe508dd14ce401e061e386ab228523e3dbea970",
@@ -21,22 +21,29 @@
     "ExcelBinOutput/AvatarExcelConfigData.json": "a0ac92f1abb48e2ef6552cae2fefad95d51973dec9632f15dc51d85594efcfaf",
     "ExcelBinOutput/AvatarSkillDepotExcelConfigData.json": "bdaf9a832ebfee3fa85f60ee8c09a0af77f1b257018d5f802324a9700eb731c2",
     "ExcelBinOutput/AvatarSkillExcelConfigData.json": "707a22c9c087db478e4ca45a42ac1d3b7a3943f2055ee253b24e7c0445b3bfa1",
+    "ExcelBinOutput/BattlePassMissionExcelConfigData.json": "11a47690a8d716ac0d621d89506bdfd161b2bb75db8e6775d991dd84b6656ed2",
+    "ExcelBinOutput/BattlePassScheduleExcelConfigData.json": "661f0d50d26894ff6759f87b84212b89ee3437ea1e85a16c6df019e6c9df7d54",
     "ExcelBinOutput/CityConfigData.json": "dcc871514e681e724efe1f5521f5ee82072b70576f8aed0d1db5ca3f51aaceab",
     "ExcelBinOutput/CombineExcelConfigData.json": "b5a1c096e97374528f4053153e24bf560c84256d915bcaa58a7be57969ecdcbc",
     "ExcelBinOutput/CompoundExcelConfigData.json": "02e4c529f1367310969f5035007d6da43ae713e8985be4a16898a35dee7200f5",
     "ExcelBinOutput/ConstValueExcelConfigData.json": "a96d4a071654e0d2bfd07c5e13ab29a8b3660e7eb16f31aee629386b15cf92f4",
     "ExcelBinOutput/CookRecipeExcelConfigData.json": "0647a64ead5447f873dcd42ccd452033d4e966e1e885d36c671760deb47c1377",
+    "ExcelBinOutput/DungeonEntryExcelConfigData.json": "5d29805a4a3f38c03df00cae4fac5e48075084d200657ec70159f603827e338d",
     "ExcelBinOutput/EquipAffixExcelConfigData.json": "b3b9bbf8311fe88017aabdc94a83a03f1d453936e73793aa4920531145ab7558",
     "ExcelBinOutput/ForgeExcelConfigData.json": "4d73c9a646a43e508958a2f1bb4d068d89b51de0ebdbc6d689c955e743a5f449",
+    "ExcelBinOutput/FurnitureSuiteExcelConfigData.json": "dab89ce3ac63d861164bbc9981069b9510ad580feaf09da83bf9c16677dc8dfb",
+    "ExcelBinOutput/HomeWorldEventExcelConfigData.json": "4f4e79448f4193930269bded397672a54915c6ec1415f4d042269c1a4200879e",
     "ExcelBinOutput/MaterialExcelConfigData.json": "56571224e4dee8431fa7a015f2ad4415515b7d81cac4e2b0d94d82f510aaf152",
+    "ExcelBinOutput/NpcFirstMetExcelConfigData.json": "73dd38ce081e0a9d7ef139a8d761e3ec9449eccaafedf89004a599b72ed23420",
     "ExcelBinOutput/OfferingOpenStateConfigData.json": "34c0880e55500f875a60b70ab9ceb86a29e46afd6c7a76cf3505f68183c69016",
     "ExcelBinOutput/ReliquaryAffixExcelConfigData.json": "abbfcbf9b8825116378d1e04926379a4eda2ce735652b1557ca36377e3c22bfe",
     "ExcelBinOutput/ReliquaryExcelConfigData.json": "08a61151061b56c07e3ffc092f52cfbba2410cb1f80119a80f32e7ab64196948",
     "ExcelBinOutput/ReliquaryMainPropExcelConfigData.json": "2484e01f9427a38902f36a0d7eb7b4498885e466557bcb60700152f2b133980c",
     "ExcelBinOutput/ReliquarySetExcelConfigData.json": "adedcb919cc1bdacfa04bb3ba3ac058ce82db121f82f5bceabf371457c3ed341",
     "ExcelBinOutput/ReputationCityExcelConfigData.json": "fd214aa13d2da508cb7a9051fc47551b3e8a209b1d9adb08d260a22ddaae230b",
+    "ExcelBinOutput/TribalQuestChapterExcelConfigData.json": "4b1e25698dff95d8c8cf7786e2e18e8a8737a87b7607bca9d490889873741d85",
     "ExcelBinOutput/WeaponExcelConfigData.json": "dfaee6f6eb5ca9b389e66173c52ff71404de1600d32553af8d622fc7ef3d9841",
     "ExcelBinOutput/WorldAreaConfigData.json": "b652de7c6878772b159aff6ada63c64c343ee76eba923f6ae73a5eb9b1760f4d",
-    "TextMap/TextMap_MediumEN.json": "f7397631d73020968ec1a0e71f6c48c4cbb8b08b64f27954ec66964ddfb033e3"
+    "TextMap/TextMap_MediumEN.json": "576ffa55f20a94c69deb66f7da2801df9081004b388b82835452f4d58bc0d953"
   }
 }
