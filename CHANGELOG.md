@@ -10,6 +10,9 @@ Each release's section is its GitHub release notes (`.github/workflows/release.y
   (or it starts the next time you open Teyvat.me). No more full-screen update
   prompt at start: the app checks in the background at start and every few
   hours, and a banner on the home screen says when there's one.
+- Android: the Quick Settings tile lights up while capture runs (and says
+  "Starting capture" while it starts); it used to stay grey until the panel
+  was closed and opened again.
 
 ## 1.9.0
 

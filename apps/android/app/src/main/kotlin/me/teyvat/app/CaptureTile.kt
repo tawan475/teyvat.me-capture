@@ -14,6 +14,11 @@ import android.os.Build
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 import android.util.Log
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 
 /**
  * The Quick Settings tile: off, a tap starts capture in the background; on,
@@ -25,9 +30,21 @@ import android.util.Log
  * start, the app's own Start capture runs instead.
  */
 class CaptureTile : TileService() {
+    /** Follows capture while the panel shows the tile, so a tap lights it at once. */
+    private var listening: CoroutineScope? = null
+
     override fun onStartListening() {
         super.onStartListening()
-        refresh()
+        listening?.cancel()
+        listening = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate).also { scope ->
+            scope.launch { (application as TeyvatApp).capture.vpn.collect { refresh(it) } }
+        }
+    }
+
+    override fun onStopListening() {
+        listening?.cancel()
+        listening = null
+        super.onStopListening()
     }
 
     override fun onClick() {
@@ -69,13 +86,19 @@ class CaptureTile : TileService() {
         }
     }
 
-    private fun refresh() {
+    /** Lit while capture runs or starts; the line says what a tap does. */
+    private fun refresh(vpn: VpnState) {
         val tile = qsTile ?: return
-        val on = (application as TeyvatApp).capture.vpn.value != VpnState.Off
-        tile.state = if (on) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
+        tile.state = if (vpn == VpnState.Off) Tile.STATE_INACTIVE else Tile.STATE_ACTIVE
         tile.icon = Icon.createWithResource(this, R.drawable.ic_capture)
         tile.label = getString(R.string.launcher_name)
-        tile.subtitle = getString(if (on) R.string.stop_capture else R.string.home_start_capture)
+        tile.subtitle = getString(
+            when (vpn) {
+                VpnState.Off -> R.string.home_start_capture
+                VpnState.Starting -> R.string.home_starting_title
+                VpnState.On -> R.string.stop_capture
+            },
+        )
         tile.updateTile()
     }
 
