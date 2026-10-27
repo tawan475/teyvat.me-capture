@@ -71,6 +71,12 @@ EXCEL = [
     "DungeonEntryExcelConfigData",
     "NpcFirstMetExcelConfigData",
     "TribalQuestChapterExcelConfigData",
+    # The world watchers (100,000,000-), Adventure Rank levels, music game beatmaps and Flower-Feather Clan
+    # tasks (101-): the id domains of their lists.
+    "WorldWatcherConfigData",
+    "PlayerLevelExcelConfigData",
+    "MusicGameBookBeatmapExcelConfigData",
+    "FlowerLandReputationTaskExcelConfigData",
 ]
 TEXT_MAP = "TextMap/TextMap_MediumEN.json"
 WORLD_AREAS = "ExcelBinOutput/WorldAreaConfigData.json"
