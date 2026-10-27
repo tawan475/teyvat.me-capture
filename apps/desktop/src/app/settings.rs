@@ -135,7 +135,8 @@ impl TeyvatmeApp {
                     for (option, label) in pages() {
                         let selected = page == option
                             || (option == Page::Destinations && page == Page::Teyvatme);
-                        let badge = option == Page::About && self.update_put_off.is_some();
+                        let badge = option == Page::About
+                            && self.update_status.borrow().pending().is_some();
                         if nav_item(ui, page_icon(option), label, selected, badge).clicked() {
                             chosen = option;
                         }
@@ -906,6 +907,140 @@ impl TeyvatmeApp {
         });
     }
 
+    /// Close and start the installed update (`main` relaunches the
+    /// executable once the window is gone and the single-instance lock free).
+    pub(super) fn restart_to_update(&mut self, ui: &Ui) {
+        self.restart_requested
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+    }
+
+    /// Settings › About's updates: the version running, "Check for updates",
+    /// and what was found -- installed in the background while capture goes
+    /// on, then one restart (or the next start) to use it.
+    fn updates_card(&mut self, ui: &mut Ui) {
+        use crate::update::{UpdateCommand, UpdateStatus};
+        let pal = widgets::p(ui);
+        let status = self.update_status.borrow().clone();
+        let highlight = matches!(status, UpdateStatus::Available(_) | UpdateStatus::Ready(_));
+        let (fill, ink, ink2) = if highlight {
+            (pal.ac_con, pal.ac_on, pal.ac_on)
+        } else {
+            (pal.card, pal.tx, pal.tx2)
+        };
+        let line = match &status {
+            UpdateStatus::Idle => trf("You have {0}", &[&env!("CARGO_PKG_VERSION")]),
+            UpdateStatus::Checking => tr("Checking for updates").to_string(),
+            UpdateStatus::UpToDate => {
+                trf("{0} · the newest version", &[&env!("CARGO_PKG_VERSION")])
+            }
+            UpdateStatus::Available(v) => trf(
+                "{0} is out · you have {1}",
+                &[v, &env!("CARGO_PKG_VERSION")],
+            ),
+            UpdateStatus::Manual(v) => trf("{0} is out · download it on this platform", &[v]),
+            UpdateStatus::Installing(v) => trf("Installing {0} · capture keeps running", &[v]),
+            UpdateStatus::Ready(v) => trf(
+                "{0} installed · restart to use it, or it starts next time",
+                &[v],
+            ),
+            UpdateStatus::Failed(e) => trf("Couldn't update: {0}", &[e]),
+        };
+        let mut command = None;
+        let mut restart = false;
+        let mut open_releases = false;
+        egui::Frame::new()
+            .fill(fill)
+            .stroke(if highlight {
+                egui::Stroke::NONE
+            } else {
+                egui::Stroke::new(1.0_f32, pal.line)
+            })
+            .corner_radius(egui::CornerRadius::same(12))
+            .inner_margin(egui::Margin::symmetric(16, 12))
+            .show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                list_row(
+                    ui,
+                    Some((icons::download(), ink)),
+                    strong_text(tr("Updates"), ink),
+                    Some(secondary_text(line, ink2)),
+                    |ui| match &status {
+                        UpdateStatus::Checking | UpdateStatus::Installing(_) => {
+                            ui.add(egui::Spinner::new().size(18.0).color(ink));
+                        }
+                        UpdateStatus::Available(_) => {
+                            if button(
+                                ui,
+                                ButtonKind::Fill,
+                                Some(icons::download()),
+                                tr("Update now"),
+                                false,
+                            )
+                            .on_hover_text(tr(
+                                "Downloads and installs it while capture keeps running",
+                            ))
+                            .clicked()
+                            {
+                                command = Some(UpdateCommand::Install);
+                            }
+                            if button(
+                                ui,
+                                ButtonKind::Ghost,
+                                Some(icons::external_link()),
+                                tr("Release notes"),
+                                false,
+                            )
+                            .clicked()
+                            {
+                                open_releases = true;
+                            }
+                        }
+                        UpdateStatus::Ready(_) => {
+                            restart = button(ui, ButtonKind::Fill, None, tr("Restart now"), false)
+                                .clicked();
+                        }
+                        UpdateStatus::Manual(_) => {
+                            open_releases = button(
+                                ui,
+                                ButtonKind::Fill,
+                                Some(icons::external_link()),
+                                tr("Download"),
+                                false,
+                            )
+                            .clicked();
+                        }
+                        UpdateStatus::Idle | UpdateStatus::UpToDate | UpdateStatus::Failed(_) => {
+                            if button(
+                                ui,
+                                ButtonKind::Secondary,
+                                None,
+                                tr("Check for updates"),
+                                false,
+                            )
+                            .clicked()
+                            {
+                                command = Some(UpdateCommand::Check { manual: true });
+                            }
+                        }
+                    },
+                );
+            });
+        if let Some(command) = command
+            && let Err(e) = self.update_tx.send(command)
+        {
+            tracing::error!("Unable to send update command: {e}");
+        }
+        if open_releases {
+            ui.ctx().open_url(egui::OpenUrl::new_tab(
+                "https://github.com/tawan475/teyvat.me-capture/releases",
+            ));
+        }
+        if restart {
+            self.restart_to_update(ui);
+        }
+    }
+
     fn about_page(&mut self, ui: &mut Ui) {
         let pal = widgets::p(ui);
         ui.horizontal(|ui| {
@@ -925,45 +1060,7 @@ impl TeyvatmeApp {
             });
         });
 
-        if let Some(version) = self.update_put_off.clone() {
-            egui::Frame::new()
-                .fill(pal.ac_con)
-                .corner_radius(egui::CornerRadius::same(12))
-                .inner_margin(egui::Margin::symmetric(16, 12))
-                .show(ui, |ui| {
-                    ui.set_width(ui.available_width());
-                    let mut install = false;
-                    list_row(
-                        ui,
-                        Some((icons::download(), pal.ac_on)),
-                        strong_text(tr("Update available"), pal.ac_on),
-                        Some(secondary_text(version, pal.ac_on)),
-                        |ui| {
-                            install = button(ui, ButtonKind::Fill, None, tr("Install"), false)
-                                .on_hover_text(tr("Restarts Teyvat.me, which then installs it"))
-                                .clicked();
-                            if button(
-                                ui,
-                                ButtonKind::Ghost,
-                                Some(icons::external_link()),
-                                tr("Release notes"),
-                                false,
-                            )
-                            .clicked()
-                            {
-                                ui.ctx().open_url(egui::OpenUrl::new_tab(
-                                    "https://github.com/tawan475/teyvat.me-capture/releases",
-                                ));
-                            }
-                        },
-                    );
-                    if install {
-                        self.restart_requested
-                            .store(true, std::sync::atomic::Ordering::SeqCst);
-                        ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
-                    }
-                });
-        }
+        self.updates_card(ui);
 
         card_frame(ui).show(ui, |ui| {
             ui.set_width(ui.available_width());

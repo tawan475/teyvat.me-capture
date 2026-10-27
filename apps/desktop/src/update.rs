@@ -17,20 +17,54 @@ use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
 
 use crate::i18n::trf;
-use crate::{AppState, State};
 
-/// The user's answer to the "update available" prompt.
+/// What Settings › About and the home banner show about updates.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub enum UpdateStatus {
+    /// Not checked yet.
+    #[default]
+    Idle,
+    Checking,
+    /// The newest release is the one running.
+    UpToDate,
+    /// A newer version that can be installed here.
+    Available(String),
+    /// A newer version this platform installs by hand (from the releases page).
+    Manual(String),
+    /// Downloading and installing it, while the app keeps running.
+    Installing(String),
+    /// Installed over the running copy: it runs from the next start, which
+    /// "Restart now" brings forward.
+    Ready(String),
+    /// The last check or install failed, and why.
+    Failed(String),
+}
+
+impl UpdateStatus {
+    /// The newer version waiting for the user, if any.
+    pub fn pending(&self) -> Option<&str> {
+        match self {
+            Self::Available(v) | Self::Ready(v) | Self::Installing(v) => Some(v),
+            _ => None,
+        }
+    }
+}
+
+/// What the UI asks of the updater.
 ///
 /// This travels on a channel of its own rather than on the shared
-/// [`crate::Message`] stream. The update check used to `recv()` straight from
-/// the UI channel, so every unrelated message that happened to arrive while the
-/// prompt was up — the one and only startup `StartCapture`, and the startup
-/// `VerifyTrackerKey` — was consumed here and thrown away, which meant packet
-/// capture silently never started for the whole session.
+/// [`crate::Message`] stream: the old startup check used to `recv()` straight
+/// from the UI channel, so every unrelated message that arrived meanwhile —
+/// the one and only startup `StartCapture` among them — was consumed and
+/// thrown away.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum UpdateAnswer {
-    Accepted,
-    Declined,
+pub enum UpdateCommand {
+    /// Look for a newer release. `manual`: the user pressed "Check for
+    /// updates" (a release this platform can't install is then shown, not
+    /// toasted once per release as the automatic checks do).
+    Check { manual: bool },
+    /// Download and install the release found.
+    Install,
 }
 
 /// Where a user is pointed when Teyvat.me can find an update but cannot install
@@ -405,7 +439,7 @@ fn check_is_native_executable(path: &Path) -> Result<()> {
 /// What came of an accepted update.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum InstallOutcome {
-    /// The running executable was replaced; the app should restart.
+    /// The running executable was replaced; the new one runs from the next start.
     Installed,
     /// Shutdown began before anything was written. The staging directory is
     /// cleaned up on the way out and the install is untouched.
@@ -571,96 +605,120 @@ fn should_report_manual_install(marker: Option<&Path>, version: &str) -> bool {
     true
 }
 
-pub async fn check_for_app_update(
-    state_tx: &watch::Sender<AppState>,
-    update_answer_rx: &mut mpsc::UnboundedReceiver<UpdateAnswer>,
-    cancel_token: &CancellationToken,
-    toast_tx: &crate::activity::Sender,
-    install_lock: &InstallLock,
-) -> Result<()> {
-    let mut app_state = state_tx.borrow().clone();
-    app_state.state = State::CheckingForUpdate;
-    let _ = state_tx.send(app_state.clone());
+/// How often the running app looks for a release again.
+const CHECK_EVERY: std::time::Duration = std::time::Duration::from_secs(6 * 60 * 60);
 
-    let Some(release) = check_for_new_version()? else {
-        // No new version.
-        return Ok(());
-    };
-
-    // Do not put up a prompt for an update that cannot be installed. This used
-    // to be discovered only *after* the user accepted, at which point the
-    // download either failed late or — on Linux and macOS — bricked the
-    // install.
-    if let Err(e) = asset_for_current_platform(&release).and_then(|asset| install_plan_for(&asset))
-    {
-        tracing::warn!(
-            "Teyvat.me {} is available but cannot be installed in place: {e}",
-            release.version
-        );
-        // Say so rather than silently skipping the update: on the platforms
-        // this hits, downloading by hand is the only way to get it -- but say
-        // it once per release, not on every launch for the rest of its life.
-        if should_report_manual_install(manual_notice_marker().as_deref(), &release.version) {
-            #[rustfmt::skip]
-            let text = trf("Teyvat.me {0} is out · install it by hand on this platform: {1}", &[&release.version, &RELEASES_URL]);
-            let _ = toast_tx.send(crate::activity::Event::info(
-                crate::activity::Topic::App,
-                text,
-            ));
+/// The updater: checks at start and every [`CHECK_EVERY`], or when asked, and
+/// installs when asked — while the app keeps running. Installing replaces the
+/// executable on disk (`self_replace` moves the running one aside), so the
+/// new version runs from the next start; nothing restarts on its own.
+pub async fn run_updater(
+    status_tx: watch::Sender<UpdateStatus>,
+    mut commands: mpsc::UnboundedReceiver<UpdateCommand>,
+    cancel_token: CancellationToken,
+    toast_tx: crate::activity::Sender,
+    install_lock: std::sync::Arc<InstallLock>,
+) {
+    let mut found: Option<Release> = None;
+    let mut timer = tokio::time::interval(CHECK_EVERY);
+    // The first tick fires at once: the check at start.
+    loop {
+        let command = tokio::select! {
+            _ = cancel_token.cancelled() => return,
+            _ = timer.tick() => UpdateCommand::Check { manual: false },
+            command = commands.recv() => match command {
+                Some(command) => command,
+                None => return,
+            },
+        };
+        let status = status_tx.borrow().clone();
+        // An install under way or done is not undone by a later check.
+        if matches!(status, UpdateStatus::Installing(_) | UpdateStatus::Ready(_)) {
+            continue;
         }
-        return Ok(());
-    }
-
-    // Notify user of update and ask for acknowledgement.
-    app_state.state = State::WaitingForUpdateConfirmation(release.version.clone());
-    let _ = state_tx.send(app_state.clone());
-
-    // Wait for acknowledgment. Every arm here has to be able to give up:
-    // without the cancel arm, closing the window at the prompt left this task
-    // parked forever while `TeyvatmeApp::drop` joined on it, and the process
-    // sat at 0% CPU holding the single-instance mutex.
-    let answer = tokio::select! {
-        _ = cancel_token.cancelled() => return Ok(()),
-        answer = update_answer_rx.recv() => answer,
-    };
-    match answer {
-        Some(UpdateAnswer::Accepted) => (),
-        Some(UpdateAnswer::Declined) => return Ok(()),
-        // The UI is gone. `recv()` returns `None` forever from here, so the old
-        // `_ => ()` arm spun its wait loop at full tilt instead of giving up.
-        None => return Ok(()),
-    }
-
-    app_state.state = State::Updating;
-    let _ = state_tx.send(app_state.clone());
-
-    match download_new_version_and_replace_current(release, cancel_token, install_lock).await {
-        Ok(InstallOutcome::Installed) => (),
-        // Shutdown won the race and the installed binary was never touched.
-        // The window is already closing, so there is nobody to tell.
-        Ok(InstallOutcome::Cancelled) => return Ok(()),
-        Err(e) => {
-            // A failed install used to leave the spinner up and the reason in
-            // the log file only; the guards above mean this is now a clean
-            // error instead of a bricked binary, so it is worth showing.
-            let _ = toast_tx.send(crate::activity::Event::error(
-                crate::activity::Topic::App,
-                trf("Update failed: {0}", &[&e]),
-            ));
-            return Err(e);
+        match command {
+            UpdateCommand::Check { manual } => {
+                if !manual && matches!(status, UpdateStatus::Checking) {
+                    continue;
+                }
+                let _ = status_tx.send(UpdateStatus::Checking);
+                let next = match tokio::task::spawn_blocking(check_for_new_version).await {
+                    Ok(Ok(None)) => {
+                        found = None;
+                        UpdateStatus::UpToDate
+                    }
+                    Ok(Ok(Some(release))) => {
+                        let version = release.version.clone();
+                        match asset_for_current_platform(&release)
+                            .and_then(|a| install_plan_for(&a))
+                        {
+                            Ok(_) => {
+                                found = Some(release);
+                                UpdateStatus::Available(version)
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    "Teyvat.me {version} is available but cannot be installed in place: {e}"
+                                );
+                                found = None;
+                                // The automatic checks say so once per release, not
+                                // at every start for the rest of its life.
+                                if !manual
+                                    && should_report_manual_install(
+                                        manual_notice_marker().as_deref(),
+                                        &version,
+                                    )
+                                {
+                                    #[rustfmt::skip]
+                                    let text = trf("Teyvat.me {0} is out · install it by hand on this platform: {1}", &[&version, &RELEASES_URL]);
+                                    let _ = toast_tx.send(crate::activity::Event::info(
+                                        crate::activity::Topic::App,
+                                        text,
+                                    ));
+                                }
+                                UpdateStatus::Manual(version)
+                            }
+                        }
+                    }
+                    Ok(Err(e)) => {
+                        tracing::warn!("update check failed: {e:#}");
+                        UpdateStatus::Failed(format!("{e:#}"))
+                    }
+                    Err(e) => UpdateStatus::Failed(e.to_string()),
+                };
+                let _ = status_tx.send(next);
+            }
+            UpdateCommand::Install => {
+                let Some(release) = found.clone() else {
+                    continue;
+                };
+                let version = release.version.clone();
+                let _ = status_tx.send(UpdateStatus::Installing(version.clone()));
+                match download_new_version_and_replace_current(
+                    release,
+                    &cancel_token,
+                    &install_lock,
+                )
+                .await
+                {
+                    Ok(InstallOutcome::Installed) => {
+                        tracing::info!("installed {version}; it runs from the next start");
+                        let _ = status_tx.send(UpdateStatus::Ready(version));
+                    }
+                    // Shutdown won the race; nothing was touched.
+                    Ok(InstallOutcome::Cancelled) => return,
+                    Err(e) => {
+                        tracing::error!("update failed: {e:#}");
+                        let _ = toast_tx.send(crate::activity::Event::error(
+                            crate::activity::Topic::App,
+                            trf("Update failed: {0}", &[&e]),
+                        ));
+                        let _ = status_tx.send(UpdateStatus::Failed(format!("{e:#}")));
+                    }
+                }
+            }
         }
     }
-
-    app_state.state = State::Updated;
-    let _ = state_tx.send(app_state.clone());
-
-    // The UI now closes the viewport; `main` relaunches the replacement once
-    // `run_native` has returned and the single-instance mutex has been
-    // released. Nothing more arrives on this channel, so wait only for the
-    // shutdown signal.
-    cancel_token.cancelled().await;
-
-    Ok(())
 }
 
 #[cfg(test)]

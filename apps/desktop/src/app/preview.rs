@@ -3,7 +3,8 @@
 
 //! Debug builds only: `TEYVATME_PREVIEW=<state>` draws a made-up state, for
 //! screenshots of every screen without a game session. Placeholder data only
-//! (UID 812345678). `TEYVATME_PREVIEW_THEME=light|dark` picks the theme.
+//! (UID 812345678). `TEYVATME_PREVIEW_THEME=light|dark` picks the theme,
+//! `TEYVATME_PREVIEW_UPDATE` the updater's state.
 
 use std::time::{Duration, Instant};
 
@@ -19,6 +20,24 @@ impl TeyvatmeApp {
             return real;
         };
         let mut state = real;
+        // `TEYVATME_PREVIEW_UPDATE=available|ready|installing|uptodate` stands in
+        // for the updater's answer.
+        if let Ok(update) = std::env::var("TEYVATME_PREVIEW_UPDATE") {
+            use crate::update::UpdateStatus;
+            let next = "1.9.9".to_string();
+            let status = match update.as_str() {
+                "available" => UpdateStatus::Available(next),
+                "ready" => UpdateStatus::Ready(next),
+                "installing" => UpdateStatus::Installing(next),
+                "manual" => UpdateStatus::Manual(next),
+                "failed" => UpdateStatus::Failed("connection timed out".to_string()),
+                _ => UpdateStatus::UpToDate,
+            };
+            if *self.update_status.borrow() != status {
+                // A receiver keeps its last value once the sender is gone.
+                self.update_status = tokio::sync::watch::channel(status).1;
+            }
+        }
         state.state = crate::State::Main;
         state.capturing = true;
         self.is_admin = true;
@@ -91,7 +110,6 @@ impl TeyvatmeApp {
                 self.saved_state.onboarded = false;
                 self.view = View::FirstRun(Onboarding::SetUp);
             }
-            "update" => state.state = crate::State::WaitingForUpdateConfirmation("1.0.1".into()),
             page if page.starts_with("settings-") => {
                 state.game_status = GameStatus::Decoding;
                 captured(&mut state);

@@ -92,10 +92,6 @@ pub enum ConfirmationType {
 #[derive(Clone, Debug)]
 pub enum State {
     Starting,
-    CheckingForUpdate,
-    WaitingForUpdateConfirmation(String),
-    Updating,
-    Updated,
     CheckingForData,
     WaitingForDownloadConfirmation(ConfirmationType),
     Downloading,
