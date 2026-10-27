@@ -21,6 +21,8 @@ use crate::{Message, State};
 
 impl TeyvatmeApp {
     pub(super) fn run_frame(&mut self, ctx: &Context) {
+        #[cfg(debug_assertions)]
+        self.preview_tray(ctx);
         self.poll_background_results(ctx);
         #[cfg(windows)]
         self.release_settled_memory();

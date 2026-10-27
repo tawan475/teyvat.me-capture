@@ -6,7 +6,7 @@
 [package]
 name = "teyvatme"
 # Above every irminsul release (0.2.x), so the bridge release offers it.
-version = "1.14.1"
+version = "1.15.0"
 authors = ["tawan475", "Erik Gilling <konkers@konkers.net>"]
 license = "MIT"
 publish = false
@@ -155,6 +155,10 @@ windows = { version = "0.61.3", features = [
 	"Win32_System_Threading",
 	"Win32_UI_Shell",
 	"Win32_UI_WindowsAndMessaging",
+	# The resin alert's Windows notification (notify.rs).
+	"Data_Xml_Dom",
+	"UI_Notifications",
+	"Win32_System_WinRT",
 ] }
 
 # On every non-Windows platform pcap is the only capture backend, so it is a

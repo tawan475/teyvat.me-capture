@@ -376,4 +376,11 @@
         <item quantity="other">%s 件の変更</item>
     </plurals>
     <string name="home_done_title">キャプチャ完了</string>
+    <string name="resin_alert">樹脂のお知らせ</string>
+    <string name="resin_alert_line">天然樹脂がこの値に達したら通知</string>
+    <string name="resin_alert_at">通知する値 %1$d / %2$d</string>
+    <string name="resin_alert_test">テスト</string>
+    <string name="resin_alert_title">天然樹脂 %1$d/%2$d</string>
+    <string name="resin_alert_full">天然樹脂が満タンです</string>
+    <string name="resin_alert_full_at">%s に満タン</string>
 </resources>

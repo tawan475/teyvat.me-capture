@@ -10,7 +10,8 @@
 //! `TEYVATME_PREVIEW_SHOT=<file.png>` saves the window's own pixels there
 //! once it has settled, then closes it; `TEYVATME_PREVIEW_OPEN=language`
 //! clicks the language picker 2 s in (an input event inside the app, not the
-//! system's mouse).
+//! system's mouse); `TEYVATME_PREVIEW_TRAY=1` goes to the tray 3 s in and
+//! comes back 12 s in, through the tray's own code.
 
 use std::time::{Duration, Instant};
 
@@ -20,6 +21,28 @@ use crate::game_watch::{GameStatus, MissedLaunch};
 use crate::player_data::ExportCounts;
 
 impl TeyvatmeApp {
+    /// `TEYVATME_PREVIEW_TRAY`: into the tray at 3 s, back at 12 s.
+    pub(super) fn preview_tray(&mut self, ctx: &egui::Context) {
+        static STEP: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+        if std::env::var_os("TEYVATME_PREVIEW_TRAY").is_none() {
+            return;
+        }
+        let at = self.started_at.elapsed();
+        let step = STEP.load(std::sync::atomic::Ordering::Relaxed);
+        if step == 0 && at > Duration::from_secs(3) {
+            STEP.store(1, std::sync::atomic::Ordering::Relaxed);
+            tracing::debug!("preview: into the tray");
+            self.minimize(ctx, true);
+        } else if step == 1 && at > Duration::from_secs(12) {
+            STEP.store(2, std::sync::atomic::Ordering::Relaxed);
+            tracing::debug!("preview: back from the tray");
+            super::restore_window(ctx);
+        }
+        if step < 2 {
+            ctx.request_repaint_after(Duration::from_millis(500));
+        }
+    }
+
     /// `TEYVATME_PREVIEW_OPEN=language`: one click on the picker, 2 s in.
     pub(super) fn preview_click(&mut self, raw_input: &mut egui::RawInput) {
         static CLICKED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);

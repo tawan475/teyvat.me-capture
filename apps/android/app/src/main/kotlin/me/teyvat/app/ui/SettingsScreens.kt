@@ -84,6 +84,9 @@ interface SettingsActions {
     fun openAbout()
     fun setAutoUpdate(on: Boolean)
     fun setTileOpensGame(on: Boolean)
+    fun setResinAlert(on: Boolean)
+    fun setResinAlertAt(value: Int)
+    fun testResinAlert()
     fun checkForUpdates()
     fun allowBackground()
     fun openUrl(url: String)
@@ -109,6 +112,15 @@ fun SettingsScreen(
             stringResource(R.string.tile_opens_game), stringResource(R.string.tile_opens_game_line), settings.tileOpensGame,
             actions::setTileOpensGame, icon = R.drawable.ic_gamepad,
         )
+        CardDivider()
+        SwitchRow(
+            stringResource(R.string.resin_alert), stringResource(R.string.resin_alert_line), settings.resinAlert,
+            actions::setResinAlert, icon = R.drawable.ic_droplet,
+        )
+        if (settings.resinAlert) {
+            CardDivider()
+            ResinAlertAt(settings.resinAlertAt, actions)
+        }
         CardDivider()
         ListRow(
             stringResource(R.string.battery_title),
@@ -197,6 +209,26 @@ fun SettingsScreen(
 }
 
 /** The app's language: the system's, or one the game ships ([me.teyvat.app.AppLocale]). */
+/** The resin alert's threshold: a slider, 1-200, and a test notification. */
+@Composable
+private fun ResinAlertAt(value: Int, actions: SettingsActions) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                stringResource(R.string.resin_alert_at, value, me.teyvat.app.Today.RESIN_MAX),
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.weight(1f),
+            )
+            TmButton(stringResource(R.string.resin_alert_test), actions::testResinAlert, kind = ButtonKind.Text)
+        }
+        androidx.compose.material3.Slider(
+            value = value.toFloat(),
+            onValueChange = { actions.setResinAlertAt(kotlin.math.round(it).toInt()) },
+            valueRange = 1f..me.teyvat.app.Today.RESIN_MAX.toFloat(),
+        )
+    }
+}
+
 @Composable
 private fun LanguageRow(actions: SettingsActions) {
     val context = androidx.compose.ui.platform.LocalContext.current

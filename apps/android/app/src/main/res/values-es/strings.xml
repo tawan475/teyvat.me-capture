@@ -380,4 +380,11 @@
         <item quantity="other">%s cambios</item>
     </plurals>
     <string name="home_done_title">Captura completa</string>
+    <string name="resin_alert">Aviso de resina</string>
+    <string name="resin_alert_line">Una notificación cuando tu resina llegue a esta cantidad</string>
+    <string name="resin_alert_at">Avisar en %1$d / %2$d</string>
+    <string name="resin_alert_test">Probar</string>
+    <string name="resin_alert_title">Resina %1$d/%2$d</string>
+    <string name="resin_alert_full">La resina está llena</string>
+    <string name="resin_alert_full_at">Llena a las %s</string>
 </resources>

@@ -36,6 +36,7 @@ mod game_watch;
 mod i18n;
 mod migrate;
 mod monitor;
+mod notify;
 mod replay;
 mod replay_live;
 mod signin;

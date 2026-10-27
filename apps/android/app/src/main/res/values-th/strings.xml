@@ -376,4 +376,11 @@
         <item quantity="other">%s การเปลี่ยนแปลง</item>
     </plurals>
     <string name="home_done_title">สแกนเสร็จแล้ว</string>
+    <string name="resin_alert">แจ้งเตือน Resin</string>
+    <string name="resin_alert_line">แจ้งเตือนเมื่อ Resin ถึงจำนวนนี้</string>
+    <string name="resin_alert_at">แจ้งเตือนที่ %1$d / %2$d</string>
+    <string name="resin_alert_test">ทดสอบ</string>
+    <string name="resin_alert_title">Resin %1$d/%2$d</string>
+    <string name="resin_alert_full">Resin เต็มแล้ว</string>
+    <string name="resin_alert_full_at">เต็มเวลา %s</string>
 </resources>

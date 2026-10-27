@@ -106,6 +106,9 @@ data class Settings(
     val autoUpdate: Boolean = true,
     /** The Quick Settings tile also opens Genshin when it starts capture. */
     val tileOpensGame: Boolean = false,
+    /** A notification when resin reaches [resinAlertAt] (off by default). */
+    val resinAlert: Boolean = false,
+    val resinAlertAt: Int = 160,
 )
 
 /** The app's settings, in SharedPreferences, as one observable value. */
@@ -143,6 +146,8 @@ class Prefs(context: Context) {
             liveSync = store.getBoolean("live_sync", true),
             autoUpdate = store.getBoolean("auto_update", true),
             tileOpensGame = store.getBoolean("tile_opens_game", false),
+            resinAlert = store.getBoolean("resin_alert", false),
+            resinAlertAt = store.getInt("resin_alert_at", 160),
         )
     }
 
@@ -166,6 +171,8 @@ class Prefs(context: Context) {
             .putBoolean("live_sync", s.liveSync)
             .putBoolean("auto_update", s.autoUpdate)
             .putBoolean("tile_opens_game", s.tileOpensGame)
+            .putBoolean("resin_alert", s.resinAlert)
+            .putInt("resin_alert_at", s.resinAlertAt)
             .apply()
     }
 }

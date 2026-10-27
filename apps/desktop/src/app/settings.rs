@@ -277,6 +277,43 @@ impl TeyvatmeApp {
                 crate::ui::theme::set_picker_fonts(ui.ctx(), lang, self.language_picker_open);
             }
         });
+
+        // Windows only: nothing shows notifications elsewhere yet.
+        if cfg!(windows) {
+            overline(ui, tr("Notifications"));
+            card_frame(ui).show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                switch_row(
+                    ui,
+                    tr("Resin alert"),
+                    Some(secondary_text(
+                        tr("A Windows notification when your resin reaches this"),
+                        pal.tx2,
+                    )),
+                    &mut self.saved_state.resin_alert,
+                    true,
+                );
+                divider(ui);
+                let on = self.saved_state.resin_alert;
+                list_row(ui, None, title_text(tr("Alert at"), pal.tx), None, |ui| {
+                    if button(ui, ButtonKind::Ghost, None, tr("Test"), false).clicked() {
+                        let title = trf("Resin {0}/{1}", &[&self.saved_state.resin_alert_at, &200]);
+                        let text = tr("This is how the resin alert looks").to_owned();
+                        std::thread::spawn(move || {
+                            if let Err(e) = crate::notify::show(&title, &text) {
+                                tracing::warn!("the test notification could not be shown: {e:#}");
+                            }
+                        });
+                    }
+                    ui.add_enabled(
+                        on,
+                        DragValue::new(&mut self.saved_state.resin_alert_at)
+                            .range(1..=200)
+                            .suffix(" / 200"),
+                    );
+                });
+            });
+        }
     }
 
     fn export_page(&mut self, ui: &mut Ui) {

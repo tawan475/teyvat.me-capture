@@ -382,4 +382,11 @@
         <item quantity="other">%s изменения</item>
     </plurals>
     <string name="home_done_title">Захват завершён</string>
+    <string name="resin_alert">Напоминание о смоле</string>
+    <string name="resin_alert_line">Уведомление, когда смола дойдёт до этого числа</string>
+    <string name="resin_alert_at">Напомнить на %1$d / %2$d</string>
+    <string name="resin_alert_test">Проверить</string>
+    <string name="resin_alert_title">Смола %1$d/%2$d</string>
+    <string name="resin_alert_full">Смола заполнена</string>
+    <string name="resin_alert_full_at">Полная в %s</string>
 </resources>

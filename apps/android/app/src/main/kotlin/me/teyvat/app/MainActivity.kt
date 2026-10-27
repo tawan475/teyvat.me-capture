@@ -417,6 +417,29 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
         prefs.update { it.copy(tileOpensGame = on) }
     }
 
+    override fun setResinAlert(on: Boolean) {
+        prefs.update { it.copy(resinAlert = on) }
+        if (on) askForNotifications()
+    }
+
+    override fun setResinAlertAt(value: Int) {
+        prefs.update { it.copy(resinAlertAt = value.coerceIn(1, Today.RESIN_MAX)) }
+    }
+
+    override fun testResinAlert() {
+        askForNotifications()
+        ResinAlert.show(this, prefs.value.resinAlertAt, 0L)
+    }
+
+    /** Android 13+: notifications need the user's yes. */
+    private fun askForNotifications() {
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 33)
+        }
+    }
+
     override fun setAutoUpdate(on: Boolean) {
         prefs.update { it.copy(autoUpdate = on) }
         if (on) updater.check(manual = false)

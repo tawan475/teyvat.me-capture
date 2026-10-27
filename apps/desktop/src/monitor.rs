@@ -657,6 +657,8 @@ pub struct Monitor {
     /// export settings (see `note_capture_settling`).
     settle_pending_since: Option<Instant>,
     settle_armed_at: Option<Instant>,
+    /// The resin clock and threshold the resin alert was last sent for.
+    resin_alerted: Option<(crate::good::GiResin, u32)>,
     automation_pending_since: Option<Instant>,
     /// When the pending countdown began (`automation_pending_since` moves on
     /// with new data).
@@ -772,6 +774,7 @@ impl Monitor {
             capture_timestamp_ms: None,
             settle_pending_since: None,
             settle_armed_at: None,
+            resin_alerted: None,
             automation_pending_since: None,
             automation_armed_at: None,
             automation_last_signature: None,
@@ -817,6 +820,7 @@ impl Monitor {
         // A sign-in that loads (or signs in) after data arrived: check the
         // uploads again then, not only at the next new data.
         let mut auth_rx = self.tracker_auth.status();
+        let mut settings_rx = self.saved_state_rx.clone();
 
         loop {
             // Checked before the `select!` rather than only inside it. On the
@@ -856,6 +860,17 @@ impl Monitor {
                 }
             };
 
+            let resin_at = self.resin_alert_time();
+            let resin_fut = async move {
+                match resin_at {
+                    Some(at) => {
+                        let now = chrono::Utc::now().timestamp().max(0) as u64;
+                        tokio::time::sleep(Duration::from_secs(at.saturating_sub(now))).await;
+                    }
+                    None => std::future::pending::<()>().await,
+                }
+            };
+
             let live_at = self.live_next_tick();
             let live_fut = async move {
                 match live_at {
@@ -892,6 +907,11 @@ impl Monitor {
                 Some(event) = self.live_rx.recv() => {
                     self.handle_live_event(event);
                 }
+                _ = resin_fut => {
+                    self.fire_resin_alert();
+                }
+                // A settings change can turn the resin alert on or move it.
+                Ok(()) = settings_rx.changed() => {}
                 Some(event) = self.packet_rx.recv() => {
                     self.handle_capture_event(event);
                 }
@@ -1547,6 +1567,67 @@ impl Monitor {
         }
     }
 
+    /// When the resin alert is due (unix seconds), or `None`: off, no resin
+    /// clock, or already sent for this clock and threshold. Never during a
+    /// replay.
+    fn resin_alert_time(&self) -> Option<u64> {
+        if !uploads_allowed(&self.capture_source) {
+            return None;
+        }
+        let target = {
+            let state = self.saved_state_rx.borrow();
+            state
+                .resin_alert
+                .then_some(state.resin_alert_at.clamp(1, RESIN_CAP))?
+        };
+        let resin = self.app_state.app_state.tasks.as_ref()?.resin?;
+        if self.resin_alerted == Some((resin, target)) {
+            return None;
+        }
+        resin_reaches(resin, target)
+    }
+
+    /// Send the resin alert: "Resin 160/200 · Full at 14:32".
+    fn fire_resin_alert(&mut self) {
+        let Some(at) = self.resin_alert_time() else {
+            return;
+        };
+        let now = chrono::Utc::now().timestamp().max(0) as u64;
+        if at > now {
+            return;
+        }
+        let (Some(resin), target) = (
+            self.app_state
+                .app_state
+                .tasks
+                .as_ref()
+                .and_then(|t| t.resin),
+            self.saved_state_rx
+                .borrow()
+                .resin_alert_at
+                .clamp(1, RESIN_CAP),
+        ) else {
+            return;
+        };
+        self.resin_alerted = Some((resin, target));
+        let title = trf("Resin {0}/{1}", &[&target, &RESIN_CAP]);
+        let text = match resin_reaches(resin, RESIN_CAP).filter(|full| *full > now) {
+            Some(full) => {
+                let at = chrono::DateTime::from_timestamp(full as i64, 0)
+                    .map(|at| at.with_timezone(&chrono::Local).format("%H:%M").to_string())
+                    .unwrap_or_default();
+                trf("Full at {0}", &[&at])
+            }
+            None => tr("Resin is full").to_owned(),
+        };
+        tracing::info!(target, "resin alert");
+        tokio::task::spawn_blocking(move || {
+            if let Err(e) = crate::notify::show(&title, &text) {
+                tracing::warn!("the resin alert could not be shown: {e:#}");
+            }
+        });
+    }
+
     fn check_automation_trigger(&mut self) {
         if !uploads_allowed(&self.capture_source) {
             return;
@@ -2115,6 +2196,19 @@ fn rearmed(pending_since: Instant, armed_at: Instant, now: Instant) -> Instant {
     }
 }
 
+/// Original Resin's cap and regeneration (one per 8 minutes).
+const RESIN_CAP: u32 = 200;
+const RESIN_SECS: u64 = 8 * 60;
+
+/// When a resin clock reaches `target` (unix seconds): `None` when it already
+/// had that much (the player saw it in the game) or more than the cap.
+fn resin_reaches(resin: crate::good::GiResin, target: u32) -> Option<u64> {
+    if resin.value >= target || target > RESIN_CAP {
+        return None;
+    }
+    Some(u64::from(resin.next_at) + u64::from(target - resin.value - 1) * RESIN_SECS)
+}
+
 /// Only clears the signature it was given. A newer export may already have
 /// replaced it, and that one is not this failure's to cancel. `true` when
 /// something was actually released.
@@ -2386,6 +2480,22 @@ pub(crate) fn load_keys() -> Result<HashMap<u16, Vec<u8>>> {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+
+    #[test]
+    fn the_resin_alert_is_due_when_the_clock_reaches_it() {
+        let resin = crate::good::GiResin {
+            value: 150,
+            next_at: 1_000,
+        };
+        // 151 at 1,000, then one per 8 minutes: 160 nine later.
+        assert_eq!(resin_reaches(resin, 151), Some(1_000));
+        assert_eq!(resin_reaches(resin, 160), Some(1_000 + 9 * 480));
+        assert_eq!(resin_reaches(resin, 200), Some(1_000 + 49 * 480));
+        // Already there at the capture, or past the cap: nothing to wait for.
+        assert_eq!(resin_reaches(resin, 150), None);
+        assert_eq!(resin_reaches(resin, 120), None);
+        assert_eq!(resin_reaches(resin, 201), None);
+    }
 
     #[test]
     fn a_countdown_waits_for_the_burst_and_the_exploration() {

@@ -24,6 +24,7 @@ class TeyvatApp : Application() {
     lateinit var updater: Updater
         private set
     private lateinit var autoExport: AutoExporter
+    private lateinit var resinAlert: ResinAlert
 
     override fun onCreate() {
         super.onCreate()
@@ -33,11 +34,13 @@ class TeyvatApp : Application() {
         prefs = Prefs(this)
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
         autoExport = AutoExporter(this, prefs, scope)
+        resinAlert = ResinAlert(this, prefs)
         tracker = Tracker(this, prefs, scope)
         WishTrackerBridge.tracker = tracker
         capture = Capture(scope) { summary ->
             autoExport.tick(summary)
             tracker.tick(summary)
+            resinAlert.tick(summary)
         }
         updater = Updater(this, prefs, scope) { capture.vpn.value != VpnState.Off }
         // The Quick Settings tile follows capture, however it was started or stopped.
