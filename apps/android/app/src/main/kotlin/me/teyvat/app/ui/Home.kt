@@ -242,7 +242,7 @@ private fun StatusStrip(hero: Hero, summary: Summary, startingSince: Long, now: 
         Hero.GameDetected, Hero.GameAlreadyOpen ->
             StatusHero(stop, R.drawable.ic_gamepad, DiscKind.Neutral, title, line, steps(Step.Done, Step.Now, Step.Pending))
         Hero.LoginSeen -> StatusHero(stop, R.drawable.ic_log_in, DiscKind.Fill, title, line, steps(Step.Done, Step.Done, Step.Now))
-        Hero.Decrypting -> StatusHero(
+        Hero.Decrypting, Hero.Done -> StatusHero(
             stop, R.drawable.ic_circle_check, DiscKind.Success, title, line, steps(Step.Done, Step.Done, Step.Done),
             container = tm.successContainer, border = tm.successContainer,
         )

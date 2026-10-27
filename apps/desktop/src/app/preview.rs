@@ -6,7 +6,7 @@
 //! (UID 812345678). `TEYVATME_PREVIEW_THEME=light|dark` picks the theme,
 //! `TEYVATME_PREVIEW_UPDATE` the updater's state. `full` is `decoding` with a
 //! wish key, teyvat.me signed in (as `player01`) and auto-export on, as
-//! board 12 draws it.
+//! board 12 draws it; `done` is `full` once the login's data has settled.
 //! `TEYVATME_PREVIEW_SHOT=<file.png>` saves the window's own pixels there
 //! once it has settled, then closes it; `TEYVATME_PREVIEW_OPEN=language`
 //! clicks the language picker 2 s in (an input event inside the app, not the
@@ -183,6 +183,13 @@ impl TeyvatmeApp {
             }
             "full" => {
                 state.game_status = GameStatus::Decoding;
+                self.decoding_since = Some(chrono::Local::now() - chrono::TimeDelta::minutes(3));
+                captured(&mut state);
+                self.preview_linked();
+            }
+            "done" => {
+                state.game_status = GameStatus::Decoding;
+                state.capture_done = true;
                 self.decoding_since = Some(chrono::Local::now() - chrono::TimeDelta::minutes(3));
                 captured(&mut state);
                 self.preview_linked();

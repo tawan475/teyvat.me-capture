@@ -31,7 +31,7 @@
     <string name="home_login_seen_title">Anmeldung erkannt</string>
     <string name="home_login_seen_line">Suche den Sitzungsschlüssel</string>
     <string name="home_decrypting_title">Daten werden entschlüsselt</string>
-    <string name="home_decrypting_line">Sitzungsschlüssel gefunden · %s</string>
+    <string name="home_decrypting_line">Anmeldung erkannt · %s</string>
     <string name="home_missed_title">Start verpasst</string>
     <string name="home_missed_running_line">Genshin wurde vor Teyvat.me gestartet</string>
     <string name="home_missed_stopped_line">Die Erfassung war bei der Anmeldung aus</string>
@@ -283,7 +283,7 @@
     <string name="language">Sprache</string>
     <string name="language_system">System</string>
     <string name="event_game_connected">Spiel verbunden</string>
-    <string name="event_key_found">Sitzungsschlüssel gefunden</string>
+    <string name="event_key_found">Anmeldung erkannt</string>
     <string name="event_data_captured">Kontodaten erfasst</string>
     <string name="tracker_target_missing">Kein Upload-Ziel · wähle ein Konto unter „%1$s“</string>
     <!-- Tracker › Advanced -->
@@ -377,4 +377,5 @@
         <item quantity="one">%s Änderung</item>
         <item quantity="other">%s Änderungen</item>
     </plurals>
+    <string name="home_done_title">Erfassung abgeschlossen</string>
 </resources>

@@ -31,7 +31,7 @@
     <string name="home_login_seen_title">ログインを検出</string>
     <string name="home_login_seen_line">セッションキーを検索中</string>
     <string name="home_decrypting_title">データ復号中</string>
-    <string name="home_decrypting_line">セッションキー取得 · %s</string>
+    <string name="home_decrypting_line">ログインを検出 · %s</string>
     <string name="home_missed_title">起動を取り逃しました</string>
     <string name="home_missed_running_line">原神が Teyvat.me より先に起動しました</string>
     <string name="home_missed_stopped_line">ログイン時にキャプチャが停止していました</string>
@@ -283,7 +283,7 @@
     <string name="language">言語</string>
     <string name="language_system">システム</string>
     <string name="event_game_connected">ゲームに接続しました</string>
-    <string name="event_key_found">セッションキーを取得しました</string>
+    <string name="event_key_found">ログインを検出</string>
     <string name="event_data_captured">アカウントデータを取得しました</string>
     <string name="tracker_target_missing">アップロード先が未選択です · 「%1$s」でアカウントを選んでください</string>
     <!-- Tracker › Advanced -->
@@ -375,4 +375,5 @@
     <plurals name="changes">
         <item quantity="other">%s 件の変更</item>
     </plurals>
+    <string name="home_done_title">キャプチャ完了</string>
 </resources>

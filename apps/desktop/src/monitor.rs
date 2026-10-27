@@ -189,6 +189,15 @@ impl AppStateManager {
     /// event, and every send wakes the repaint task on the other end of the
     /// watch channel. Sending an unchanged status would repaint the window
     /// twice a second for as long as the app is open.
+    pub fn update_capture_done(&mut self, done: bool) {
+        if self.app_state.capture_done == done {
+            return;
+        }
+        tracing::info!(done, "capture done");
+        self.app_state.capture_done = done;
+        let _ = self.state_tx.send(self.app_state.clone());
+    }
+
     pub fn update_game_status(&mut self, game_status: GameStatus) {
         if self.app_state.game_status == game_status {
             return;
@@ -644,6 +653,10 @@ pub struct Monitor {
     /// by delivery.
     capture_timestamp_ms: Option<i64>,
 
+    /// The "Capture done" countdown: like the snapshot's, but whatever the
+    /// export settings (see `note_capture_settling`).
+    settle_pending_since: Option<Instant>,
+    settle_armed_at: Option<Instant>,
     automation_pending_since: Option<Instant>,
     /// When the pending countdown began (`automation_pending_since` moves on
     /// with new data).
@@ -757,6 +770,8 @@ impl Monitor {
             tracker_auth,
             packet_log: PacketLog::new(),
             capture_timestamp_ms: None,
+            settle_pending_since: None,
+            settle_armed_at: None,
             automation_pending_since: None,
             automation_armed_at: None,
             automation_last_signature: None,
@@ -829,6 +844,18 @@ impl Monitor {
                 }
             };
 
+            let settle_fut = async {
+                match (self.settle_pending_since, self.settle_armed_at) {
+                    (Some(pending), Some(armed)) => {
+                        let rem = automation_wait(pending, armed, explore_held, Instant::now());
+                        if !rem.is_zero() {
+                            tokio::time::sleep(rem).await;
+                        }
+                    }
+                    _ => std::future::pending::<()>().await,
+                }
+            };
+
             let live_at = self.live_next_tick();
             let live_fut = async move {
                 match live_at {
@@ -846,6 +873,11 @@ impl Monitor {
                 }
                 _ = sleep_fut => {
                     self.execute_automation_export().await;
+                }
+                _ = settle_fut => {
+                    self.settle_pending_since = None;
+                    self.app_state.update_capture_done(true);
+                    self.ctx.request_repaint();
                 }
                 _ = live_fut => {
                     self.live_tick();
@@ -1397,6 +1429,7 @@ impl Monitor {
         {
             *pending = rearmed(*pending, armed, Instant::now());
         }
+        self.note_capture_settling();
         self.check_automation_trigger();
     }
 
@@ -1451,6 +1484,9 @@ impl Monitor {
         self.capture_timestamp_ms = None;
         // Without these the signature check can suppress the first export after
         // an account switch, because it still matches the previous account's.
+        self.settle_pending_since = None;
+        self.settle_armed_at = None;
+        self.app_state.update_capture_done(false);
         self.automation_pending_since = None;
         self.automation_last_signature = None;
         self.automation_cycle_started_at = Some(Instant::now());
@@ -1480,6 +1516,35 @@ impl Monitor {
             &self.saved_state_rx.borrow(),
             &self.tracker_auth.status().borrow(),
         )
+    }
+
+    /// Start or restart the "Capture done" countdown: once the login's bag
+    /// and characters are in, it waits like a snapshot does (quiet for
+    /// [`AUTOMATION_DEBOUNCE`], the exploration up to
+    /// [`AUTOMATION_EXPLORE_WAIT`], [`AUTOMATION_MAX_WAIT`] at most). Done
+    /// stays done until a new login replaces the data.
+    fn note_capture_settling(&mut self) {
+        if self.app_state.app_state.capture_done {
+            return;
+        }
+        let updated = &self.app_state.app_state.updated;
+        let Some(cycle) = self.automation_cycle_started_at else {
+            return;
+        };
+        let since_cycle = |at: Option<Instant>| at.is_some_and(|at| at > cycle);
+        if !since_cycle(updated.items_updated) || !since_cycle(updated.characters_updated) {
+            return;
+        }
+        let now = Instant::now();
+        match (self.settle_pending_since, self.settle_armed_at) {
+            (Some(pending), Some(armed)) => {
+                self.settle_pending_since = Some(rearmed(pending, armed, now));
+            }
+            _ => {
+                self.settle_pending_since = Some(now);
+                self.settle_armed_at = Some(now);
+            }
+        }
     }
 
     fn check_automation_trigger(&mut self) {

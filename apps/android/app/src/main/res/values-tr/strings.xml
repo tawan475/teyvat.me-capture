@@ -31,7 +31,7 @@
     <string name="home_login_seen_title">Giriş görüldü</string>
     <string name="home_login_seen_line">Oturum anahtarı aranıyor</string>
     <string name="home_decrypting_title">Veri çözülüyor</string>
-    <string name="home_decrypting_line">Oturum anahtarı bulundu · %s</string>
+    <string name="home_decrypting_line">Giriş algılandı · %s</string>
     <string name="home_missed_title">Açılış kaçırıldı</string>
     <string name="home_missed_running_line">Genshin, Teyvat.me\'den önce açıldı</string>
     <string name="home_missed_stopped_line">Giriş yaptığında tarama kapalıydı</string>
@@ -283,7 +283,7 @@
     <string name="language">Dil</string>
     <string name="language_system">Sistem</string>
     <string name="event_game_connected">Oyun bağlandı</string>
-    <string name="event_key_found">Oturum anahtarı bulundu</string>
+    <string name="event_key_found">Giriş algılandı</string>
     <string name="event_data_captured">Hesap verileri yakalandı</string>
     <string name="tracker_target_missing">Yükleme hedefi seçilmedi · “%1$s” ile bir hesap seçin</string>
     <!-- Tracker › Advanced -->
@@ -377,4 +377,5 @@
         <item quantity="one">%s değişiklik</item>
         <item quantity="other">%s değişiklik</item>
     </plurals>
+    <string name="home_done_title">Tarama tamamlandı</string>
 </resources>

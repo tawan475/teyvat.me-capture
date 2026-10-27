@@ -742,7 +742,7 @@ pub struct TeyvatmeApp {
     /// the newest success and the newest problem, for the return.
     held_notice: Option<crate::activity::Event>,
     held_problem: Option<crate::activity::Event>,
-    /// When this session started decrypting ("Session key found · HH:mm").
+    /// When this session started decrypting ("Login detected · HH:mm").
     decoding_since: Option<chrono::DateTime<chrono::Local>>,
     last_game_status: GameStatus,
     /// Whether this process can capture (Windows: elevated).

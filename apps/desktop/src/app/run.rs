@@ -205,7 +205,7 @@ impl TeyvatmeApp {
         {
             self.decoding_since = Some(chrono::Local::now());
             self.toasts
-                .success(tr("Session key found · reading your data"));
+                .success(tr("Login detected · reading your data"));
         }
         if app_state.game_status == GameStatus::LaunchCaptured
             && self.last_game_status == GameStatus::NotRunning
@@ -243,10 +243,13 @@ impl TeyvatmeApp {
         let Some(tray) = &self.tray_icon else {
             return;
         };
-        let status = self.state_rx.borrow().game_status;
+        let (status, done) = {
+            let state = self.state_rx.borrow();
+            (state.game_status, state.capture_done)
+        };
         let text = format!(
             "Teyvat.me · {}",
-            super::home::strip_title(self.is_admin, status)
+            super::home::strip_title(self.is_admin, status, done)
         );
         if text != self.tray_tooltip {
             if let Err(e) = tray.set_tooltip(Some(&text)) {

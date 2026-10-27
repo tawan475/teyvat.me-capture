@@ -31,7 +31,7 @@
     <string name="home_login_seen_title">พบการล็อกอิน</string>
     <string name="home_login_seen_line">กำลังหาคีย์เซสชัน</string>
     <string name="home_decrypting_title">กำลังถอดรหัสข้อมูล</string>
-    <string name="home_decrypting_line">พบคีย์เซสชันแล้ว · %s</string>
+    <string name="home_decrypting_line">ตรวจพบการเข้าสู่ระบบ · %s</string>
     <string name="home_missed_title">พลาดการเปิดเกม</string>
     <string name="home_missed_running_line">Genshin Impact เปิดก่อน Teyvat.me</string>
     <string name="home_missed_stopped_line">การสแกนปิดอยู่ตอนที่คุณล็อกอิน</string>
@@ -283,7 +283,7 @@
     <string name="language">ภาษา</string>
     <string name="language_system">ตามระบบ</string>
     <string name="event_game_connected">เชื่อมต่อเกมแล้ว</string>
-    <string name="event_key_found">พบคีย์เซสชันแล้ว</string>
+    <string name="event_key_found">ตรวจพบการเข้าสู่ระบบ</string>
     <string name="event_data_captured">บันทึกข้อมูลบัญชีแล้ว</string>
     <string name="tracker_target_missing">ยังไม่ได้เลือกปลายทางการอัปโหลด · เลือกบัญชีที่ “%1$s”</string>
     <!-- Tracker › Advanced -->
@@ -375,4 +375,5 @@
     <plurals name="changes">
         <item quantity="other">%s การเปลี่ยนแปลง</item>
     </plurals>
+    <string name="home_done_title">สแกนเสร็จแล้ว</string>
 </resources>

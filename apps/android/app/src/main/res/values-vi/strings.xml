@@ -31,7 +31,7 @@
     <string name="home_login_seen_title">Đã thấy đăng nhập</string>
     <string name="home_login_seen_line">Đang tìm khóa phiên</string>
     <string name="home_decrypting_title">Đang giải mã dữ liệu</string>
-    <string name="home_decrypting_line">Đã tìm thấy khóa phiên · %s</string>
+    <string name="home_decrypting_line">Đã thấy đăng nhập · %s</string>
     <string name="home_missed_title">Lỡ lúc khởi động</string>
     <string name="home_missed_running_line">Genshin mở trước Teyvat.me</string>
     <string name="home_missed_stopped_line">Lúc bạn đăng nhập, ghi đang tắt</string>
@@ -283,7 +283,7 @@
     <string name="language">Ngôn Ngữ</string>
     <string name="language_system">Theo hệ thống</string>
     <string name="event_game_connected">Đã kết nối trò chơi</string>
-    <string name="event_key_found">Đã tìm thấy khóa phiên</string>
+    <string name="event_key_found">Đã thấy đăng nhập</string>
     <string name="event_data_captured">Đã ghi dữ liệu tài khoản</string>
     <string name="tracker_target_missing">Chưa chọn nơi tải lên · chọn tài khoản ở “%1$s”</string>
     <!-- Tracker › Advanced -->
@@ -375,4 +375,5 @@
     <plurals name="changes">
         <item quantity="other">%s thay đổi</item>
     </plurals>
+    <string name="home_done_title">Đã ghi xong</string>
 </resources>

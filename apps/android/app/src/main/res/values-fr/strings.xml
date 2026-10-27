@@ -31,7 +31,7 @@
     <string name="home_login_seen_title">Connexion vue</string>
     <string name="home_login_seen_line">Recherche de la clé de session</string>
     <string name="home_decrypting_title">Déchiffrement des données</string>
-    <string name="home_decrypting_line">Clé de session trouvée · %s</string>
+    <string name="home_decrypting_line">Connexion détectée · %s</string>
     <string name="home_missed_title">Lancement manqué</string>
     <string name="home_missed_running_line">Genshin a démarré avant Teyvat.me</string>
     <string name="home_missed_stopped_line">La capture était désactivée à la connexion</string>
@@ -283,7 +283,7 @@
     <string name="language">Langue</string>
     <string name="language_system">Système</string>
     <string name="event_game_connected">Jeu connecté</string>
-    <string name="event_key_found">Clé de session trouvée</string>
+    <string name="event_key_found">Connexion détectée</string>
     <string name="event_data_captured">Données du compte capturées</string>
     <string name="tracker_target_missing">Aucune destination d’envoi · choisissez un compte dans « %1$s »</string>
     <!-- Tracker › Advanced -->
@@ -379,4 +379,5 @@
         <item quantity="many">%s modifications</item>
         <item quantity="other">%s modifications</item>
     </plurals>
+    <string name="home_done_title">Capture terminée</string>
 </resources>

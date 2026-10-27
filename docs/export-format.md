@@ -32,16 +32,16 @@ A tracker also gets two more payloads, typed in the same file:
 |---|---|
 | `gi_achievements` | Achievement ids done. |
 | `gi_achievement_times` | When each was done, for those the game timed. |
-| `gi_player` | Adventure Rank and EXP, World Level, resin at login, Story Keys, stamina, and the UID. From the next release also the nickname, signature, name card, profile picture and birthday. |
+| `gi_player` | Adventure Rank and EXP, World Level, resin at login, Story Keys, stamina, the UID, and the nickname, signature, name card, profile picture and birthday. |
 | `gi_characters` | Per character: friendship, friendship EXP, when they joined, and EXP into the level. |
 | `gi_anecdotes` | The Travel Accounts book: every anecdote met and its state, areas, reward track, last wish. |
-| `gi_tasks` | What a planner can tick: commissions, the Spiral Abyss, expeditions, realm currency, Welkin Moon, the Epitomized Path, the resin clock, and weekly boss discounts, boss respawns, Adventure Rank rewards claimed, and (next release) login event calendars. |
-| `gi_collections` | What you've collected: the Radiant Spincrystals in your Serenitea Pot, the Archive, enemies defeated, the Adventurer Handbook, Aranara, your TCG cards and decks, your recipes, and Hangout Events, monsters seen, furnishing blueprints, and crafting, forging and processing recipes, TCG challenges, the music game, and (next release) furnishing sets, companions' rewards and NPCs met. |
+| `gi_tasks` | What a planner can tick: commissions, the Spiral Abyss, expeditions, realm currency, Welkin Moon, the Epitomized Path, the resin clock, and weekly boss discounts, boss respawns, Adventure Rank rewards claimed, and login event calendars. |
+| `gi_collections` | What you've collected: the Radiant Spincrystals in your Serenitea Pot, the Archive, enemies defeated, the Adventurer Handbook, Aranara, your TCG cards and decks, your recipes, and Hangout Events, monsters seen, furnishing blueprints, and crafting, forging and processing recipes, TCG challenges, the music game, furnishing sets, companions' rewards and NPCs met. |
 | `gi_achievement_progress` | How far each unfinished achievement is. |
 | `gi_events` | The events running and your progress in each. |
 | `gi_teapot` | The Serenitea Pot's comfort per realm. |
-| `gi_miliastra` | (next release) Miliastra Wonderland cosmetics owned. |
-| `gi_exploration` | Statues of The Seven, offerings, the map points and areas you've unlocked, exploration per area, and reputation, and (next release) domains cleared and Natlan's tribal chapters. |
+| `gi_miliastra` | Miliastra Wonderland cosmetics owned. |
+| `gi_exploration` | Statues of The Seven, offerings, the map points and areas you've unlocked, exploration per area, reputation, domains cleared and Natlan's tribal chapters. |
 | `gi_wardrobe` | Outfits, wind gliders, weapon skins and sprint trails you own and who wears them, and your saved teams. |
 | `gi_capture` | Uploads only: why this snapshot was taken, and which game login it belongs to. |
 

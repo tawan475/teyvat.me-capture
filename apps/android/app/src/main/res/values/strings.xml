@@ -35,7 +35,7 @@
     <string name="home_login_seen_title">Login seen</string>
     <string name="home_login_seen_line">Finding the session key</string>
     <string name="home_decrypting_title">Data decrypting</string>
-    <string name="home_decrypting_line">Session key found · %s</string>
+    <string name="home_decrypting_line">Login detected · %s</string>
     <string name="home_missed_title">Launch missed</string>
     <string name="home_missed_running_line">Genshin started before Teyvat.me</string>
     <string name="home_missed_stopped_line">Capture was off when you logged in</string>
@@ -288,7 +288,7 @@
     <string name="language">Language</string>
     <string name="language_system">System</string>
     <string name="event_game_connected">Game connected</string>
-    <string name="event_key_found">Session key found</string>
+    <string name="event_key_found">Login detected</string>
     <string name="event_data_captured">Account data captured</string>
     <string name="tracker_target_missing">No upload target · choose an account with “%1$s”</string>
     <!-- Tracker › Advanced -->
@@ -382,4 +382,5 @@
         <item quantity="one">%s change</item>
         <item quantity="other">%s changes</item>
     </plurals>
+    <string name="home_done_title">Capture done</string>
 </resources>

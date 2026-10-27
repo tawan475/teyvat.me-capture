@@ -2,6 +2,15 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.14.1
+
+- **Capture done**: once a login's data has all arrived and gone quiet, the
+  status reads "Capture done" instead of staying on "Data decrypting" for the
+  whole session. It waits like the login snapshot: 5 s of quiet, the world's
+  exploration up to 12 s, about 20 s at most. A new login starts over.
+- "Session key found" now reads **"Login detected"** (status line, toast,
+  Android's activity list).
+
 ## 1.14.0
 
 - **Your profile**: the in-game nickname, signature, name card, profile
