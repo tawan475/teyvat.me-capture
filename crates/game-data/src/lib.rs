@@ -7,7 +7,7 @@
 // kept (and tested) for the builds that download.
 #![cfg_attr(not(feature = "download"), allow(dead_code))]
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
@@ -63,7 +63,7 @@ fn lookup_const_value<T: FromStr>(
     res
 }
 
-const DATABASE_VERSION: u32 = 6;
+const DATABASE_VERSION: u32 = 7;
 
 #[derive(Debug, Deserialize, Serialize)]
 struct Database {
@@ -87,6 +87,8 @@ struct Database {
     /// Cooking recipes: id → the most proficiency it takes.
     #[serde(default)]
     recipes: BTreeMap<u32, u32>,
+    #[serde(default)]
+    exploration: Exploration,
 }
 
 impl Database {
@@ -107,6 +109,7 @@ impl Database {
             weapon_map: HashMap::new(),
             spincrystals: BTreeMap::new(),
             recipes: BTreeMap::new(),
+            exploration: Exploration::default(),
         }
     }
 
@@ -256,6 +259,11 @@ impl AnimeGameData {
         Ok(&self.db()?.recipes)
     }
 
+    /// The exploration tables' ids (see [`Exploration`]).
+    pub fn exploration(&self) -> Result<&Exploration> {
+        Ok(&self.db()?.exploration)
+    }
+
     pub fn has_data(&self) -> bool {
         self.db.is_some()
     }
@@ -342,6 +350,9 @@ impl AnimeGameData {
         db.tps_avatar_id_male =
             lookup_const_value(&const_value_map, "CONST_VALUE_TPS_AVATAR_CONFIG_ID_MALE");
 
+        tracing::info!("Downloading exploration tables");
+        db.exploration = Self::fetch_exploration(source, &latest_git_hash).await;
+
         self.db = Some(db);
 
         let _ = self.try_save_db();
@@ -358,6 +369,95 @@ impl AnimeGameData {
         serde_json::to_writer_pretty(writer, &self.db)?;
 
         Ok(())
+    }
+
+    /// The exploration tables' ids. A table that cannot be read leaves its set
+    /// empty (logged): the rest of the game data does not depend on them, and
+    /// an empty set only means that part of an export is left out.
+    async fn fetch_exploration<Source: GameDataSource>(
+        source: &Source,
+        git_ref: &str,
+    ) -> Exploration {
+        async fn rows<Source: GameDataSource>(
+            source: &Source,
+            git_ref: &str,
+            path: &str,
+        ) -> Vec<serde_json::Value> {
+            match source
+                .get_json_file::<Vec<serde_json::Value>>(git_ref, path)
+                .await
+            {
+                Ok(rows) => rows,
+                Err(e) => {
+                    tracing::warn!("could not read {path}; its ids are left out: {e}");
+                    Vec::new()
+                }
+            }
+        }
+        let ids = |rows: &[serde_json::Value], field: &str| -> BTreeSet<u32> {
+            rows.iter()
+                .filter_map(|row| row.get(field)?.as_u64()?.try_into().ok())
+                .collect()
+        };
+
+        let cities = ids(
+            &rows(source, git_ref, "ExcelBinOutput/CityConfigData.json").await,
+            "cityId",
+        );
+        let reputation_cities = ids(
+            &rows(
+                source,
+                git_ref,
+                "ExcelBinOutput/ReputationCityExcelConfigData.json",
+            )
+            .await,
+            "cityId",
+        );
+        let offerings = ids(
+            &rows(
+                source,
+                git_ref,
+                "ExcelBinOutput/OfferingOpenStateConfigData.json",
+            )
+            .await,
+            "offeringId",
+        );
+        let world_areas = rows(source, git_ref, "ExcelBinOutput/WorldAreaConfigData.json").await;
+        let level1: Vec<serde_json::Value> = world_areas
+            .iter()
+            .filter(|row| row.get("areaType").and_then(|t| t.as_str()) == Some("LEVEL_1"))
+            .cloned()
+            .collect();
+        let areas = ids(&level1, "areaID1");
+
+        let mut scene_points = BTreeMap::new();
+        for scene in ids(&world_areas, "sceneID") {
+            let path = format!("BinOutput/Scene/Point/scene{scene}_point.json");
+            match source
+                .get_json_file::<serde_json::Value>(git_ref, &path)
+                .await
+            {
+                Ok(file) => {
+                    let points: BTreeSet<u32> = file
+                        .get("points")
+                        .and_then(|points| points.as_object())
+                        .map(|points| points.keys().filter_map(|id| id.parse().ok()).collect())
+                        .unwrap_or_default();
+                    if !points.is_empty() {
+                        scene_points.insert(scene, points);
+                    }
+                }
+                Err(e) => tracing::debug!("no point file for scene {scene}: {e}"),
+            }
+        }
+
+        Exploration {
+            cities,
+            reputation_cities,
+            offerings,
+            areas,
+            scene_points,
+        }
     }
 
     async fn fetch_affix_map<Source: GameDataSource>(
@@ -705,6 +805,21 @@ mod tests {
                 "TextMap/TextMap_MediumEN.json" => {
                     include_str!("test_data/TextMap/TextMap_MediumEN.json")
                 }
+                "ExcelBinOutput/CityConfigData.json" => {
+                    include_str!("test_data/ExcelBinOutput/CityConfigData.json")
+                }
+                "ExcelBinOutput/ReputationCityExcelConfigData.json" => {
+                    include_str!("test_data/ExcelBinOutput/ReputationCityExcelConfigData.json")
+                }
+                "ExcelBinOutput/OfferingOpenStateConfigData.json" => {
+                    include_str!("test_data/ExcelBinOutput/OfferingOpenStateConfigData.json")
+                }
+                "ExcelBinOutput/WorldAreaConfigData.json" => {
+                    include_str!("test_data/ExcelBinOutput/WorldAreaConfigData.json")
+                }
+                "BinOutput/Scene/Point/scene3_point.json" => {
+                    include_str!("test_data/BinOutput/Scene/Point/scene3_point.json")
+                }
                 _ => return Err(anyhow!("no test data for {path}")),
             };
 
@@ -757,7 +872,7 @@ mod tests {
         use std::io::Write as _;
         let dir = tempfile::tempdir().unwrap();
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/test_data");
-        for sub in ["ExcelBinOutput", "TextMap"] {
+        for sub in ["ExcelBinOutput", "TextMap", "BinOutput/Scene/Point"] {
             std::fs::create_dir_all(dir.path().join(sub)).unwrap();
             for entry in std::fs::read_dir(root.join(sub)).unwrap() {
                 let path = entry.unwrap().path();
@@ -812,6 +927,24 @@ mod tests {
         let mut data = AnimeGameData::new();
         data.update_impl(&source).await.unwrap();
         assert_eq!(data.get_character(10000061).unwrap(), &"Kirara".to_string());
+    }
+
+    #[tokio::test]
+    async fn exploration_ids_come_from_their_tables() {
+        let source = TestDataSource;
+        let mut data = AnimeGameData::new();
+        data.update_impl(&source).await.unwrap();
+        let exploration = data.exploration().unwrap();
+        assert_eq!(exploration.cities, BTreeSet::from([1, 2, 99]));
+        assert_eq!(exploration.reputation_cities, BTreeSet::from([1, 2]));
+        assert_eq!(exploration.offerings, BTreeSet::from([1, 2]));
+        // Level-1 areas only.
+        assert_eq!(exploration.areas, BTreeSet::from([1, 6, 300]));
+        // Scene 9 has no point file in the test data: left out, not an error.
+        assert_eq!(
+            exploration.scene_points,
+            BTreeMap::from([(3, BTreeSet::from([1, 7, 12]))])
+        );
     }
 
     #[tokio::test]

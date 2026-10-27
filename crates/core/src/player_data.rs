@@ -25,6 +25,9 @@ mod avatar_change;
 mod collections;
 
 pub use collections::CollectionPart;
+mod exploration;
+
+pub use exploration::ExplorationPart;
 
 /// Player properties that are exported as GOOD `materials` entries.
 ///
@@ -686,6 +689,8 @@ pub struct PlayerData {
     spincrystals: Option<Vec<u32>>,
     /// The rest of `gi_collections`, and `gi_wardrobe`.
     collections: collections::CollectionsState,
+    /// `gi_exploration`, as the exploration messages last said.
+    exploration: exploration::ExplorationState,
 }
 
 /// The Serenitea Pot's music ids lie in this range (7.1: Radiant Spincrystals
@@ -717,6 +722,7 @@ impl PlayerData {
             pending_resin: None,
             spincrystals: None,
             collections: collections::CollectionsState::default(),
+            exploration: exploration::ExplorationState::default(),
         }
     }
 
@@ -751,6 +757,7 @@ impl PlayerData {
         self.pending_resin = None;
         self.spincrystals = None;
         self.collections = collections::CollectionsState::default();
+        self.exploration = exploration::ExplorationState::default();
         self.character_equip_guid_map.clear();
     }
 
@@ -765,6 +772,7 @@ impl PlayerData {
             && self.routine == Routine::default()
             && self.spincrystals.is_none()
             && self.collections == collections::CollectionsState::default()
+            && self.exploration == exploration::ExplorationState::default()
     }
 
     pub fn process_achievements(&mut self, achievements: &[Achievement]) {
@@ -1213,6 +1221,45 @@ impl PlayerData {
         (!tasks.is_empty()).then_some(tasks)
     }
 
+    /// `gi_exploration`, or `None` when none of it was captured.
+    fn export_exploration(&self) -> Option<good::GiExploration> {
+        let state = &self.exploration;
+        let out = good::GiExploration {
+            statues: state.statues.as_ref().map(|all| {
+                all.iter()
+                    .map(|(city, (level, oculi))| {
+                        (
+                            *city,
+                            good::GiStatue {
+                                level: *level,
+                                oculi: *oculi,
+                            },
+                        )
+                    })
+                    .collect()
+            }),
+            offerings: state.offerings.clone(),
+            scenes: (!state.scenes.is_empty()).then(|| {
+                state
+                    .scenes
+                    .iter()
+                    .map(|(scene, (points, areas))| {
+                        (
+                            *scene,
+                            good::GiScene {
+                                points: points.iter().copied().collect(),
+                                areas: areas.iter().copied().collect(),
+                            },
+                        )
+                    })
+                    .collect()
+            }),
+            explore: state.explore.clone(),
+            reputation: state.reputation.clone(),
+        };
+        (!out.is_empty()).then_some(out)
+    }
+
     /// The GOOD key of the character with this avatar guid, if the roster was
     /// captured and the game data knows them.
     fn character_key_by_guid(&self, guid: u64) -> Option<String> {
@@ -1562,6 +1609,7 @@ impl PlayerData {
             gi_tasks: self.export_tasks(now_ms / 1000),
             gi_collections: self.export_collections(),
             gi_wardrobe: self.export_wardrobe(),
+            gi_exploration: self.export_exploration(),
         };
 
         if settings.include_characters {
@@ -2196,6 +2244,7 @@ impl PlayerData {
 
 #[cfg(test)]
 mod tests {
+    use teyvatme_protocol::RecordsMessage;
     use teyvatme_protocol::r#gen::protos::Material;
 
     use super::*;
@@ -2247,6 +2296,8 @@ mod tests {
         spincrystals: &'static str,
         /// The `recipes` map's inside (recipe id → most proficiency).
         recipes: &'static str,
+        /// The `exploration` object's inside; empty leaves it out.
+        exploration: &'static str,
     }
 
     impl TestGameData {
@@ -2271,7 +2322,7 @@ mod tests {
                     "tps_avatar_id_male": {tps_male},
                     "weapon_map": {{{}}},
                     "spincrystals": {{{}}},
-                    "recipes": {{{}}}
+                    "recipes": {{{}}}{}
                 }}"#,
                 self.affix_map,
                 self.artifact_map,
@@ -2283,6 +2334,11 @@ mod tests {
                 self.weapon_map,
                 self.spincrystals,
                 self.recipes,
+                if self.exploration.is_empty() {
+                    String::new()
+                } else {
+                    format!(r#", "exploration": {{{}}}"#, self.exploration)
+                },
             );
             AnimeGameData::new_from_reader(json.as_bytes()).unwrap()
         }
@@ -3403,6 +3459,147 @@ mod tests {
                 points: 1,
                 max: 1,
             })
+        );
+    }
+
+    // -- gi_exploration ----------------------------------------------------------
+
+    fn explorer() -> PlayerData {
+        let mut data = PlayerData::new(
+            TestGameData {
+                exploration: r#""cities": [1, 2, 3, 4, 5, 6, 99], "reputation_cities": [1, 2, 3],
+                    "offerings": [1, 2, 3, 4, 5, 6], "areas": [1, 2, 6],
+                    "scene_points": {"3": [7, 12, 20, 31, 40]}"#,
+                ..Default::default()
+            }
+            .build(),
+        );
+        // The account's UID, from an item guid's top half.
+        let mut item = Item::new();
+        item.guid = (812_345_678_u64 << 32) | 5;
+        item.item_id = 104_001;
+        item.mut_material().count = 1;
+        data.process_items(&[item]);
+        data
+    }
+
+    fn record(fields: &[(u32, u64)]) -> teyvatme_protocol::Record {
+        teyvatme_protocol::Record {
+            varints: fields.iter().copied().collect(),
+            lists: BTreeMap::new(),
+        }
+    }
+
+    fn records(rows: &[&[(u32, u64)]]) -> RecordsMessage {
+        RecordsMessage {
+            records: rows.iter().map(|r| record(r)).collect(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn statues_offerings_and_reputation_are_told_apart_by_their_ids() {
+        let mut data = explorer();
+        // {level 5, city 7, oculi 3}, field numbers as in 7.1 (any would do).
+        let statues = records(&[
+            &[(5, 10), (7, 1)],
+            &[(5, 10), (7, 2)],
+            &[(5, 7), (7, 3)],
+            &[(5, 4), (7, 99), (3, 2)],
+        ]);
+        assert_eq!(
+            data.apply_exploration(&statues),
+            Some(ExplorationPart::Statues)
+        );
+        // Natlan's tribal chapters look alike (ids 1-18, a state, a start
+        // time) but list no rewards taken.
+        let chapters = records(&[
+            &[(1, 1), (2, 4), (3, 1_724_702_400)],
+            &[(1, 2), (2, 4)],
+            &[(1, 3), (2, 4)],
+        ]);
+        assert_eq!(data.apply_exploration(&chapters), None);
+        let mut offerings = records(&[
+            &[(1, 1), (10, 12)],
+            &[(1, 2), (10, 50), (14, 1)],
+            &[(1, 3), (10, 1)],
+        ]);
+        // {id 1, level 10, rewards taken 7}.
+        offerings.records[0].lists.insert(7, (1..=12).collect());
+        assert_eq!(
+            data.apply_exploration(&offerings),
+            Some(ExplorationPart::Offerings)
+        );
+        let reputation = records(&[&[(1, 1), (14, 8)], &[(1, 2), (14, 10)]]);
+        assert_eq!(
+            data.apply_exploration(&reputation),
+            Some(ExplorationPart::Reputation)
+        );
+        let json = serde_json::to_value(data.export_exploration()).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "statues": {
+                    "1": {"level": 10, "oculi": 0},
+                    "2": {"level": 10, "oculi": 0},
+                    "3": {"level": 7, "oculi": 0},
+                    "99": {"level": 4, "oculi": 2}
+                },
+                "offerings": { "1": 12, "2": 50, "3": 1 },
+                "reputation": { "1": 8, "2": 10 },
+            })
+        );
+        // Ids the game data doesn't list, a repeated id, a level out of range: none of them.
+        for other in [
+            records(&[
+                &[(5, 10), (7, 1)],
+                &[(5, 10), (7, 8)],
+                &[(5, 1), (7, 2)],
+                &[(5, 4), (7, 99)],
+            ]),
+            records(&[
+                &[(5, 10), (7, 1)],
+                &[(5, 10), (7, 1)],
+                &[(5, 1), (7, 2)],
+                &[(5, 4), (7, 99)],
+            ]),
+            records(&[&[(1, 1), (14, 80)], &[(1, 2), (14, 10)]]),
+        ] {
+            assert_eq!(data.apply_exploration(&other), None, "{other:?}");
+        }
+    }
+
+    #[test]
+    fn exploration_points_and_the_map_are_read_from_their_lists() {
+        let mut data = explorer();
+        let explore = RecordsMessage {
+            lists: BTreeMap::from([(4, vec![1, 2, 6]), (10, vec![278, 175, 1_402])]),
+            ..Default::default()
+        };
+        assert_eq!(
+            data.apply_exploration(&explore),
+            Some(ExplorationPart::Explore)
+        );
+        let map = |uid: u64, scene: u64| RecordsMessage {
+            varints: BTreeMap::from([(8, uid), (11, scene)]),
+            lists: BTreeMap::from([(6, vec![7, 12, 20, 31]), (3, vec![40]), (12, vec![1, 2])]),
+            ..Default::default()
+        };
+        assert_eq!(
+            data.apply_exploration(&map(812_345_678, 3)),
+            Some(ExplorationPart::ScenePoints(3))
+        );
+        // Someone else's map, or a scene without points in the game data.
+        assert_eq!(data.apply_exploration(&map(812_345_679, 3)), None);
+        assert_eq!(data.apply_exploration(&map(812_345_678, 5)), None);
+        let json = serde_json::to_value(data.export_exploration()).unwrap();
+        assert_eq!(
+            json["explore"],
+            serde_json::json!({ "1": 278, "2": 175, "6": 1_402 })
+        );
+        assert_eq!(
+            json["scenes"],
+            serde_json::json!({ "3": { "points": [7, 12, 20, 31], "areas": [1, 2] } })
         );
     }
 

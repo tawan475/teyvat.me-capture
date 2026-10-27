@@ -133,6 +133,10 @@ pub struct Good {
     /// sprint trails, and the saved teams. Omitted when none was captured.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub gi_wardrobe: Option<GiWardrobe>,
+    /// Exploration: the Statues of The Seven, offerings, map points,
+    /// exploration progress and reputation, as the game last sent each part.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub gi_exploration: Option<GiExploration>,
 }
 
 /// `gi_collections`: what the player has collected, each part as the game
@@ -284,6 +288,55 @@ pub struct GiWardrobeKind {
 pub struct GiTeam {
     pub name: String,
     pub characters: Vec<String>,
+}
+
+/// `gi_exploration` (see `docs/teyvatme-export.ts`). Ids are the game's; keys
+/// are JSON strings. Each part omitted when it was not captured.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiExploration {
+    /// By city (`CityConfigData`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub statues: Option<BTreeMap<u32, GiStatue>>,
+    /// Level by offering (`OfferingOpenStateConfigData`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub offerings: Option<BTreeMap<u32, u32>>,
+    /// By scene: map points unlocked and areas revealed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scenes: Option<BTreeMap<u32, GiScene>>,
+    /// Exploration points by area (`WorldAreaConfigData.areaID1`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub explore: Option<BTreeMap<u32, u32>>,
+    /// Reputation level by city.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reputation: Option<BTreeMap<u32, u32>>,
+}
+
+impl GiExploration {
+    pub fn is_empty(&self) -> bool {
+        self.statues.is_none()
+            && self.offerings.is_none()
+            && self.scenes.is_none()
+            && self.explore.is_none()
+            && self.reputation.is_none()
+    }
+}
+
+/// One Statue of The Seven.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct GiStatue {
+    pub level: u32,
+    /// Oculi given toward the next level.
+    pub oculi: u32,
+}
+
+/// One scene's map.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct GiScene {
+    /// Map points unlocked (waypoints, statues, domains...), sorted.
+    pub points: Vec<u32>,
+    /// Map areas revealed, sorted.
+    pub areas: Vec<u32>,
 }
 
 /// `gi_capture`: why a tracker snapshot was taken, and which game login it
@@ -825,6 +878,25 @@ mod tests {
                 current_team: Some(1),
                 ..Default::default()
             }),
+            gi_exploration: Some(GiExploration {
+                statues: Some(BTreeMap::from([(
+                    1,
+                    GiStatue {
+                        level: 10,
+                        oculi: 0,
+                    },
+                )])),
+                offerings: Some(BTreeMap::from([(1, 12)])),
+                scenes: Some(BTreeMap::from([(
+                    3,
+                    GiScene {
+                        points: vec![7, 12],
+                        areas: vec![1],
+                    },
+                )])),
+                explore: Some(BTreeMap::from([(1, 278)])),
+                reputation: Some(BTreeMap::from([(1, 8)])),
+            }),
         };
 
         let json = serde_json::to_value(&good).expect("Good must serialize");
@@ -855,6 +927,7 @@ mod tests {
                 "gi_capture",
                 "gi_characters",
                 "gi_collections",
+                "gi_exploration",
                 "gi_player",
                 "gi_tasks",
                 "gi_wardrobe",
@@ -1026,6 +1099,18 @@ mod tests {
                 "resin": { "value": 124, "nextAt": 1_791_000_300 },
             })
         );
+
+        // `docs/teyvatme-export.ts` GiExploration: id-keyed objects.
+        assert_eq!(
+            json["gi_exploration"],
+            serde_json::json!({
+                "statues": { "1": { "level": 10, "oculi": 0 } },
+                "offerings": { "1": 12 },
+                "scenes": { "3": { "points": [7, 12], "areas": [1] } },
+                "explore": { "1": 278 },
+                "reputation": { "1": 8 },
+            })
+        );
     }
 
     #[test]
@@ -1053,6 +1138,7 @@ mod tests {
             gi_tasks: None,
             gi_collections: None,
             gi_wardrobe: None,
+            gi_exploration: None,
         };
 
         let json = serde_json::to_value(&good).expect("Good must serialize");

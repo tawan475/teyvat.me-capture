@@ -81,6 +81,8 @@ export interface TeyvatmeExport {
   gi_collections?: GiCollections
   /** [shipped] What the characters own and wear, and the saved teams. */
   gi_wardrobe?: GiWardrobe
+  /** [next] Exploration: Statues, offerings, map points, exploration, reputation. */
+  gi_exploration?: GiExploration
 }
 
 // ── GOOD's own shapes ─────────────────────────────────────────────── [GOOD]
@@ -248,7 +250,7 @@ export interface GiCollections {
     /** The deck in use. */
     currentDeck?: GameId
   }
-  /** [next] Every recipe unlocked → its proficiency (0 when none yet; the most is in the game data). */
+  /** [shipped] Every recipe unlocked → its proficiency (0 when none yet; the most is in the game data). */
   recipes?: Record<IdKey, number>
 }
 interface Progress {
@@ -281,6 +283,26 @@ interface Wardrobe {
 }
 /** A character key, the way GOOD's weapon `location` has it: "Traveler" for any Traveler. */
 type WornBy = string
+
+// ── gi_exploration ─────────────────────────────────────────────────── [next]
+// Every part is the game's state at login (or right after it); absent when not captured.
+
+export interface GiExploration {
+  /** Statues of The Seven by city (CityConfigData: 1 Mondstadt, 2 Liyue, 3 Inazuma, ...); level 1 = not yet levelled. */
+  statues?: Record<IdKey, { level: number; /** Oculi given toward the next level. */ oculi: number }>
+  /** Level by offering (OfferingOpenStateConfigData: Frostbearing Tree, Sacred Sakura, ...). */
+  offerings?: Record<IdKey, number>
+  /**
+   * By scene (3 = Teyvat; the other maps have their own ids): the map points
+   * unlocked (waypoints, Statues, domains... told apart by the scene's point
+   * file) and the map areas revealed.
+   */
+  scenes?: Record<IdKey, { points: GameId[]; areas: GameId[] }>
+  /** Exploration by area (WorldAreaConfigData), in the game's raw points; % = points / the area's total. */
+  explore?: Record<IdKey, number>
+  /** Reputation level by city (Mondstadt to Fontaine). */
+  reputation?: Record<IdKey, number>
+}
 
 // ── gi_capture ──────────────────────────────────────────────────── [shipped]
 

@@ -2,6 +2,14 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.6.0
+
+- Captures your **exploration**: Statue of The Seven levels (and Oculi toward
+  the next), offering levels (Frostbearing Tree, Sacred Sakura, ...), the map
+  points you've unlocked (waypoints, domains, ...) and areas revealed on each
+  map, exploration per area, and reputation levels. Exported as the new
+  `gi_exploration` key.
+
 ## 1.5.0
 
 - Captures your **recipes**: every recipe you've unlocked and its cooking
