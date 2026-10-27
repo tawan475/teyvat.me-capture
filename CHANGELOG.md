@@ -2,6 +2,14 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.14.2
+
+- Windows: in the tray, Teyvat.me no longer keeps one CPU core at 100 %.
+  A hidden window never gets the redraws the window library waits for, so
+  from the first update after hiding it polled without pause (about 3.5 %
+  of a many-core CPU in Task Manager). In the tray it is now minimized and
+  left off the taskbar and Alt+Tab, at about 1 % of one core.
+
 ## 1.14.1
 
 - **Capture done**: once a login's data has all arrived and gone quiet, the

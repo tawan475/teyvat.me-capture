@@ -1606,6 +1606,9 @@ impl TeyvatmeApp {
         if TRAY_HIDE_ASKED.swap(false, Ordering::Relaxed) {
             self.minimize(ctx, true);
         }
+        if HIDDEN_TO_TRAY.load(Ordering::Relaxed) {
+            keep_tray_window();
+        }
     }
 
     /// Hide to the tray, or fall back to the taskbar when there is no tray menu
@@ -1620,6 +1623,12 @@ impl TeyvatmeApp {
 
         if to_tray && self.tray_menu_ready.load(Ordering::Relaxed) {
             HIDDEN_TO_TRAY.store(true, Ordering::Relaxed);
+            // Windows: minimized off the taskbar, not hidden (see
+            // `tray_hide_window`).
+            #[cfg(windows)]
+            if tray_hide_window() {
+                return;
+            }
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
             return;
         }
@@ -1956,17 +1965,88 @@ impl TeyvatmeApp {
 #[cfg(windows)]
 fn show_window() {
     use windows::Win32::UI::WindowsAndMessaging::{
-        SW_RESTORE, SW_SHOW, SetForegroundWindow, ShowWindow,
+        SW_HIDE, SW_RESTORE, SW_SHOW, SetForegroundWindow, ShowWindow,
     };
 
     if let Some(hwnd) = own_window() {
         unsafe {
-            // Hidden to the tray: show it first; then out of the taskbar's
-            // minimized state, and to the front.
+            // In the tray it is a minimized tool window: an app window again
+            // (the taskbar notices only across a hide and a show), then out
+            // of the minimized state and to the front.
+            if set_tool_window(hwnd, false) {
+                let _ = ShowWindow(hwnd, SW_HIDE);
+            }
             let _ = ShowWindow(hwnd, SW_SHOW);
             let _ = ShowWindow(hwnd, SW_RESTORE);
             let _ = SetForegroundWindow(hwnd);
         }
+    }
+}
+
+/// Into the tray on Windows: minimized, and a tool window so that neither the
+/// taskbar nor Alt+Tab lists it. Not hidden: a hidden window never gets the
+/// redraw winit asks Windows for (`RDW_INTERNALPAINT` reaches only visible
+/// windows), and eframe polls for it, one core at 100 %, from the first
+/// repaint the background asks for (measured at 97-99 % with Direct3D and
+/// OpenGL alike, against ~1 % minimized). `false` when the window can't be
+/// found.
+#[cfg(windows)]
+fn tray_hide_window() -> bool {
+    use windows::Win32::UI::WindowsAndMessaging::{SW_HIDE, SW_SHOWMINNOACTIVE, ShowWindow};
+
+    let Some(hwnd) = own_window() else {
+        return false;
+    };
+    unsafe {
+        // The taskbar drops a window's button only across a hide and a show,
+        // so it is hidden for that instant.
+        let _ = ShowWindow(hwnd, SW_HIDE);
+        set_tool_window(hwnd, true);
+        let _ = ShowWindow(hwnd, SW_SHOWMINNOACTIVE);
+    }
+    true
+}
+
+/// In the tray, keep it a tool window: winit sets the window's styles again
+/// from its own flags when they change before it knows the window is
+/// minimized (eframe's first show, after "Start minimized" on the first
+/// frame), which would put it back on the taskbar.
+#[cfg(windows)]
+fn keep_tray_window() {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GWL_EXSTYLE, GetWindowLongPtrW, IsIconic, WS_EX_TOOLWINDOW,
+    };
+
+    let Some(hwnd) = own_window() else {
+        return;
+    };
+    let tool = unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) } & WS_EX_TOOLWINDOW.0 as isize != 0;
+    if !tool || !unsafe { IsIconic(hwnd) }.as_bool() {
+        tracing::debug!("back into the tray");
+        tray_hide_window();
+    }
+}
+
+/// Make the window a tool window (off the taskbar and Alt+Tab) or an app
+/// window again. Returns whether the style changed.
+#[cfg(windows)]
+fn set_tool_window(hwnd: windows::Win32::Foundation::HWND, tool: bool) -> bool {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GWL_EXSTYLE, GetWindowLongPtrW, SetWindowLongPtrW, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
+    };
+
+    unsafe {
+        let style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        let next = if tool {
+            (style | WS_EX_TOOLWINDOW.0 as isize) & !(WS_EX_APPWINDOW.0 as isize)
+        } else {
+            style & !(WS_EX_TOOLWINDOW.0 as isize)
+        };
+        if next == style {
+            return false;
+        }
+        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, next);
+        true
     }
 }
 
