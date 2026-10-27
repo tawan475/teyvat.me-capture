@@ -2,7 +2,7 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
-## 1.13.0
+## 1.13.1
 
 - Windows: the window draws with Direct3D 12 instead of OpenGL. NVIDIA's
   OpenGL driver could close Teyvat.me with "Unable to recover from a kernel
