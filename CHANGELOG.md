@@ -2,6 +2,12 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.13.2
+
+- **Genius Invokation TCG**: the card collection and decks are read again
+  for accounts that hold a card 0 times (the game leaves its count out, and
+  that one card used to make the whole collection unreadable).
+
 ## 1.13.1
 
 - Windows: the window draws with Direct3D 12 instead of OpenGL. NVIDIA's
