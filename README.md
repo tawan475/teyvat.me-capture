@@ -1,36 +1,56 @@
-# Teyvat.me Capture
+<p align="center">
+  <a href="https://github.com/tawan475/teyvat.me-capture/releases/latest">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://gi-cdn.475.dev/readme/banner-dark.webp">
+      <img alt="Teyvat.me Capture: capture your Genshin account while you play. Windows, Linux, macOS and Android." src="https://gi-cdn.475.dev/readme/banner-light.webp" width="100%">
+    </picture>
+  </a>
+</p>
 
-> **Unofficial fan project.** Teyvat.me is not affiliated with or endorsed by
-> HoYoverse. Genshin Impact and the names from its world belong to HoYoverse,
-> and none of its logos or art ship here.
+# <img alt="" src="https://gi-cdn.475.dev/readme/icon.webp" width="36" align="top"> Teyvat.me Capture
 
-Teyvat.me Capture reads your Genshin Impact account from the game's own
-network traffic while you play: characters, weapons, artifacts, materials,
-achievements and wish history. It saves it as
-[GOOD](https://frzyc.github.io/genshin-optimizer/#/doc) JSON, the format
-Genshin Optimizer and most other tools read. If you like, it also keeps your
-account up to date on [teyvat.me](https://teyvat.me), the tracker website
-that shares its name. No account or sign-in is needed to capture and export.
+<p align="center">
+  <a href="https://github.com/tawan475/teyvat.me-capture/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/tawan475/teyvat.me-capture?label=release&color=6366f1"></a>
+  <a href="https://github.com/tawan475/teyvat.me-capture/actions/workflows/rust.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/tawan475/teyvat.me-capture/rust.yml?branch=develop&label=CI"></a>
+  <a href="LICENSE"><img alt="MIT licence" src="https://img.shields.io/github/license/tawan475/teyvat.me-capture?color=6366f1"></a>
+  <img alt="Windows · Linux · macOS · Android" src="https://img.shields.io/badge/platforms-Windows%20%C2%B7%20Linux%20%C2%B7%20macOS%20%C2%B7%20Android-334155">
+  <a href="https://teyvat.me"><img alt="Tracker: teyvat.me" src="https://img.shields.io/badge/tracker-teyvat.me-f59e0b"></a>
+</p>
 
-It is packet capture, not screen reading: start it **before** the game
-connects, so it sees the login that carries the session key.
+<p align="center">
+  <a href="https://github.com/tawan475/teyvat.me-capture/releases/latest"><img alt="Download" src="https://gi-cdn.475.dev/readme/btn-download.webp" height="44"></a>&nbsp;
+  <a href="https://teyvat.me"><img alt="teyvat.me" src="https://gi-cdn.475.dev/readme/btn-teyvatme.webp" height="44"></a>
+</p>
 
-## Download
+> [!NOTE]
+> **Unofficial fan project.** Teyvat.me is not affiliated with or endorsed by HoYoverse. Genshin Impact and the names from its world belong to HoYoverse, and none of its logos or art ship here.
 
-From the [latest release](https://github.com/tawan475/teyvat.me-capture/releases/latest):
+Reads your Genshin Impact account (characters, weapons, artifacts, materials,
+achievements and wish history) from the game's own network traffic while you
+play, and saves it as [GOOD](https://frzyc.github.io/genshin-optimizer/#/doc)
+JSON for Genshin Optimizer and most other tools. No account or sign-in needed;
+[teyvat.me](https://teyvat.me), the tracker website, is optional.
 
-| Platform | File | Notes |
-|---|---|---|
-| Windows 10/11 | `teyvatme-windows.exe` | Uses Windows' built-in packet capture (pktmon). Asks for administrator rights. |
-| Windows with Npcap | `teyvatme-windows-pcap.exe` | Only if you already use [Npcap](https://npcap.com) and prefer it. |
-| Linux x86_64 | `teyvatme-linux-x86_64.tar.gz` | Needs packet-capture rights (root, or `cap_net_raw` on the binary). |
-| macOS (Apple silicon) | `Teyvatme-macos-arm64.app.tar.gz` | Asks once for access to `/dev/bpf`. |
-| Android 10+ | `teyvatme-android.apk` | A local VPN that sees only Genshin's traffic. Allow installing from your browser or file manager. |
+> [!IMPORTANT]
+> Start it **before** the game connects: it is packet capture, not screen
+> reading, and needs the login that carries the session key.
 
-`SHA256SUMS.txt` lists every file's checksum. The desktop app updates itself
-from this page.
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://gi-cdn.475.dev/readme/app-dark.webp">
+    <img alt="Teyvat.me Capture after a capture: account counts, today's resin and tasks, export and wish history" src="https://gi-cdn.475.dev/readme/app-light.webp" width="100%">
+  </picture>
+</p>
 
-## Using it
+## How it works
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://gi-cdn.475.dev/readme/steps-dark.webp">
+  <img alt="1. Start the app before Genshin. 2. Enter the world: the status turns to Data decrypting. 3. Save GOOD JSON, copy the wish URL, or send it to teyvat.me." src="https://gi-cdn.475.dev/readme/steps-light.webp" width="100%">
+</picture>
+
+<details>
+<summary><b>Step by step</b></summary>
 
 1. Start Teyvat.me Capture. On Windows, accept the administrator prompt.
 2. Start Genshin and enter the world. The status goes **Capture → Open
@@ -47,11 +67,38 @@ If Genshin was already in the world when Teyvat.me started, it says
 **Launch missed**: go back to the title screen and enter again, or restart the
 game.
 
+</details>
+
 **Is it safe?** Teyvat.me only reads. It never sends anything to the game or
 changes its files, and your data goes nowhere unless you choose a destination.
 Like every tool of this kind, it is used at your own risk.
 
-## Layout
+## What it does
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://gi-cdn.475.dev/readme/features-dark.webp">
+  <img alt="Reads the game's traffic · GOOD JSON export · Wish history · Today at a glance · Live sync · Only reads" src="https://gi-cdn.475.dev/readme/features-light.webp" width="100%">
+</picture>
+
+## Download
+
+From the [latest release](https://github.com/tawan475/teyvat.me-capture/releases/latest):
+
+| Platform | File | Notes |
+|---|---|---|
+| Windows 10/11 | `teyvatme-windows.exe` | Uses Windows' built-in packet capture (pktmon). Asks for administrator rights. |
+| Windows with Npcap | `teyvatme-windows-pcap.exe` | Only if you already use [Npcap](https://npcap.com) and prefer it. |
+| Linux x86_64 | `teyvatme-linux-x86_64.tar.gz` | Needs packet-capture rights (root, or `cap_net_raw` on the binary). |
+| macOS (Apple silicon) | `Teyvatme-macos-arm64.app.tar.gz` | Asks once for access to `/dev/bpf`. |
+| Android 10+ | `teyvatme-android.apk` | A local VPN that sees only Genshin's traffic. Allow installing from your browser or file manager. |
+
+`SHA256SUMS.txt` lists every file's checksum. The desktop app updates itself
+from this page.
+
+## For developers
+
+<details>
+<summary><b>Layout</b></summary>
 
 | Path | What it is |
 |---|---|
@@ -61,7 +108,10 @@ Like every tool of this kind, it is used at your own risk.
 | `crates/protocol` | `teyvatme-protocol`: KCP, the game's encryption and key recovery, Oodle decompression, and the message matchers. |
 | `crates/game-data` | `teyvatme-game-data`: indexes the game data (characters, weapons, artifacts, materials, talents) from the pinned copy in [`game-data/`](game-data/README.md), at build time and run time. |
 
-## Building
+</details>
+
+<details>
+<summary><b>Building</b></summary>
 
 The toolchain is pinned in `rust-toolchain.toml` (a nightly, because of
 `rustfmt.toml`). The game data comes from the pinned copy in
@@ -82,7 +132,10 @@ The Android app's native library builds with
 
 The icons come from `apps/desktop/assets/make_icons.py` (Pillow).
 
-## Releases
+</details>
+
+<details>
+<summary><b>Releases</b></summary>
 
 Work happens on `develop`. `main` only receives `develop` through a pull
 request with every CI check green, and releases are made from `main`:
@@ -92,14 +145,20 @@ add its section to [`CHANGELOG.md`](CHANGELOG.md)). The workflow builds the
 four desktop files and the signed APK (`.github/workflows/android.yml`) and
 publishes them with checksums.
 
-## Export format
+</details>
+
+<details>
+<summary><b>Export format</b></summary>
 
 The file is GOOD JSON with a few keys of Teyvat.me's own beside it. What each
 holds, which export carries which, and the rules they keep:
 [docs/export-format.md](docs/export-format.md); every field typed in
 [docs/teyvatme-export.ts](docs/teyvatme-export.ts).
 
-## Contracts with the tracker and with irminsul installs
+</details>
+
+<details>
+<summary><b>Contracts with the tracker and with irminsul installs</b></summary>
 
 Some names keep irminsul's spelling on purpose:
 
@@ -108,7 +167,10 @@ Some names keep irminsul's spelling on purpose:
   routes, the GOOD `gi_*` keys, the GOOD `source` value `"Irminsul"`, and the
   upload's `irminsul_capture.json` file name.
 
-## Coming over from irminsul
+</details>
+
+<details>
+<summary><b>Coming over from irminsul</b></summary>
 
 The bridge release of irminsul installs Teyvat.me over irminsul's exe. On its
 first launch Teyvat.me takes over what irminsul kept on the machine, under its
@@ -128,6 +190,8 @@ and packet logs stay with irminsul: they describe its runs.
 
 The bridge release itself (irminsul's updater pointed at this repository) is
 still to come.
+
+</details>
 
 ## Licence
 
