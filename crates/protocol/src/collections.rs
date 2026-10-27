@@ -1213,12 +1213,21 @@ const MAX_BOSSES: usize = 2_000;
 /// The weekly bosses' resin discounts (`WeeklyBossResinDiscountInfo`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct WeeklyDiscounts {
-    /// Discounts left this week.
-    pub left: u32,
+    /// Discounts used this week (`discount_num`: 3 all evening on a 7.1
+    /// account whose game said 0 of 3 left).
+    pub used: u32,
     pub limit: u32,
-    /// What a weekly boss costs now, and without the discount.
+    /// What a weekly boss costs with the discount, and without it (both
+    /// fixed: sent the same whether or not a discount is left).
     pub cost: u32,
     pub full_cost: u32,
+}
+
+impl WeeklyDiscounts {
+    /// Discounts left this week.
+    pub fn left(&self) -> u32 {
+        self.limit.saturating_sub(self.used)
+    }
 }
 
 /// The bosses and elites of the Adventurer Handbook (`GetInvestigationMonsterRsp`).
@@ -1242,8 +1251,8 @@ fn monster_config(bytes: &[u8]) -> bool {
     })
 }
 
-/// A nested `{left, limit, cost, full cost}`: two pairs of small numbers,
-/// left no more than the limit (at most 10) and the cost below the full cost
+/// A nested `{used, limit, cost, full cost}`: two pairs of small numbers,
+/// used no more than the limit (at most 10) and the cost below the full cost
 /// (at most 1,000 resin).
 fn weekly_discounts(bytes: &[u8]) -> Option<WeeklyDiscounts> {
     let e = entry(bytes)?;
@@ -1259,17 +1268,17 @@ fn weekly_discounts(bytes: &[u8]) -> Option<WeeklyDiscounts> {
         .collect();
     small.sort_unstable();
     resin.sort_unstable();
-    // proto3 leaves 0 off: no discounts left shows as the limit alone.
-    let (left, limit) = match small.as_slice() {
+    // proto3 leaves 0 off: none used yet shows as the limit alone.
+    let (used, limit) = match small.as_slice() {
         [limit] => (0, *limit),
-        [left, limit] => (*left, *limit),
+        [used, limit] => (*used, *limit),
         _ => return None,
     };
     let [cost, full_cost] = resin.as_slice() else {
         return None;
     };
     (limit > 0).then_some(WeeklyDiscounts {
-        left: left as u32,
+        used: used as u32,
         limit: limit as u32,
         cost: *cost as u32,
         full_cost: *full_cost as u32,
@@ -2548,7 +2557,8 @@ mod tests {
             e.extend(b(4, &[float(1), float(2)].concat()));
             e.extend(b(7, &[v(1, 3), v(2, monster), v(5, 133_220_051)].concat()));
             if discount {
-                e.extend(b(12, &[v(1, 3), v(2, 3), v(3, 30), v(4, 60)].concat()));
+                // One discount used of three.
+                e.extend(b(12, &[v(1, 1), v(2, 3), v(3, 30), v(4, 60)].concat()));
             }
             b(6, &e)
         };
@@ -2575,11 +2585,22 @@ mod tests {
         assert_eq!(
             found.weekly,
             Some(WeeklyDiscounts {
-                left: 3,
+                used: 1,
                 limit: 3,
                 cost: 30,
                 full_cost: 60
             })
+        );
+        assert_eq!(found.weekly.unwrap().left(), 2);
+        // None used: the 0 is left out.
+        assert_eq!(
+            weekly_discounts(&[v(2, 3), v(3, 30), v(4, 60)].concat()).map(|w| (w.used, w.left())),
+            Some((0, 3))
+        );
+        // All used: the game's "0/3".
+        assert_eq!(
+            weekly_discounts(&[v(1, 3), v(2, 3), v(3, 30), v(4, 60)].concat()).map(|w| w.left()),
+            Some(0)
         );
         // Spots without a monster config: something else.
         let bare = [

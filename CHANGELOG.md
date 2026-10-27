@@ -18,9 +18,17 @@ Each release's section is its GitHub release notes (`.github/workflows/release.y
   points, which the game sends 4–8 s after the bag. Most logins used to
   send it without them until the next world change. New data during the
   wait restarts its 5 s, for 20 s at most.
+- **Weekly bosses**: the discounts left were read backwards. The game sends
+  the discounts used, so a week with all three used showed 3 of 3 left, and
+  a fresh week 0 of 3.
+- Desktop: the language picker writes every language's name in its own
+  script (Chinese, Japanese, Korean, Thai and Russian names were empty
+  boxes outside their own language). Those fonts load only while the list
+  is open.
 
 New optional export fields: `gi_player.nickname`, `signature`, `nameCard`,
-`profilePicture` and `birthday`.
+`profilePicture` and `birthday`; `gi_tasks.weeklyBosses.used` (with it,
+`left` is the count left; exports without it held the count used there).
 
 ## 1.13.2
 

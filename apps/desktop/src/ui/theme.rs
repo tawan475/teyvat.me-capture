@@ -197,7 +197,7 @@ pub mod radius {
 
 /// Install the fonts, text styles and both themes' visuals. Called once.
 pub fn install(ctx: &Context, lang: Lang) {
-    ctx.set_fonts(fonts(lang));
+    ctx.set_fonts(fonts(lang, false));
     for theme in [Theme::Light, Theme::Dark] {
         let palette = match theme {
             Theme::Light => LIGHT,
@@ -218,9 +218,20 @@ pub fn install(ctx: &Context, lang: Lang) {
     }
 }
 
-/// The fonts again after a language change (a script font in or out).
-pub fn set_language(ctx: &Context, lang: Lang) {
-    ctx.set_fonts(fonts(lang));
+/// The fonts again after a language change (a script font in or out),
+/// with (`open`) or without every language's own script font for
+/// the language picker: each name is written in its own script, and those
+/// fonts (tens of MB for Chinese) are held only while the list is open.
+pub fn set_picker_fonts(ctx: &Context, lang: Lang, open: bool) {
+    ctx.set_fonts(fonts(lang, open));
+}
+
+/// The font family a language's name is drawn in while the picker's fonts
+/// are installed ([`set_picker_fonts`]); the usual one otherwise, and for
+/// the languages Outfit writes.
+pub fn name_family(installed: &[FontFamily], lang: Lang) -> Option<FontFamily> {
+    let family = FontFamily::Name(format!("name-{}", lang.code()).into());
+    installed.contains(&family).then_some(family)
 }
 
 /// The system's font for a script Outfit and egui's fonts lack, as
@@ -296,7 +307,7 @@ fn script_font(lang: Lang) -> Option<FontData> {
     None
 }
 
-fn fonts(lang: Lang) -> FontDefinitions {
+fn fonts(lang: Lang, names: bool) -> FontDefinitions {
     let mut fonts = FontDefinitions::default();
     for (name, bytes) in [
         (
@@ -324,10 +335,33 @@ fn fonts(lang: Lang) -> FontDefinitions {
         .get(&FontFamily::Proportional)
         .cloned()
         .unwrap_or_default();
+    let defaults = fallbacks.clone();
     let script = script_font(lang).map(|data| {
         fonts.font_data.insert("script".to_owned(), data.into());
         "script".to_owned()
     });
+    if names {
+        for other in Lang::ALL {
+            let font = if other == lang {
+                script.clone()
+            } else {
+                script_font(other).map(|data| {
+                    let name = format!("script-{}", other.code());
+                    fonts.font_data.insert(name.clone(), data.into());
+                    name
+                })
+            };
+            let Some(font) = font else {
+                continue;
+            };
+            let mut list = vec![font, "Outfit-SemiBold".to_owned()];
+            list.extend(defaults.iter().cloned());
+            fonts.families.insert(
+                FontFamily::Name(format!("name-{}", other.code()).into()),
+                list,
+            );
+        }
+    }
     let script_first = lang == Lang::Vi;
     if let Some(name) = &script
         && !script_first

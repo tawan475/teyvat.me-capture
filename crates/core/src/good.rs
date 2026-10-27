@@ -699,10 +699,14 @@ pub struct GiSignIn {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GiWeeklyBosses {
-    /// Discounts left this week, of `limit`.
+    /// Discounts left this week, of `limit`. Exports without `used` (1.13.2
+    /// and before) held the count used here instead.
     pub left: u32,
+    /// Discounts used this week; its presence says `left` is the count left.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub used: Option<u32>,
     pub limit: u32,
-    /// What a weekly boss costs now, and without the discount.
+    /// What a weekly boss costs with the discount, and without it.
     pub cost: u32,
     pub full_cost: u32,
 }

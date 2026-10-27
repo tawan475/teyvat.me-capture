@@ -249,8 +249,12 @@ export interface GiTasks {
   wishPath?: { weapon: GoodKey; points: number; max: number }
   /** [shipped] Original Resin and when the next comes (one per 8 minutes; absent at 200+). */
   resin?: { value: number; nextAt: UnixSeconds }
-  /** [shipped] The weekly bosses' resin discounts: left this week of `limit`; what one costs now and without it. */
-  weeklyBosses?: { left: number; limit: number; cost: number; fullCost: number }
+  /**
+   * [shipped] The weekly bosses' resin discounts: left this week of `limit`; what one costs with the
+   * discount and without it. [next] `used`: discounts used. An export without `used` (1.13.2 and
+   * before) held the count used in `left`: the discounts left there are `limit - left`.
+   */
+  weeklyBosses?: { left: number; used?: number; limit: number; cost: number; fullCost: number }
   /** [shipped] Adventure Ranks whose reward was claimed (2-60, ascending). */
   arRewards?: number[]
   /**

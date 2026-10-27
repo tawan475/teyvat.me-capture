@@ -82,6 +82,8 @@ impl TeyvatmeApp {
         let app_state = self.state_rx.borrow_and_update().clone();
         #[cfg(debug_assertions)]
         let app_state = self.preview(app_state);
+        #[cfg(debug_assertions)]
+        self.preview_shot(ctx);
         self.poll_game_status(&app_state);
         // Warns once per occurrence that the captured account isn't the one
         // uploads go to.

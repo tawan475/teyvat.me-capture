@@ -748,6 +748,11 @@ pub struct TeyvatmeApp {
     /// Whether this process can capture (Windows: elevated).
     is_admin: bool,
     applied_theme: Option<ThemeChoice>,
+    /// Whether the language picker is open (its fonts are in).
+    language_picker_open: bool,
+    /// Debug builds: where `TEYVATME_PREVIEW_OPEN` clicks (see `preview`).
+    #[cfg(debug_assertions)]
+    preview_click_at: Option<egui::Pos2>,
     /// The folder of the last manual save, for "Open export folder".
     last_save_folder: Option<PathBuf>,
     started_at: Instant,
@@ -1428,6 +1433,9 @@ impl TeyvatmeApp {
             last_game_status: GameStatus::default(),
             is_admin: is_admin(),
             applied_theme: None,
+            language_picker_open: false,
+            #[cfg(debug_assertions)]
+            preview_click_at: None,
             last_save_folder: None,
             started_at: Instant::now(),
             monitor_cancel_token: cancel_token,
@@ -1487,6 +1495,11 @@ impl eframe::App for TeyvatmeApp {
     /// Called by the framework to save state before shutdown.
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, eframe::APP_KEY, &self.saved_state);
+    }
+
+    #[cfg(debug_assertions)]
+    fn raw_input_hook(&mut self, _ctx: &egui::Context, raw_input: &mut egui::RawInput) {
+        self.preview_click(raw_input);
     }
 
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {

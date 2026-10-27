@@ -1278,7 +1278,8 @@ impl PlayerData {
             wish_path,
             resin,
             weekly_bosses: bosses.and_then(|b| b.weekly).map(|w| good::GiWeeklyBosses {
-                left: w.left,
+                left: w.left(),
+                used: Some(w.used),
                 limit: w.limit,
                 cost: w.cost,
                 full_cost: w.full_cost,

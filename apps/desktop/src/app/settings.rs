@@ -247,23 +247,34 @@ impl TeyvatmeApp {
                     Some(lang) => lang.native_name().to_owned(),
                     None => trf("System · {0}", &[&crate::i18n::system().native_name()]),
                 };
-                egui::ComboBox::from_id_salt("language")
+                let combo = egui::ComboBox::from_id_salt("language")
                     .selected_text(name(self.saved_state.language))
                     .height(420.0)
                     .show_ui(ui, |ui| {
+                        // Each name in its own script, once its font is in.
+                        let installed = ui.ctx().fonts(|fonts| fonts.families());
                         ui.selectable_value(&mut self.saved_state.language, None, name(None));
                         for lang in Lang::ALL {
-                            ui.selectable_value(
-                                &mut self.saved_state.language,
-                                Some(lang),
-                                name(Some(lang)),
-                            );
+                            let mut text = RichText::new(name(Some(lang)));
+                            if let Some(family) = crate::ui::theme::name_family(&installed, lang) {
+                                text = text.family(family);
+                            }
+                            ui.selectable_value(&mut self.saved_state.language, Some(lang), text);
                         }
                     });
+                #[cfg(debug_assertions)]
+                {
+                    self.preview_click_at = Some(combo.response.rect.center());
+                }
+                let open = combo.inner.is_some();
+                if open != self.language_picker_open {
+                    self.language_picker_open = open;
+                    crate::ui::theme::set_picker_fonts(ui.ctx(), crate::i18n::current(), open);
+                }
             });
             if self.saved_state.language != previous {
                 let lang = crate::i18n::set(self.saved_state.language);
-                crate::ui::theme::set_language(ui.ctx(), lang);
+                crate::ui::theme::set_picker_fonts(ui.ctx(), lang, self.language_picker_open);
             }
         });
     }
