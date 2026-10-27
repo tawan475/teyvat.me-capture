@@ -125,6 +125,21 @@ pub struct Good {
     /// part omitted when it was not.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gi_tasks: Option<GiTasks>,
+    /// What the player has collected (the Radiant Spincrystals so far).
+    /// Omitted when none of it was captured, and each part when it was not.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub gi_collections: Option<GiCollections>,
+}
+
+/// `gi_collections`: what the player has collected, each part as the game
+/// last sent it in full (at login). Append fields only.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiCollections {
+    /// The Radiant Spincrystals in the Serenitea Pot's music list, by item id
+    /// (141001 = "Radiant Spincrystal 1"), ascending.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub spincrystals: Option<Vec<u32>>,
 }
 
 /// `gi_capture`: why a tracker snapshot was taken, and which game login it
@@ -658,6 +673,9 @@ mod tests {
                     next_at: 1_791_000_300,
                 }),
             }),
+            gi_collections: Some(GiCollections {
+                spincrystals: Some(vec![141001, 141002]),
+            }),
         };
 
         let json = serde_json::to_value(&good).expect("Good must serialize");
@@ -687,6 +705,7 @@ mod tests {
                 "gi_anecdotes",
                 "gi_capture",
                 "gi_characters",
+                "gi_collections",
                 "gi_player",
                 "gi_tasks",
                 "materials",
@@ -882,6 +901,7 @@ mod tests {
             gi_anecdotes: None,
             gi_capture: None,
             gi_tasks: None,
+            gi_collections: None,
         };
 
         let json = serde_json::to_value(&good).expect("Good must serialize");

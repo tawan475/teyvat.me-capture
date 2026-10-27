@@ -16,7 +16,7 @@ pub use teyvatme_protocol::r#gen::protos::{AvatarInfo, Item, PropValue};
 use teyvatme_protocol::{
     ANECDOTE_AREA_IDS, ANECDOTE_IDS, AbyssPeriod, AnecdoteData, DailyCommissions, EpitomizedPath,
     Expedition, HomeResources, MAX_ANECDOTE_FINISH_COUNT, MAX_ANECDOTE_STATE, MAX_ANECDOTES,
-    ResinClock,
+    RecordsMessage, ResinClock,
 };
 
 use crate::good::{self, fake_uninitialized_4th_line};
@@ -678,7 +678,23 @@ pub struct PlayerData {
     clock_secs: Option<u64>,
     /// A resin clock that came before any resin was held, waiting for it.
     pending_resin: Option<ResinClock>,
+    /// The Radiant Spincrystals in the Serenitea Pot's music list (item ids),
+    /// as the game last sent the list.
+    spincrystals: Option<Vec<u32>>,
 }
+
+/// The Serenitea Pot's music ids lie in this range (7.1: Radiant Spincrystals
+/// 101-9910, the tracks every Pot has up to 10002). A lone list of other
+/// numbers is some other message.
+const MUSIC_IDS: RangeInclusive<u64> = 100..=20_000;
+
+/// The most tracks of the music list believed not to be Radiant Spincrystals
+/// (7.1: 8, the ones every Pot starts with).
+const MAX_OTHER_MUSIC: usize = 24;
+
+/// The shortest music list believed (7.1 sent lone lists of one or two such
+/// ids in other messages; every Pot has 8 tracks at the start).
+const MIN_MUSIC: usize = 3;
 
 impl PlayerData {
     pub fn new(game_data: AnimeGameData) -> Self {
@@ -694,6 +710,7 @@ impl PlayerData {
             game_data_sha: None,
             clock_secs: None,
             pending_resin: None,
+            spincrystals: None,
         }
     }
 
@@ -726,6 +743,7 @@ impl PlayerData {
         self.anecdotes = None;
         self.routine = Routine::default();
         self.pending_resin = None;
+        self.spincrystals = None;
         self.character_equip_guid_map.clear();
     }
 
@@ -738,6 +756,7 @@ impl PlayerData {
             && self.properties.is_empty()
             && self.anecdotes.is_none()
             && self.routine == Routine::default()
+            && self.spincrystals.is_none()
     }
 
     pub fn process_achievements(&mut self, achievements: &[Achievement]) {
@@ -751,6 +770,43 @@ impl PlayerData {
     /// any earlier copy: each one is the whole book.
     pub fn process_anecdotes(&mut self, data: &AnecdoteData) {
         self.anecdotes = Some(data.clone());
+    }
+
+    /// Keep the Radiant Spincrystals if `records` is the Serenitea Pot's music
+    /// list (7.1: `HomeAllUnlockedBgmIdListNotify`, at every login), replacing
+    /// the earlier list; returns how many it holds, or `None` when this is
+    /// another message.
+    ///
+    /// The list is one packed list of music ids alone, a shape some thirty
+    /// other messages share, so it is told apart by its values: every one a
+    /// music id, once, at least one of them a Radiant Spincrystal's (the game
+    /// data's) and only a few others (the tracks every Pot starts with). On
+    /// four recorded sessions only that message passed. A Pot with no Radiant
+    /// Spincrystal yet is not told apart, so then nothing is exported.
+    pub fn apply_collections(&mut self, records: &RecordsMessage) -> Option<usize> {
+        if !records.records.is_empty() || !records.varints.is_empty() || records.lists.len() != 1 {
+            return None;
+        }
+        let music = records.lists.values().next()?;
+        if music.len() < MIN_MUSIC || !music.iter().all(|id| MUSIC_IDS.contains(id)) {
+            return None;
+        }
+        let unique: HashSet<u64> = music.iter().copied().collect();
+        if unique.len() != music.len() {
+            return None;
+        }
+        let table = self.game_data.spincrystals().ok()?;
+        let mut found: Vec<u32> = music
+            .iter()
+            .filter_map(|id| table.get(&u32::try_from(*id).ok()?).copied())
+            .collect();
+        if found.is_empty() || music.len() - found.len() > MAX_OTHER_MUSIC {
+            return None;
+        }
+        found.sort_unstable();
+        let count = found.len();
+        self.spincrystals = Some(found);
+        Some(count)
     }
 
     /// Keep one part of the planner's routine, replacing what the game sent
@@ -1459,7 +1515,9 @@ impl PlayerData {
         let mut good = good::Good {
             format: "GOOD".to_string(),
             version: 3,
-            source: "Irminsul".to_string(),
+            // What wrote the file. Irminsul's files say "Irminsul"; readers
+            // take any name (the tracker stores it, nothing branches on it).
+            source: "Teyvat.me".to_string(),
             characters: Vec::new(),
             artifacts: Vec::new(),
             weapons: Vec::new(),
@@ -1494,6 +1552,9 @@ impl PlayerData {
             gi_capture: None,
             // Omitted when nothing of it was captured, like the keys above.
             gi_tasks: self.export_tasks(now_ms / 1000),
+            gi_collections: self.spincrystals.as_ref().map(|found| good::GiCollections {
+                spincrystals: Some(found.clone()),
+            }),
         };
 
         if settings.include_characters {
@@ -2175,6 +2236,8 @@ mod tests {
         weapon_map: &'static str,
         /// `(female, male)`; `None` is the 7.1 dump, where both are `null`.
         tps_avatar_ids: Option<(u32, u32)>,
+        /// The `spincrystals` map's inside (music id → item id).
+        spincrystals: &'static str,
     }
 
     impl TestGameData {
@@ -2197,7 +2260,8 @@ mod tests {
                     "skill_type_map": {{{}}},
                     "tps_avatar_id_female": {tps_female},
                     "tps_avatar_id_male": {tps_male},
-                    "weapon_map": {{{}}}
+                    "weapon_map": {{{}}},
+                    "spincrystals": {{{}}}
                 }}"#,
                 self.affix_map,
                 self.artifact_map,
@@ -2207,6 +2271,7 @@ mod tests {
                 self.skill_element_map,
                 self.skill_type_map,
                 self.weapon_map,
+                self.spincrystals,
             );
             AnimeGameData::new_from_reader(json.as_bytes()).unwrap()
         }
@@ -3093,7 +3158,7 @@ mod tests {
     /// The GOOD part of an export, byte for byte. A change here is a change to
     /// what Genshin Optimizer, the old backend and the tracker all read.
     const GOLDEN_GOOD: &str = concat!(
-        r#"{"format":"GOOD","version":3,"source":"Irminsul","#,
+        r#"{"format":"GOOD","version":3,"source":"Teyvat.me","#,
         r#""characters":[{"key":"HuTao","level":90,"constellation":0,"ascension":6,"#,
         r#""talent":{"auto":10,"skill":9,"burst":8}}],"#,
         r#""artifacts":[{"setKey":"CrimsonWitchOfFlames","slotKey":"flower","level":20,"#,
@@ -3338,6 +3403,96 @@ mod tests {
         data.reset();
         assert!(data.is_empty());
         assert_eq!(data.export_tasks(NOW_SECS), None);
+    }
+
+    // -- gi_collections ---------------------------------------------------------------
+
+    /// Three Radiant Spincrystals (music 101, 102, 9910) in the game data.
+    fn collector() -> PlayerData {
+        PlayerData::new(
+            TestGameData {
+                spincrystals: r#""101": 141001, "102": 141002, "9910": 141306"#,
+                ..Default::default()
+            }
+            .build(),
+        )
+    }
+
+    fn music_list(ids: &[u64]) -> RecordsMessage {
+        RecordsMessage {
+            lists: BTreeMap::from([(15, ids.to_vec())]),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn the_pot_music_list_exports_its_spincrystals() {
+        let mut data = collector();
+        // Two Spincrystals among the tracks every Pot has.
+        let list = music_list(&[9910, 105, 101, 10001, 10002]);
+        assert_eq!(data.apply_collections(&list), Some(2));
+        let json = serde_json::to_value(data.export_at(&settings(), NOW_SECS * 1000).0).unwrap();
+        assert_eq!(
+            json["gi_collections"],
+            serde_json::json!({"spincrystals": [141001, 141306]})
+        );
+        // The next login's list replaces it.
+        assert_eq!(
+            data.apply_collections(&music_list(&[101, 102, 105])),
+            Some(2)
+        );
+        assert_eq!(data.spincrystals, Some(vec![141001, 141002]));
+    }
+
+    #[test]
+    fn other_lone_lists_are_not_the_music_list() {
+        let mut data = collector();
+        let others = [
+            // No Radiant Spincrystal among them.
+            music_list(&[105, 10001, 10002, 10003]),
+            // Too short (7.1's other messages had lists of one or two).
+            music_list(&[101, 105]),
+            // Out of the music range (quest ids, guids).
+            music_list(&[101, 102, 4_000_101]),
+            // Repeats an id.
+            music_list(&[101, 101, 102]),
+            // Mostly other numbers.
+            music_list(&(1_000..1_030).chain([101]).collect::<Vec<_>>()),
+            // Beside a lone number, or two lists.
+            RecordsMessage {
+                varints: BTreeMap::from([(3, 1)]),
+                ..music_list(&[101, 102, 105])
+            },
+            RecordsMessage {
+                lists: BTreeMap::from([(1, vec![101, 102, 105]), (2, vec![101, 102, 105])]),
+                ..Default::default()
+            },
+        ];
+        for records in &others {
+            assert_eq!(data.apply_collections(records), None, "{records:?}");
+        }
+        assert_eq!(data.spincrystals, None);
+        // Without the game data's table nothing can be told apart.
+        assert_eq!(
+            player_data().apply_collections(&music_list(&[101, 102, 105])),
+            None
+        );
+    }
+
+    #[test]
+    fn no_music_list_captured_means_no_gi_collections_key() {
+        let json =
+            serde_json::to_value(collector().export_at(&settings(), NOW_SECS * 1000).0).unwrap();
+        assert!(json.as_object().unwrap().get("gi_collections").is_none());
+    }
+
+    #[test]
+    fn reset_forgets_the_spincrystals() {
+        let mut data = collector();
+        data.apply_collections(&music_list(&[101, 102, 105]))
+            .unwrap();
+        data.reset();
+        assert!(data.is_empty());
     }
 
     // -- gi_anecdotes ----------------------------------------------------------------

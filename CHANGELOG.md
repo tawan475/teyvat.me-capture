@@ -2,6 +2,15 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.3.0
+
+- Captures your **Radiant Spincrystals**: which of the 206 are in your
+  Serenitea Pot's music list, read from the list the game sends at every
+  login. Exported as the new `gi_collections.spincrystals` (item ids); a
+  tracker can show which ones you're missing.
+- Exported files now name their source as `"Teyvat.me"` (it said
+  `"Irminsul"`, the app's old name).
+
 ## 1.2.3
 
 - Android: the Quick Settings tile only turns capture on and off. It no

@@ -7,7 +7,7 @@
 // kept (and tested) for the builds that download.
 #![cfg_attr(not(feature = "download"), allow(dead_code))]
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
@@ -63,7 +63,7 @@ fn lookup_const_value<T: FromStr>(
     res
 }
 
-const DATABASE_VERSION: u32 = 4;
+const DATABASE_VERSION: u32 = 5;
 
 #[derive(Debug, Deserialize, Serialize)]
 struct Database {
@@ -80,6 +80,10 @@ struct Database {
     tps_avatar_id_female: Option<u32>,
     tps_avatar_id_male: Option<u32>,
     weapon_map: HashMap<u32, Weapon>,
+    /// Radiant Spincrystals: the Serenitea Pot music id each one unlocks →
+    /// its item id.
+    #[serde(default)]
+    spincrystals: BTreeMap<u32, u32>,
 }
 
 impl Database {
@@ -98,6 +102,7 @@ impl Database {
             tps_avatar_id_female: None,
             tps_avatar_id_male: None,
             weapon_map: HashMap::new(),
+            spincrystals: BTreeMap::new(),
         }
     }
 
@@ -236,6 +241,12 @@ impl AnimeGameData {
             .ok_or_else(|| anyhow!("Unable to fetch weapon {id}"))
     }
 
+    /// Radiant Spincrystals by the Serenitea Pot music id each one unlocks
+    /// (value: the item id).
+    pub fn spincrystals(&self) -> Result<&BTreeMap<u32, u32>> {
+        Ok(&self.db()?.spincrystals)
+    }
+
     pub fn has_data(&self) -> bool {
         self.db.is_some()
     }
@@ -306,7 +317,8 @@ impl AnimeGameData {
         db.weapon_map = Self::fetch_weapon_map(source, &latest_git_hash, &text_map).await?;
 
         tracing::info!("Downloading material map");
-        db.material_map = Self::fetch_material_map(source, &latest_git_hash, &text_map).await?;
+        (db.material_map, db.spincrystals) =
+            Self::fetch_material_map(source, &latest_git_hash, &text_map).await?;
 
         tracing::info!("Downloading character map");
         db.character_map = Self::fetch_character_map(source, &latest_git_hash, &text_map).await?;
@@ -424,12 +436,12 @@ impl AnimeGameData {
         source: &Source,
         git_ref: &str,
         text_map: &HashMap<u32, String>,
-    ) -> Result<HashMap<u32, String>> {
+    ) -> Result<(HashMap<u32, String>, BTreeMap<u32, u32>)> {
         let data: Vec<MaterialExcelConfigDataEntry> = source
             .get_json_file(git_ref, "ExcelBinOutput/MaterialExcelConfigData.json")
             .await?;
 
-        Ok(data
+        let names = data
             .iter()
             .filter_map(|entry| {
                 Some((
@@ -437,7 +449,25 @@ impl AnimeGameData {
                     lookup_text(text_map, entry.name_text_map_hash)?.clone(),
                 ))
             })
-            .collect())
+            .collect();
+        // A Radiant Spincrystal is used up into the Serenitea Pot's music
+        // list: its use names the music id it unlocks.
+        let spincrystals = data
+            .iter()
+            .filter(|entry| entry.material_type == "MATERIAL_BGM")
+            .filter_map(|entry| {
+                let music = entry
+                    .item_use
+                    .iter()
+                    .find(|item_use| item_use.use_op == "ITEM_USE_UNLOCK_HOME_BGM")?
+                    .use_param
+                    .first()?
+                    .parse()
+                    .ok()?;
+                Some((music, entry.id))
+            })
+            .collect();
+        Ok((names, spincrystals))
     }
 
     async fn fetch_property_map<Source: GameDataSource>(
@@ -838,6 +868,18 @@ mod tests {
         let mut data = AnimeGameData::new();
         data.update_impl(&source).await.unwrap();
         assert_eq!(data.get_material(100002).unwrap(), &"Sunsettia".to_string());
+    }
+
+    #[tokio::test]
+    async fn spincrystals_map_music_ids_to_their_items() {
+        let source = TestDataSource;
+        let mut data = AnimeGameData::new();
+        data.update_impl(&source).await.unwrap();
+        // Only the Radiant Spincrystal; the Sunsettia's uses unlock no music.
+        assert_eq!(
+            data.spincrystals().unwrap(),
+            &BTreeMap::from([(101, 141001)])
+        );
     }
 
     #[tokio::test]

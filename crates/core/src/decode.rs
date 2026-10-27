@@ -17,7 +17,7 @@ use std::time::{Duration, Instant};
 
 use teyvatme_protocol::{
     CommandMatch, GameCommand, GamePacket, GameSniffer, KeyState, classify_command, classify_union,
-    flat_message, union_commands,
+    flat_message, matches_records_message, union_commands,
 };
 use tokio::sync::mpsc;
 
@@ -155,6 +155,7 @@ impl DataReplacement {
                         | CommandMatch::PropertyUpdate(_)
                         | CommandMatch::Flat(_)
                         | CommandMatch::ResinClock(_)
+                        | CommandMatch::Records(_)
                 )
         });
         self.verdict(key, replaces)
@@ -218,7 +219,8 @@ impl AppliedData {
 /// whose player property updates (Mora, Primogems after a reward) are taken
 /// out with their own command ids, or a character's live update, which only
 /// the held data can recognise ([`CommandMatch::Flat`], decided in
-/// [`apply_commands`]).
+/// [`apply_commands`]), or a list of small records that only the game data's
+/// ids can (`CommandMatch::Records`: the Serenitea Pot's music).
 pub fn classify_commands(commands: &[GameCommand]) -> Vec<(u16, CommandMatch)> {
     commands
         .iter()
@@ -227,9 +229,16 @@ pub fn classify_commands(commands: &[GameCommand]) -> Vec<(u16, CommandMatch)> {
             match classify_command(command) {
                 Some(found) => vec![(command.command_id, found)],
                 None if union_commands(command).is_some() => classify_union(command),
+                // Both readings: a lone packed list (the Serenitea Pot's
+                // music) also passes as a nested message for the character
+                // updates. Each is recognised in `apply_commands` against
+                // the held data, which no message satisfies twice.
                 None => flat_message(command)
-                    .map(|flat| vec![(command.command_id, CommandMatch::Flat(flat))])
-                    .unwrap_or_default(),
+                    .map(CommandMatch::Flat)
+                    .into_iter()
+                    .chain(matches_records_message(&command.proto_data).map(CommandMatch::Records))
+                    .map(|found| (command.command_id, found))
+                    .collect(),
             }
         })
         .collect()
@@ -325,6 +334,13 @@ pub fn apply_commands(
                 tracing::info!("Found Welkin Moon days");
                 player_data.process_routine(RoutinePart::Welkin(days));
                 applied.routine = true;
+            }
+            CommandMatch::Records(records) => {
+                // Most are other traffic: only the game data's ids can say.
+                if let Some(count) = player_data.apply_collections(&records) {
+                    tracing::info!(count, "Found the Serenitea Pot's Radiant Spincrystals");
+                    applied.routine = true;
+                }
             }
             CommandMatch::ResinClock(clock) => {
                 tracing::debug!(?clock, "resin clock candidate");

@@ -87,6 +87,7 @@ pub use crate::gacha::{
 use crate::r#gen::protos::{AvatarInfo, Item, PacketHead, PropValue, Unk, prop_value};
 use crate::kcp::{KcpSniffer, SegmentHead, segment_head};
 use crate::oodle::TcpDecoder;
+pub use crate::records::{Record, RecordsMessage, matches_records_message};
 pub use crate::routine::{
     ABYSS_FLOOR_IDS, ABYSS_STARS_PER_FLOOR, AbyssPeriod, DAILY_TASK_IDS, DailyCommissions,
     EXPEDITION_HOURS, EXPEDITION_IDS, Expedition, HomeResources, MAX_ABYSS_FLOORS, MAX_DAILY_TASKS,
@@ -117,6 +118,7 @@ mod flat;
 mod gacha;
 mod kcp;
 pub mod oodle;
+mod records;
 mod routine;
 #[cfg(test)]
 mod test_support;
@@ -1516,6 +1518,11 @@ pub enum CommandMatch {
     /// A resin clock *candidate*: see [`matches_resin_change_notify`]; the
     /// caller believes it only beside the resin it holds.
     ResinClock(ResinClock),
+    /// A message of small records no matcher claimed (see
+    /// [`matches_records_message`]): a candidate only, which the caller
+    /// recognises (or not) against the game data's ids. Never produced by
+    /// [`classify_command`]; the caller falls back to it.
+    Records(RecordsMessage),
 }
 
 impl CommandMatch {
@@ -1541,6 +1548,7 @@ impl CommandMatch {
             Self::HomeResources(_) => "realm currency",
             Self::Welkin(_) => "welkin",
             Self::ResinClock(_) => "resin clock",
+            Self::Records(_) => "records",
         }
     }
 

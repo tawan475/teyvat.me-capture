@@ -69,6 +69,20 @@ pub struct MaterialExcelConfigDataEntry {
     pub id: u32,
     #[serde(default)]
     pub name_text_map_hash: u32,
+    #[serde(default)]
+    pub material_type: String,
+    #[serde(default)]
+    pub item_use: Vec<ItemUse>,
+}
+
+/// One of an item's uses: what using it does (`useOp`) and its arguments.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemUse {
+    #[serde(default)]
+    pub use_op: String,
+    #[serde(default)]
+    pub use_param: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
