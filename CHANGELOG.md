@@ -2,6 +2,13 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.2.3
+
+- Android: the Quick Settings tile only turns capture on and off. It no
+  longer opens Genshin (or the app); open the game yourself once capture is
+  on. Only the very first start still opens the app, because Android asks to
+  allow the VPN there once.
+
 ## 1.2.2
 
 - Android: the Quick Settings tile no longer opens Teyvat.me. A tap starts

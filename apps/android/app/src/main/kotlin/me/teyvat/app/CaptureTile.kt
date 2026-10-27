@@ -16,9 +16,8 @@ import android.service.quicksettings.TileService
 import android.util.Log
 
 /**
- * The Quick Settings tile: off, a tap starts capture in the background and
- * opens Genshin (the game logs in seconds after it opens, long after the VPN
- * is up); on, a tap stops capture.
+ * The Quick Settings tile: off, a tap starts capture in the background; on,
+ * a tap stops capture. It opens nothing (Genshin is the player's to open).
  *
  * Only the first start goes through the app's screen: Android shows the VPN
  * prompt only from one. Once that was answered (and setup is done) the tile
@@ -38,14 +37,10 @@ class CaptureTile : TileService() {
             GameVpnService.stop(this)
             return
         }
-        if (startInBackground(app)) {
-            Links.gameLaunch(this)?.let { collapseInto(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-            return
-        }
+        if (startInBackground(app)) return
         collapseInto(
             Intent(this, MainActivity::class.java)
                 .setAction(MainActivity.ACTION_START_CAPTURE)
-                .putExtra(MainActivity.EXTRA_OPEN_GAME, true)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
         )
     }
