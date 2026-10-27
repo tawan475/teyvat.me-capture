@@ -31,7 +31,7 @@
     <string name="home_login_seen_title">Вход замечен</string>
     <string name="home_login_seen_line">Поиск ключа сессии</string>
     <string name="home_decrypting_title">Расшифровка данных</string>
-    <string name="home_decrypting_line">Ключ сессии найден · %s</string>
+    <string name="home_decrypting_line">Вход обнаружен · %s</string>
     <string name="home_missed_title">Запуск пропущен</string>
     <string name="home_missed_running_line">Genshin запущен раньше Teyvat.me</string>
     <string name="home_missed_stopped_line">При входе захват был выключен</string>
@@ -283,7 +283,7 @@
     <string name="language">Язык</string>
     <string name="language_system">Системная</string>
     <string name="event_game_connected">Игра подключена</string>
-    <string name="event_key_found">Ключ сеанса найден</string>
+    <string name="event_key_found">Вход обнаружен</string>
     <string name="event_data_captured">Данные аккаунта получены</string>
     <string name="tracker_target_missing">Цель выгрузки не выбрана · выберите аккаунт в «%1$s»</string>
     <!-- Tracker › Advanced -->
@@ -381,4 +381,5 @@
         <item quantity="many">%s изменений</item>
         <item quantity="other">%s изменения</item>
     </plurals>
+    <string name="home_done_title">Захват завершён</string>
 </resources>

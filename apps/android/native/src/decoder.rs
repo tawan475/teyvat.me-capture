@@ -75,6 +75,9 @@ pub enum Phase {
     LoginSeen,
     /// The session key is known: the account's data decrypts.
     Decrypting,
+    /// Decrypting, and the login's data has all arrived and gone quiet
+    /// ([`State::settled`]): "Capture done".
+    Done,
     /// Game traffic of a connection whose login was not seen.
     LaunchMissed,
     /// The session key search for this login gave up.
@@ -205,6 +208,14 @@ struct Connection {
     recovery_failed: bool,
 }
 
+/// "Capture done" ([`State::settled`]), the desktop's snapshot timing: quiet
+/// this long after the last data, the exploration points (sent 4-8 s after
+/// the bag) awaited up to `SETTLE_EXPLORE_MS`, done after `SETTLE_MAX_MS`
+/// whatever comes.
+const SETTLE_QUIET_MS: u64 = 5_000;
+const SETTLE_EXPLORE_MS: u64 = 12_000;
+const SETTLE_MAX_MS: u64 = 25_000;
+
 struct State {
     player_data: Option<PlayerData>,
     error: Option<String>,
@@ -220,6 +231,11 @@ struct State {
     capture_started: Option<u64>,
     updated: Updated,
     data_at: Option<u64>,
+    /// When this login's bag and characters were both in, and whether its
+    /// data has settled since (kept until a new login: later changes don't
+    /// undo it). A `Cell` because the phase is read through `&self`.
+    settle_from: Option<u64>,
+    settled: std::cell::Cell<bool>,
     data_version: u64,
     login: u64,
     counts: Counts,
@@ -250,6 +266,8 @@ impl State {
             capture_started: None,
             updated: Updated::default(),
             data_at: None,
+            settle_from: None,
+            settled: std::cell::Cell::new(false),
             data_version: 0,
             login: 0,
             counts: Counts::default(),
@@ -294,7 +312,11 @@ impl State {
         let stuck = self.stuck(now);
         if let Some(connection) = &self.connection {
             if connection.key == Some(KeyState::Session) && !stuck {
-                return Phase::Decrypting;
+                return if self.settled(now) {
+                    Phase::Done
+                } else {
+                    Phase::Decrypting
+                };
             }
             if connection.recovery_failed {
                 return Phase::KeyLost;
@@ -325,6 +347,30 @@ impl State {
             Some(placed) => last.saturating_sub(placed) > STUCK_AFTER_MS,
             None => last.saturating_sub(first) > STUCK_AFTER_MS,
         }
+    }
+
+    /// Whether this login's data has settled, as the desktop decides it:
+    /// quiet for [`SETTLE_QUIET_MS`] once the bag and characters are in,
+    /// waiting for the exploration points up to [`SETTLE_EXPLORE_MS`], at
+    /// most [`SETTLE_MAX_MS`]. Once true, true until a new login.
+    fn settled(&self, now: u64) -> bool {
+        if self.settled.get() {
+            return true;
+        }
+        let (Some(from), Some(last)) = (self.settle_from, self.data_at) else {
+            return false;
+        };
+        let explore = self
+            .player_data
+            .as_ref()
+            .is_some_and(|data| data.has_exploration_points());
+        let since = now.saturating_sub(from);
+        let quiet = now.saturating_sub(last) >= SETTLE_QUIET_MS;
+        let done = (quiet && (explore || since >= SETTLE_EXPLORE_MS)) || since >= SETTLE_MAX_MS;
+        if done {
+            self.settled.set(true);
+        }
+        done
     }
 
     fn summary(&self) -> Summary {
@@ -799,7 +845,7 @@ fn note_key(state: &mut State, report: KeyReport, at: u64) {
         state.event("info", "Login seen");
     }
     if found {
-        state.event("ok", "Session key found");
+        state.event("ok", "Login detected");
     }
     if lost {
         state.event("error", "Session key not found");
@@ -826,6 +872,8 @@ fn apply(
             }
             state.live.note_data_replaced();
             state.updated = Updated::default();
+            state.settle_from = None;
+            state.settled.set(false);
             state.login += 1;
         }
         DataVerdict::Hold => return,
@@ -859,6 +907,9 @@ fn apply(
         state.updated.achievements = Some(at);
     }
     state.data_at = Some(at);
+    if state.updated.items.is_some() && state.updated.characters.is_some() {
+        state.settle_from.get_or_insert(at);
+    }
     state.data_version += 1;
     // The login's UID binds its wish key; another UID is a new login.
     hub.note_uid(state.uid());
@@ -953,6 +1004,17 @@ mod tests {
         // A minute in the background is still the same login.
         assert_eq!(state.phase(now + 60_000), Phase::Decrypting);
 
+        // The bag and characters in, then quiet: done once the exploration
+        // is in or 12 s pass; later data doesn't undo it.
+        state.updated.items = Some(now);
+        state.updated.characters = Some(now);
+        state.settle_from = Some(now);
+        state.data_at = Some(now + 4_000);
+        assert_eq!(state.phase(now + 8_000), Phase::Decrypting);
+        assert_eq!(state.phase(now + 12_500), Phase::Done);
+        state.data_at = Some(now + 12_500);
+        assert_eq!(state.phase(now + 12_500), Phase::Done);
+
         // The game closed: the data stays, the app waits for it again.
         let later = now + CONNECTION_QUIET_MS;
         assert_eq!(state.phase(later), Phase::Waiting);
@@ -975,7 +1037,7 @@ mod tests {
         note_key(&mut state, report(KeyState::Dispatch), 3);
         note_key(&mut state, report(KeyState::Session), 4);
         let events: Vec<_> = state.events.iter().map(|e| e.text.as_str()).collect();
-        assert_eq!(events, ["Login seen", "Session key found"]);
+        assert_eq!(events, ["Login seen", "Login detected"]);
     }
 
     #[test]

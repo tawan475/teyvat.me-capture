@@ -31,7 +31,7 @@
     <string name="home_login_seen_title">Login detectado</string>
     <string name="home_login_seen_line">Procurando a chave da sessão</string>
     <string name="home_decrypting_title">Descriptografando dados</string>
-    <string name="home_decrypting_line">Chave da sessão encontrada · %s</string>
+    <string name="home_decrypting_line">Login detectado · %s</string>
     <string name="home_missed_title">Abertura perdida</string>
     <string name="home_missed_running_line">O Genshin abriu antes do Teyvat.me</string>
     <string name="home_missed_stopped_line">A captura estava desligada no login</string>
@@ -283,7 +283,7 @@
     <string name="language">Idioma</string>
     <string name="language_system">Sistema</string>
     <string name="event_game_connected">Jogo conectado</string>
-    <string name="event_key_found">Chave de sessão encontrada</string>
+    <string name="event_key_found">Login detectado</string>
     <string name="event_data_captured">Dados da conta capturados</string>
     <string name="tracker_target_missing">Sem destino de envio · escolha uma conta em “%1$s”</string>
     <!-- Tracker › Advanced -->
@@ -379,4 +379,5 @@
         <item quantity="many">%s alterações</item>
         <item quantity="other">%s alterações</item>
     </plurals>
+    <string name="home_done_title">Captura concluída</string>
 </resources>

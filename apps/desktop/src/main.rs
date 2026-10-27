@@ -189,6 +189,9 @@ pub struct AppState {
     tasks_at: Option<chrono::DateTime<chrono::Local>>,
     /// Anecdotes recorded in the Travel Accounts book, for the tiles.
     anecdotes: Option<usize>,
+    /// Whether this login's data has all arrived and gone quiet: the status
+    /// reads "Capture done" instead of "Data decrypting".
+    capture_done: bool,
 }
 
 impl AppState {
@@ -204,6 +207,7 @@ impl AppState {
             tasks: None,
             tasks_at: None,
             anecdotes: None,
+            capture_done: false,
         }
     }
 }

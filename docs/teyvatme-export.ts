@@ -77,7 +77,7 @@ export interface TeyvatmeExport {
   gi_tasks?: GiTasks
   /** [shipped] Why this snapshot was taken (live sync). Tracker uploads only. */
   gi_capture?: GiCapture
-  /** [shipped] / [next] What the player has collected. */
+  /** [shipped] What the player has collected. */
   gi_collections?: GiCollections
   /** [shipped] What the characters own and wear, and the saved teams. */
   gi_wardrobe?: GiWardrobe
@@ -181,19 +181,19 @@ export interface GiPlayer {
   maxStamina?: number
   /** The game data dump commit the GOOD keys came from. */
   gameData?: string
-  /** [next] The in-game name. */
+  /** [shipped] The in-game name. */
   nickname?: string
-  /** [next] The profile's signature; "" when the player set none. */
+  /** [shipped] The profile's signature; "" when the player set none. */
   signature?: string
-  /** [next] The name card on the profile: its item id (210001...; the wardrobe's `namecards`). */
+  /** [shipped] The name card on the profile: its item id (210001...; the wardrobe's `namecards`). */
   nameCard?: GameId
   /**
-   * [next] The profile picture as the game sends it. 7.1 sends `id`
+   * [shipped] The profile picture as the game sends it. 7.1 sends `id`
    * (ProfilePictureExcelConfigData) and `frameId`; older clients a character
    * (`avatarId`, 10000xxx) and its outfit (`costumeId`).
    */
   profilePicture?: { id?: GameId; avatarId?: GameId; costumeId?: GameId; frameId?: GameId }
-  /** [next] The birthday set on the profile. */
+  /** [shipped] The birthday set on the profile. */
   birthday?: { month: number; day: number }
 }
 
@@ -251,7 +251,7 @@ export interface GiTasks {
   resin?: { value: number; nextAt: UnixSeconds }
   /**
    * [shipped] The weekly bosses' resin discounts: left this week of `limit`; what one costs with the
-   * discount and without it. [next] `used`: discounts used. An export without `used` (1.13.2 and
+   * discount and without it. [shipped] `used`: discounts used. An export without `used` (1.13.2 and
    * before) held the count used in `left`: the discounts left there are `limit - left`.
    */
   weeklyBosses?: { left: number; used?: number; limit: number; cost: number; fullCost: number }
@@ -266,7 +266,7 @@ export interface GiTasks {
   signIns?: Record<IdKey, { days: number; claimed: number[]; lastAt: UnixSeconds; start: UnixSeconds; end: UnixSeconds }>
 }
 
-// ── gi_collections ─────────────────────────────────────── [shipped] / [next]
+// ── gi_collections ─────────────────────────────────────── [shipped]
 // Every part is the game's state at login; a part not captured is absent.
 
 export interface GiCollections {
@@ -334,11 +334,11 @@ export interface GiCollections {
   crafting?: { crafting?: GameId[]; forging?: GameId[]; processing?: GameId[] }
   /** [shipped] The music game's songs by beatmap id: best score (absent if never played) and reward taken. */
   musicGame?: Record<IdKey, { score?: number; claimed: boolean }>
-  /** [next] Furnishing sets learned (FurnitureSuiteExcelConfigData ids, ascending). */
+  /** [shipped] Furnishing sets learned (FurnitureSuiteExcelConfigData ids, ascending). */
   furnishingSets?: GameId[]
-  /** [next] Companions' rewards collected in the Serenitea Pot (HomeWorldEventExcelConfigData ids, ascending). */
+  /** [shipped] Companions' rewards collected in the Serenitea Pot (HomeWorldEventExcelConfigData ids, ascending). */
   companionRewards?: GameId[]
-  /** [next] NPCs met (NpcFirstMetExcelConfigData ids, ascending). */
+  /** [shipped] NPCs met (NpcFirstMetExcelConfigData ids, ascending). */
   npcsMet?: GameId[]
 }
 interface Progress {
@@ -374,12 +374,12 @@ type WornBy = string
 
 // ── gi_exploration ──────────────────────────────────────────────── [shipped]
 // Every part is the game's state at login (or right after it); absent when not captured.
-// [next] Statues, scenes and explore are left out while the player is in another player's world (co-op).
+// [shipped] Statues, scenes and explore are left out while the player is in another player's world (co-op).
 
 export interface GiExploration {
   /** Statues of The Seven by city (CityConfigData: 1 Mondstadt, 2 Liyue, 3 Inazuma, ...); level 1 = not yet levelled. */
   statues?: Record<IdKey, { level: number; /** Oculi given toward the next level. */ oculi: number }>
-  /** Level by offering (OfferingOpenStateConfigData: Frostbearing Tree, Sacred Sakura, ...); [next] 0 = never levelled. */
+  /** Level by offering (OfferingOpenStateConfigData: Frostbearing Tree, Sacred Sakura, ...); [shipped] 0 = never levelled. */
   offerings?: Record<IdKey, number>
   /**
    * By scene (3 = Teyvat; the other maps have their own ids): the map points
@@ -389,11 +389,11 @@ export interface GiExploration {
   scenes?: Record<IdKey, { points: GameId[]; areas: GameId[] }>
   /** Exploration by area (WorldAreaConfigData), in the game's raw points; % = points / the area's total. */
   explore?: Record<IdKey, number>
-  /** Reputation level by city (Mondstadt to Fontaine); [next] 0 = not started. */
+  /** Reputation level by city (Mondstadt to Fontaine); [shipped] 0 = not started. */
   reputation?: Record<IdKey, number>
-  /** [next] Domains whose first-clear reward was taken (DungeonEntryExcelConfigData ids, ascending). */
+  /** [shipped] Domains whose first-clear reward was taken (DungeonEntryExcelConfigData ids, ascending). */
   domainsCleared?: GameId[]
-  /** [next] Natlan's tribal chapters by TribalQuestChapterExcelConfigData id. */
+  /** [shipped] Natlan's tribal chapters by TribalQuestChapterExcelConfigData id. */
   tribalChapters?: Record<
     IdKey,
     { state: 'notOpen' | 'locked' | 'open' | 'finished'; /** When it started (absent before). */ startedAt?: UnixSeconds }

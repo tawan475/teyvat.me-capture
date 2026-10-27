@@ -31,7 +31,7 @@
     <string name="home_login_seen_title">Login terlihat</string>
     <string name="home_login_seen_line">Mencari kunci sesi</string>
     <string name="home_decrypting_title">Mendekripsi data</string>
-    <string name="home_decrypting_line">Kunci sesi ditemukan · %s</string>
+    <string name="home_decrypting_line">Login terdeteksi · %s</string>
     <string name="home_missed_title">Peluncuran terlewat</string>
     <string name="home_missed_running_line">Genshin dibuka sebelum Teyvat.me</string>
     <string name="home_missed_stopped_line">Penangkapan mati saat kamu login</string>
@@ -283,7 +283,7 @@
     <string name="language">Bahasa</string>
     <string name="language_system">Sistem</string>
     <string name="event_game_connected">Game terhubung</string>
-    <string name="event_key_found">Kunci sesi ditemukan</string>
+    <string name="event_key_found">Login terdeteksi</string>
     <string name="event_data_captured">Data akun tertangkap</string>
     <string name="tracker_target_missing">Tujuan unggahan belum dipilih · pilih akun di “%1$s”</string>
     <!-- Tracker › Advanced -->
@@ -375,4 +375,5 @@
     <plurals name="changes">
         <item quantity="other">%s perubahan</item>
     </plurals>
+    <string name="home_done_title">Penangkapan selesai</string>
 </resources>

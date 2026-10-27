@@ -20,6 +20,7 @@ fun Hero.title(): Int = when (this) {
     Hero.GameDetected, Hero.GameAlreadyOpen -> R.string.home_waiting_title
     Hero.LoginSeen -> R.string.home_login_seen_title
     Hero.Decrypting -> R.string.home_decrypting_title
+    Hero.Done -> R.string.home_done_title
     Hero.MissedAlreadyRunning, Hero.MissedCaptureStopped -> R.string.home_missed_title
     Hero.KeyLost -> R.string.home_key_lost_title
 }
@@ -35,7 +36,7 @@ fun Hero.line(context: Context, summary: Summary): String = when (this) {
     Hero.GameDetected -> context.getString(R.string.home_detected_line)
     Hero.GameAlreadyOpen -> context.getString(R.string.home_already_open_line)
     Hero.LoginSeen -> context.getString(R.string.home_login_seen_enter)
-    Hero.Decrypting -> context.getString(R.string.home_decrypting_line, summary.keyAt?.let(::hhmm) ?: "")
+    Hero.Decrypting, Hero.Done -> context.getString(R.string.home_decrypting_line, summary.keyAt?.let(::hhmm) ?: "")
     Hero.MissedAlreadyRunning -> context.getString(R.string.home_missed_running_line)
     Hero.MissedCaptureStopped -> context.getString(R.string.home_missed_stopped_line)
     Hero.KeyLost -> context.getString(R.string.home_key_lost_line)
@@ -52,7 +53,7 @@ fun nativeEventText(text: String): String {
     val id = when (text) {
         "Game connected" -> R.string.event_game_connected
         "Login seen" -> R.string.home_login_seen_title
-        "Session key found" -> R.string.event_key_found
+        "Login detected" -> R.string.event_key_found
         "Session key not found" -> R.string.event_key_lost
         "Account data captured" -> R.string.event_data_captured
         else -> null

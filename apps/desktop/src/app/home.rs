@@ -284,9 +284,9 @@ impl TeyvatmeApp {
             .decoding_since
             .map(|at| at.format("%H:%M").to_string())
             .unwrap_or_default();
-        let session_line = trf("Session key found · {0}", &[&decoding_since]);
+        let session_line = trf("Login detected · {0}", &[&decoding_since]);
 
-        let title = strip_title(self.is_admin, status);
+        let title = strip_title(self.is_admin, status, app_state.capture_done);
         let (variant, disc, subtitle, steps, extra): (_, _, &str, _, _) = if !self.is_admin {
             (
                 HeroVariant::Bad,
@@ -366,7 +366,11 @@ impl TeyvatmeApp {
             }
         };
         let tooltip = if self.is_admin {
-            status.tooltip()
+            if status == GameStatus::Decoding && app_state.capture_done {
+                tr("Everything this login sent has arrived. Changes as you play keep coming in.")
+            } else {
+                status.tooltip()
+            }
         } else {
             tr("Windows lets only administrators read network packets")
         };
@@ -1294,13 +1298,14 @@ impl TeyvatmeApp {
 }
 
 /// The status strip's title, also the tray icon's tooltip.
-pub(super) fn strip_title(is_admin: bool, status: GameStatus) -> &'static str {
+pub(super) fn strip_title(is_admin: bool, status: GameStatus, done: bool) -> &'static str {
     if !is_admin {
         return tr("Capture needs administrator");
     }
     match status {
         GameStatus::NotRunning => tr("Waiting for the game"),
         GameStatus::AwaitingLogin | GameStatus::LaunchCaptured => tr("Game detected"),
+        GameStatus::Decoding if done => tr("Capture done"),
         GameStatus::Decoding => tr("Data decrypting"),
         GameStatus::CaptureOff => tr("Starting capture"),
         GameStatus::LaunchMissed(_) => tr("Launch missed"),

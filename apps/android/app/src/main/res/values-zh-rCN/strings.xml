@@ -31,7 +31,7 @@
     <string name="home_login_seen_title">已检测到登录</string>
     <string name="home_login_seen_line">正在查找会话密钥</string>
     <string name="home_decrypting_title">数据解密中</string>
-    <string name="home_decrypting_line">已找到会话密钥 · %s</string>
+    <string name="home_decrypting_line">已检测到登录 · %s</string>
     <string name="home_missed_title">错过了启动</string>
     <string name="home_missed_running_line">原神在 Teyvat.me 之前启动</string>
     <string name="home_missed_stopped_line">登录时抓取未开启</string>
@@ -283,7 +283,7 @@
     <string name="language">语言</string>
     <string name="language_system">跟随系统</string>
     <string name="event_game_connected">游戏已连接</string>
-    <string name="event_key_found">已找到会话密钥</string>
+    <string name="event_key_found">已检测到登录</string>
     <string name="event_data_captured">已捕获账号数据</string>
     <string name="tracker_target_missing">未选择上传目标 · 请通过“%1$s”选择账号</string>
     <!-- Tracker › Advanced -->
@@ -375,4 +375,5 @@
     <plurals name="changes">
         <item quantity="other">%s 项更改</item>
     </plurals>
+    <string name="home_done_title">抓取完成</string>
 </resources>
