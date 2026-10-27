@@ -1638,6 +1638,7 @@ impl PlayerData {
             gi_collections: self.export_collections(),
             gi_achievement_progress: self.export_achievement_progress(),
             gi_events: self.export_events(),
+            gi_teapot: self.export_teapot(),
             gi_wardrobe: self.export_wardrobe(),
             gi_exploration: self.export_exploration(),
         };
@@ -2326,6 +2327,8 @@ mod tests {
         spincrystals: &'static str,
         /// The `recipes` map's inside (recipe id → most proficiency).
         recipes: &'static str,
+        /// The `crafting` object's inside (`"combine": [...]`, ...).
+        crafting: &'static str,
         /// The `exploration` object's inside; empty leaves it out.
         exploration: &'static str,
     }
@@ -2352,7 +2355,8 @@ mod tests {
                     "tps_avatar_id_male": {tps_male},
                     "weapon_map": {{{}}},
                     "spincrystals": {{{}}},
-                    "recipes": {{{}}}{}
+                    "recipes": {{{}}},
+                    "crafting": {{{}}}{}
                 }}"#,
                 self.affix_map,
                 self.artifact_map,
@@ -2364,6 +2368,7 @@ mod tests {
                 self.weapon_map,
                 self.spincrystals,
                 self.recipes,
+                self.crafting,
                 if self.exploration.is_empty() {
                     String::new()
                 } else {
@@ -3887,6 +3892,53 @@ mod tests {
         ] {
             assert_eq!(data.apply_recipes(&other), None);
         }
+    }
+
+    #[test]
+    fn recipe_lists_are_told_apart_by_their_tables() {
+        let mut data = PlayerData::new(
+            TestGameData {
+                crafting: r#""combine": [11001, 11002, 11003, 11004, 11005, 11006, 11007, 11008, 11009, 11010, 50001, 50002, 50003, 50004, 50005, 50006],
+                    "forge": [11001, 11002, 11003, 11004, 11005, 11006, 11007, 11008, 11009, 11010, 11011],
+                    "compound": [1001, 1002, 1003, 1004, 1005, 1006, 1007, 1008, 1009, 1010]"#,
+                ..Default::default()
+            }
+            .build(),
+        );
+        let lone = |ids: &[u64]| RecordsMessage {
+            lists: BTreeMap::from([(2, ids.to_vec())]),
+            ..Default::default()
+        };
+        // Forging: every id is the blacksmith's, a few the bench's too.
+        let forge: Vec<u64> = (11_001..=11_011).collect();
+        assert_eq!(data.apply_lone_list(&lone(&forge)), Some(LoneList::Forging));
+        let compound: Vec<u64> = (1_001..=1_010).collect();
+        assert_eq!(
+            data.apply_lone_list(&lone(&compound)),
+            Some(LoneList::Processing)
+        );
+        let combine = [
+            &(11_001..=11_010).collect::<Vec<_>>()[..],
+            &[50_001, 50_002],
+        ]
+        .concat();
+        assert_eq!(
+            data.apply_lone_list(&lone(&combine)),
+            Some(LoneList::Crafting)
+        );
+        // Six bonus activity ids the bench shares: too short to be a recipe list.
+        assert_eq!(
+            data.apply_lone_list(&lone(&[50_001, 50_002, 50_003, 50_004, 50_005, 50_006])),
+            None
+        );
+        let json = serde_json::to_value(data.export_at(&settings(), NOW_SECS * 1000).0).unwrap();
+        assert_eq!(
+            json["gi_collections"]["crafting"]["forging"]
+                .as_array()
+                .unwrap()
+                .len(),
+            11
+        );
     }
 
     #[test]

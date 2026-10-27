@@ -1472,6 +1472,181 @@ pub fn matches_activity_info_rsp(data: &[u8]) -> Option<BTreeMap<u32, EventInfo>
     None
 }
 
+// ------------------------------------------------------------------ comfort
+
+/// The most comfort a realm or mansion is believed to hold (7.1: ~15,000).
+const MAX_COMFORT: u64 = 10_000_000;
+
+/// One realm's comfort (`HomeModuleComfortInfo`).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct HomeComfort {
+    /// The mansion's comfort.
+    pub mansion: u32,
+    /// Each outdoor block's comfort.
+    pub blocks: Vec<u32>,
+}
+
+/// Recover the Serenitea Pot's comfort, by realm (module) id, from a
+/// `HomeComfortInfoNotify` payload, or `None` if it is not one: the one field
+/// is a list of realms, each a small realm id (1-64), the mansion's comfort
+/// (a number past 100) and one list of 1-10 block comforts, and nothing
+/// else. Each realm's comfort is at least one of its blocks' (the mansion sits
+/// beside them), which other messages of a number and a short list don't
+/// show.
+pub fn matches_home_comfort_notify(data: &[u8]) -> Option<BTreeMap<u32, HomeComfort>> {
+    let msg = parse(data)?;
+    let fields = fields_by_tag(&msg);
+    if fields.len() != 1 {
+        return None;
+    }
+    let realms = entries(fields.values().next()?)?;
+    if realms.is_empty() || realms.len() > 64 {
+        return None;
+    }
+    let mut out = BTreeMap::new();
+    for realm in &realms {
+        if realm.fixed || realm.lists.len() != 1 || realm.varints.len() != 2 {
+            return None;
+        }
+        let blocks = realm.lists.values().next()?;
+        if blocks.is_empty()
+            || blocks.len() > 10
+            || blocks.iter().any(|v| *v > MAX_COMFORT || *v < 100)
+        {
+            return None;
+        }
+        let mut small = realm
+            .varints
+            .values()
+            .copied()
+            .filter(|v| (1..=64).contains(v));
+        let id = small.next()?;
+        if small.next().is_some() {
+            return None;
+        }
+        let mansion = realm.varints.values().copied().find(|v| *v != id)?;
+        if !(100..=MAX_COMFORT).contains(&mansion) {
+            return None;
+        }
+        let found = HomeComfort {
+            mansion: mansion as u32,
+            blocks: blocks.iter().map(|v| *v as u32).collect(),
+        };
+        if out.insert(id as u32, found).is_some() {
+            return None;
+        }
+    }
+    Some(out)
+}
+
+// --------------------------------------------------------------- tcg extras
+
+/// TCG level (challenge) ids: five or six digits (7.1: 11 001-270 501).
+const TCG_LEVEL_IDS: RangeInclusive<u64> = 10_000..=999_999;
+
+/// The TCG challenges cleared (`GCGLevelChallengeNotify`).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct TcgChallenges {
+    /// By level id: the challenge ids finished in it (empty: played, none).
+    pub levels: BTreeMap<u32, Vec<u32>>,
+    /// Boss challenges unlocked, by id: the level ids that unlock it.
+    pub bosses: BTreeMap<u32, Vec<u32>>,
+}
+
+/// Entries of one id and at most one list each, the id unique and in `ids`,
+/// the list's values in `items`; by id. `None` if they are not that.
+fn id_lists(
+    values: &[Value<'_>],
+    ids: RangeInclusive<u64>,
+    items: RangeInclusive<u64>,
+) -> Option<BTreeMap<u32, Vec<u32>>> {
+    let list = entries(values)?;
+    let mut out = BTreeMap::new();
+    for e in &list {
+        if e.fixed || e.varints.len() != 1 || e.lists.len() > 1 {
+            return None;
+        }
+        // Every length-delimited field is the list (a string would not be).
+        if e.other.len() != e.lists.len() {
+            return None;
+        }
+        let id = *e.varints.values().next()?;
+        let inner = e.lists.values().next().cloned().unwrap_or_default();
+        if !ids.contains(&id) || !inner.iter().all(|v| items.contains(v)) {
+            return None;
+        }
+        if out
+            .insert(id as u32, inner.iter().map(|v| *v as u32).collect())
+            .is_some()
+        {
+            return None;
+        }
+    }
+    (!out.is_empty()).then_some(out)
+}
+
+/// Recover the TCG challenges cleared from a `GCGLevelChallengeNotify`
+/// payload, or `None` if it is not one: one repeated field of levels (a level
+/// id, `TCG_LEVEL_IDS`, and maybe a list of small challenge ids) beside one of
+/// boss challenges (a small id and a list of level ids), and maybe a list of
+/// world challenge ids.
+pub fn matches_tcg_challenges(data: &[u8]) -> Option<TcgChallenges> {
+    let msg = parse(data)?;
+    let mut levels = None;
+    let mut bosses = None;
+    for values in fields_by_tag(&msg).values() {
+        let LengthDelimited(_) = values.first()? else {
+            return None;
+        };
+        if let Some(found) = id_lists(values, TCG_LEVEL_IDS, 1..=9_999) {
+            if levels.replace(found).is_some() {
+                return None;
+            }
+        } else if let Some(found) = id_lists(values, 1..=9_999, TCG_LEVEL_IDS) {
+            if bosses.replace(found).is_some() {
+                return None;
+            }
+        } else if values.len() == 1
+            && let [LengthDelimited(bytes)] = values.as_slice()
+            && packed(bytes).is_some()
+        {
+            // The world challenges unlocked: a plain list, not kept.
+        } else {
+            return None;
+        }
+    }
+    let levels = levels?;
+    // A handful of levels is any old list of ids; the Tavern's levels alone
+    // have no boss list beside them.
+    (levels.len() >= 3 && bosses.is_some()).then(|| TcgChallenges {
+        levels,
+        bosses: bosses.unwrap_or_default(),
+    })
+}
+
+/// Recover the Tavern challenges unlocked, by character id, from a
+/// `GCGTCTavernChallengeDataNotify` payload, or `None` if it is not one: its
+/// one field a list of characters, each a small id and a list of the level
+/// ids unlocked with them.
+pub fn matches_tcg_tavern(data: &[u8]) -> Option<BTreeMap<u32, Vec<u32>>> {
+    let msg = parse(data)?;
+    let fields = fields_by_tag(&msg);
+    if fields.len() != 1 {
+        return None;
+    }
+    let values = fields.values().next()?;
+    // At least 3 characters, their levels all six digits (7.1: 14, 110 101-
+    // 160 204); `ExclusiveRuleNotify`'s two rules list shorter ids too.
+    if values.len() < 3 {
+        return None;
+    }
+    let found = id_lists(values, 1..=999, 100_000..=999_999)?;
+    found
+        .values()
+        .all(|levels| !levels.is_empty())
+        .then_some(found)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1934,5 +2109,71 @@ mod tests {
             .concat(),
         );
         assert_eq!(matches_activity_info_rsp(&other), None);
+    }
+
+    #[test]
+    fn the_pot_comfort_is_read_by_realm() {
+        let realm = |id: u64, mansion: u64, blocks: &[u64]| {
+            b(2, &[v(5, mansion), list(3, blocks), v(9, id)].concat())
+        };
+        let data = realm(2, 14_600, &[13_470, 4_330, 4_980, 6_120]);
+        let found = matches_home_comfort_notify(&data).unwrap();
+        assert_eq!(
+            found[&2],
+            HomeComfort {
+                mansion: 14_600,
+                blocks: vec![13_470, 4_330, 4_980, 6_120]
+            }
+        );
+        // Small numbers in the list, or two lone numbers that are both small:
+        // other messages.
+        assert_eq!(
+            matches_home_comfort_notify(&realm(2, 14_600, &[1, 2, 3])),
+            None
+        );
+        assert_eq!(matches_home_comfort_notify(&realm(2, 3, &[13_470])), None);
+    }
+
+    #[test]
+    fn tcg_challenges_and_the_tavern_are_read() {
+        let level = |id: u64, done: &[u64]| {
+            let mut e = v(3, id);
+            if !done.is_empty() {
+                e.extend(list(5, done));
+            }
+            b(2, &e)
+        };
+        let boss = |id: u64, unlock: &[u64]| b(7, &[v(1, id), list(4, unlock)].concat());
+        let data = [
+            level(11_001, &[1, 2]),
+            level(11_002, &[]),
+            level(260_101, &[212]),
+            boss(1, &[210_101]),
+            boss(2, &[210_201, 270_501]),
+            list(9, &[3, 4, 142]),
+        ]
+        .concat();
+        let found = matches_tcg_challenges(&data).unwrap();
+        assert_eq!(found.levels[&11_001], vec![1, 2]);
+        assert!(found.levels[&11_002].is_empty());
+        assert_eq!(found.bosses[&2], vec![210_201, 270_501]);
+        let tavern = [
+            b(1, &[v(2, 6), list(3, &[110_101, 110_102])].concat()),
+            b(1, &[v(2, 7), list(3, &[120_101])].concat()),
+            b(1, &[v(2, 39), list(3, &[160_204])].concat()),
+        ]
+        .concat();
+        assert_eq!(matches_tcg_tavern(&tavern).unwrap()[&39], vec![160_204]);
+        // The boss list alone, or levels alone, is something else.
+        assert_eq!(
+            matches_tcg_challenges(&[boss(1, &[210_101]), boss(2, &[210_201])].concat()),
+            None
+        );
+        assert_eq!(
+            matches_tcg_challenges(
+                &[level(11_001, &[1]), level(11_002, &[]), level(11_003, &[])].concat()
+            ),
+            None
+        );
     }
 }

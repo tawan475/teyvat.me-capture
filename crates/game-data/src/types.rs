@@ -224,3 +224,15 @@ pub struct Exploration {
     /// Map point ids by scene (`BinOutput/Scene/Point/scene<id>_point.json`).
     pub scene_points: BTreeMap<u32, BTreeSet<u32>>,
 }
+
+/// The crafting, forging and processing recipe ids, by table.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(default)]
+pub struct Crafting {
+    /// `CombineExcelConfigData.combineId`: the crafting bench.
+    pub combine: BTreeSet<u32>,
+    /// `ForgeExcelConfigData.id`: the blacksmith.
+    pub forge: BTreeSet<u32>,
+    /// `CompoundExcelConfigData.id`: processing.
+    pub compound: BTreeSet<u32>,
+}
