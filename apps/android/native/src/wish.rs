@@ -21,7 +21,7 @@ use serde::Serialize;
 use teyvatme_core::wish::api::{HttpError, HttpGet, HttpReply, LogClient, Pacing, Sleeper};
 use teyvatme_core::wish::history::{self, HistoryError, Progress};
 use teyvatme_core::wish::hub::{HubReceivers, WishHub};
-use teyvatme_core::wish::link::WishKey;
+use teyvatme_core::wish::link::{KEY_LIFETIME, WishKey};
 use teyvatme_core::wish::uigf;
 use tokio::sync::watch;
 use url::Url;
@@ -93,6 +93,8 @@ pub struct WishSummary {
     pub key: &'static str,
     /// The key's login UID is known (reading needs it).
     pub uid_known: bool,
+    /// When the held key arrived (Unix ms), for "URL ready · HH:mm".
+    pub key_at: Option<u64>,
     pub read: Read,
     pub sync: crate::wish_sync::SyncSummary,
 }
@@ -164,7 +166,11 @@ impl Wishes {
         };
         WishSummary {
             key,
-            uid_known: held.and_then(|key| key.uid()).is_some(),
+            uid_known: held.as_ref().and_then(|key| key.uid()).is_some(),
+            key_at: held.as_ref().map(|key| {
+                let age = KEY_LIFETIME.saturating_sub(key.remaining(now));
+                crate::decoder::now_ms().saturating_sub(age.as_millis() as u64)
+            }),
             read: self.read.lock().unwrap().clone(),
             sync: self.sync.summary(),
         }

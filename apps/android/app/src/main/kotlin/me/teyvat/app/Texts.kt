@@ -16,7 +16,8 @@ fun Hero.title(): Int = when (this) {
     Hero.CaptureOff -> R.string.home_capture_off_title
     Hero.Starting -> R.string.home_starting_title
     Hero.Waiting -> R.string.home_waiting_title
-    Hero.GameDetected, Hero.GameAlreadyOpen -> R.string.home_detected_title
+    // At the title screen: still waiting for the game's login (spec 4.1.1).
+    Hero.GameDetected, Hero.GameAlreadyOpen -> R.string.home_waiting_title
     Hero.LoginSeen -> R.string.home_login_seen_title
     Hero.Decrypting -> R.string.home_decrypting_title
     Hero.MissedAlreadyRunning, Hero.MissedCaptureStopped -> R.string.home_missed_title
@@ -33,14 +34,14 @@ fun Hero.line(context: Context, summary: Summary): String = when (this) {
     Hero.Waiting -> context.getString(R.string.home_waiting_line)
     Hero.GameDetected -> context.getString(R.string.home_detected_line)
     Hero.GameAlreadyOpen -> context.getString(R.string.home_already_open_line)
-    Hero.LoginSeen -> context.getString(R.string.home_login_seen_line)
+    Hero.LoginSeen -> context.getString(R.string.home_login_seen_enter)
     Hero.Decrypting -> context.getString(R.string.home_decrypting_line, summary.keyAt?.let(::hhmm) ?: "")
     Hero.MissedAlreadyRunning -> context.getString(R.string.home_missed_running_line)
     Hero.MissedCaptureStopped -> context.getString(R.string.home_missed_stopped_line)
     Hero.KeyLost -> context.getString(R.string.home_key_lost_line)
 }
 
-/** The footer's activity line: the newest event, "HH:mm · what". */
+/** The newest activity event (the notification's text, History's red dot). */
 fun activityLine(summary: Summary): ActivityEvent? = summary.events.lastOrNull()
 
 fun ActivityEvent.line() = "${hhmm(at)} · $text"

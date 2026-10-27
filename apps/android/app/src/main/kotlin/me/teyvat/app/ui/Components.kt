@@ -24,15 +24,14 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -45,7 +44,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -152,13 +150,13 @@ fun Spark(size: Int) {
     )
 }
 
-/** 56 dp top bar: the brand (Home) or a back arrow and a title. */
+/** 64 dp top bar: the brand (Home) or a back arrow and a title. */
 @Composable
 fun TmTopBar(title: String? = null, onBack: (() -> Unit)? = null, actions: @Composable RowScope.() -> Unit = {}) {
     Row(
         Modifier
             .fillMaxWidth()
-            .height(56.dp)
+            .height(64.dp)
             .padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -409,25 +407,21 @@ fun CardDivider() = HorizontalDivider(color = MaterialTheme.colorScheme.outlineV
 /** A stepper dot's state. */
 enum class Step { Pending, Now, Done, Failed }
 
+/** Three equal steps, each a 4 dp bar over its label (the board's stepper). */
 @Composable
 fun Stepper(steps: List<Pair<String, Step>>) {
-    Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         for ((label, step) in steps) {
-            val color = when (step) {
-                Step.Pending -> MaterialTheme.colorScheme.outline
-                Step.Now -> MaterialTheme.colorScheme.primary
-                Step.Done -> Tm.colors.success
-                Step.Failed -> MaterialTheme.colorScheme.error
+            val scheme = MaterialTheme.colorScheme
+            val (bar, text) = when (step) {
+                Step.Pending -> Tm.colors.outlinedBorder to scheme.onSurfaceVariant
+                Step.Now -> Tm.colors.fill to scheme.onSurface
+                Step.Done -> Tm.colors.success to scheme.onSurface
+                Step.Failed -> scheme.error to scheme.error
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                when (step) {
-                    Step.Done -> TmIcon(R.drawable.ic_check, null, tint = color, size = 14.dp)
-                    Step.Failed -> TmIcon(R.drawable.ic_x, null, tint = color, size = 14.dp)
-                    Step.Now -> Box(Modifier.size(8.dp).clip(CircleShape).background(color))
-                    Step.Pending -> Box(Modifier.size(8.dp).clip(CircleShape).border(1.5.dp, color, CircleShape))
-                }
-                Spacer(Modifier.width(6.dp))
-                Text(label, style = MaterialTheme.typography.labelMedium, color = color)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(bar))
+                Text(label, style = MaterialTheme.typography.labelMedium, color = text, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
@@ -467,28 +461,32 @@ fun StatusHero(
             .clip(MaterialTheme.shapes.extraLarge)
             .background(container)
             .border(1.dp, border, MaterialTheme.shapes.extraLarge)
-            .padding(16.dp)
+            .padding(start = 20.dp, end = if (onStop != null) 8.dp else 20.dp, top = 20.dp, bottom = 20.dp)
             .semantics(mergeDescendants = false) { liveRegion = LiveRegionMode.Polite },
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(40.dp).clip(CircleShape).background(discBg), contentAlignment = Alignment.Center) {
-                if (spinning) Spinner(discFg, 20.dp) else if (icon != null) TmIcon(icon, null, tint = discFg, size = 20.dp)
+            Box(Modifier.size(48.dp).clip(CircleShape).background(discBg), contentAlignment = Alignment.Center) {
+                if (spinning) Spinner(discFg, 24.dp) else if (icon != null) TmIcon(icon, null, tint = discFg, size = 24.dp)
             }
-            Spacer(Modifier.width(14.dp))
+            Spacer(Modifier.width(16.dp))
             Column(Modifier.weight(1f)) {
                 Text(title, style = MaterialTheme.typography.headlineSmall)
                 Text(line, style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant)
             }
+            // Stop stays in the app as well as in the notification, as a quiet icon.
             if (onStop != null) {
-                TmButton(
-                    stringResource(R.string.stop), onStop, kind = ButtonKind.Outlined, icon = R.drawable.ic_power,
-                    contentDescription = stringResource(R.string.stop_capture),
-                )
+                IconButton(onClick = onStop) {
+                    TmIcon(R.drawable.ic_power, stringResource(R.string.stop_capture), size = 20.dp)
+                }
             }
         }
-        if (steps != null) Stepper(steps)
-        actions()
+        // The rows below keep the hero's own right padding beside the Stop icon.
+        val inner = if (onStop != null) Modifier.padding(end = 12.dp) else Modifier
+        Column(inner, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            if (steps != null) Stepper(steps)
+            actions()
+        }
     }
 }
 
@@ -541,31 +539,162 @@ fun GreyCard(@DrawableRes icon: Int, title: String, line: String) {
     }
 }
 
-/** The 48 dp footer: capture dot, the newest event, chevron-up; the bar opens Activity. */
+/**
+ * Home's top bar: the brand and four 48 dp buttons (spec HomeTopBar).
+ * History carries a red dot while the newest event is an error.
+ */
 @Composable
-fun HomeFooter(dot: Color, line: String, error: Boolean, onClick: () -> Unit) {
-    Surface(color = MaterialTheme.colorScheme.surfaceContainerLowest) {
-        Column(Modifier.windowInsetsPadding(WindowInsets.navigationBars)) {
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .height(48.dp)
-                    .clickable(onClick = onClick, onClickLabel = stringResource(R.string.activity))
-                    .padding(horizontal = 16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(Modifier.size(8.dp).clip(CircleShape).background(dot))
-                Spacer(Modifier.width(12.dp))
-                Text(
-                    line,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
-                TmIcon(R.drawable.ic_chevron_up, null, size = 20.dp)
+fun HomeTopBar(
+    error: Boolean,
+    dark: Boolean,
+    onHistory: () -> Unit,
+    onTheme: () -> Unit,
+    onSettings: () -> Unit,
+    onDiscord: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth().height(64.dp).padding(start = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+            Spark(20)
+            Spacer(Modifier.width(10.dp))
+            Text(
+                stringResource(R.string.brand), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+        }
+        IconButton(onClick = onHistory) {
+            Box {
+                TmIcon(R.drawable.ic_history, stringResource(if (error) R.string.activity_has_error else R.string.activity))
+                if (error) {
+                    Box(
+                        Modifier
+                            .align(Alignment.TopEnd)
+                            .offset(x = 3.dp, y = (-3).dp)
+                            .size(10.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.background)
+                            .padding(1.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.error),
+                    )
+                }
             }
+        }
+        IconButton(onClick = onTheme) {
+            TmIcon(if (dark) R.drawable.ic_moon else R.drawable.ic_sun, stringResource(R.string.theme))
+        }
+        IconButton(onClick = onSettings) { TmIcon(R.drawable.ic_settings, stringResource(R.string.settings)) }
+        IconButton(onClick = onDiscord) { TmIcon(R.drawable.ic_messages_square, "Discord") }
+    }
+}
+
+/**
+ * One of Today's figures: icon + label, the value (with "/ total"), an
+ * optional bar and an optional line (spec MiniStat). A null value shows "—"
+ * and nothing else: never a guess.
+ */
+@Composable
+fun MiniStat(
+    @DrawableRes icon: Int,
+    label: String,
+    value: String?,
+    modifier: Modifier = Modifier,
+    total: String? = null,
+    bar: Float? = null,
+    line: String? = null,
+    lineOk: Boolean = false,
+) {
+    val scheme = MaterialTheme.colorScheme
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TmIcon(icon, null, tint = scheme.outline, size = 16.dp)
+            Spacer(Modifier.width(6.dp))
+            Text(
+                label, style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (value == null) {
+            Text("—", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium, color = scheme.onSurfaceVariant)
+            return@Column
+        }
+        Text(
+            buildAnnotatedString {
+                append(value)
+                if (total != null) {
+                    withStyle(SpanStyle(fontSize = 12.sp, fontWeight = FontWeight.Medium, color = scheme.outline)) { append(" / $total") }
+                }
+            },
+            style = MaterialTheme.typography.titleMedium, maxLines = 1,
+        )
+        if (bar != null) {
+            Box(
+                Modifier
+                    .padding(vertical = 2.dp)
+                    .fillMaxWidth()
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(scheme.surfaceContainerHighest),
+            ) {
+                Box(Modifier.fillMaxWidth(bar.coerceIn(0f, 1f)).fillMaxHeight().background(scheme.primary))
+            }
+        }
+        if (line != null) {
+            Text(
+                line, style = MaterialTheme.typography.bodySmall, color = if (lineOk) Tm.colors.success else scheme.outline,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+/** The update banner above the strip (and About's update card): primaryContainer, radius 12. */
+@Composable
+fun UpdateBanner(
+    title: String,
+    line: String?,
+    modifier: Modifier = Modifier,
+    busy: Boolean = false,
+    error: Boolean = false,
+    action: String? = null,
+    onAction: () -> Unit = {},
+) {
+    val scheme = MaterialTheme.colorScheme
+    Row(
+        modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(scheme.primaryContainer)
+            .heightIn(min = 56.dp)
+            .padding(start = 14.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (busy) {
+            Spinner(scheme.onPrimaryContainer, 20.dp)
+        } else {
+            TmIcon(R.drawable.ic_download, null, tint = scheme.onPrimaryContainer, size = 20.dp)
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold,
+                color = if (error) scheme.error else scheme.onPrimaryContainer, maxLines = 2, overflow = TextOverflow.Ellipsis,
+            )
+            if (line != null) {
+                Text(line, style = MaterialTheme.typography.bodyMedium, color = scheme.onPrimaryContainer, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        if (action != null) {
+            Spacer(Modifier.width(8.dp))
+            OutlinedButton(
+                onAction, Modifier.heightIn(min = 36.dp),
+                shape = RoundedCornerShape(18.dp),
+                border = BorderStroke(1.dp, scheme.onPrimaryContainer),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = scheme.onPrimaryContainer),
+                contentPadding = PaddingValues(horizontal = 14.dp),
+            ) { Text(action, style = MaterialTheme.typography.labelLarge, maxLines = 1) }
         }
     }
 }
@@ -597,17 +726,19 @@ fun ActivityRow(kind: String, time: String, text: String) {
     }
 }
 
-/** A round avatar (36 dp) with an icon or a letter. */
+/** A round avatar (40 dp) with an icon or a letter; a letter sits on primaryContainer. */
 @Composable
 fun Avatar(@DrawableRes icon: Int? = null, letter: String? = null, spinning: Boolean = false) {
+    val scheme = MaterialTheme.colorScheme
+    val accent = letter != null && icon == null && !spinning
     Box(
-        Modifier.size(36.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHighest),
+        Modifier.size(40.dp).clip(CircleShape).background(if (accent) scheme.primaryContainer else scheme.surfaceContainerHighest),
         contentAlignment = Alignment.Center,
     ) {
         when {
             spinning -> Spinner(size = 20.dp)
             icon != null -> TmIcon(icon, null, size = 20.dp)
-            letter != null -> Text(letter, style = MaterialTheme.typography.titleSmall)
+            letter != null -> Text(letter, style = MaterialTheme.typography.titleMedium, color = scheme.onPrimaryContainer)
         }
     }
 }

@@ -205,7 +205,7 @@ class GameVpnService : VpnService() {
                 Content(title, getString(R.string.home_open_before), listOf(Action.OpenGenshin, Action.Stop), false)
             Hero.GameDetected, Hero.GameAlreadyOpen -> Content(title, hero.line(this, summary), listOf(Action.Stop), false)
             Hero.Starting -> Content(title, getString(R.string.home_starting_line), listOf(Action.Stop), false)
-            Hero.LoginSeen -> Content(title, getString(R.string.home_login_seen_line), listOf(Action.Stop), false)
+            Hero.LoginSeen -> Content(title, getString(R.string.home_login_seen_enter), listOf(Action.Stop), false)
             Hero.Decrypting -> Content(
                 title,
                 activityLine(summary)?.line() ?: hero.line(this, summary),
