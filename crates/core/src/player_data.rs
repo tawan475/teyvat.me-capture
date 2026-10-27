@@ -22,6 +22,9 @@ use teyvatme_protocol::{
 use crate::good::{self, fake_uninitialized_4th_line};
 
 mod avatar_change;
+mod collections;
+
+pub use collections::CollectionPart;
 
 /// Player properties that are exported as GOOD `materials` entries.
 ///
@@ -681,6 +684,8 @@ pub struct PlayerData {
     /// The Radiant Spincrystals in the Serenitea Pot's music list (item ids),
     /// as the game last sent the list.
     spincrystals: Option<Vec<u32>>,
+    /// The rest of `gi_collections`, and `gi_wardrobe`.
+    collections: collections::CollectionsState,
 }
 
 /// The Serenitea Pot's music ids lie in this range (7.1: Radiant Spincrystals
@@ -711,6 +716,7 @@ impl PlayerData {
             clock_secs: None,
             pending_resin: None,
             spincrystals: None,
+            collections: collections::CollectionsState::default(),
         }
     }
 
@@ -744,6 +750,7 @@ impl PlayerData {
         self.routine = Routine::default();
         self.pending_resin = None;
         self.spincrystals = None;
+        self.collections = collections::CollectionsState::default();
         self.character_equip_guid_map.clear();
     }
 
@@ -757,6 +764,7 @@ impl PlayerData {
             && self.anecdotes.is_none()
             && self.routine == Routine::default()
             && self.spincrystals.is_none()
+            && self.collections == collections::CollectionsState::default()
     }
 
     pub fn process_achievements(&mut self, achievements: &[Achievement]) {
@@ -1552,9 +1560,8 @@ impl PlayerData {
             gi_capture: None,
             // Omitted when nothing of it was captured, like the keys above.
             gi_tasks: self.export_tasks(now_ms / 1000),
-            gi_collections: self.spincrystals.as_ref().map(|found| good::GiCollections {
-                spincrystals: Some(found.clone()),
-            }),
+            gi_collections: self.export_collections(),
+            gi_wardrobe: self.export_wardrobe(),
         };
 
         if settings.include_characters {
@@ -3491,6 +3498,165 @@ mod tests {
         let mut data = collector();
         data.apply_collections(&music_list(&[101, 102, 105]))
             .unwrap();
+        data.reset();
+        assert!(data.is_empty());
+    }
+
+    // -- gi_collections (the rest) and gi_wardrobe -------------------------------------
+
+    #[test]
+    fn collections_export_in_the_contract_shapes() {
+        use teyvatme_protocol::{
+            AranaraState, ArchiveTab, DefeatCount, Handbook, HandbookProgress, HandbookState,
+            HandbookTarget, TcgCard, TcgCollection, TcgDeck,
+        };
+        let mut data = player_data();
+        data.process_collection(CollectionPart::Archive(BTreeMap::from([
+            (ArchiveTab::Books, vec![50_001_001]),
+            (ArchiveTab::LivingBeings, vec![20_010_101]),
+        ])));
+        data.process_collection(CollectionPart::Defeats(BTreeMap::from([
+            (
+                20_010_101,
+                DefeatCount {
+                    defeated: 57,
+                    captured: 0,
+                },
+            ),
+            (
+                28_010_101,
+                DefeatCount {
+                    defeated: 0,
+                    captured: 12,
+                },
+            ),
+        ])));
+        let open = HandbookProgress {
+            progress: 4,
+            total: 11,
+            state: HandbookState::InProgress,
+        };
+        data.process_collection(CollectionPart::Handbook(Handbook {
+            chapters: BTreeMap::from([(20_001, open)]),
+            targets: BTreeMap::from([(
+                60_002,
+                HandbookTarget {
+                    chapter: 20_001,
+                    progress: open,
+                },
+            )]),
+        }));
+        data.process_collection(CollectionPart::Aranara(BTreeMap::from([(
+            1,
+            BTreeMap::from([(1, AranaraState::Finished)]),
+        )])));
+        data.process_collection(CollectionPart::Tcg(TcgCollection {
+            cards: BTreeMap::from([
+                (
+                    1101,
+                    TcgCard {
+                        count: 1,
+                        proficiency: 27,
+                    },
+                ),
+                (
+                    211_011,
+                    TcgCard {
+                        count: 2,
+                        proficiency: 0,
+                    },
+                ),
+            ]),
+            decks: BTreeMap::from([(
+                3,
+                TcgDeck {
+                    name: "Mono Pyro".to_string(),
+                    characters: vec![1101],
+                    cards: vec![211_011],
+                    valid: true,
+                },
+            )]),
+            current_deck: Some(3),
+        }));
+        let json = serde_json::to_value(data.export_at(&settings(), NOW_SECS * 1000).0).unwrap();
+        assert_eq!(
+            json["gi_collections"],
+            serde_json::json!({
+                "archive": {"books": [50_001_001], "livingBeings": [20_010_101]},
+                "defeats": {"20010101": {"defeated": 57}, "28010101": {"defeated": 0, "captured": 12}},
+                "handbook": {
+                    "chapters": {"20001": {"progress": 4, "total": 11, "state": "open"}},
+                    "targets": {"60002": {"progress": 4, "total": 11, "state": "open", "chapter": 20_001}},
+                },
+                "aranara": {"1": {"1": "finished"}},
+                "tcg": {
+                    "cards": {"1101": {"count": 1, "proficiency": 27}, "211011": {"count": 2}},
+                    "decks": {"3": {"name": "Mono Pyro", "characters": [1101], "cards": [211_011], "valid": true}},
+                    "currentDeck": 3,
+                },
+            })
+        );
+        assert!(json.as_object().unwrap().get("gi_wardrobe").is_none());
+    }
+
+    #[test]
+    fn the_wardrobe_says_who_wears_what() {
+        use teyvatme_protocol::{AvatarWardrobe, SavedTeam, WeaponSkin};
+        let mut data = PlayerData::new(
+            TestGameData {
+                character_map: r#""10000046": "Hu Tao", "10000005": "Traveler""#,
+                ..Default::default()
+            }
+            .build(),
+        );
+        let guid = |n: u64| (812_345_678u64 << 32) + n;
+        let mut hu_tao = avatar(10000046, &[]);
+        hu_tao.guid = guid(1);
+        hu_tao.costume_id = 204_601;
+        hu_tao.wearing_flycloak_id = 140_002;
+        let mut traveler = avatar(10000005, &[]);
+        traveler.guid = guid(2);
+        traveler.wearing_flycloak_id = 140_001;
+        traveler.trace_effect_id = 215_001;
+        data.process_characters(&[hu_tao, traveler]);
+        data.process_collection(CollectionPart::Wardrobe(AvatarWardrobe {
+            gliders: vec![140_001, 140_002],
+            outfits: vec![204_601],
+            trails: vec![215_001],
+            teams: BTreeMap::from([(
+                5,
+                SavedTeam {
+                    name: "Vape".to_string(),
+                    avatar_guids: vec![guid(1), guid(2), guid(9)],
+                },
+            )]),
+            current_team: Some(5),
+        }));
+        data.process_collection(CollectionPart::WeaponSkins(vec![
+            WeaponSkin {
+                id: 310_001,
+                worn_by: vec![guid(1)],
+                expires: None,
+            },
+            WeaponSkin {
+                id: 390_001,
+                worn_by: vec![],
+                expires: Some(1_794_362_399),
+            },
+        ]));
+        let json = serde_json::to_value(data.export_at(&settings(), NOW_SECS * 1000).0).unwrap();
+        assert_eq!(
+            json["gi_wardrobe"],
+            serde_json::json!({
+                "outfits": {"owned": [204_601], "worn": {"HuTao": 204_601}},
+                "gliders": {"owned": [140_001, 140_002], "worn": {"HuTao": 140_002, "Traveler": 140_001}},
+                "weaponSkins": {"owned": [310_001, 390_001], "worn": {"HuTao": 310_001}, "expires": {"390001": 1_794_362_399}},
+                "trails": {"owned": [215_001], "worn": {"Traveler": 215_001}},
+                // A guid the roster doesn't hold is left out of its team.
+                "teams": {"5": {"name": "Vape", "characters": ["HuTao", "Traveler"]}},
+                "currentTeam": 5,
+            })
+        );
         data.reset();
         assert!(data.is_empty());
     }

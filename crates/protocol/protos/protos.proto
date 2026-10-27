@@ -178,7 +178,8 @@ message AvatarInfo {
     // JNHGJAIIMGJ PINDEGAFOAE = 28;
     //uint32 ABLFJPMKKDA = 29;
     //uint32 GCHGLANNHMC = 30;
-    //uint32 KCINBOMOIGL = 31;
+    // The sprint trail worn (7.1: 215 001-215 018).
+    uint32 trace_effect_id = 31;
 }
 
 

@@ -6,7 +6,7 @@
 [package]
 name = "teyvatme"
 # Above every irminsul release (0.2.x), so the bridge release offers it.
-version = "1.3.0"
+version = "1.4.0"
 authors = ["tawan475", "Erik Gilling <konkers@konkers.net>"]
 license = "MIT"
 publish = false

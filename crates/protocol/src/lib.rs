@@ -56,7 +56,7 @@
 //! ```
 //!
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 use std::fmt::Write;
 use std::net::SocketAddr;
@@ -75,6 +75,13 @@ pub use crate::anecdotes::{
     ANECDOTE_AREA_IDS, ANECDOTE_FINISHED_STATE, ANECDOTE_IDS, Anecdote, AnecdoteData,
     AnecdoteReward, AnecdoteWish, MAX_ANECDOTE_FINISH_COUNT, MAX_ANECDOTE_STATE, MAX_ANECDOTES,
     matches_anecdote_get_data_rsp,
+};
+pub use crate::collections::{
+    AranaraState, ArchiveTab, AvatarWardrobe, DefeatCount, GLIDER_IDS, Handbook, HandbookProgress,
+    HandbookState, HandbookTarget, OUTFIT_IDS, SavedTeam, TRAIL_IDS, TcgCard, TcgCollection,
+    TcgDeck, WeaponSkin, avatar_wardrobe, matches_aranara_notify, matches_codex_kill_count,
+    matches_codex_notify, matches_investigation_notify, matches_tcg_notify,
+    matches_weapon_skin_notify,
 };
 use crate::connection::parse_frame;
 use crate::crypto::{bruteforce, decrypt_command, guess, lookup_initial_key};
@@ -111,6 +118,7 @@ fn bytes_as_hex(bytes: &[u8]) -> String {
 pub mod r#gen;
 
 mod anecdotes;
+mod collections;
 mod connection;
 mod crypto;
 mod cs_rand;
@@ -1518,6 +1526,23 @@ pub enum CommandMatch {
     /// A resin clock *candidate*: see [`matches_resin_change_notify`]; the
     /// caller believes it only beside the resin it holds.
     ResinClock(ResinClock),
+    /// The Archive's unlocked entries by tab: see [`matches_codex_notify`].
+    Archive(BTreeMap<ArchiveTab, Vec<u32>>),
+    /// Enemies defeated and creatures captured: see
+    /// [`matches_codex_kill_count`].
+    Defeats(BTreeMap<u32, DefeatCount>),
+    /// The Adventurer Handbook: see [`matches_investigation_notify`].
+    Handbook(Handbook),
+    /// Genius Invokation TCG cards and decks: see [`matches_tcg_notify`].
+    Tcg(TcgCollection),
+    /// Aranara collections: see [`matches_aranara_notify`].
+    Aranara(BTreeMap<u32, BTreeMap<u32, AranaraState>>),
+    /// Weapon skins held: see [`matches_weapon_skin_notify`].
+    WeaponSkins(Vec<WeaponSkin>),
+    /// What `AvatarDataNotify` holds beside the characters: see
+    /// [`avatar_wardrobe`]. Never produced by [`classify_command`]; the
+    /// caller reads it from the message that gave [`Self::Avatars`].
+    Wardrobe(AvatarWardrobe),
     /// A message of small records no matcher claimed (see
     /// [`matches_records_message`]): a candidate only, which the caller
     /// recognises (or not) against the game data's ids. Never produced by
@@ -1549,6 +1574,13 @@ impl CommandMatch {
             Self::Welkin(_) => "welkin",
             Self::ResinClock(_) => "resin clock",
             Self::Records(_) => "records",
+            Self::Archive(_) => "archive",
+            Self::Defeats(_) => "defeats",
+            Self::Handbook(_) => "handbook",
+            Self::Tcg(_) => "tcg",
+            Self::Aranara(_) => "aranara",
+            Self::WeaponSkins(_) => "weapon skins",
+            Self::Wardrobe(_) => "wardrobe",
         }
     }
 
@@ -1716,6 +1748,24 @@ pub fn classify_command(game_command: &GameCommand) -> Option<CommandMatch> {
     }
     if let Some(version) = matches_client_version_packet(game_command) {
         claims.push(CommandMatch::ClientVersion(version));
+    }
+    if let Some(archive) = matches_codex_notify(&game_command.proto_data) {
+        claims.push(CommandMatch::Archive(archive));
+    }
+    if let Some(defeats) = matches_codex_kill_count(&game_command.proto_data) {
+        claims.push(CommandMatch::Defeats(defeats));
+    }
+    if let Some(handbook) = matches_investigation_notify(&game_command.proto_data) {
+        claims.push(CommandMatch::Handbook(handbook));
+    }
+    if let Some(tcg) = matches_tcg_notify(&game_command.proto_data) {
+        claims.push(CommandMatch::Tcg(tcg));
+    }
+    if let Some(aranara) = matches_aranara_notify(&game_command.proto_data) {
+        claims.push(CommandMatch::Aranara(aranara));
+    }
+    if let Some(skins) = matches_weapon_skin_notify(&game_command.proto_data) {
+        claims.push(CommandMatch::WeaponSkins(skins));
     }
     // Last on purpose. Its shape -- one packed uint64 list beside a scalar or
     // two -- is the least specific of the five, so anything another matcher can

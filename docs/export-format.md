@@ -15,7 +15,7 @@ Every field, with its type and meaning: [`teyvatme-export.ts`](teyvatme-export.t
 | | Save / Copy (a GOOD file) | Upload to a tracker |
 |---|---|---|
 | GOOD: `characters`, `weapons`, `artifacts`, `materials`, `timestamp` | yes, filtered by your export settings | yes, the whole account |
-| `gi_achievements`, `gi_achievement_times`, `gi_player`, `gi_characters`, `gi_anecdotes`, `gi_tasks`, `gi_collections` | yes | yes |
+| `gi_achievements`, `gi_achievement_times`, `gi_player`, `gi_characters`, `gi_anecdotes`, `gi_tasks`, `gi_collections`, `gi_wardrobe` | yes | yes |
 | `gi_guid` and `gi_exp` on each weapon and artifact | no | yes |
 | `gi_capture` (why the snapshot was taken) | no | yes |
 
@@ -36,7 +36,8 @@ A tracker also gets two more payloads, typed in the same file:
 | `gi_characters` | Per character: friendship, friendship EXP, when they joined, and EXP into the level. |
 | `gi_anecdotes` | The Travel Accounts book: every anecdote met and its state, areas, reward track, last wish. |
 | `gi_tasks` | What a planner can tick: commissions, the Spiral Abyss, expeditions, realm currency, Welkin Moon, the Epitomized Path and the resin clock. |
-| `gi_collections` | (next release) What you've collected: the Radiant Spincrystals in your Serenitea Pot. |
+| `gi_collections` | What you've collected: the Radiant Spincrystals in your Serenitea Pot, and (next release) the Archive, enemies defeated, the Adventurer Handbook, Aranara and your TCG cards and decks. |
+| `gi_wardrobe` | (next release) Outfits, wind gliders, weapon skins and sprint trails you own and who wears them, and your saved teams. |
 | `gi_capture` | Uploads only: why this snapshot was taken, and which game login it belongs to. |
 
 ## Rules it keeps
