@@ -2,6 +2,12 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.5.0
+
+- Captures your **recipes**: every recipe you've unlocked and its cooking
+  proficiency, from the list the game sends at login. Exported as
+  `gi_collections.recipes`.
+
 ## 1.4.0
 
 Captures what you've collected and what your characters wear, all from the

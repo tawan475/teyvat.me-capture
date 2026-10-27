@@ -2245,6 +2245,8 @@ mod tests {
         tps_avatar_ids: Option<(u32, u32)>,
         /// The `spincrystals` map's inside (music id → item id).
         spincrystals: &'static str,
+        /// The `recipes` map's inside (recipe id → most proficiency).
+        recipes: &'static str,
     }
 
     impl TestGameData {
@@ -2268,7 +2270,8 @@ mod tests {
                     "tps_avatar_id_female": {tps_female},
                     "tps_avatar_id_male": {tps_male},
                     "weapon_map": {{{}}},
-                    "spincrystals": {{{}}}
+                    "spincrystals": {{{}}},
+                    "recipes": {{{}}}
                 }}"#,
                 self.affix_map,
                 self.artifact_map,
@@ -2279,6 +2282,7 @@ mod tests {
                 self.skill_type_map,
                 self.weapon_map,
                 self.spincrystals,
+                self.recipes,
             );
             AnimeGameData::new_from_reader(json.as_bytes()).unwrap()
         }
@@ -3597,6 +3601,47 @@ mod tests {
             })
         );
         assert!(json.as_object().unwrap().get("gi_wardrobe").is_none());
+    }
+
+    #[test]
+    fn the_recipe_list_is_told_apart_by_the_recipe_table() {
+        use teyvatme_protocol::Record;
+        let mut data = PlayerData::new(
+            TestGameData {
+                recipes: r#""1001": 5, "1002": 10, "5502": 25"#,
+                ..Default::default()
+            }
+            .build(),
+        );
+        let recipe = |id: u64, proficiency: u64| Record {
+            varints: if proficiency > 0 {
+                BTreeMap::from([(4, proficiency), (14, id)])
+            } else {
+                BTreeMap::from([(14, id)])
+            },
+            ..Default::default()
+        };
+        let list = |records: Vec<Record>| RecordsMessage {
+            records,
+            varints: BTreeMap::from([(1, 3)]),
+            ..Default::default()
+        };
+        let cooked = list(vec![recipe(1001, 5), recipe(1002, 0), recipe(5502, 12)]);
+        assert_eq!(data.apply_recipes(&cooked), Some(3));
+        let json = serde_json::to_value(data.export_at(&settings(), NOW_SECS * 1000).0).unwrap();
+        assert_eq!(
+            json["gi_collections"]["recipes"],
+            serde_json::json!({"1001": 5, "1002": 0, "5502": 12})
+        );
+        // An id the table doesn't know, a repeat, or proficiency past the most:
+        // another message.
+        for other in [
+            list(vec![recipe(1001, 0), recipe(1002, 0), recipe(4242, 0)]),
+            list(vec![recipe(1001, 0), recipe(1001, 0), recipe(1002, 0)]),
+            list(vec![recipe(1001, 6), recipe(1002, 0), recipe(5502, 0)]),
+        ] {
+            assert_eq!(data.apply_recipes(&other), None);
+        }
     }
 
     #[test]

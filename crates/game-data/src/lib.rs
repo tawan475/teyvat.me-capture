@@ -63,7 +63,7 @@ fn lookup_const_value<T: FromStr>(
     res
 }
 
-const DATABASE_VERSION: u32 = 5;
+const DATABASE_VERSION: u32 = 6;
 
 #[derive(Debug, Deserialize, Serialize)]
 struct Database {
@@ -84,6 +84,9 @@ struct Database {
     /// its item id.
     #[serde(default)]
     spincrystals: BTreeMap<u32, u32>,
+    /// Cooking recipes: id → the most proficiency it takes.
+    #[serde(default)]
+    recipes: BTreeMap<u32, u32>,
 }
 
 impl Database {
@@ -103,6 +106,7 @@ impl Database {
             tps_avatar_id_male: None,
             weapon_map: HashMap::new(),
             spincrystals: BTreeMap::new(),
+            recipes: BTreeMap::new(),
         }
     }
 
@@ -247,6 +251,11 @@ impl AnimeGameData {
         Ok(&self.db()?.spincrystals)
     }
 
+    /// Cooking recipes by id (value: the most proficiency it takes).
+    pub fn recipes(&self) -> Result<&BTreeMap<u32, u32>> {
+        Ok(&self.db()?.recipes)
+    }
+
     pub fn has_data(&self) -> bool {
         self.db.is_some()
     }
@@ -322,6 +331,9 @@ impl AnimeGameData {
 
         tracing::info!("Downloading character map");
         db.character_map = Self::fetch_character_map(source, &latest_git_hash, &text_map).await?;
+
+        tracing::info!("Downloading recipes");
+        db.recipes = Self::fetch_recipes(source, &latest_git_hash).await;
 
         tracing::info!("Downloading const value map");
         let const_value_map = Self::fetch_const_value_map(source, &latest_git_hash).await?;
@@ -468,6 +480,36 @@ impl AnimeGameData {
             })
             .collect();
         Ok((names, spincrystals))
+    }
+
+    /// Cooking recipes and the most proficiency each takes. A table that
+    /// cannot be read leaves it empty (logged): only `gi_collections.recipes`
+    /// depends on it.
+    async fn fetch_recipes<Source: GameDataSource>(
+        source: &Source,
+        git_ref: &str,
+    ) -> BTreeMap<u32, u32> {
+        let rows: Vec<serde_json::Value> = match source
+            .get_json_file(git_ref, "ExcelBinOutput/CookRecipeExcelConfigData.json")
+            .await
+        {
+            Ok(rows) => rows,
+            Err(e) => {
+                tracing::warn!("could not read the recipe table; recipes are left out: {e}");
+                return BTreeMap::new();
+            }
+        };
+        rows.iter()
+            .filter_map(|row| {
+                let id = u32::try_from(row.get("id")?.as_u64()?).ok()?;
+                let max = row
+                    .get("maxProficiency")
+                    .and_then(serde_json::Value::as_u64)
+                    .and_then(|max| u32::try_from(max).ok())
+                    .unwrap_or(0);
+                Some((id, max))
+            })
+            .collect()
     }
 
     async fn fetch_property_map<Source: GameDataSource>(
@@ -656,6 +698,9 @@ mod tests {
                 }
                 "ExcelBinOutput/WeaponExcelConfigData.json" => {
                     include_str!("test_data/ExcelBinOutput/WeaponExcelConfigData.json")
+                }
+                "ExcelBinOutput/CookRecipeExcelConfigData.json" => {
+                    include_str!("test_data/ExcelBinOutput/CookRecipeExcelConfigData.json")
                 }
                 "TextMap/TextMap_MediumEN.json" => {
                     include_str!("test_data/TextMap/TextMap_MediumEN.json")
@@ -868,6 +913,17 @@ mod tests {
         let mut data = AnimeGameData::new();
         data.update_impl(&source).await.unwrap();
         assert_eq!(data.get_material(100002).unwrap(), &"Sunsettia".to_string());
+    }
+
+    #[tokio::test]
+    async fn recipes_keep_their_most_proficiency() {
+        let source = TestDataSource;
+        let mut data = AnimeGameData::new();
+        data.update_impl(&source).await.unwrap();
+        assert_eq!(
+            data.recipes().unwrap(),
+            &BTreeMap::from([(1001, 5), (5502, 25)])
+        );
     }
 
     #[tokio::test]
