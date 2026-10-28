@@ -2,7 +2,7 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
-## Unreleased
+## 1.15.3
 
 - Android: Stop capture always ends the VPN. Sometimes Android's VPN stayed
   connected after Stop (the key icon and "VPN activated" stayed) until it
