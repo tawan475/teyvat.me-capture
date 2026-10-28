@@ -373,7 +373,7 @@ impl TeyvatmeApp {
             });
         });
 
-        overline(ui, tr("Filters")).on_hover_text(tr("Tracker uploads always include everything"));
+        overline(ui, tr("Filters"));
         card_frame(ui).show(ui, |ui| {
             ui.set_width(ui.available_width());
             let settings = &mut self.saved_state.export_settings;
@@ -406,7 +406,7 @@ impl TeyvatmeApp {
                     ui,
                     &mut [
                         (tr("Min level"), &mut settings.min_artifact_level, 0, 20),
-                        (tr("Min rarity"), &mut settings.min_artifact_rarity, 0, 6),
+                        (tr("Min rarity"), &mut settings.min_artifact_rarity, 1, 5),
                     ],
                 );
             }

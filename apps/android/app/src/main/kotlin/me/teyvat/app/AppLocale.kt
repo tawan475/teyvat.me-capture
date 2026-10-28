@@ -7,6 +7,7 @@ import android.app.Activity
 import android.app.LocaleManager
 import android.content.Context
 import android.content.res.Configuration
+import android.content.res.Resources
 import android.os.Build
 import android.os.LocaleList
 import java.util.Locale
@@ -14,8 +15,10 @@ import java.util.Locale
 /**
  * The app's language, picked in Settings like the desktop's: every language
  * the game ships, or the system's. Android 13+ keeps it per app (and shows
- * it in system settings); older versions keep it here and apply it to the
- * activity ([wrap]).
+ * it in system settings) for every part of the app; older versions keep it
+ * here and apply it to the activity ([wrap]) and to the app's own resources
+ * ([applyToApp]), which the capture service, its notifications, the resin
+ * alert and the tile read.
  */
 object AppLocale {
     /** The desktop's list (`i18n.rs`), with each language's own name. */
@@ -39,7 +42,12 @@ object AppLocale {
     private fun tagOf(locale: Locale): String? {
         val language = if (locale.language == "in") "id" else locale.language
         return when (language) {
-            "zh" -> if (locale.country == "TW" || locale.country == "HK" || locale.script == "Hant") "zh-TW" else "zh-CN"
+            "zh" -> when {
+                locale.script == "Hant" -> "zh-TW"
+                locale.script == "Hans" -> "zh-CN"
+                locale.country in listOf("TW", "HK", "MO") -> "zh-TW"
+                else -> "zh-CN"
+            }
             else -> LANGUAGES.firstOrNull { it.first == language }?.first
         }
     }
@@ -50,6 +58,7 @@ object AppLocale {
                 if (tag == null) LocaleList.getEmptyLocaleList() else LocaleList.forLanguageTags(tag)
         } else {
             store(activity).edit().putString("language", tag).apply()
+            applyToApp(activity.applicationContext)
             activity.recreate()
         }
     }
@@ -61,5 +70,21 @@ object AppLocale {
         val config = Configuration(base.resources.configuration)
         config.setLocales(LocaleList.forLanguageTags(tag))
         return base.createConfigurationContext(config)
+    }
+
+    /**
+     * Before Android 13: the picked language on the app's shared resources,
+     * which services, receivers and the tile read (they never pass through
+     * [wrap]); a system configuration change resets them, so the app calls
+     * this again then. Back to the system's languages for no pick.
+     */
+    @Suppress("DEPRECATION")
+    fun applyToApp(app: Context) {
+        if (Build.VERSION.SDK_INT >= 33) return
+        val tag = store(app).getString("language", null)
+        val resources = app.resources
+        val config = Configuration(resources.configuration)
+        config.setLocales(if (tag == null) Resources.getSystem().configuration.locales else LocaleList.forLanguageTags(tag))
+        resources.updateConfiguration(config, resources.displayMetrics)
     }
 }

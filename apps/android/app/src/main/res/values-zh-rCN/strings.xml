@@ -193,8 +193,8 @@
     <string name="filters">筛选</string>
     <string name="filter_4th_line">补全 5★ 三词条圣遗物的第 4 条副属性</string>
     <string name="filter_4th_line_line">用于 Genshin Optimizer</string>
-    <string name="filters_footnote">追踪器上传始终包含全部内容</string>
     <string name="filter_all">全部</string>
+    <string name="filter_not_exported">不导出</string>
     <string name="min_level">最低等级</string>
     <string name="min_ascension">最低突破</string>
     <string name="min_constellation">最低命之座</string>
@@ -378,7 +378,7 @@
     <string name="home_done_title">抓取完成</string>
     <string name="resin_alert">树脂提醒</string>
     <string name="resin_alert_line">树脂达到此数值时发送通知</string>
-    <string name="resin_alert_at">提醒数值 %1$d / %2$d</string>
+    <string name="resin_alert_at">提醒数值</string>
     <string name="resin_alert_test">测试</string>
     <string name="resin_alert_title">原粹树脂 %1$d/%2$d</string>
     <string name="resin_alert_full">原粹树脂已回满</string>

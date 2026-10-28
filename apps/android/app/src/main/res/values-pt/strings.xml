@@ -193,8 +193,8 @@
     <string name="filters">Filtros</string>
     <string name="filter_4th_line">Preencher a 4ª linha dos 5★ de 3 linhas</string>
     <string name="filter_4th_line_line">Para o Genshin Optimizer</string>
-    <string name="filters_footnote">Os envios ao tracker sempre incluem tudo</string>
     <string name="filter_all">Todos</string>
+    <string name="filter_not_exported">Não exportado</string>
     <string name="min_level">Nível mín.</string>
     <string name="min_ascension">Ascensão mín.</string>
     <string name="min_constellation">Constelação mín.</string>
@@ -382,7 +382,7 @@
     <string name="home_done_title">Captura concluída</string>
     <string name="resin_alert">Aviso de resina</string>
     <string name="resin_alert_line">Uma notificação quando sua resina chegar a este número</string>
-    <string name="resin_alert_at">Avisar em %1$d / %2$d</string>
+    <string name="resin_alert_at">Avisar em</string>
     <string name="resin_alert_test">Testar</string>
     <string name="resin_alert_title">Resina %1$d/%2$d</string>
     <string name="resin_alert_full">A resina está cheia</string>

@@ -193,8 +193,8 @@
     <string name="filters">Filter</string>
     <string name="filter_4th_line">Isi baris ke-4 pada 5★ 3 baris</string>
     <string name="filter_4th_line_line">Untuk Genshin Optimizer</string>
-    <string name="filters_footnote">Unggahan ke tracker selalu berisi semuanya</string>
     <string name="filter_all">Semua</string>
+    <string name="filter_not_exported">Tidak diekspor</string>
     <string name="min_level">Min. level</string>
     <string name="min_ascension">Min. ascension</string>
     <string name="min_constellation">Min. konstelasi</string>
@@ -378,7 +378,7 @@
     <string name="home_done_title">Penangkapan selesai</string>
     <string name="resin_alert">Pengingat Resin</string>
     <string name="resin_alert_line">Notifikasi saat Resin mencapai jumlah ini</string>
-    <string name="resin_alert_at">Ingatkan di %1$d / %2$d</string>
+    <string name="resin_alert_at">Ingatkan di</string>
     <string name="resin_alert_test">Uji</string>
     <string name="resin_alert_title">Resin %1$d/%2$d</string>
     <string name="resin_alert_full">Resin sudah penuh</string>

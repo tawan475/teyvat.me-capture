@@ -193,8 +193,8 @@
     <string name="filters">Filter</string>
     <string name="filter_4th_line">4. Zeile bei 5★ mit 3 Zeilen füllen</string>
     <string name="filter_4th_line_line">Für Genshin Optimizer</string>
-    <string name="filters_footnote">Tracker-Uploads enthalten immer alles</string>
     <string name="filter_all">Alle</string>
+    <string name="filter_not_exported">Wird nicht exportiert</string>
     <string name="min_level">Min. Stufe</string>
     <string name="min_ascension">Min. Aufstieg</string>
     <string name="min_constellation">Min. Sternbild</string>
@@ -380,7 +380,7 @@
     <string name="home_done_title">Erfassung abgeschlossen</string>
     <string name="resin_alert">Harz-Erinnerung</string>
     <string name="resin_alert_line">Eine Benachrichtigung, wenn dein Harz diesen Wert erreicht</string>
-    <string name="resin_alert_at">Erinnern bei %1$d / %2$d</string>
+    <string name="resin_alert_at">Erinnern bei</string>
     <string name="resin_alert_test">Testen</string>
     <string name="resin_alert_title">Harz %1$d/%2$d</string>
     <string name="resin_alert_full">Das Harz ist voll</string>
