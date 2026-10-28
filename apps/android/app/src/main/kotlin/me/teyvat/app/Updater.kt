@@ -340,7 +340,15 @@ class Updater(
             else -> {
                 session = -1
                 confirmIntent = null
-                val message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE) ?: "status $status"
+                val raw = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE) ?: "status $status"
+                // Play Protect ("Harmful app blocked") or another Android
+                // check refused it: say so, not the raw status, so a retry
+                // that is refused again doesn't read as the updater looping.
+                val message = if (status == PackageInstaller.STATUS_FAILURE_BLOCKED) {
+                    context.getString(R.string.update_blocked)
+                } else {
+                    raw
+                }
                 // Cancelled on Android's screen: keep it ready for Install now.
                 stateFlow.value = if (status == PackageInstaller.STATUS_FAILURE_ABORTED && version != null) {
                     UpdateState.Ready(version, installsSilently())
@@ -348,7 +356,7 @@ class Updater(
                     UpdateState.Failed(version, message)
                 }
                 if (status != PackageInstaller.STATUS_FAILURE_ABORTED) {
-                    NativeBridge.note("error", context.getString(R.string.update_failed, message))
+                    NativeBridge.note("error", context.getString(R.string.update_failed, if (message == raw) raw else "$message: $raw"))
                 }
             }
         }

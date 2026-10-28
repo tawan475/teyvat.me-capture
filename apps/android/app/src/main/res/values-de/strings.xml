@@ -253,6 +253,7 @@
     <string name="update_allow">Installationen erlauben</string>
     <string name="update_allow_line">Android fragt einmal: Unbekannte Apps installieren</string>
     <string name="update_failed">Update fehlgeschlagen · %s</string>
+    <string name="update_blocked">Von Android blockiert (Play Protect)</string>
     <!-- Wish sync -->
     <string name="wish_send">Gebete an %1$s senden</string>
     <string name="wish_send_line">Sendet neue Gebete, sobald sie erscheinen</string>

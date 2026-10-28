@@ -253,6 +253,7 @@
     <string name="update_allow">インストールを許可</string>
     <string name="update_allow_line">Android が一度だけ確認: 不明なアプリのインストール</string>
     <string name="update_failed">アップデート失敗 · %s</string>
+    <string name="update_blocked">Android によりブロックされました（Google Play プロテクト）</string>
     <!-- Wish sync -->
     <string name="wish_send">祈願を %1$s に送信</string>
     <string name="wish_send_line">新しい祈願が出るたびに送信</string>

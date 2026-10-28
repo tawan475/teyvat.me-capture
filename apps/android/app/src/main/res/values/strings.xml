@@ -258,6 +258,7 @@
     <string name="update_allow">Allow installs</string>
     <string name="update_allow_line">Android asks once: Install unknown apps</string>
     <string name="update_failed">Update failed · %s</string>
+    <string name="update_blocked">Android blocked it (Play Protect)</string>
     <!-- Wish sync -->
     <string name="wish_send">Send wishes to %1$s</string>
     <string name="wish_send_line">Sends new wishes as they appear</string>

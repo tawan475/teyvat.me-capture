@@ -253,6 +253,7 @@
     <string name="update_allow">Autoriser les installations</string>
     <string name="update_allow_line">Android demande une fois : Installer des applis inconnues</string>
     <string name="update_failed">Échec de la mise à jour · %s</string>
+    <string name="update_blocked">Bloquée par Android (Play Protect)</string>
     <!-- Wish sync -->
     <string name="wish_send">Envoyer les vœux vers %1$s</string>
     <string name="wish_send_line">Envoie les nouveaux vœux dès qu\'ils apparaissent</string>

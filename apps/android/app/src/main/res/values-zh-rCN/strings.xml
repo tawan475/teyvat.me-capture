@@ -253,6 +253,7 @@
     <string name="update_allow">允许安装</string>
     <string name="update_allow_line">Android 只询问一次：安装未知应用</string>
     <string name="update_failed">更新失败 · %s</string>
+    <string name="update_blocked">已被 Android 拦截（Play 保护机制）</string>
     <!-- Wish sync -->
     <string name="wish_send">将祈愿发送到 %1$s</string>
     <string name="wish_send_line">有新祈愿时立即发送</string>

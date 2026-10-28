@@ -253,6 +253,7 @@
     <string name="update_allow">允許安裝</string>
     <string name="update_allow_line">Android 只詢問一次：安裝不明的應用程式</string>
     <string name="update_failed">更新失敗 · %s</string>
+    <string name="update_blocked">已遭 Android 封鎖（Play 安全防護）</string>
     <!-- Wish sync -->
     <string name="wish_send">將祈願傳送到 %1$s</string>
     <string name="wish_send_line">有新祈願時立即傳送</string>

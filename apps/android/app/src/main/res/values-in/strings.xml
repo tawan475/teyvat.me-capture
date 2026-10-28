@@ -253,6 +253,7 @@
     <string name="update_allow">Izinkan pemasangan</string>
     <string name="update_allow_line">Android bertanya sekali: Instal aplikasi tidak dikenal</string>
     <string name="update_failed">Pembaruan gagal · %s</string>
+    <string name="update_blocked">Diblokir oleh Android (Play Protect)</string>
     <!-- Wish sync -->
     <string name="wish_send">Kirim permohonan ke %1$s</string>
     <string name="wish_send_line">Mengirim permohonan baru begitu muncul</string>

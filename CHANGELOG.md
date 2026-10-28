@@ -22,6 +22,9 @@ Each release's section is its GitHub release notes (`.github/workflows/release.y
 - Android 12+, self-update: updates now install without asking, as meant
   (when you leave the app, capture off). The app lacked the permission
   Android needs for that, so every update asked with "Tap to install".
+- Android, self-update: an update Play Protect (or another Android check)
+  refuses says "Update failed · Android blocked it (Play Protect)" instead
+  of a raw status, or of going back to Install now as if nothing happened.
 - Android: the update notification and the resin alert no longer replace
   each other (they shared one notification number).
 

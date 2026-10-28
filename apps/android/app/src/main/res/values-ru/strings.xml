@@ -253,6 +253,7 @@
     <string name="update_allow">Разрешить установку</string>
     <string name="update_allow_line">Android спросит один раз: Установка неизвестных приложений</string>
     <string name="update_failed">Ошибка обновления · %s</string>
+    <string name="update_blocked">Заблокировано Android (Play Защита)</string>
     <!-- Wish sync -->
     <string name="wish_send">Отправлять молитвы в %1$s</string>
     <string name="wish_send_line">Отправляет новые молитвы по мере появления</string>

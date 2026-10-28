@@ -253,6 +253,7 @@
     <string name="update_allow">Yüklemelere izin ver</string>
     <string name="update_allow_line">Android bir kez sorar: Bilinmeyen uygulamaları yükle</string>
     <string name="update_failed">Güncelleme başarısız · %s</string>
+    <string name="update_blocked">Android engelledi (Play Protect)</string>
     <!-- Wish sync -->
     <string name="wish_send">Dilekleri gönder: %1$s</string>
     <string name="wish_send_line">Yeni dilekleri geldikçe gönderir</string>

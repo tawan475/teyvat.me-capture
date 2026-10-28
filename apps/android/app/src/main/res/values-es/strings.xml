@@ -253,6 +253,7 @@
     <string name="update_allow">Permitir instalaciones</string>
     <string name="update_allow_line">Android pregunta una vez: Instalar aplicaciones desconocidas</string>
     <string name="update_failed">Error al actualizar · %s</string>
+    <string name="update_blocked">Android lo bloqueó (Play Protect)</string>
     <!-- Wish sync -->
     <string name="wish_send">Enviar deseos a %1$s</string>
     <string name="wish_send_line">Envía los deseos nuevos en cuanto aparecen</string>

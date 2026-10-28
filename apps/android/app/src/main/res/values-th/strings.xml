@@ -253,6 +253,7 @@
     <string name="update_allow">อนุญาตการติดตั้ง</string>
     <string name="update_allow_line">Android ถามครั้งเดียว: ติดตั้งแอปที่ไม่รู้จัก</string>
     <string name="update_failed">อัปเดตไม่สำเร็จ · %s</string>
+    <string name="update_blocked">Android บล็อกไว้ (Play Protect)</string>
     <!-- Wish sync -->
     <string name="wish_send">ส่งการอธิษฐานไปที่ %1$s</string>
     <string name="wish_send_line">ส่งการอธิษฐานใหม่ทันทีที่มี</string>
