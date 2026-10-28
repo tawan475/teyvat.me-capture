@@ -2,6 +2,15 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.15.2
+
+- Language from the system: a Chinese script setting now wins over the
+  region (Simplified Chinese set up for Hong Kong shows Simplified, not
+  Traditional), and Cantonese shows Traditional Chinese instead of English.
+- Android 10–12: a language picked in Settings now also reaches the capture
+  notification, the resin alert and the Quick Settings tile (they stayed in
+  the system's language; Android 13 and later were not affected).
+
 ## 1.15.1
 
 - Desktop: the tray icon's tooltip also says how long ago the last capture

@@ -106,12 +106,17 @@ impl Lang {
         let rest: Vec<&str> = parts.collect();
         Some(match primary {
             "en" => Lang::En,
-            "zh" => {
-                let traditional = rest
-                    .iter()
-                    .any(|p| matches!(*p, "hant" | "tw" | "hk" | "mo"));
-                let simplified = rest.iter().any(|p| matches!(*p, "hans" | "cn" | "sg"));
-                if traditional && !simplified {
+            // Chinese and Cantonese: the script decides, else the region
+            // (Taiwan, Hong Kong, Macau read Traditional), else Simplified
+            // for Chinese and Traditional for Cantonese. Same rule as the
+            // tracker's `detectLocale`.
+            "zh" | "yue" => {
+                if rest.contains(&"hant") {
+                    Lang::ZhTw
+                } else if rest.contains(&"hans") {
+                    Lang::ZhCn
+                } else if primary == "yue" || rest.iter().any(|p| matches!(*p, "tw" | "hk" | "mo"))
+                {
                     Lang::ZhTw
                 } else {
                     Lang::ZhCn
@@ -260,6 +265,15 @@ mod tests {
         assert_eq!(Lang::from_tag("zh_HK"), Some(Lang::ZhTw));
         assert_eq!(Lang::from_tag("zh-Hans-CN"), Some(Lang::ZhCn));
         assert_eq!(Lang::from_tag("zh"), Some(Lang::ZhCn));
+        assert_eq!(Lang::from_tag("zh-MO"), Some(Lang::ZhTw));
+        assert_eq!(Lang::from_tag("zh-SG"), Some(Lang::ZhCn));
+        // The script wins over the region.
+        assert_eq!(Lang::from_tag("zh-Hans-HK"), Some(Lang::ZhCn));
+        assert_eq!(Lang::from_tag("zh-Hant-CN"), Some(Lang::ZhTw));
+        assert_eq!(Lang::from_tag("zh_Hant_SG"), Some(Lang::ZhTw));
+        // Cantonese reads Traditional unless it says Hans.
+        assert_eq!(Lang::from_tag("yue-HK"), Some(Lang::ZhTw));
+        assert_eq!(Lang::from_tag("yue-Hans-CN"), Some(Lang::ZhCn));
         assert_eq!(Lang::from_tag("pt-BR"), Some(Lang::Pt));
         assert_eq!(Lang::from_tag("in-ID"), Some(Lang::Id));
         assert_eq!(Lang::from_tag("en_US.UTF-8"), Some(Lang::En));

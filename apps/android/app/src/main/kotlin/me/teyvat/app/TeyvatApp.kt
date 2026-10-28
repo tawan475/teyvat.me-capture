@@ -4,6 +4,7 @@
 package me.teyvat.app
 
 import android.app.Application
+import android.content.res.Configuration
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -29,6 +30,7 @@ class TeyvatApp : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        AppLocale.applyToApp(this)
         keepCrashes()
         NativeBridge.init(filesDir.path)
         prefs = Prefs(this)
@@ -45,6 +47,12 @@ class TeyvatApp : Application() {
         updater = Updater(this, prefs, scope) { capture.vpn.value != VpnState.Off }
         // The Quick Settings tile follows capture, however it was started or stopped.
         scope.launch { capture.vpn.collect { CaptureTile.update(this@TeyvatApp) } }
+    }
+
+    /** A system change (rotation, dark mode, the system's language) resets the picked language before Android 13. */
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        AppLocale.applyToApp(this)
     }
 
     /**
