@@ -228,7 +228,7 @@
     <string name="stop">Durdur</string>
     <string name="share_good">GOOD JSON paylaş</string>
     <string name="alert_capture_stopped">Tarama durdu</string>
-    <string name="alert_vpn_taken">Başka bir VPN devraldı</string>
+    <string name="alert_vpn_ended">VPN bağlantısı kesildi</string>
     <!-- Background -->
     <string name="battery_title">Arka planda çalış</string>
     <string name="battery_off_line">Pil tasarrufu oynarken dışa aktarmaları ve yüklemeleri duraklatabilir</string>

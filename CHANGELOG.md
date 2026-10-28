@@ -2,6 +2,17 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## Unreleased
+
+- Android: Stop capture always ends the VPN. Sometimes Android's VPN stayed
+  connected after Stop (the key icon and "VPN activated" stayed) until it
+  was disconnected by hand; the forwarder now closes the tunnel under any
+  task that still holds it. A failed start also closes the tunnel it was
+  given instead of leaving it open.
+- Android: the "Capture stopped" alert comes only when a running capture
+  ended, and it says "VPN disconnected" (it said "Another VPN took over"
+  also when the VPN was disconnected in Android's settings).
+
 ## 1.15.2
 
 - Android, Export: each filter's minimums show right under it while its

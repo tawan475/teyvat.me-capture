@@ -228,7 +228,7 @@
     <string name="stop">Dừng</string>
     <string name="share_good">Chia sẻ GOOD JSON</string>
     <string name="alert_capture_stopped">Đã dừng ghi</string>
-    <string name="alert_vpn_taken">Một VPN khác đã thay thế</string>
+    <string name="alert_vpn_ended">VPN đã bị ngắt kết nối</string>
     <!-- Background -->
     <string name="battery_title">Chạy trong nền</string>
     <string name="battery_off_line">Tiết kiệm pin có thể tạm dừng xuất và tải lên khi bạn chơi</string>

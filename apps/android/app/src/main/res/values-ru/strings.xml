@@ -228,7 +228,7 @@
     <string name="stop">Стоп</string>
     <string name="share_good">Поделиться GOOD JSON</string>
     <string name="alert_capture_stopped">Захват остановлен</string>
-    <string name="alert_vpn_taken">Включился другой VPN</string>
+    <string name="alert_vpn_ended">VPN отключён</string>
     <!-- Background -->
     <string name="battery_title">Работа в фоне</string>
     <string name="battery_off_line">Экономия заряда может приостанавливать экспорт и выгрузку во время игры</string>

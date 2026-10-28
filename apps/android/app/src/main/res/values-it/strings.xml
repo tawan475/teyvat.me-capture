@@ -228,7 +228,7 @@
     <string name="stop">Interrompi</string>
     <string name="share_good">Condividi GOOD JSON</string>
     <string name="alert_capture_stopped">Cattura interrotta</string>
-    <string name="alert_vpn_taken">Un\'altra VPN ha preso il controllo</string>
+    <string name="alert_vpn_ended">VPN disconnessa</string>
     <!-- Background -->
     <string name="battery_title">Esegui in background</string>
     <string name="battery_off_line">Il risparmio batteria può mettere in pausa esportazioni e caricamenti mentre giochi</string>

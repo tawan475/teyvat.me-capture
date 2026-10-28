@@ -232,7 +232,7 @@
     <string name="stop">Stop</string>
     <string name="share_good">Share GOOD JSON</string>
     <string name="alert_capture_stopped">Capture stopped</string>
-    <string name="alert_vpn_taken">Another VPN took over</string>
+    <string name="alert_vpn_ended">VPN disconnected</string>
 
     <!-- Background -->
     <string name="battery_title">Run in the background</string>

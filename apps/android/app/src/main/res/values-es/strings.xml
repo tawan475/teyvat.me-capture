@@ -228,7 +228,7 @@
     <string name="stop">Detener</string>
     <string name="share_good">Compartir GOOD JSON</string>
     <string name="alert_capture_stopped">Captura detenida</string>
-    <string name="alert_vpn_taken">Otra VPN tomó el control</string>
+    <string name="alert_vpn_ended">VPN desconectada</string>
     <!-- Background -->
     <string name="battery_title">Ejecutar en segundo plano</string>
     <string name="battery_off_line">El ahorro de batería puede pausar las exportaciones y subidas mientras juegas</string>

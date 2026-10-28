@@ -228,7 +228,7 @@
     <string name="stop">停止</string>
     <string name="share_good">分享 GOOD JSON</string>
     <string name="alert_capture_stopped">擷取已停止</string>
-    <string name="alert_vpn_taken">另一個 VPN 已接管</string>
+    <string name="alert_vpn_ended">VPN 已中斷連線</string>
     <!-- Background -->
     <string name="battery_title">在背景執行</string>
     <string name="battery_off_line">省電功能可能會在你遊戲時暫停匯出和上傳</string>

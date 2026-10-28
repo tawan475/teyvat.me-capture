@@ -228,7 +228,7 @@
     <string name="stop">หยุด</string>
     <string name="share_good">แชร์ GOOD JSON</string>
     <string name="alert_capture_stopped">หยุดสแกนแล้ว</string>
-    <string name="alert_vpn_taken">VPN อื่นเข้ามาแทนที่</string>
+    <string name="alert_vpn_ended">VPN ถูกตัดการเชื่อมต่อ</string>
     <!-- Background -->
     <string name="battery_title">ทำงานเบื้องหลัง</string>
     <string name="battery_off_line">การประหยัดแบตเตอรี่อาจหยุดการส่งออกและอัปโหลดระหว่างเล่น</string>

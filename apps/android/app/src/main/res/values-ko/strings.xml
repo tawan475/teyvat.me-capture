@@ -228,7 +228,7 @@
     <string name="stop">중지</string>
     <string name="share_good">GOOD JSON 공유</string>
     <string name="alert_capture_stopped">캡처 중지됨</string>
-    <string name="alert_vpn_taken">다른 VPN이 연결을 가져감</string>
+    <string name="alert_vpn_ended">VPN 연결이 끊어짐</string>
     <!-- Background -->
     <string name="battery_title">백그라운드에서 실행</string>
     <string name="battery_off_line">배터리 절약 기능이 플레이 중 내보내기와 업로드를 멈출 수 있습니다</string>

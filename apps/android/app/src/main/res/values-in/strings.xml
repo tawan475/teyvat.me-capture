@@ -228,7 +228,7 @@
     <string name="stop">Berhenti</string>
     <string name="share_good">Bagikan GOOD JSON</string>
     <string name="alert_capture_stopped">Penangkapan berhenti</string>
-    <string name="alert_vpn_taken">VPN lain mengambil alih</string>
+    <string name="alert_vpn_ended">VPN terputus</string>
     <!-- Background -->
     <string name="battery_title">Jalankan di latar belakang</string>
     <string name="battery_off_line">Penghemat baterai bisa menjeda ekspor dan unggahan saat kamu bermain</string>

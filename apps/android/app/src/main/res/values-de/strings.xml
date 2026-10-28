@@ -228,7 +228,7 @@
     <string name="stop">Stopp</string>
     <string name="share_good">GOOD JSON teilen</string>
     <string name="alert_capture_stopped">Erfassung gestoppt</string>
-    <string name="alert_vpn_taken">Ein anderes VPN hat übernommen</string>
+    <string name="alert_vpn_ended">VPN getrennt</string>
     <!-- Background -->
     <string name="battery_title">Im Hintergrund ausführen</string>
     <string name="battery_off_line">Der Energiesparmodus kann Exporte und Uploads beim Spielen anhalten</string>
