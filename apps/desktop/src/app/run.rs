@@ -69,6 +69,10 @@ impl TeyvatmeApp {
         if out_of_sight {
             self.toasts.clear();
             let _ = self.saved_state_tx.send(self.saved_state.clone());
+            // The tooltip's "12 min ago" moves on by itself: a frame a minute.
+            if !self.tray_tooltip.is_empty() && self.state_rx.borrow().captured_at.is_some() {
+                ctx.request_repaint_after(std::time::Duration::from_secs(60));
+            }
             return;
         }
 
@@ -239,19 +243,20 @@ impl TeyvatmeApp {
         }
     }
 
-    /// "Teyvat.me · <the status strip's title>" on the tray icon, kept
-    /// current while the window is hidden too.
+    /// "Teyvat.me · <the status strip's title>", and when the last capture
+    /// was, on the tray icon; kept current while in the tray too (a frame a
+    /// minute there, see `run_frame`).
     fn update_tray_tooltip(&mut self) {
         let Some(tray) = &self.tray_icon else {
             return;
         };
-        let (status, done) = {
+        let (status, done, captured_at) = {
             let state = self.state_rx.borrow();
-            (state.game_status, state.capture_done)
+            (state.game_status, state.capture_done, state.captured_at)
         };
-        let text = format!(
-            "Teyvat.me · {}",
-            super::home::strip_title(self.is_admin, status, done)
+        let text = tray_tooltip_text(
+            super::home::strip_title(self.is_admin, status, done),
+            captured_at.map(|at| (chrono::Local::now() - at).num_seconds().max(0)),
         );
         if text != self.tray_tooltip {
             if let Err(e) = tray.set_tooltip(Some(&text)) {
@@ -351,4 +356,35 @@ impl TeyvatmeApp {
 #[rustfmt::skip]
 fn closed_many(killed: impl std::fmt::Display) -> String {
     trf("Closed {0} Genshin processes. Start it again to capture.", &[&killed])
+}
+
+/// The tray icon's tooltip: the status strip's title and, on a second line,
+/// how long ago the last capture was, when there is one.
+fn tray_tooltip_text(title: &str, since_capture: Option<i64>) -> String {
+    let mut text = format!("Teyvat.me · {title}");
+    if let Some(seconds) = since_capture {
+        text.push('\n');
+        text.push_str(&trf(
+            "Last capture {0}",
+            &[&crate::ui::widgets::ago(seconds)],
+        ));
+    }
+    text
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_tray_tooltip_says_when_the_last_capture_was() {
+        assert_eq!(
+            tray_tooltip_text("Capture done", None),
+            "Teyvat.me · Capture done"
+        );
+        assert_eq!(
+            tray_tooltip_text("Capture done", Some(12 * 60 + 5)),
+            "Teyvat.me · Capture done\nLast capture 12 min ago"
+        );
+    }
 }

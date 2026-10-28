@@ -2,6 +2,14 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.15.1
+
+- Desktop: the tray icon's tooltip also says how long ago the last capture
+  was ("Last capture 12 min ago"), and keeps it current while Teyvat.me is
+  in the tray. (Since 1.15.0 the tooltip follows the status in the tray too:
+  before, a window hidden in the tray drew no frames, so it stayed on "Data
+  decrypting" until the window was opened.)
+
 ## 1.15.0
 
 - **Resin alert** (Settings, off by default): one notification when your
