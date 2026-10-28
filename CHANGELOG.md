@@ -12,6 +12,18 @@ Each release's section is its GitHub release notes (`.github/workflows/release.y
 - Android: the "Capture stopped" alert comes only when a running capture
   ended, and it says "VPN disconnected" (it said "Another VPN took over"
   also when the VPN was disconnected in Android's settings).
+- Android, self-update: Install now no longer loops between "Installing"
+  and "Tap to install". Each Install now abandoned the previous install
+  session, and Android's answer for that one (cancelled) undid the new
+  one; answers for old sessions are now ignored, and while Android's
+  Update screen waits, Install now opens that screen again instead of
+  starting over. A background check no longer replaces an install under
+  way.
+- Android 12+, self-update: updates now install without asking, as meant
+  (when you leave the app, capture off). The app lacked the permission
+  Android needs for that, so every update asked with "Tap to install".
+- Android: the update notification and the resin alert no longer replace
+  each other (they shared one notification number).
 
 ## 1.15.2
 

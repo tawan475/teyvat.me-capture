@@ -181,6 +181,7 @@ fun SettingsScreen(
             UpdateState.UpToDate -> stringResource(R.string.update_up_to_date, me.teyvat.app.BuildConfig.VERSION_NAME)
             is UpdateState.Downloading -> stringResource(R.string.update_downloading, update.version, update.percent)
             is UpdateState.Ready -> stringResource(R.string.update_ready, update.version)
+            is UpdateState.Confirming -> stringResource(R.string.update_ready, update.version)
             is UpdateState.NeedsPermission -> stringResource(R.string.update_allow_line)
             is UpdateState.Installing -> stringResource(R.string.update_installing, update.version)
             is UpdateState.Failed -> stringResource(R.string.update_failed, update.error)

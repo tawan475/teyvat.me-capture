@@ -12,6 +12,10 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- The self-update (Updater.kt): installs a newer release of this app. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Lets Android honour the update's USER_ACTION_NOT_REQUIRED (12+) once
+         this app installed the version that runs; without it every update
+         asked, even from the background. -->
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
     <!-- Battery.kt: asks to run unrestricted, so battery savers don't pause
          exports and uploads while the game is in front. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
