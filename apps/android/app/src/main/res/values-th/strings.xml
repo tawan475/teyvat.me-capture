@@ -228,7 +228,7 @@
     <string name="stop">หยุด</string>
     <string name="share_good">แชร์ GOOD JSON</string>
     <string name="alert_capture_stopped">หยุดสแกนแล้ว</string>
-    <string name="alert_vpn_taken">VPN อื่นเข้ามาแทนที่</string>
+    <string name="alert_vpn_ended">VPN ถูกตัดการเชื่อมต่อ</string>
     <!-- Background -->
     <string name="battery_title">ทำงานเบื้องหลัง</string>
     <string name="battery_off_line">การประหยัดแบตเตอรี่อาจหยุดการส่งออกและอัปโหลดระหว่างเล่น</string>
@@ -253,6 +253,7 @@
     <string name="update_allow">อนุญาตการติดตั้ง</string>
     <string name="update_allow_line">Android ถามครั้งเดียว: ติดตั้งแอปที่ไม่รู้จัก</string>
     <string name="update_failed">อัปเดตไม่สำเร็จ · %s</string>
+    <string name="update_blocked">Android บล็อกไว้ (Play Protect)</string>
     <!-- Wish sync -->
     <string name="wish_send">ส่งการอธิษฐานไปที่ %1$s</string>
     <string name="wish_send_line">ส่งการอธิษฐานใหม่ทันทีที่มี</string>

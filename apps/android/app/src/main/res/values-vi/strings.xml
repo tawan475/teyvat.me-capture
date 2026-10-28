@@ -228,7 +228,7 @@
     <string name="stop">Dừng</string>
     <string name="share_good">Chia sẻ GOOD JSON</string>
     <string name="alert_capture_stopped">Đã dừng ghi</string>
-    <string name="alert_vpn_taken">Một VPN khác đã thay thế</string>
+    <string name="alert_vpn_ended">VPN đã bị ngắt kết nối</string>
     <!-- Background -->
     <string name="battery_title">Chạy trong nền</string>
     <string name="battery_off_line">Tiết kiệm pin có thể tạm dừng xuất và tải lên khi bạn chơi</string>
@@ -253,6 +253,7 @@
     <string name="update_allow">Cho phép cài đặt</string>
     <string name="update_allow_line">Android hỏi một lần: Cài đặt ứng dụng không xác định</string>
     <string name="update_failed">Cập nhật thất bại · %s</string>
+    <string name="update_blocked">Android đã chặn (Play Protect)</string>
     <!-- Wish sync -->
     <string name="wish_send">Gửi lượt cầu nguyện tới %1$s</string>
     <string name="wish_send_line">Gửi lượt cầu nguyện mới khi có</string>

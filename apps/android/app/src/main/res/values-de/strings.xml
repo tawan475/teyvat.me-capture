@@ -228,7 +228,7 @@
     <string name="stop">Stopp</string>
     <string name="share_good">GOOD JSON teilen</string>
     <string name="alert_capture_stopped">Erfassung gestoppt</string>
-    <string name="alert_vpn_taken">Ein anderes VPN hat übernommen</string>
+    <string name="alert_vpn_ended">VPN getrennt</string>
     <!-- Background -->
     <string name="battery_title">Im Hintergrund ausführen</string>
     <string name="battery_off_line">Der Energiesparmodus kann Exporte und Uploads beim Spielen anhalten</string>
@@ -253,6 +253,7 @@
     <string name="update_allow">Installationen erlauben</string>
     <string name="update_allow_line">Android fragt einmal: Unbekannte Apps installieren</string>
     <string name="update_failed">Update fehlgeschlagen · %s</string>
+    <string name="update_blocked">Von Android blockiert (Play Protect)</string>
     <!-- Wish sync -->
     <string name="wish_send">Gebete an %1$s senden</string>
     <string name="wish_send_line">Sendet neue Gebete, sobald sie erscheinen</string>

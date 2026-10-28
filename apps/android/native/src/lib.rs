@@ -189,7 +189,15 @@ struct Running {
     runtime: tokio::runtime::Runtime,
     stop: oneshot::Sender<()>,
     shared: Arc<Shared>,
+    /// The tun, for [`stop`] to see whether a task still holds it.
+    tun: Tun,
 }
+
+/// The tun descriptor, shared by the device, the gate's resets and
+/// [`Running`]; closed when the last holder drops it. Android ends the VPN
+/// only once the tun is closed, so [`stop`] closes it under any task the
+/// shutdown left behind ([`release_tun`]).
+type Tun = Arc<OwnedFd>;
 
 static RUNNING: Mutex<Option<Running>> = Mutex::new(None);
 
@@ -274,7 +282,7 @@ impl Syn {
 /// one packet per call, copying game packets to the tee on the way and
 /// holding new SYNs at the gate.
 struct TunDevice {
-    fd: Arc<AsyncFd<OwnedFd>>,
+    fd: Arc<AsyncFd<Tun>>,
     /// The recording's writer, when the app records the capture.
     tee: Option<mpsc::UnboundedSender<(SystemTime, Vec<u8>)>>,
     shared: Arc<Shared>,
@@ -285,7 +293,7 @@ struct TunDevice {
 
 impl TunDevice {
     fn new(
-        fd: OwnedFd,
+        fd: Tun,
         tee: Option<mpsc::UnboundedSender<(SystemTime, Vec<u8>)>>,
         shared: Arc<Shared>,
     ) -> io::Result<Self> {
@@ -295,8 +303,9 @@ impl TunDevice {
         if flags < 0 || unsafe { libc::fcntl(raw, libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0 {
             return Err(io::Error::last_os_error());
         }
-        // SAFETY: the descriptor is owned by the `AsyncFd` from here on and
-        // closed only when it is dropped.
+        // SAFETY: the descriptor stays open while the `AsyncFd` lives: it is
+        // closed when the last `Tun` holder drops it (the `AsyncFd` is one).
+        // `release_tun` swaps the file only after the runtime shut down.
         let fd = unsafe { AsyncFd::register(fd) }.map_err(|e| io::Error::other(e.to_string()))?;
         let (let_in_tx, let_in) = mpsc::unbounded_channel();
         Ok(Self {
@@ -374,7 +383,7 @@ fn write_fd(fd: RawFd, buf: &[u8]) -> io::Result<usize> {
 
 /// Writes one packet to the tun from outside the stack (the gate's RSTs);
 /// a tun write is one whole packet, so it never interleaves with the stack's.
-async fn write_packet(fd: &AsyncFd<OwnedFd>, packet: &[u8]) -> io::Result<()> {
+async fn write_packet(fd: &AsyncFd<Tun>, packet: &[u8]) -> io::Result<()> {
     loop {
         let mut guard = fd.writable().await?;
         match guard.try_io(|fd| write_fd(fd.as_raw_fd(), packet)) {
@@ -387,7 +396,7 @@ async fn write_packet(fd: &AsyncFd<OwnedFd>, packet: &[u8]) -> io::Result<()> {
 /// The gate's upstream connect for one held SYN (see the crate docs).
 async fn open_upstream(
     shared: Arc<Shared>,
-    fd: Arc<AsyncFd<OwnedFd>>,
+    fd: Arc<AsyncFd<Tun>>,
     let_in: mpsc::UnboundedSender<Vec<u8>>,
     syn: Syn,
     packet: Vec<u8>,
@@ -621,7 +630,7 @@ async fn forward_udp(mut flow: IpStackUdpStream, shared: Arc<Shared>) {
 }
 
 async fn run(
-    fd: OwnedFd,
+    fd: Tun,
     pcap_path: Option<String>,
     shared: Arc<Shared>,
     stop: oneshot::Receiver<()>,
@@ -675,14 +684,14 @@ async fn run(
     Ok(())
 }
 
-fn start(fd: RawFd, pcap_path: Option<String>, resolvers: &str) -> anyhow::Result<()> {
+/// Starts the forwarder on `fd`; on an error the tun is closed (dropped), so
+/// the VPN the app just established ends with it.
+fn start(fd: OwnedFd, pcap_path: Option<String>, resolvers: &str) -> anyhow::Result<()> {
     let mut running = RUNNING.lock().unwrap();
     if running.is_some() {
         anyhow::bail!("already running");
     }
-    // SAFETY: the app hands over the tun descriptor with `detachFd()`, so it
-    // is ours to own and close.
-    let fd = unsafe { OwnedFd::from_raw_fd(fd) };
+    let tun: Tun = Arc::new(fd);
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
         .enable_all()
@@ -696,8 +705,9 @@ fn start(fd: RawFd, pcap_path: Option<String>, resolvers: &str) -> anyhow::Resul
     decoder::get().capture_started();
     let (stop, stopped) = oneshot::channel();
     let task_shared = shared.clone();
+    let task_tun = tun.clone();
     runtime.spawn(async move {
-        if let Err(e) = run(fd, pcap_path, task_shared, stopped).await {
+        if let Err(e) = run(task_tun, pcap_path, task_shared, stopped).await {
             log::error!("forwarder ended: {e:#}");
         }
     });
@@ -705,6 +715,7 @@ fn start(fd: RawFd, pcap_path: Option<String>, resolvers: &str) -> anyhow::Resul
         runtime,
         stop,
         shared,
+        tun,
     });
     Ok(())
 }
@@ -715,6 +726,41 @@ fn stop() {
     };
     let _ = running.stop.send(());
     running.runtime.shutdown_timeout(Duration::from_secs(3));
+    // Normally the shutdown dropped every task and `running.tun` is the last
+    // holder, so dropping it closes the tun. A task the shutdown could not
+    // drop (a worker stuck in its poll) still holds it, and Android kept the
+    // VPN up with nothing forwarding until the user disconnected it by hand.
+    let holders = Arc::strong_count(&running.tun) - 1;
+    if holders > 0 {
+        log::warn!("stop: {holders} task(s) still hold the tun; closing it under them");
+        release_tun(&running.tun);
+    }
+}
+
+/// Closes the tun under tasks that still hold it, which ends the VPN:
+/// `/dev/null` takes the descriptor's number over, so the number stays valid
+/// (reads end, writes vanish) until the last holder drops it, and no task
+/// can reach a file opened later under that number. Only for tasks the
+/// runtime has given up on: their `AsyncFd` then sees a different file
+/// under its number, which tokio's contract rules out for a live reactor.
+fn release_tun(tun: &OwnedFd) {
+    // SAFETY: plain syscalls on a path literal and on descriptors we own;
+    // `dup2` swaps the file under `tun`'s number atomically (and clears
+    // close-on-exec there, set again after).
+    unsafe {
+        let null = libc::open(c"/dev/null".as_ptr(), libc::O_RDWR | libc::O_CLOEXEC);
+        if null < 0 {
+            log::error!("stop: /dev/null: {}", io::Error::last_os_error());
+            return;
+        }
+        let fd = tun.as_raw_fd();
+        if libc::dup2(null, fd) < 0 {
+            log::error!("stop: closing the tun: {}", io::Error::last_os_error());
+        } else {
+            libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC);
+        }
+        libc::close(null);
+    }
 }
 
 fn network_changed(resolvers: &str, new_network: bool) {
@@ -881,6 +927,10 @@ pub extern "system" fn Java_me_teyvat_app_NativeBridge_start(
     pcap_path: JString,
     resolvers: JString,
 ) -> jint {
+    // SAFETY: the app hands over the tun descriptor with `detachFd()`, so it
+    // is ours to own and close — owned first, so every failure below closes
+    // it (and the VPN ends) instead of leaking it.
+    let fd = unsafe { OwnedFd::from_raw_fd(fd) };
     let (Some(path), Some(resolvers)) = (
         java_string(&mut env, &pcap_path),
         java_string(&mut env, &resolvers),

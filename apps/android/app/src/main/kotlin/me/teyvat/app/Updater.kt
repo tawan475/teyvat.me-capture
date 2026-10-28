@@ -38,7 +38,13 @@ sealed class UpdateState {
      * off and the app is off screen; otherwise only on Install now.
      */
     data class Ready(val version: String, val silent: Boolean = false) : UpdateState()
+    /** A session is being written, or Android is installing it after its Update screen's tap. */
     data class Installing(val version: String) : UpdateState()
+    /**
+     * Android's Update screen is waiting for its tap (or was left open):
+     * Install now shows that screen again, for the same session.
+     */
+    data class Confirming(val version: String) : UpdateState()
     /** Android needs "Install unknown apps" allowed for this app first. */
     data class NeedsPermission(val version: String) : UpdateState()
     data class Failed(val version: String?, val error: String) : UpdateState()
@@ -81,9 +87,10 @@ class Updater(
         }
     }
 
-    /** Check now (About's button, or the timer). */
+    /** Check now (About's button, or the timer). Not while an install is under way: it would replace its state. */
     fun check(manual: Boolean = true) {
         if (job?.isActive == true) return
+        if (stateFlow.value is UpdateState.Installing || stateFlow.value is UpdateState.Confirming) return
         if (!manual && System.currentTimeMillis() - lastCheck < CHECK_EVERY_MS / 2) return
         lastCheck = System.currentTimeMillis()
         job = scope.launch {
@@ -201,17 +208,35 @@ class Updater(
         runCatching { context.getSystemService(android.app.NotificationManager::class.java).notify(NOTIFICATION_UPDATE, note) }
     }
 
-    private var installStartedAt = 0L
+    /**
+     * The session this app committed last; answers about any other (one
+     * abandoned for it, or one from before a restart) are stale. -1: none.
+     */
+    @Volatile
+    private var session = -1
+
+    /** Android's Update screen for [session], from its PENDING_USER_ACTION answer. */
+    private var confirmIntent: Intent? = null
+
+    private fun sessionAlive(id: Int): Boolean =
+        id != -1 && runCatching { context.packageManager.packageInstaller.getSessionInfo(id) != null }.getOrDefault(false)
 
     /**
-     * The app is back on screen. An install still "in progress" whose screen
-     * was left with Home (Android then never answers) is ready again, for
-     * Install now to open a fresh one.
+     * The app is back on screen. An install whose session Android ended
+     * without an answer (gone from its list) is ready again; one still
+     * there is left alone, since Android may be installing it right now.
      */
     fun onResume() {
-        val installing = stateFlow.value as? UpdateState.Installing ?: return
-        if (System.currentTimeMillis() - installStartedAt > RESUME_GRACE_MS) {
-            stateFlow.value = UpdateState.Ready(installing.version, installsSilently())
+        val version = when (val s = stateFlow.value) {
+            is UpdateState.Installing -> s.version
+            is UpdateState.Confirming -> s.version
+            else -> return
+        }
+        if (session == -1 && stateFlow.value is UpdateState.Installing) return // still being written
+        if (!sessionAlive(session)) {
+            session = -1
+            confirmIntent = null
+            stateFlow.value = UpdateState.Ready(version, installsSilently())
         }
     }
 
@@ -223,6 +248,12 @@ class Updater(
         when (val s = stateFlow.value) {
             is UpdateState.Ready -> install(s.version)
             is UpdateState.NeedsPermission -> install(s.version)
+            // The same session's screen again: a new session would abandon
+            // this one, and its answer (aborted) used to undo the new one.
+            is UpdateState.Confirming -> {
+                val screen = confirmIntent
+                if (screen != null && sessionAlive(session)) confirm(context, Intent(screen), s.version) else install(s.version)
+            }
             else -> {}
         }
     }
@@ -238,7 +269,8 @@ class Updater(
             return
         }
         stateFlow.value = UpdateState.Installing(version)
-        installStartedAt = System.currentTimeMillis()
+        session = -1
+        confirmIntent = null
         scope.launch(Dispatchers.IO) {
             runCatching {
                 val installer = context.packageManager.packageInstaller
@@ -255,19 +287,22 @@ class Updater(
                     }
                 }
                 val id = installer.createSession(params)
+                session = id
                 installer.openSession(id).use { session ->
                     session.openWrite("teyvatme.apk", 0, file.length()).use { out ->
                         file.inputStream().use { it.copyTo(out) }
                         session.fsync(out)
                     }
                     val status = PendingIntent.getBroadcast(
-                        context, id, Intent(context, InstallResult::class.java).putExtra(EXTRA_VERSION, version),
+                        context, id,
+                        Intent(context, InstallResult::class.java).putExtra(EXTRA_VERSION, version).putExtra(EXTRA_SESSION, id),
                         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
                     )
                     session.commit(status.intentSender)
                 }
             }.onFailure { e ->
                 Log.w(TAG, "update install failed: $e")
+                session = -1
                 stateFlow.value = UpdateState.Failed(version, e.message ?: e.javaClass.simpleName)
             }
         }
@@ -280,7 +315,13 @@ class Updater(
 
     internal fun installResult(intent: Intent) {
         val version = intent.getStringExtra(EXTRA_VERSION)
-        when (val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)) {
+        val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)
+        val id = intent.getIntExtra(EXTRA_SESSION, -1)
+        if (id != session) {
+            Log.i(TAG, "update: status $status for session $id ignored (current $session)")
+            return
+        }
+        when (status) {
             PackageInstaller.STATUS_PENDING_USER_ACTION -> {
                 // Android's own Update screen: one tap.
                 @Suppress("DEPRECATION")
@@ -289,11 +330,25 @@ class Updater(
                 } else {
                     intent.getParcelableExtra(Intent.EXTRA_INTENT)
                 }
-                if (confirm != null) confirm(context, confirm, version)
+                if (confirm != null && version != null) {
+                    confirmIntent = Intent(confirm)
+                    stateFlow.value = UpdateState.Confirming(version)
+                    confirm(context, confirm, version)
+                }
             }
             PackageInstaller.STATUS_SUCCESS -> {} // This process ends as the new version installs.
             else -> {
-                val message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE) ?: "status $status"
+                session = -1
+                confirmIntent = null
+                val raw = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE) ?: "status $status"
+                // Play Protect ("Harmful app blocked") or another Android
+                // check refused it: say so, not the raw status, so a retry
+                // that is refused again doesn't read as the updater looping.
+                val message = if (status == PackageInstaller.STATUS_FAILURE_BLOCKED) {
+                    context.getString(R.string.update_blocked)
+                } else {
+                    raw
+                }
                 // Cancelled on Android's screen: keep it ready for Install now.
                 stateFlow.value = if (status == PackageInstaller.STATUS_FAILURE_ABORTED && version != null) {
                     UpdateState.Ready(version, installsSilently())
@@ -301,7 +356,7 @@ class Updater(
                     UpdateState.Failed(version, message)
                 }
                 if (status != PackageInstaller.STATUS_FAILURE_ABORTED) {
-                    NativeBridge.note("error", context.getString(R.string.update_failed, message))
+                    NativeBridge.note("error", context.getString(R.string.update_failed, if (message == raw) raw else "$message: $raw"))
                 }
             }
         }
@@ -366,12 +421,14 @@ class Updater(
         private const val SUMS_ASSET = "SHA256SUMS.txt"
         private const val CHECK_EVERY_MS = 6 * 60 * 60_000L
         private const val EXTRA_VERSION = "version"
+        private const val EXTRA_SESSION = "session"
 
         /** MainActivity is on screen (resumed). */
         @Volatile
         var foreground = false
 
-        private const val NOTIFICATION_UPDATE = 20
+        /** Not the resin alert's 20: each replaced the other. */
+        private const val NOTIFICATION_UPDATE = 21
 
         /**
          * Android's one-tap Update screen: opened when the app is on screen,
@@ -407,9 +464,6 @@ class Updater(
 
         /** The version a download's file name holds, or `null` for any other file (a `.part`). */
         internal fun versionOf(file: File): String? = APK_NAME.matchEntire(file.name)?.groupValues?.get(1)
-
-        /** How long after Install now a return to the app still counts as Android's screen opening. */
-        private const val RESUME_GRACE_MS = 3_000L
 
         private fun sha256(file: File): String {
             val digest = MessageDigest.getInstance("SHA-256")

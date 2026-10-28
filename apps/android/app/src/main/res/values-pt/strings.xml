@@ -228,7 +228,7 @@
     <string name="stop">Parar</string>
     <string name="share_good">Compartilhar GOOD JSON</string>
     <string name="alert_capture_stopped">Captura parada</string>
-    <string name="alert_vpn_taken">Outra VPN assumiu o controle</string>
+    <string name="alert_vpn_ended">VPN desconectada</string>
     <!-- Background -->
     <string name="battery_title">Executar em segundo plano</string>
     <string name="battery_off_line">A economia de bateria pode pausar exportações e envios enquanto você joga</string>
@@ -253,6 +253,7 @@
     <string name="update_allow">Permitir instalações</string>
     <string name="update_allow_line">O Android pergunta uma vez: Instalar apps desconhecidos</string>
     <string name="update_failed">Falha na atualização · %s</string>
+    <string name="update_blocked">Bloqueada pelo Android (Play Protect)</string>
     <!-- Wish sync -->
     <string name="wish_send">Enviar orações ao %1$s</string>
     <string name="wish_send_line">Envia as novas orações assim que aparecem</string>

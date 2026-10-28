@@ -228,7 +228,7 @@
     <string name="stop">Стоп</string>
     <string name="share_good">Поделиться GOOD JSON</string>
     <string name="alert_capture_stopped">Захват остановлен</string>
-    <string name="alert_vpn_taken">Включился другой VPN</string>
+    <string name="alert_vpn_ended">VPN отключён</string>
     <!-- Background -->
     <string name="battery_title">Работа в фоне</string>
     <string name="battery_off_line">Экономия заряда может приостанавливать экспорт и выгрузку во время игры</string>
@@ -253,6 +253,7 @@
     <string name="update_allow">Разрешить установку</string>
     <string name="update_allow_line">Android спросит один раз: Установка неизвестных приложений</string>
     <string name="update_failed">Ошибка обновления · %s</string>
+    <string name="update_blocked">Заблокировано Android (Play Защита)</string>
     <!-- Wish sync -->
     <string name="wish_send">Отправлять молитвы в %1$s</string>
     <string name="wish_send_line">Отправляет новые молитвы по мере появления</string>

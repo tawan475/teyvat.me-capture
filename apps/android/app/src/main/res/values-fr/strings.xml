@@ -228,7 +228,7 @@
     <string name="stop">Arrêter</string>
     <string name="share_good">Partager le GOOD JSON</string>
     <string name="alert_capture_stopped">Capture arrêtée</string>
-    <string name="alert_vpn_taken">Un autre VPN a pris le relais</string>
+    <string name="alert_vpn_ended">VPN déconnecté</string>
     <!-- Background -->
     <string name="battery_title">Exécuter en arrière-plan</string>
     <string name="battery_off_line">L\'économie de batterie peut suspendre les exports et envois pendant que vous jouez</string>
@@ -253,6 +253,7 @@
     <string name="update_allow">Autoriser les installations</string>
     <string name="update_allow_line">Android demande une fois : Installer des applis inconnues</string>
     <string name="update_failed">Échec de la mise à jour · %s</string>
+    <string name="update_blocked">Bloquée par Android (Play Protect)</string>
     <!-- Wish sync -->
     <string name="wish_send">Envoyer les vœux vers %1$s</string>
     <string name="wish_send_line">Envoie les nouveaux vœux dès qu\'ils apparaissent</string>

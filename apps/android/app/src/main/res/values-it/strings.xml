@@ -228,7 +228,7 @@
     <string name="stop">Interrompi</string>
     <string name="share_good">Condividi GOOD JSON</string>
     <string name="alert_capture_stopped">Cattura interrotta</string>
-    <string name="alert_vpn_taken">Un\'altra VPN ha preso il controllo</string>
+    <string name="alert_vpn_ended">VPN disconnessa</string>
     <!-- Background -->
     <string name="battery_title">Esegui in background</string>
     <string name="battery_off_line">Il risparmio batteria può mettere in pausa esportazioni e caricamenti mentre giochi</string>
@@ -253,6 +253,7 @@
     <string name="update_allow">Consenti installazioni</string>
     <string name="update_allow_line">Android lo chiede una volta: Installa app sconosciute</string>
     <string name="update_failed">Aggiornamento non riuscito · %s</string>
+    <string name="update_blocked">Bloccato da Android (Play Protect)</string>
     <!-- Wish sync -->
     <string name="wish_send">Invia i desideri a %1$s</string>
     <string name="wish_send_line">Invia i nuovi desideri appena compaiono</string>

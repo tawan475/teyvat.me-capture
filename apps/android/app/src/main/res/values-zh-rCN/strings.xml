@@ -228,7 +228,7 @@
     <string name="stop">停止</string>
     <string name="share_good">分享 GOOD JSON</string>
     <string name="alert_capture_stopped">抓取已停止</string>
-    <string name="alert_vpn_taken">另一个 VPN 已接管</string>
+    <string name="alert_vpn_ended">VPN 已断开</string>
     <!-- Background -->
     <string name="battery_title">后台运行</string>
     <string name="battery_off_line">省电模式可能会在你游戏时暂停导出和上传</string>
@@ -253,6 +253,7 @@
     <string name="update_allow">允许安装</string>
     <string name="update_allow_line">Android 只询问一次：安装未知应用</string>
     <string name="update_failed">更新失败 · %s</string>
+    <string name="update_blocked">已被 Android 拦截（Play 保护机制）</string>
     <!-- Wish sync -->
     <string name="wish_send">将祈愿发送到 %1$s</string>
     <string name="wish_send_line">有新祈愿时立即发送</string>

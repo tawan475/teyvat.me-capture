@@ -888,7 +888,8 @@ private fun BackgroundCard(actions: HomeActions) {
 }
 
 fun UpdateState.shown() = when (this) {
-    is UpdateState.Downloading, is UpdateState.Ready, is UpdateState.Installing, is UpdateState.NeedsPermission -> true
+    is UpdateState.Downloading, is UpdateState.Ready, is UpdateState.Confirming, is UpdateState.Installing,
+    is UpdateState.NeedsPermission -> true
     is UpdateState.Failed -> version != null
     else -> false
 }
@@ -914,6 +915,11 @@ fun UpdateBannerFor(update: UpdateState, capturing: Boolean, actions: HomeAction
             } else {
                 current
             },
+            modifier, action = stringResource(R.string.update_install_now), onAction = actions::updateInstallNow,
+        )
+        // Android's Update screen is open or was left: Install now shows it again.
+        is UpdateState.Confirming -> UpdateBanner(
+            stringResource(R.string.update_banner_title, update.version), current,
             modifier, action = stringResource(R.string.update_install_now), onAction = actions::updateInstallNow,
         )
         is UpdateState.Installing -> UpdateBanner(

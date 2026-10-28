@@ -2,6 +2,32 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.15.3
+
+- Android: Stop capture always ends the VPN. Sometimes Android's VPN stayed
+  connected after Stop (the key icon and "VPN activated" stayed) until it
+  was disconnected by hand; the forwarder now closes the tunnel under any
+  task that still holds it. A failed start also closes the tunnel it was
+  given instead of leaving it open.
+- Android: the "Capture stopped" alert comes only when a running capture
+  ended, and it says "VPN disconnected" (it said "Another VPN took over"
+  also when the VPN was disconnected in Android's settings).
+- Android, self-update: Install now no longer loops between "Installing"
+  and "Tap to install". Each Install now abandoned the previous install
+  session, and Android's answer for that one (cancelled) undid the new
+  one; answers for old sessions are now ignored, and while Android's
+  Update screen waits, Install now opens that screen again instead of
+  starting over. A background check no longer replaces an install under
+  way.
+- Android 12+, self-update: updates now install without asking, as meant
+  (when you leave the app, capture off). The app lacked the permission
+  Android needs for that, so every update asked with "Tap to install".
+- Android, self-update: an update Play Protect (or another Android check)
+  refuses says "Update failed · Android blocked it (Play Protect)" instead
+  of a raw status, or of going back to Install now as if nothing happened.
+- Android: the update notification and the resin alert no longer replace
+  each other (they shared one notification number).
+
 ## 1.15.2
 
 - Android, Export: each filter's minimums show right under it while its

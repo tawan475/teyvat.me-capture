@@ -232,7 +232,7 @@
     <string name="stop">Stop</string>
     <string name="share_good">Share GOOD JSON</string>
     <string name="alert_capture_stopped">Capture stopped</string>
-    <string name="alert_vpn_taken">Another VPN took over</string>
+    <string name="alert_vpn_ended">VPN disconnected</string>
 
     <!-- Background -->
     <string name="battery_title">Run in the background</string>
@@ -258,6 +258,7 @@
     <string name="update_allow">Allow installs</string>
     <string name="update_allow_line">Android asks once: Install unknown apps</string>
     <string name="update_failed">Update failed · %s</string>
+    <string name="update_blocked">Android blocked it (Play Protect)</string>
     <!-- Wish sync -->
     <string name="wish_send">Send wishes to %1$s</string>
     <string name="wish_send_line">Sends new wishes as they appear</string>

@@ -228,7 +228,7 @@
     <string name="stop">중지</string>
     <string name="share_good">GOOD JSON 공유</string>
     <string name="alert_capture_stopped">캡처 중지됨</string>
-    <string name="alert_vpn_taken">다른 VPN이 연결을 가져감</string>
+    <string name="alert_vpn_ended">VPN 연결이 끊어짐</string>
     <!-- Background -->
     <string name="battery_title">백그라운드에서 실행</string>
     <string name="battery_off_line">배터리 절약 기능이 플레이 중 내보내기와 업로드를 멈출 수 있습니다</string>
@@ -253,6 +253,7 @@
     <string name="update_allow">설치 허용</string>
     <string name="update_allow_line">Android가 한 번만 묻습니다: 출처를 알 수 없는 앱 설치</string>
     <string name="update_failed">업데이트 실패 · %s</string>
+    <string name="update_blocked">Android에서 차단됨(Play 프로텍트)</string>
     <!-- Wish sync -->
     <string name="wish_send">기원을 %1$s(으)로 전송</string>
     <string name="wish_send_line">새 기원이 생기면 바로 전송</string>

@@ -228,7 +228,7 @@
     <string name="stop">Durdur</string>
     <string name="share_good">GOOD JSON paylaş</string>
     <string name="alert_capture_stopped">Tarama durdu</string>
-    <string name="alert_vpn_taken">Başka bir VPN devraldı</string>
+    <string name="alert_vpn_ended">VPN bağlantısı kesildi</string>
     <!-- Background -->
     <string name="battery_title">Arka planda çalış</string>
     <string name="battery_off_line">Pil tasarrufu oynarken dışa aktarmaları ve yüklemeleri duraklatabilir</string>
@@ -253,6 +253,7 @@
     <string name="update_allow">Yüklemelere izin ver</string>
     <string name="update_allow_line">Android bir kez sorar: Bilinmeyen uygulamaları yükle</string>
     <string name="update_failed">Güncelleme başarısız · %s</string>
+    <string name="update_blocked">Android engelledi (Play Protect)</string>
     <!-- Wish sync -->
     <string name="wish_send">Dilekleri gönder: %1$s</string>
     <string name="wish_send_line">Yeni dilekleri geldikçe gönderir</string>

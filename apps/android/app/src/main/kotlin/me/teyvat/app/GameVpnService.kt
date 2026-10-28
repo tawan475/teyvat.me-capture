@@ -293,12 +293,14 @@ class GameVpnService : VpnService() {
 
     override fun onRevoke() {
         Log.i(TAG, "VPN revoked")
-        alertRevoked()
+        // Only a capture that was running stopped; a tunnel left up after
+        // Stop capture is no news to the user.
+        if (NativeBridge.stats().isNotEmpty()) alertRevoked()
         stopVpn()
         super.onRevoke()
     }
 
-    /** Another VPN (or the user in Settings) took the tunnel: say so, with Start capture. */
+    /** Another VPN, or the user in Android's VPN settings, ended the tunnel: say so, with Start capture. */
     private fun alertRevoked() {
         val start = PendingIntent.getActivity(
             this, 5, Intent(this, MainActivity::class.java).setAction(MainActivity.ACTION_START_CAPTURE),
@@ -308,7 +310,7 @@ class GameVpnService : VpnService() {
             .setSmallIcon(R.drawable.ic_capture)
             .setColor(Color.parseColor("#DC2626"))
             .setContentTitle(getString(R.string.alert_capture_stopped))
-            .setContentText(getString(R.string.alert_vpn_taken))
+            .setContentText(getString(R.string.alert_vpn_ended))
             .setContentIntent(start)
             .setAutoCancel(true)
             .addAction(Notification.Action.Builder(null as Icon?, getString(R.string.home_start_capture), start).build())
