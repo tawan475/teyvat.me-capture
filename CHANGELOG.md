@@ -4,6 +4,15 @@ Each release's section is its GitHub release notes (`.github/workflows/release.y
 
 ## 1.15.2
 
+- Android, Export: each filter's minimums show right under it while its
+  switch is on (they hid behind a tap on the row's name), and it reads "Not
+  exported" when off. The numbers can be typed (tap one, type 80, Done),
+  and − / + repeat while held.
+- Android, Resin alert: the threshold can be typed or stepped by one beside
+  the slider.
+- The "Tracker uploads always include everything" note under Filters is
+  gone. Desktop: an artifact's minimum rarity now goes 1–5 like the game's
+  (it allowed 0–6).
 - Language from the system: a Chinese script setting now wins over the
   region (Simplified Chinese set up for Hong Kong shows Simplified, not
   Traditional), and Cantonese shows Traditional Chinese instead of English.

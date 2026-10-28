@@ -209,23 +209,28 @@ fun SettingsScreen(
 }
 
 /** The app's language: the system's, or one the game ships ([me.teyvat.app.AppLocale]). */
-/** The resin alert's threshold: a slider, 1-200, and a test notification. */
+/** The resin alert's threshold, 1-200: a slider, the number typed or stepped beside it, and a test notification. */
 @Composable
 private fun ResinAlertAt(value: Int, actions: SettingsActions) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+    val max = me.teyvat.app.Today.RESIN_MAX
+    Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(R.string.resin_alert_at), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+            NumberStepper(value, 1..max, actions::setResinAlertAt, fieldWidth = 60.dp)
             Text(
-                stringResource(R.string.resin_alert_at, value, me.teyvat.app.Today.RESIN_MAX),
-                style = MaterialTheme.typography.bodyLarge,
-                modifier = Modifier.weight(1f),
+                "/ $max", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(end = 12.dp),
             )
-            TmButton(stringResource(R.string.resin_alert_test), actions::testResinAlert, kind = ButtonKind.Text)
         }
         androidx.compose.material3.Slider(
             value = value.toFloat(),
             onValueChange = { actions.setResinAlertAt(kotlin.math.round(it).toInt()) },
-            valueRange = 1f..me.teyvat.app.Today.RESIN_MAX.toFloat(),
+            valueRange = 1f..max.toFloat(),
+            modifier = Modifier.padding(end = 12.dp),
         )
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            TmButton(stringResource(R.string.resin_alert_test), actions::testResinAlert, kind = ButtonKind.Text)
+        }
     }
 }
 
@@ -278,28 +283,15 @@ interface ExportSettingsActions {
 /** `−  value  +` for one minimum. */
 @Composable
 private fun MinStepper(label: String, value: Int, range: IntRange, format: (Int) -> String, onChange: (Int) -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(start = 56.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().padding(start = 32.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-        IconButton(onClick = { onChange((value - 1).coerceIn(range)) }, enabled = value > range.first) {
-            Text("−", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-        }
-        Text(format(value), style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center, modifier = Modifier.widthIn(min = 40.dp))
-        IconButton(onClick = { onChange((value + 1).coerceIn(range)) }, enabled = value < range.last) {
-            Text("+", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-        }
+        NumberStepper(value, range, onChange, format)
     }
 }
-
-fun characterSummary(f: ExportFilters) = "Lv ${f.minCharacterLevel}+ · C${f.minCharacterConstellation}+ · A${f.minCharacterAscension}+"
-fun weaponSummary(f: ExportFilters) =
-    "Lv ${f.minWeaponLevel}+ · R${f.minWeaponRefinement.coerceAtLeast(1)}+ · A${f.minWeaponAscension}+ · ${f.minWeaponRarity}★+"
-fun artifactSummary(f: ExportFilters) = "+${f.minArtifactLevel}+ · ${f.minArtifactRarity}★+"
 
 @Composable
 fun ExportSettingsScreen(padding: PaddingValues, settings: Settings, folderLabel: String, actions: ExportSettingsActions) = Scrolling(padding) {
     val f = settings.filters
-    var open by remember { mutableStateOf<String?>(null) }
-    fun toggle(key: String) { open = if (open == key) null else key }
     SectionLabel(stringResource(R.string.export_auto_section))
     Group {
         SwitchRow(
@@ -316,44 +308,39 @@ fun ExportSettingsScreen(padding: PaddingValues, settings: Settings, folderLabel
     SectionLabel(stringResource(R.string.filters))
     Group {
         @Composable
-        fun FilterRow(key: String, title: String, line: String, on: Boolean, set: (Boolean) -> Unit, steppers: (@Composable () -> Unit)?) {
-            ListRow(title, line, onClick = if (steppers != null) ({ toggle(key) }) else null) {
-                TmSwitch(on, set)
-            }
-            if (open == key && steppers != null) {
+        // A category that is on shows its minimums under it; off, it folds to "Not exported".
+        fun FilterRow(title: String, line: String?, on: Boolean, set: (Boolean) -> Unit, steppers: (@Composable () -> Unit)?) {
+            SwitchRow(title, if (on) line else stringResource(R.string.filter_not_exported), on, set)
+            if (on && steppers != null) {
                 steppers()
                 Spacer(Modifier.height(8.dp))
             }
         }
-        FilterRow("c", stringResource(R.string.tile_characters), characterSummary(f), f.includeCharacters, { actions.setFilters(f.copy(includeCharacters = it)) }) {
+        FilterRow(stringResource(R.string.tile_characters), null, f.includeCharacters, { actions.setFilters(f.copy(includeCharacters = it)) }) {
             MinStepper(stringResource(R.string.min_level), f.minCharacterLevel, 1..90, { "$it" }) { actions.setFilters(f.copy(minCharacterLevel = it)) }
             MinStepper(stringResource(R.string.min_constellation), f.minCharacterConstellation, 0..6, { "C$it" }) { actions.setFilters(f.copy(minCharacterConstellation = it)) }
             MinStepper(stringResource(R.string.min_ascension), f.minCharacterAscension, 0..6, { "A$it" }) { actions.setFilters(f.copy(minCharacterAscension = it)) }
         }
         CardDivider()
-        FilterRow("w", stringResource(R.string.tile_weapons), weaponSummary(f), f.includeWeapons, { actions.setFilters(f.copy(includeWeapons = it)) }) {
+        FilterRow(stringResource(R.string.tile_weapons), null, f.includeWeapons, { actions.setFilters(f.copy(includeWeapons = it)) }) {
             MinStepper(stringResource(R.string.min_level), f.minWeaponLevel, 1..90, { "$it" }) { actions.setFilters(f.copy(minWeaponLevel = it)) }
             MinStepper(stringResource(R.string.min_refinement), f.minWeaponRefinement.coerceAtLeast(1), 1..5, { "R$it" }) { actions.setFilters(f.copy(minWeaponRefinement = it)) }
             MinStepper(stringResource(R.string.min_ascension), f.minWeaponAscension, 0..6, { "A$it" }) { actions.setFilters(f.copy(minWeaponAscension = it)) }
             MinStepper(stringResource(R.string.min_rarity), f.minWeaponRarity, 1..5, { "$it★" }) { actions.setFilters(f.copy(minWeaponRarity = it)) }
         }
         CardDivider()
-        FilterRow("a", stringResource(R.string.tile_artifacts), artifactSummary(f), f.includeArtifacts, { actions.setFilters(f.copy(includeArtifacts = it)) }) {
+        FilterRow(stringResource(R.string.tile_artifacts), null, f.includeArtifacts, { actions.setFilters(f.copy(includeArtifacts = it)) }) {
             MinStepper(stringResource(R.string.min_level), f.minArtifactLevel, 0..20, { "+$it" }) { actions.setFilters(f.copy(minArtifactLevel = it)) }
             MinStepper(stringResource(R.string.min_rarity), f.minArtifactRarity, 1..5, { "$it★" }) { actions.setFilters(f.copy(minArtifactRarity = it)) }
         }
         CardDivider()
-        FilterRow("m", stringResource(R.string.tile_materials), stringResource(R.string.filter_all), f.includeMaterials, { actions.setFilters(f.copy(includeMaterials = it)) }, null)
+        FilterRow(stringResource(R.string.tile_materials), stringResource(R.string.filter_all), f.includeMaterials, { actions.setFilters(f.copy(includeMaterials = it)) }, null)
         CardDivider()
         SwitchRow(
             stringResource(R.string.filter_4th_line), stringResource(R.string.filter_4th_line_line), f.fakeInitialize4thLine,
             { actions.setFilters(f.copy(fakeInitialize4thLine = it)) },
         )
     }
-    Text(
-        stringResource(R.string.filters_footnote), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline,
-        modifier = Modifier.padding(horizontal = 32.dp, vertical = 12.dp),
-    )
 }
 
 interface TeyvatActions {

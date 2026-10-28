@@ -193,8 +193,8 @@
     <string name="filters">Bộ lọc</string>
     <string name="filter_4th_line">Điền dòng thứ 4 cho 5★ có 3 dòng</string>
     <string name="filter_4th_line_line">Cho Genshin Optimizer</string>
-    <string name="filters_footnote">Tải lên tracker luôn gồm mọi thứ</string>
     <string name="filter_all">Tất cả</string>
+    <string name="filter_not_exported">Không xuất</string>
     <string name="min_level">Cấp tối thiểu</string>
     <string name="min_ascension">Đột Phá tối thiểu</string>
     <string name="min_constellation">Cung Mệnh tối thiểu</string>
@@ -378,7 +378,7 @@
     <string name="home_done_title">Đã ghi xong</string>
     <string name="resin_alert">Nhắc Nhựa</string>
     <string name="resin_alert_line">Thông báo khi Nhựa đạt số này</string>
-    <string name="resin_alert_at">Nhắc khi đạt %1$d / %2$d</string>
+    <string name="resin_alert_at">Nhắc khi đạt</string>
     <string name="resin_alert_test">Thử</string>
     <string name="resin_alert_title">Nhựa %1$d/%2$d</string>
     <string name="resin_alert_full">Nhựa đã đầy</string>

@@ -193,8 +193,8 @@
     <string name="filters">Filtreler</string>
     <string name="filter_4th_line">3 satırlı 5★\'ların 4. satırını doldur</string>
     <string name="filter_4th_line_line">Genshin Optimizer için</string>
-    <string name="filters_footnote">Tracker yüklemeleri her zaman her şeyi içerir</string>
     <string name="filter_all">Tümü</string>
+    <string name="filter_not_exported">Dışa aktarılmaz</string>
     <string name="min_level">En az seviye</string>
     <string name="min_ascension">En az yükseltme</string>
     <string name="min_constellation">En az takımyıldız</string>
@@ -380,7 +380,7 @@
     <string name="home_done_title">Tarama tamamlandı</string>
     <string name="resin_alert">Reçine hatırlatıcısı</string>
     <string name="resin_alert_line">Reçinen bu sayıya ulaşınca bir bildirim</string>
-    <string name="resin_alert_at">Hatırlatma değeri %1$d / %2$d</string>
+    <string name="resin_alert_at">Hatırlatma değeri</string>
     <string name="resin_alert_test">Dene</string>
     <string name="resin_alert_title">Reçine %1$d/%2$d</string>
     <string name="resin_alert_full">Reçine dolu</string>

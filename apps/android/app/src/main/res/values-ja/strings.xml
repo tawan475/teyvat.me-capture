@@ -193,8 +193,8 @@
     <string name="filters">フィルター</string>
     <string name="filter_4th_line">5★ の3オプション聖遺物の4つ目を埋める</string>
     <string name="filter_4th_line_line">Genshin Optimizer 向け</string>
-    <string name="filters_footnote">トラッカーへのアップロードは常にすべてを含みます</string>
     <string name="filter_all">すべて</string>
+    <string name="filter_not_exported">エクスポートしない</string>
     <string name="min_level">最低レベル</string>
     <string name="min_ascension">最低突破</string>
     <string name="min_constellation">最低命ノ星座</string>
@@ -378,7 +378,7 @@
     <string name="home_done_title">キャプチャ完了</string>
     <string name="resin_alert">樹脂のお知らせ</string>
     <string name="resin_alert_line">天然樹脂がこの値に達したら通知</string>
-    <string name="resin_alert_at">通知する値 %1$d / %2$d</string>
+    <string name="resin_alert_at">通知する値</string>
     <string name="resin_alert_test">テスト</string>
     <string name="resin_alert_title">天然樹脂 %1$d/%2$d</string>
     <string name="resin_alert_full">天然樹脂が満タンです</string>
