@@ -45,6 +45,9 @@ impl TeyvatmeApp {
         }
         self.was_minimized = minimized;
         let out_of_sight = HIDDEN_TO_TRAY.load(Ordering::Relaxed) || minimized;
+        if !out_of_sight {
+            self.see_window(ctx);
+        }
 
         match std::mem::replace(&mut self.start_window, StartWindow::AsIs) {
             StartWindow::AsIs => {}

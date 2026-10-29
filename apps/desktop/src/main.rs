@@ -42,6 +42,7 @@ mod replay_live;
 mod signin;
 mod ui;
 mod update;
+mod window_record;
 mod wish_history;
 
 /// The community server (Settings › About and the quick bar).
@@ -514,6 +515,8 @@ fn main() -> eframe::Result {
             eframe::storage_dir(APP_ID).as_deref(),
         );
     }
+    // A window saved while minimized would open tiny in the screen's corner.
+    window_record::forget_tiny(eframe::storage_dir(app_id()).as_deref());
 
     if !args.no_admin && !args.read_from_file {
         #[cfg(any(windows, unix))]

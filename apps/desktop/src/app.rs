@@ -729,6 +729,12 @@ pub struct TeyvatmeApp {
     /// [`install_minimize_hook`] is in place.
     #[cfg(windows)]
     minimize_hook_installed: bool,
+    /// The window's place and size as it last was in sight, put back in place
+    /// of what eframe saves while it is minimized or in the tray
+    /// (`window_record.rs`).
+    window_record: Option<String>,
+    /// The window as the last frame in sight saw it.
+    window_seen: Option<crate::window_record::Seen>,
 
     /// "Start Teyvat.me on startup": the scheduled task's state, read in the
     /// background, and the warning when it starts another copy.
@@ -1431,6 +1437,11 @@ impl TeyvatmeApp {
             was_minimized: false,
             #[cfg(windows)]
             minimize_hook_installed: false,
+            window_record: cc
+                .storage
+                .and_then(|storage| storage.get_string(crate::window_record::KEY))
+                .filter(|record| crate::window_record::usable(record)),
+            window_seen: None,
             startup,
             previous_run_notice,
             start_window,
@@ -1508,6 +1519,7 @@ impl eframe::App for TeyvatmeApp {
     /// Called by the framework to save state before shutdown.
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, eframe::APP_KEY, &self.saved_state);
+        self.keep_window_record(storage);
     }
 
     #[cfg(debug_assertions)]
@@ -1524,6 +1536,42 @@ impl eframe::App for TeyvatmeApp {
 }
 
 impl TeyvatmeApp {
+    /// Note where the window is and how big while it is in sight, for
+    /// [`Self::keep_window_record`].
+    pub(super) fn see_window(&mut self, ctx: &Context) {
+        let seen = crate::window_record::Seen::of(ctx);
+        if seen.is_none() || seen == self.window_seen {
+            return;
+        }
+        self.window_seen = seen;
+        let record = seen.map(|seen| seen.record());
+        if record.as_deref().is_some_and(crate::window_record::usable) {
+            self.window_record = record;
+        }
+    }
+
+    /// eframe has just saved the window as it is now: out of sight, put the
+    /// last record of it in sight back (or none, for eframe's default), so the
+    /// next launch doesn't open at a minimized window's size and place.
+    fn keep_window_record(&mut self, storage: &mut dyn eframe::Storage) {
+        use crate::window_record;
+
+        let saved = storage.get_string(window_record::KEY);
+        let out_of_sight = self.was_minimized || HIDDEN_TO_TRAY.load(Ordering::Relaxed);
+        match saved {
+            Some(record) if !out_of_sight && window_record::usable(&record) => {
+                self.window_record = Some(record);
+            }
+            Some(_) => storage.set_string(
+                window_record::KEY,
+                self.window_record
+                    .clone()
+                    .unwrap_or_else(window_record::none),
+            ),
+            None => {}
+        }
+    }
+
     /// Collect everything the background thread has answered since the last
     /// frame. Called once at the top of `update`.
     fn poll_background_results(&mut self, ctx: &Context) {
@@ -1996,16 +2044,19 @@ fn show_window() {
     }
 }
 
-/// Into the tray on Windows: minimized, and a tool window so that neither the
-/// taskbar nor Alt+Tab lists it. Not hidden: a hidden window never gets the
-/// redraw winit asks Windows for (`RDW_INTERNALPAINT` reaches only visible
-/// windows), and eframe polls for it, one core at 100 %, from the first
-/// repaint the background asks for (measured at 97-99 % with Direct3D and
-/// OpenGL alike, against ~1 % minimized). `false` when the window can't be
+/// Into the tray on Windows: minimized, off the screen, and a tool window so
+/// that neither the taskbar nor Alt+Tab lists it. Not hidden: a hidden window
+/// never gets the redraw winit asks Windows for (`RDW_INTERNALPAINT` reaches
+/// only visible windows), and eframe polls for it, one core at 100 %, from the
+/// first repaint the background asks for (measured at 97-99 % with Direct3D
+/// and OpenGL alike, against ~1 % minimized). `false` when the window can't be
 /// found.
 #[cfg(windows)]
 fn tray_hide_window() -> bool {
-    use windows::Win32::UI::WindowsAndMessaging::{SW_HIDE, SW_SHOWMINNOACTIVE, ShowWindow};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        SW_HIDE, SW_SHOWMINNOACTIVE, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER, SetWindowPos,
+        ShowWindow,
+    };
 
     let Some(hwnd) = own_window() else {
         return false;
@@ -2016,25 +2067,46 @@ fn tray_hide_window() -> bool {
         let _ = ShowWindow(hwnd, SW_HIDE);
         set_tool_window(hwnd, true);
         let _ = ShowWindow(hwnd, SW_SHOWMINNOACTIVE);
+        // A minimized window with no taskbar button is drawn as a small title
+        // bar above the taskbar's left end: off the screen, where Windows puts
+        // minimized app windows. Moves only the minimized window; restoring
+        // brings back its own place and size.
+        let _ = SetWindowPos(
+            hwnd,
+            None,
+            OFF_SCREEN,
+            OFF_SCREEN,
+            0,
+            0,
+            SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
+        );
     }
     true
 }
 
-/// In the tray, keep it a tool window: winit sets the window's styles again
-/// from its own flags when they change before it knows the window is
-/// minimized (eframe's first show, after "Start minimized" on the first
-/// frame), which would put it back on the taskbar.
+/// Where the tray's minimized window waits: Windows' own "hidden" spot.
+#[cfg(windows)]
+const OFF_SCREEN: i32 = -32000;
+
+/// In the tray, keep it a minimized tool window off the screen: winit sets the
+/// window's styles again from its own flags when they change before it knows
+/// the window is minimized (eframe's first show, after "Start minimized" on
+/// the first frame), which would put it back on the taskbar.
 #[cfg(windows)]
 fn keep_tray_window() {
+    use windows::Win32::Foundation::RECT;
     use windows::Win32::UI::WindowsAndMessaging::{
-        GWL_EXSTYLE, GetWindowLongPtrW, IsIconic, WS_EX_TOOLWINDOW,
+        GWL_EXSTYLE, GetWindowLongPtrW, GetWindowRect, IsIconic, WS_EX_TOOLWINDOW,
     };
 
     let Some(hwnd) = own_window() else {
         return;
     };
     let tool = unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) } & WS_EX_TOOLWINDOW.0 as isize != 0;
-    if !tool || !unsafe { IsIconic(hwnd) }.as_bool() {
+    let mut rect = RECT::default();
+    // Windows arranging minimized windows would bring its title bar back.
+    let on_screen = unsafe { GetWindowRect(hwnd, &mut rect) }.is_ok() && rect.left != OFF_SCREEN;
+    if !tool || !unsafe { IsIconic(hwnd) }.as_bool() || on_screen {
         tracing::debug!("back into the tray");
         tray_hide_window();
     }
