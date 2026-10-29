@@ -348,6 +348,7 @@ fn achievement_candidate_groups(msg: &Unk) -> BTreeMap<u32, Vec<Entry>> {
 }
 
 /// The tags identified inside one candidate list.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct AchievementTags {
     id: u32,
     status: u32,
@@ -663,7 +664,7 @@ pub fn try_match_achievement_all_data_notify(
     }
 
     let mut saw_candidate = false;
-    let mut best: Option<(u32, Vec<Achievement>)> = None;
+    let mut best: Option<(u32, AchievementTags, Vec<Achievement>)> = None;
     for (&tag, entries) in &groups {
         if entries.len() < MIN_ACHIEVEMENT_ENTRIES {
             tracing::trace!("field {tag} holds only {} entries", entries.len());
@@ -681,20 +682,92 @@ pub fn try_match_achievement_all_data_notify(
         // lower tag, so the same capture always decodes the same way.
         if best
             .as_ref()
-            .is_none_or(|(_, best)| achievements.len() > best.len())
+            .is_none_or(|(_, _, best)| achievements.len() > best.len())
         {
-            best = Some((tag, achievements));
+            best = Some((tag, tags, achievements));
         }
     }
 
     match best {
-        Some((tag, achievements)) => {
+        Some((tag, tags, achievements)) => {
             tracing::info!("found {} achievements in field {}", achievements.len(), tag);
+            if let Ok(mut learned) = LEARNED_ACHIEVEMENT_TAGS.lock() {
+                *learned = Some(tags);
+            }
             Ok(achievements)
         }
         None if saw_candidate => Err(AchievementMatchError::UnidentifiedFields),
         None => Err(AchievementMatchError::NoCandidateList),
     }
+}
+
+/// The achievement entries' field numbers as the last achievement list showed
+/// them, for [`matches_achievement_update_notify`]: an update carries one or
+/// two entries, too few to tell the fields apart by their values.
+static LEARNED_ACHIEVEMENT_TAGS: std::sync::Mutex<Option<AchievementTags>> =
+    std::sync::Mutex::new(None);
+
+/// Recover the achievements an `AchievementUpdateNotify` (7.1 id 5513)
+/// changed, or `None` if this is not one. The game sends one whenever an
+/// achievement moves -- progress, finished, reward taken -- and re-sends
+/// unchanged ones too.
+///
+/// Read with the field numbers the last full list showed (`None` before one
+/// was read): exactly one repeated field and nothing else, every entry varints
+/// on those numbers only, with an id in the achievement range (80000-99999), a status the
+/// enum has and a finish time only beside a finished status. Lists of other
+/// small records can still read this way, so these are candidates: the caller
+/// keeps them only when it holds every id.
+pub fn matches_achievement_update_notify(data: &[u8]) -> Option<Vec<Achievement>> {
+    let tags = (*LEARNED_ACHIEVEMENT_TAGS.lock().ok()?)?;
+    achievement_updates(data, &tags)
+}
+
+/// [`matches_achievement_update_notify`] with the field numbers given.
+fn achievement_updates(data: &[u8], tags: &AchievementTags) -> Option<Vec<Achievement>> {
+    let msg = Unk::parse_from_bytes(data).ok()?;
+    if msg
+        .unknown_fields()
+        .iter()
+        .any(|(_, field)| !matches!(field, LengthDelimited(_)))
+    {
+        return None;
+    }
+    let groups = length_delimited_fields(&msg);
+    let [values] = groups.values().collect::<Vec<_>>()[..] else {
+        return None;
+    };
+    let known: Vec<u32> = [
+        Some(tags.id),
+        Some(tags.status),
+        Some(tags.finish_timestamp),
+        tags.progress.and_then(|(current, _)| current),
+        tags.progress.map(|(_, total)| total),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    let mut entries = Vec::with_capacity(values.len());
+    for bytes in values {
+        let SubMessage::Entry(entry) = classify_submessage(bytes) else {
+            return None;
+        };
+        let status = entry.get(&tags.status).copied().unwrap_or(0);
+        let fits = entry.keys().all(|tag| known.contains(tag))
+            && entry
+                .get(&tags.id)
+                .is_some_and(|id| ACHIEVEMENT_ID_RANGE.contains(id))
+            && status <= MAX_ACHIEVEMENT_STATUS
+            && entry
+                .get(&tags.finish_timestamp)
+                .is_none_or(|&time| time > MIN_PLAUSIBLE_FINISH_TIMESTAMP && status >= 2);
+        if !fits {
+            return None;
+        }
+        entries.push(entry);
+    }
+    let achievements = collect_achievements(&entries, tags);
+    (!achievements.is_empty()).then_some(achievements)
 }
 
 /// Recover the achievement list from an `AchievementAllDataNotify` payload,
@@ -1345,6 +1418,81 @@ mod tests {
         assert_eq!(achievements[0].finish_timestamp, None);
         assert_eq!(achievements[1].status, 3);
         assert_eq!(achievements[1].finish_timestamp, Some(1_700_000_060));
+    }
+
+    /// The 7.1 layout's field numbers, as the full list shows them.
+    fn tags_7_1() -> AchievementTags {
+        let entries: Vec<Entry> = (0..200u64)
+            .map(|i| {
+                let finished = i % 40 != 0;
+                let bytes = achievement_entry_7_1(
+                    81_001 + i,
+                    if finished { 2 + i % 2 } else { 1 },
+                    i % 9,
+                    finished.then_some(1_700_000_000 + i * 60),
+                );
+                match classify_submessage(&bytes) {
+                    SubMessage::Entry(entry) => entry,
+                    _ => panic!("an entry"),
+                }
+            })
+            .collect();
+        identify_achievement_tags(&entries).expect("the 7.1 tags")
+    }
+
+    #[test]
+    fn an_update_is_read_with_the_full_lists_field_numbers() {
+        let tags = tags_7_1();
+        let update = packet(&[field_bytes(
+            6,
+            &achievement_entry_7_1(81_041, 2, 4, Some(1_790_000_000)),
+        )]);
+        let found = achievement_updates(&update, &tags).expect("an update");
+        assert_eq!(ids(&found), vec![81_041]);
+        assert_eq!(found[0].status, 2);
+        assert_eq!(found[0].finish_timestamp, Some(1_790_000_000));
+
+        // Two entries on one field read too; anything else does not.
+        let two = packet(&[
+            field_bytes(6, &achievement_entry_7_1(81_041, 2, 4, Some(1_790_000_000))),
+            field_bytes(6, &achievement_entry_7_1(81_042, 1, 3, None)),
+        ]);
+        assert_eq!(
+            ids(&achievement_updates(&two, &tags).unwrap()),
+            vec![81_041, 81_042]
+        );
+        for other in [
+            // An id out of range.
+            packet(&[field_bytes(
+                6,
+                &achievement_entry_7_1(310_001, 2, 4, Some(1_790_000_000)),
+            )]),
+            // A finish time beside an unfinished status.
+            packet(&[field_bytes(
+                6,
+                &achievement_entry_7_1(81_041, 1, 4, Some(1_790_000_000)),
+            )]),
+            // A field the list never had.
+            packet(&[field_bytes(
+                6,
+                &[
+                    achievement_entry_7_1(81_041, 2, 4, None),
+                    field_varint(7, 1),
+                ]
+                .concat(),
+            )]),
+            // Two fields of entries, or a varint beside them.
+            packet(&[
+                field_bytes(6, &achievement_entry_7_1(81_041, 2, 4, None)),
+                field_bytes(7, &achievement_entry_7_1(81_042, 2, 4, None)),
+            ]),
+            packet(&[
+                field_bytes(6, &achievement_entry_7_1(81_041, 2, 4, None)),
+                field_varint(1, 3),
+            ]),
+        ] {
+            assert!(achievement_updates(&other, &tags).is_none());
+        }
     }
 
     /// One `BeyondCosmeticDataNotify` entry as 7.1 sends it (cmd 23484, list

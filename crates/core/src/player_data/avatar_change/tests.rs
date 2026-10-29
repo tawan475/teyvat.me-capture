@@ -445,3 +445,46 @@ fn trial_and_foreign_characters_are_not_added() {
     );
     assert!(!data.characters.contains_key(&NEW_CHARACTER));
 }
+
+fn fetter(level: u32, exp: u32) -> AvatarFetterInfo {
+    let mut info = AvatarFetterInfo::new();
+    info.exp_level = level;
+    info.exp_number = exp;
+    info
+}
+
+#[test]
+fn friendship_is_applied_for_held_characters() {
+    let mut data = data();
+    let changes = data.apply_fetters(&[(guid(1), fetter(9, 2_500)), (guid(2), fetter(10, 0))]);
+    assert_eq!(changes.len(), 2);
+    assert_eq!(
+        changes[0],
+        AvatarChange::Friendship {
+            avatar_id: HU_TAO,
+            level: 9,
+            exp: 2_500
+        }
+    );
+    let hu_tao = held(&data, HU_TAO).fetter_info.as_ref().unwrap();
+    assert_eq!((hu_tao.exp_level, hu_tao.exp_number), (9, 2_500));
+    // The game's repeat changes nothing.
+    assert!(
+        data.apply_fetters(&[(guid(1), fetter(9, 2_500))])
+            .is_empty()
+    );
+    // More EXP is applied again.
+    assert_eq!(data.apply_fetters(&[(guid(1), fetter(9, 2_620))]).len(), 1);
+}
+
+#[test]
+fn friendship_naming_anything_but_held_characters_is_ignored() {
+    let mut data = data();
+    // A weapon's guid, or a guid nobody holds, beside a real character.
+    assert!(
+        data.apply_fetters(&[(guid(1), fetter(9, 2_500)), (guid(10), fetter(9, 0))])
+            .is_empty()
+    );
+    assert!(data.apply_fetters(&[(guid(99), fetter(9, 0))]).is_empty());
+    assert!(held(&data, HU_TAO).fetter_info.is_none());
+}

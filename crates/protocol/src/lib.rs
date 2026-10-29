@@ -90,6 +90,7 @@ pub use crate::collections::{
 };
 use crate::connection::parse_frame;
 use crate::crypto::{bruteforce, decrypt_command, guess, lookup_initial_key};
+pub use crate::fetter::matches_fetter_notify;
 pub use crate::flat::{FlatMessage, flat_message, parse_avatar_info};
 pub use crate::gacha::{
     EpitomizedPath, GACHA_TYPES, GachaAuthKey, GachaRecordLink, GachaWish, WISH_CURRENCY_IDS,
@@ -109,7 +110,8 @@ pub use crate::routine::{
 };
 pub use crate::unk_util::{
     Achievement, AchievementMatchError, matches_achievement_all_data_notify,
-    matches_avatars_all_data_notify, matches_get_player_token_rsp, matches_items_all_data_notify,
+    matches_achievement_update_notify, matches_avatars_all_data_notify,
+    matches_get_player_token_rsp, matches_items_all_data_notify,
     try_match_achievement_all_data_notify,
 };
 
@@ -127,6 +129,7 @@ mod collections;
 mod connection;
 mod crypto;
 mod cs_rand;
+mod fetter;
 mod flat;
 mod gacha;
 mod kcp;
@@ -1503,6 +1506,14 @@ pub enum CommandMatch {
     Flat(FlatMessage),
     Avatars(Vec<AvatarInfo>),
     Achievements(Vec<Achievement>),
+    /// Achievements that moved since the full list (`AchievementUpdateNotify`):
+    /// see [`matches_achievement_update_notify`]. Candidates: the caller keeps
+    /// them only when it holds every id.
+    AchievementUpdates(Vec<Achievement>),
+    /// Characters' friendship as it changes, by avatar guid
+    /// (`AvatarFetterDataNotify`): see [`matches_fetter_notify`]. Candidates:
+    /// the caller keeps them only when it holds every guid.
+    Fetters(Vec<(u64, crate::r#gen::protos::AvatarFetterInfo)>),
     /// The Travel Accounts book, in full: see [`matches_anecdote_packet`].
     Anecdotes(AnecdoteData),
     /// Guids the game says are gone. Candidates, not gospel -- see
@@ -1602,6 +1613,8 @@ impl CommandMatch {
             Self::Flat(_) => "flat",
             Self::Avatars(_) => "avatars",
             Self::Achievements(_) => "achievements",
+            Self::AchievementUpdates(_) => "achievement updates",
+            Self::Fetters(_) => "friendship",
             Self::Anecdotes(_) => "anecdotes",
             Self::DeletedItems(_) => "deleted items",
             Self::ChangedItems(_) => "changed items",
@@ -1739,7 +1752,15 @@ pub fn classify_union(game_command: &GameCommand) -> Vec<(u16, CommandMatch)> {
                 // connection's traffic).
                 None => match matches_resin_change_notify(&inner.proto_data) {
                     Some(clock) => CommandMatch::ResinClock(clock),
-                    None => CommandMatch::Flat(flat_message(inner)?),
+                    // A quest step or a chest can finish an achievement in
+                    // the same union as its reward.
+                    None => match matches_achievement_update_notify(&inner.proto_data) {
+                        Some(updates) => CommandMatch::AchievementUpdates(updates),
+                        None => match matches_fetter_notify(&inner.proto_data) {
+                            Some(fetters) => CommandMatch::Fetters(fetters),
+                            None => CommandMatch::Flat(flat_message(inner)?),
+                        },
+                    },
                 },
             };
             Some((inner.command_id, found))
@@ -1767,6 +1788,11 @@ pub fn classify_command(game_command: &GameCommand) -> Option<CommandMatch> {
     }
     if let Some(achievements) = matches_achievement_packet(game_command) {
         claims.push(CommandMatch::Achievements(achievements));
+    } else if let Some(updates) = matches_achievement_update_notify(&game_command.proto_data) {
+        claims.push(CommandMatch::AchievementUpdates(updates));
+    }
+    if let Some(fetters) = matches_fetter_notify(&game_command.proto_data) {
+        claims.push(CommandMatch::Fetters(fetters));
     }
     if let Some(anecdotes) = matches_anecdote_packet(game_command) {
         claims.push(CommandMatch::Anecdotes(anecdotes));

@@ -76,9 +76,20 @@ fn main() {
         let game_data =
             teyvatme_game_data::AnimeGameData::new_from_reader(file).expect("parse the game data");
         let mut data = PlayerData::new(game_data);
+        // Live updates applied after the first full roster, by kind.
+        let mut live: BTreeMap<String, usize> = BTreeMap::new();
         for command in &commands {
-            apply_commands(&mut data, classify_commands(std::slice::from_ref(command)));
+            let classified = classify_commands(std::slice::from_ref(command));
+            let kinds: Vec<&'static str> =
+                classified.iter().map(|(_, found)| found.kind()).collect();
+            let applied = apply_commands(&mut data, classified);
+            if applied.live_updates > 0 {
+                for kind in kinds {
+                    *live.entry(kind.to_string()).or_default() += applied.live_updates;
+                }
+            }
         }
+        println!("live updates applied: {live:?}");
         let (json, _) = data
             .export_genshin_optimizer_with_report(&ExportSettings::default())
             .expect("export");

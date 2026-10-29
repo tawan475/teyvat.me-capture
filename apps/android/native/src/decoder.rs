@@ -895,7 +895,7 @@ fn apply(
     if full_send {
         state.live.note_full_send();
     }
-    state.live.note_change(noted + applied.avatar_changes);
+    state.live.note_change(noted + applied.live_updates);
     let first = state.data_at.is_none() || state.updated == Updated::default();
     if applied.items {
         state.updated.items = Some(at);

@@ -183,10 +183,11 @@ pub struct AppliedData {
     /// A part of the planner's routine (`gi_tasks`). No timestamp of its own
     /// either, like the anecdotes.
     pub routine: bool,
-    /// Characters' live updates applied (talents, levels, constellations,
-    /// gear moved, new characters), for live sync's change count: what they
-    /// are is only known once they are applied.
-    pub avatar_changes: usize,
+    /// Live updates applied (a character's talents, levels, constellations,
+    /// gear, friendship, a new character; achievements moving), for live
+    /// sync's change count: what they are is only known once they are
+    /// applied.
+    pub live_updates: usize,
 }
 
 impl AppliedData {
@@ -208,7 +209,7 @@ impl AppliedData {
             properties: self.properties || other.properties,
             anecdotes: self.anecdotes || other.anecdotes,
             routine: self.routine || other.routine,
-            avatar_changes: self.avatar_changes + other.avatar_changes,
+            live_updates: self.live_updates + other.live_updates,
         }
     }
 }
@@ -330,7 +331,7 @@ pub fn apply_commands(
                     } else {
                         applied.characters = true;
                     }
-                    applied.avatar_changes += 1;
+                    applied.live_updates += 1;
                 }
             }
             CommandMatch::Avatars(avatars) => {
@@ -345,6 +346,22 @@ pub fn apply_commands(
                 );
                 player_data.process_achievements(&achievements);
                 applied.achievements = true;
+            }
+            CommandMatch::AchievementUpdates(updates) => {
+                let changed = player_data.apply_achievement_updates(&updates);
+                if changed > 0 {
+                    tracing::info!(changed, of = updates.len(), "Found achievement update");
+                    applied.achievements = true;
+                    applied.live_updates += changed;
+                }
+            }
+            CommandMatch::Fetters(fetters) => {
+                let changes = player_data.apply_fetters(&fetters);
+                if !changes.is_empty() {
+                    tracing::info!(?changes, "Found friendship update");
+                    applied.characters = true;
+                    applied.live_updates += changes.len();
+                }
             }
             CommandMatch::Anecdotes(anecdotes) => {
                 tracing::info!(

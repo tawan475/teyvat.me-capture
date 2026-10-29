@@ -1410,7 +1410,7 @@ impl Monitor {
         if full_send {
             self.live.note_full_send();
         }
-        self.live.note_change(noted + applied.avatar_changes);
+        self.live.note_change(noted + applied.live_updates);
 
         let mut updated = self.app_state.app_state.updated.clone();
         let now = instant_after(self.automation_cycle_started_at);
