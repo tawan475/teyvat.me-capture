@@ -2,6 +2,14 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## Unreleased
+
+- Android: the resin alert follows its setting at once. Changing the level
+  (or turning it on) only took effect at the next capture, so with the game
+  closed a new level never rang and an alarm set at the old level still
+  did. The Test notification now says when resin is full ("Full at …")
+  instead of "Resin is full".
+
 ## 1.15.4
 
 - Windows: in the tray, the window no longer shows as a small title bar

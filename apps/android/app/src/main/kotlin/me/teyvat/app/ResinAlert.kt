@@ -14,12 +14,14 @@ import android.content.Intent
 /**
  * The resin alert (Settings, off by default): one notification when the
  * capture's resin clock reaches the threshold. An alarm, so it comes with
- * the app closed too; set again whenever the clock or the setting changes,
- * and never twice for the same clock and threshold (kept across restarts,
- * since an alarm set in the past fires at once).
+ * the app closed too; set again whenever the clock or the setting changes
+ * (TeyvatApp rereads the capture on a settings change), and never twice for
+ * the same clock and threshold (kept across restarts, since an alarm set in
+ * the past fires at once).
  */
 class ResinAlert(private val context: Context, private val prefs: Prefs) {
-    private var scheduled: String? = null
+    /** What this process last scheduled; unset at first, so the first tick also cancels an earlier process's alarm. */
+    private var scheduled: String? = UNSET
 
     fun tick(summary: Summary) {
         val settings = prefs.value
@@ -40,6 +42,7 @@ class ResinAlert(private val context: Context, private val prefs: Prefs) {
     }
 
     companion object {
+        private const val UNSET = "-"
         private const val STORE = "resin_alert"
         private const val PENDING = "pending"
         private const val SENT = "sent"
