@@ -2,6 +2,15 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.15.5
+
+- Live sync: friendship goes to the tracker as it changes. A domain, a
+  commission or the Serenitea Pot raised a character's friendship in the
+  game, but the tracker showed the new level only after the next login.
+- Live sync: achievements go to the tracker as they are finished (and their
+  reward taken), with the time they were finished, instead of at the next
+  login. Updates the game bundles with other messages are read too.
+
 ## 1.15.4
 
 - Windows: in the tray, the window no longer shows as a small title bar

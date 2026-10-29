@@ -798,6 +798,38 @@ impl PlayerData {
         }
     }
 
+    /// Achievements as the game just sent them (`AchievementUpdateNotify`),
+    /// returning how many changed. Kept only when every id is one the full
+    /// list held and none goes back (a lower status, or a finish time lost):
+    /// a list of other small records reads this way too. The game re-sends
+    /// unchanged ones, so most change nothing.
+    pub fn apply_achievement_updates(&mut self, updates: &[Achievement]) -> usize {
+        let forward = updates.iter().all(|update| {
+            self.achievements.get(&update.id).is_some_and(|held| {
+                update.status >= held.status
+                    && (held.finish_timestamp.is_none() || update.finish_timestamp.is_some())
+            })
+        });
+        if updates.is_empty() || !forward {
+            return 0;
+        }
+        let mut changed = 0;
+        for update in updates {
+            let Some(held) = self.achievements.get_mut(&update.id) else {
+                continue;
+            };
+            let next = Achievement {
+                progress: update.progress.or(held.progress),
+                ..update.clone()
+            };
+            if *held != next {
+                *held = next;
+                changed += 1;
+            }
+        }
+        changed
+    }
+
     /// Keep the Travel Accounts book from an `AnecdoteGetDataRsp`, replacing
     /// any earlier copy: each one is the whole book.
     pub fn process_anecdotes(&mut self, data: &AnecdoteData) {
@@ -4572,6 +4604,63 @@ mod tests {
             data.export_achievement_times(NOW_SECS),
             BTreeMap::from([(80001, 1_650_000_000), (80002, 1_700_000_000)])
         );
+    }
+
+    #[test]
+    fn achievement_updates_move_held_achievements_forward() {
+        let mut data = player_data();
+        data.process_achievements(&[
+            Achievement {
+                progress: Some((2, 5)),
+                ..achievement(80001, 1, None)
+            },
+            achievement(80002, 3, Some(1_700_000_000)),
+        ]);
+        // Finished: the update carries no progress, so the held one stays.
+        let finished = achievement(80001, 2, Some(1_790_000_000));
+        assert_eq!(
+            data.apply_achievement_updates(std::slice::from_ref(&finished)),
+            1
+        );
+        assert_eq!(
+            data.achievements[&80001],
+            Achievement {
+                progress: Some((2, 5)),
+                ..finished
+            }
+        );
+        assert_eq!(
+            data.export_achievement_times(NOW_SECS).get(&80001),
+            Some(&1_790_000_000)
+        );
+        // The game's re-send of an unchanged one changes nothing.
+        assert_eq!(
+            data.apply_achievement_updates(&[achievement(80002, 3, Some(1_700_000_000))]),
+            0
+        );
+    }
+
+    #[test]
+    fn achievement_updates_that_go_back_or_name_unheld_ids_are_ignored() {
+        let mut data = player_data();
+        data.process_achievements(&[
+            achievement(80001, 3, Some(1_700_000_000)),
+            achievement(80002, 1, None),
+        ]);
+        let before = data.achievements.clone();
+        // A lower status, a lost finish time, an id the list never had.
+        for updates in [
+            vec![achievement(80001, 1, None)],
+            vec![achievement(80001, 3, None)],
+            vec![
+                achievement(80002, 2, Some(1_790_000_000)),
+                achievement(80999, 2, None),
+            ],
+            vec![],
+        ] {
+            assert_eq!(data.apply_achievement_updates(&updates), 0);
+        }
+        assert_eq!(data.achievements, before);
     }
 
     #[test]

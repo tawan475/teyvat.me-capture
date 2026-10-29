@@ -18,12 +18,14 @@
 //! | `AvatarUnlockTalentNotify` (8243) | a held avatar's guid, its skill depot id and the next constellation's talent id |
 //! | `AvatarEquipChangeNotify` (24582) | a held avatar's guid, the guid of a held weapon or artifact and that item's id |
 //! | `AvatarAddNotify` (20572) | one nested owned `AvatarInfo` whose guid is the account's and whose character is not held |
+//! | `AvatarFetterDataNotify` (20382) | its own matcher ([`teyvatme_protocol::matches_fetter_notify`]): every guid a held character's, see [`PlayerData::apply_fetters`] |
 //!
 //! Each applies only when it changes something, so the game's repeats (the
 //! notify and the reply of one upgrade, the weapon re-sent on every scene
 //! change) are no-ops.
 
 use teyvatme_game_data::ArtifactSlot;
+use teyvatme_protocol::r#gen::protos::AvatarFetterInfo;
 use teyvatme_protocol::{FlatMessage, parse_avatar_info};
 
 use super::{
@@ -66,6 +68,11 @@ pub enum AvatarChange {
     },
     Added {
         avatar_id: u32,
+    },
+    Friendship {
+        avatar_id: u32,
+        level: u32,
+        exp: u32,
     },
 }
 
@@ -123,6 +130,39 @@ impl PlayerData {
         // A nested `SceneWeaponInfo` of two varints reads as a map entry, so
         // the gear is told apart by its guid and item id alone.
         self.equip_change(avatar_id, &others)
+    }
+
+    /// Friendship as the game just sent it (`AvatarFetterDataNotify`): kept
+    /// only when every guid is a held character's, and applied where the
+    /// level or EXP differs. A domain, commission or Pot reward sends one for
+    /// the party, and the game repeats unchanged ones, so most change nothing.
+    pub fn apply_fetters(&mut self, fetters: &[(u64, AvatarFetterInfo)]) -> Vec<AvatarChange> {
+        let Some(avatars) = fetters
+            .iter()
+            .map(|(guid, _)| self.formal_avatar_by_guid(*guid))
+            .collect::<Option<Vec<u32>>>()
+        else {
+            return Vec::new();
+        };
+        let mut changes = Vec::new();
+        for (avatar_id, (_, info)) in avatars.into_iter().zip(fetters) {
+            let Some(avatar) = self.characters.get_mut(&avatar_id) else {
+                continue;
+            };
+            let held = avatar.fetter_info.as_ref();
+            if held.is_some_and(|held| {
+                held.exp_level == info.exp_level && held.exp_number == info.exp_number
+            }) {
+                continue;
+            }
+            avatar.fetter_info = Some(info.clone()).into();
+            changes.push(AvatarChange::Friendship {
+                avatar_id,
+                level: info.exp_level,
+                exp: info.exp_number,
+            });
+        }
+        changes
     }
 
     /// The avatar id of the owned character with this guid.
