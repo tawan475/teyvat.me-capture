@@ -428,7 +428,8 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
 
     override fun testResinAlert() {
         askForNotifications()
-        ResinAlert.show(this, prefs.value.resinAlertAt, 0L)
+        // As the real one reads ("Full at …"), not "Resin is full" while it isn't.
+        ResinAlert.show(this, prefs.value.resinAlertAt, capture.summary.value.today?.resinFullAt() ?: 0L)
     }
 
     /** Android 13+: notifications need the user's yes. */

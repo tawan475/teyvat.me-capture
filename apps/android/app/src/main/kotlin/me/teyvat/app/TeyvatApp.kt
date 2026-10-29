@@ -12,6 +12,9 @@ import java.util.Locale
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /** The process: native logging and decoder, settings, the capture state. */
@@ -43,6 +46,12 @@ class TeyvatApp : Application() {
             autoExport.tick(summary)
             tracker.tick(summary)
             resinAlert.tick(summary)
+        }
+        // A changed resin alert reschedules at once: the capture's own reads may
+        // be hours away (game closed), and the old alarm would fire at the old level.
+        scope.launch {
+            prefs.settings.map { it.resinAlert to it.resinAlertAt }.distinctUntilChanged().drop(1)
+                .collect { capture.refresh() }
         }
         updater = Updater(this, prefs, scope) { capture.vpn.value != VpnState.Off }
         // The Quick Settings tile follows capture, however it was started or stopped.

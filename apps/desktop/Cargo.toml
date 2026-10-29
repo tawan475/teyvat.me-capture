@@ -6,7 +6,7 @@
 [package]
 name = "teyvatme"
 # Above every irminsul release (0.2.x), so the bridge release offers it.
-version = "1.15.3"
+version = "1.15.4"
 authors = ["tawan475", "Erik Gilling <konkers@konkers.net>"]
 license = "MIT"
 publish = false
@@ -51,6 +51,10 @@ eframe = { version = "0.32", default-features = false, features = [
 	"x11",           # To support older Linux distributions (restores one of the default features)
 ] }
 egui = "0.32"
+# eframe's window record in `app.ron` (`window_record.rs`): its own type, read
+# and written as eframe does. Both already in the graph through eframe.
+egui-winit = { version = "0.32", default-features = false, features = ["serde"] }
+ron = "0.10"
 egui_extras = { version = "0.32.2", features = ["image", "svg", "webp"] }
 # The OS's own Save and Choose folder dialogs: the Explorer dialog on Windows,
 # NSSavePanel on macOS, the desktop portal (D-Bus, no GTK) on Linux.

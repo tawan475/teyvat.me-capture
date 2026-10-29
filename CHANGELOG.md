@@ -2,6 +2,23 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.15.4
+
+- Windows: in the tray, the window no longer shows as a small title bar
+  above the left end of the taskbar. A minimized window without a taskbar
+  button is drawn there; it now waits off the screen.
+- The window no longer opens tiny in the bottom-left corner after a
+  session that ended minimized or in the tray (Quit from the tray menu,
+  or a "Start minimized" run). The window's place and size were saved
+  as the minimized window's; now the last place and size it had in sight
+  are kept, and a tiny one saved by an earlier version is dropped, so
+  that window opens at its default size once.
+- Android: the resin alert follows its setting at once. Changing the level
+  (or turning it on) only took effect at the next capture, so with the game
+  closed a new level never rang and an alarm set at the old level still
+  did. The Test notification now says when resin is full ("Full at …")
+  instead of "Resin is full".
+
 ## 1.15.3
 
 - Android: Stop capture always ends the VPN. Sometimes Android's VPN stayed
