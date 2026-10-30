@@ -420,6 +420,15 @@ pub fn apply_commands(
                 player_data.process_routine(RoutinePart::Welkin(days));
                 applied.routine = true;
             }
+            CommandMatch::Quests(found) => {
+                tracing::info!(
+                    finished = found.finished.len(),
+                    active = found.active.len(),
+                    "Found the parent quests"
+                );
+                player_data.process_collection(CollectionPart::Quests(found));
+                applied.routine = true;
+            }
             CommandMatch::Archive(found) => {
                 tracing::info!(tabs = found.len(), "Found the Archive");
                 player_data.process_collection(CollectionPart::Archive(found));

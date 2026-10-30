@@ -2,6 +2,13 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.17.0
+
+- New `gi_collections.quests`: every quest the game lists at login, finished
+  or accepted (`{finished, active}`, quest ids). The tracker's Archive uses
+  it for its World Quests list. Read at login only: the next login brings a
+  quest finished in between.
+
 ## 1.16.0
 
 - Live sync: the planner's routine goes to the tracker as it changes: the

@@ -4216,6 +4216,30 @@ mod tests {
     }
 
     #[test]
+    fn the_parent_quests_export_with_active_left_out_when_empty() {
+        let mut data = player_data();
+        let quests = |finished: Vec<u32>, active: Vec<u32>| {
+            CollectionPart::Quests(teyvatme_protocol::ParentQuests { finished, active })
+        };
+        let exported = |data: &PlayerData| {
+            serde_json::to_value(data.export_at(&settings(), NOW_SECS * 1000).0).unwrap()
+                ["gi_collections"]["quests"]
+                .clone()
+        };
+        data.process_collection(quests(vec![1001, 1002], vec![1003]));
+        assert_eq!(
+            exported(&data),
+            serde_json::json!({"finished": [1001, 1002], "active": [1003]})
+        );
+        // The next login's list replaces it.
+        data.process_collection(quests(vec![1001, 1002, 1003], vec![]));
+        assert_eq!(
+            exported(&data),
+            serde_json::json!({"finished": [1001, 1002, 1003]})
+        );
+    }
+
+    #[test]
     fn the_pot_music_list_exports_its_spincrystals() {
         let mut data = collector();
         // Two Spincrystals among the tracks every Pot has.

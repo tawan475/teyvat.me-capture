@@ -36,7 +36,7 @@ A tracker also gets two more payloads, typed in the same file:
 | `gi_characters` | Per character: friendship, friendship EXP, when they joined, and EXP into the level. |
 | `gi_anecdotes` | The Travel Accounts book: every anecdote met and its state, areas, reward track, last wish. |
 | `gi_tasks` | What a planner can tick: commissions, the Spiral Abyss, expeditions, realm currency, Welkin Moon, the Epitomized Path, the resin clock, the resin spent today, and weekly boss discounts, boss respawns, Adventure Rank rewards claimed, and login event calendars. |
-| `gi_collections` | What you've collected: the Radiant Spincrystals in your Serenitea Pot, the Archive, enemies defeated, the Adventurer Handbook, Aranara, your TCG cards and decks, your recipes, and Hangout Events, monsters seen, furnishing blueprints, and crafting, forging and processing recipes, TCG challenges, the music game, furnishing sets, companions' rewards and NPCs met. |
+| `gi_collections` | What you've collected: the Radiant Spincrystals in your Serenitea Pot, the Archive, enemies defeated, the Adventurer Handbook, Aranara, your TCG cards and decks, your recipes, and Hangout Events, monsters seen, furnishing blueprints, and crafting, forging and processing recipes, TCG challenges, the music game, furnishing sets, companions' rewards and NPCs met, and the quests finished or in progress. |
 | `gi_achievement_progress` | How far each unfinished achievement is. |
 | `gi_events` | The events running and your progress in each. |
 | `gi_teapot` | The Serenitea Pot's comfort per realm. |
