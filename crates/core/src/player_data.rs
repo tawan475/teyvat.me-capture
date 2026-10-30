@@ -14,9 +14,9 @@ use teyvatme_game_data::{AnimeGameData, Property, SkillType};
 pub use teyvatme_protocol::Achievement;
 pub use teyvatme_protocol::r#gen::protos::{AvatarInfo, Item, PropValue};
 use teyvatme_protocol::{
-    ANECDOTE_AREA_IDS, ANECDOTE_IDS, AbyssPeriod, AnecdoteData, BossList, DailyCommissions,
-    EpitomizedPath, Expedition, HomeResources, MAX_ANECDOTE_FINISH_COUNT, MAX_ANECDOTE_STATE,
-    MAX_ANECDOTES, RecordsMessage, ResinClock,
+    ANECDOTE_AREA_IDS, ANECDOTE_IDS, AbyssPeriod, AnecdoteData, BossList, CommissionProgress,
+    DailyCommissions, EpitomizedPath, Expedition, HomeResources, MAX_ANECDOTE_FINISH_COUNT,
+    MAX_ANECDOTE_STATE, MAX_ANECDOTES, RecordsMessage, ResinClock, WeekResin,
 };
 
 use crate::good::{self, fake_uninitialized_4th_line};
@@ -636,6 +636,8 @@ pub enum RoutinePart {
     Resin(ResinClock),
     /// The bosses' respawns and the weekly discounts.
     Bosses(BossList),
+    /// The Original Resin spent today.
+    ResinSpent(WeekResin),
 }
 
 /// The planner's routine as captured: each part `None` until its message
@@ -651,6 +653,39 @@ struct Routine {
     /// (resin, unix time of the next one).
     resin: Option<(u32, u32)>,
     bosses: Option<BossList>,
+    /// Whether Katheryne's reward was taken today, from a believed
+    /// commission progress notify.
+    commission_claimed: Option<bool>,
+    /// (spent, day of the week, when first said): see [`good::GiResinSpent`].
+    resin_spent: Option<(u32, u32, u32)>,
+}
+
+/// Commission progress candidates (command id, reward id) followed while
+/// none is learned; past this, the ones that never agreed are forgotten.
+const MAX_COMMISSION_GUESSES: usize = 256;
+
+/// How often a candidate must agree with the held list to be learned.
+const COMMISSION_AGREEMENTS: u32 = 3;
+
+/// The commission progress notify, learned from the notify itself: its
+/// shape is a dozen messages' shape (see [`CommissionProgress`]), so only
+/// candidates of the learned command and reward id are believed. Kept across
+/// logins: the id is the same day after day.
+#[derive(Clone, Debug, Default, PartialEq)]
+struct CommissionReward {
+    learned: Option<(u16, u32)>,
+    guesses: BTreeMap<(u16, u32), CommissionGuess>,
+}
+
+/// What one candidate (command id, reward id) said so far.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+struct CommissionGuess {
+    /// Times its count was the held list's.
+    agreed: u32,
+    /// Its last count.
+    last: Option<u32>,
+    /// Its count fell, but not to a new day's 0: it is some other message.
+    ruled_out: bool,
 }
 
 pub struct PlayerData {
@@ -703,6 +738,8 @@ pub struct PlayerData {
     collections: collections::CollectionsState,
     /// `gi_exploration`, as the exploration messages last said.
     exploration: exploration::ExplorationState,
+    /// Not account data: kept by [`reset`](Self::reset).
+    commission_reward: CommissionReward,
 }
 
 /// The Serenitea Pot's music ids lie in this range (7.1: Radiant Spincrystals
@@ -737,6 +774,7 @@ impl PlayerData {
             spincrystals: None,
             collections: collections::CollectionsState::default(),
             exploration: exploration::ExplorationState::default(),
+            commission_reward: CommissionReward::default(),
         }
     }
 
@@ -877,7 +915,15 @@ impl PlayerData {
     /// for it before.
     pub fn process_routine(&mut self, part: RoutinePart) {
         match part {
-            RoutinePart::Commissions(found) => self.routine.commissions = Some(found),
+            RoutinePart::Commissions(found) => self.process_commission_list(found),
+            RoutinePart::ResinSpent(found) => {
+                let arrived = self.clock_secs.unwrap_or_default() as u32;
+                let at = match self.routine.resin_spent {
+                    Some((spent, day, at)) if (spent, day) == (found.spent, found.day) => at,
+                    _ => arrived,
+                };
+                self.routine.resin_spent = Some((found.spent, found.day, at));
+            }
             RoutinePart::Abyss(found) => self.routine.abyss = Some(found),
             RoutinePart::Expeditions(found) => self.routine.expeditions = Some(found),
             RoutinePart::Home(found) => self.routine.home = Some(found),
@@ -907,6 +953,86 @@ impl PlayerData {
                 }
             }
         }
+    }
+
+    /// Keep the login's commission list. A list whose count could not be
+    /// told apart from its city keeps the count held while progress notifies
+    /// are believed (they come with every scene, and correct it at once).
+    fn process_commission_list(&mut self, mut found: DailyCommissions) {
+        if let Some(held) = self.routine.commissions
+            && found.finished.is_none()
+            && held.total == found.total
+            && self.commission_reward.learned.is_some()
+        {
+            found.finished = held.finished;
+        }
+        if found
+            .finished
+            .is_some_and(|finished| finished < found.total)
+        {
+            self.routine.commission_claimed = Some(false);
+        }
+        self.routine.commissions = Some(found);
+    }
+
+    /// Apply a commission progress candidate (`command_id`'s): the day's
+    /// count and whether Katheryne's reward was taken. Believed only once
+    /// learned: a candidate whose count was the held list's three times and
+    /// never fell except to a new day's 0 (progress only ever adds; the
+    /// other messages of this shape say other numbers). Returns whether
+    /// anything changed.
+    pub fn apply_commission_progress(
+        &mut self,
+        command_id: u16,
+        found: &CommissionProgress,
+    ) -> bool {
+        let Some(held) = self.routine.commissions else {
+            return false;
+        };
+        let total = held.total;
+        // The count and the taken flag are both small and left off at 0: the
+        // flag is only ever set with every commission done.
+        let (finished, claimed) = match found.counts.as_slice() {
+            [] => (0, false),
+            [n] if *n <= total => (*n, false),
+            [a, b] if (*a, *b) == (total, 1) || (*a, *b) == (1, total) => (total, true),
+            _ => return false,
+        };
+        let key = (command_id, found.reward_id);
+        let learning = &mut self.commission_reward;
+        if learning.learned != Some(key) {
+            if learning.guesses.len() >= MAX_COMMISSION_GUESSES {
+                learning.guesses.retain(|_, guess| guess.agreed > 0);
+            }
+            if learning.guesses.len() >= MAX_COMMISSION_GUESSES {
+                learning.guesses.clear();
+            }
+            let guess = learning.guesses.entry(key).or_default();
+            if guess.last.is_some_and(|last| finished < last) && finished != 0 {
+                guess.ruled_out = true;
+            }
+            guess.last = Some(finished);
+            if held.finished == Some(finished) {
+                guess.agreed += 1;
+            }
+            if guess.ruled_out || guess.agreed < COMMISSION_AGREEMENTS {
+                return false;
+            }
+            tracing::info!(
+                command_id,
+                reward_id = found.reward_id,
+                "learned the commission progress notify"
+            );
+            learning.learned = Some(key);
+            learning.guesses.clear();
+        }
+        let before = (self.routine.commissions, self.routine.commission_claimed);
+        self.routine.commissions = Some(DailyCommissions {
+            total,
+            finished: Some(finished),
+        });
+        self.routine.commission_claimed = Some(claimed);
+        before != (self.routine.commissions, self.routine.commission_claimed)
     }
 
     pub fn set_nickname(&mut self, nickname: String) {
@@ -1226,6 +1352,7 @@ impl PlayerData {
             (found.total >= 1 && finished <= found.total).then_some(good::GiCommissions {
                 finished,
                 total: found.total,
+                claimed: routine.commission_claimed,
             })
         });
         let abyss = routine.abyss.and_then(|found| {
@@ -1319,6 +1446,10 @@ impl PlayerData {
             ar_rewards: self.collections.ar_rewards.clone(),
             sign_ins: self.export_sign_ins(),
             respawns: bosses.map(|b| b.respawns.clone()),
+            resin_spent: routine
+                .resin_spent
+                .filter(|(_, _, at)| plausible_time(u64::from(*at), now_secs))
+                .map(|(value, day, at)| good::GiResinSpent { value, day, at }),
         };
         (!tasks.is_empty()).then_some(tasks)
     }
@@ -3945,6 +4076,123 @@ mod tests {
         data.reset();
         assert!(data.is_empty());
         assert_eq!(data.export_tasks(NOW_SECS), None);
+    }
+
+    // -- commission progress and resin spent -------------------------------------------
+
+    const DAILY_DATA: u16 = 2_841;
+    const WEATHER: u16 = 29_947;
+
+    fn progress(reward_id: u32, counts: &[u32]) -> CommissionProgress {
+        CommissionProgress {
+            reward_id,
+            counts: counts.to_vec(),
+        }
+    }
+
+    fn list(finished: Option<u32>) -> RoutinePart {
+        RoutinePart::Commissions(DailyCommissions { total: 4, finished })
+    }
+
+    fn exported_commissions(data: &PlayerData) -> Option<good::GiCommissions> {
+        data.export_tasks(NOW_SECS)
+            .and_then(|tasks| tasks.commissions)
+    }
+
+    #[test]
+    fn commission_progress_is_believed_once_it_agreed_with_the_list_three_times() {
+        let mut data = player_data();
+        // Before the list: nothing to check it against.
+        assert!(!data.apply_commission_progress(DAILY_DATA, &progress(3_456, &[2])));
+        data.process_routine(list(Some(2)));
+        for _ in 0..2 {
+            assert!(!data.apply_commission_progress(DAILY_DATA, &progress(3_456, &[2])));
+        }
+        // A weather notify of the same shape that agreed once, then fell.
+        assert!(!data.apply_commission_progress(WEATHER, &progress(1_234, &[2])));
+        assert!(!data.apply_commission_progress(WEATHER, &progress(1_234, &[1])));
+        // The third agreement teaches it (nothing changed: 2 of 4, which the
+        // list already said, and so not taken).
+        assert!(!data.apply_commission_progress(DAILY_DATA, &progress(3_456, &[2])));
+        // Progress the list never said, then the reward.
+        assert!(data.apply_commission_progress(DAILY_DATA, &progress(3_456, &[3])));
+        assert_eq!(
+            exported_commissions(&data),
+            Some(good::GiCommissions {
+                finished: 3,
+                total: 4,
+                claimed: Some(false),
+            })
+        );
+        assert!(data.apply_commission_progress(DAILY_DATA, &progress(3_456, &[4, 1])));
+        assert_eq!(
+            exported_commissions(&data).and_then(|c| c.claimed),
+            Some(true)
+        );
+        // Others of the shape are still not believed; nor a different id.
+        assert!(!data.apply_commission_progress(WEATHER, &progress(1_234, &[2])));
+        assert!(!data.apply_commission_progress(DAILY_DATA, &progress(3_457, &[])));
+        // A new day: 0, and the next login's list (count not told apart) keeps it.
+        assert!(data.apply_commission_progress(DAILY_DATA, &progress(3_456, &[])));
+        data.process_routine(list(None));
+        assert_eq!(
+            exported_commissions(&data),
+            Some(good::GiCommissions {
+                finished: 0,
+                total: 4,
+                claimed: Some(false),
+            })
+        );
+        // What was learned outlives a new login.
+        data.reset();
+        data.process_routine(list(Some(1)));
+        assert!(data.apply_commission_progress(DAILY_DATA, &progress(3_456, &[2])));
+    }
+
+    #[test]
+    fn a_commission_candidate_whose_count_falls_is_never_learned() {
+        let mut data = player_data();
+        data.process_routine(list(Some(3)));
+        data.apply_commission_progress(WEATHER, &progress(1_234, &[3]));
+        data.apply_commission_progress(WEATHER, &progress(1_234, &[2]));
+        for _ in 0..5 {
+            assert!(!data.apply_commission_progress(WEATHER, &progress(1_234, &[3])));
+        }
+        assert_eq!(
+            exported_commissions(&data).map(|c| (c.finished, c.claimed)),
+            Some((3, Some(false)))
+        );
+    }
+
+    #[test]
+    fn resin_spent_keeps_when_the_game_first_said_it() {
+        let mut data = player_data();
+        let week = |spent, day| {
+            RoutinePart::ResinSpent(WeekResin {
+                day,
+                spent,
+                done_days: vec![1],
+            })
+        };
+        data.set_clock(NOW_SECS - 600);
+        data.process_routine(week(160, 2));
+        data.set_clock(NOW_SECS);
+        // Re-sent with every scene: still the first time.
+        data.process_routine(week(160, 2));
+        let spent = |data: &PlayerData| data.export_tasks(NOW_SECS).and_then(|t| t.resin_spent);
+        assert_eq!(
+            spent(&data),
+            Some(good::GiResinSpent {
+                value: 160,
+                day: 2,
+                at: (NOW_SECS - 600) as u32,
+            })
+        );
+        data.process_routine(week(200, 2));
+        assert_eq!(
+            spent(&data).map(|s| (s.value, s.at)),
+            Some((200, NOW_SECS as u32))
+        );
     }
 
     // -- gi_collections ---------------------------------------------------------------

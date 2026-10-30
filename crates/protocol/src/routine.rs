@@ -749,6 +749,174 @@ pub fn matches_resin_change_notify(data: &[u8]) -> Option<ResinClock> {
         .then_some(ResinClock { next_at, values })
 }
 
+// ------------------------------------------------------ commission progress
+
+/// Katheryne's reward ids for the day's commissions (7.1: 2012). Four
+/// digits, below every daily task id.
+pub const COMMISSION_REWARD_IDS: RangeInclusive<u64> = 1_000..=9_999;
+
+/// A `DailyTaskDataNotify` *candidate*: the reward id beside the day's
+/// small numbers (the commissions finished, and 1 once Katheryne's reward
+/// was taken; both left off at 0).
+///
+/// The game sends it with every scene it loads and when the count moves.
+/// Its shape -- a four-digit number beside up to two small ones -- is also
+/// a weather notify's, a path reply's and a dozen others', so this is a
+/// candidate only: the caller learns the reward id from the full form (all
+/// done, reward taken) agreeing with the commission list it holds, and
+/// believes later candidates carrying that id.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CommissionProgress {
+    pub reward_id: u32,
+    /// The small numbers, in wire order; at most two.
+    pub counts: Vec<u32>,
+}
+
+/// Recover a commission progress candidate from a payload, or `None` if it
+/// cannot be one: one number in [`COMMISSION_REWARD_IDS`], at most two
+/// numbers up to [`MAX_DAILY_TASKS`], each a lone varint, and at most one
+/// repeated field of small varint-only entries (the co-op finishers' list),
+/// and nothing else.
+pub fn matches_daily_task_data_notify(data: &[u8]) -> Option<CommissionProgress> {
+    let msg = parse(data)?;
+    let mut reward_id = None;
+    let mut counts = Vec::new();
+    let mut lists = 0;
+    for values in fields_by_tag(&msg).values() {
+        match values.first()? {
+            Varint(_) => {
+                let [Varint(value)] = values.as_slice() else {
+                    return None;
+                };
+                if COMMISSION_REWARD_IDS.contains(value) {
+                    if reward_id.replace(*value as u32).is_some() {
+                        return None;
+                    }
+                } else if *value <= MAX_DAILY_TASKS as u64 {
+                    counts.push(*value as u32);
+                } else {
+                    return None;
+                }
+            }
+            LengthDelimited(_) => {
+                lists += 1;
+                let entries_ok = values.iter().all(|value| {
+                    as_bytes(value)
+                        .and_then(varint_fields)
+                        .is_some_and(|entry| (1..=2).contains(&entry.len()))
+                });
+                if lists > 1 || !entries_ok {
+                    return None;
+                }
+            }
+            Fixed32(_) | Fixed64(_) => return None,
+        }
+    }
+    let reward_id = reward_id?;
+    (counts.len() <= 2).then_some(CommissionProgress { reward_id, counts })
+}
+
+// ------------------------------------------------------------ resin spent
+
+/// Original Resin spent in one day that a message may name (refills can
+/// take it far past a day's regeneration; the bound only rules out a
+/// misread). Every resin cost is a multiple of 10.
+pub const MAX_RESIN_SPENT: u32 = 2_000;
+
+/// `_WeekActiveDetailUpdateNotify`: the Original Resin spent today, and
+/// which days of the game's week (1 = Monday) were marked done.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WeekResin {
+    /// Today's day of the game's week, 1-7.
+    pub day: u32,
+    /// Original Resin spent today.
+    pub spent: u32,
+    /// Days of this week marked done, ascending.
+    pub done_days: Vec<u32>,
+}
+
+/// A packed list of varints, or `None` if the bytes are not one.
+fn packed_varints(bytes: &[u8]) -> Option<Vec<u64>> {
+    let mut out = Vec::new();
+    let mut rest = bytes;
+    while !rest.is_empty() {
+        let mut value = 0u64;
+        let mut shift = 0;
+        loop {
+            let (&byte, tail) = rest.split_first()?;
+            rest = tail;
+            value |= u64::from(byte & 0x7f).checked_shl(shift)?;
+            if byte & 0x80 == 0 {
+                break;
+            }
+            shift += 7;
+            if shift > 63 {
+                return None;
+            }
+        }
+        out.push(value);
+    }
+    Some(out)
+}
+
+/// Recover today's resin spending from a `_WeekActiveDetailUpdateNotify`
+/// payload, or `None` if it is not one.
+///
+/// The shape: one packed list of distinct days 1-7, ascending (the days
+/// done; a packed list of 0/1 flags may sit beside it), today's day 1-7 --
+/// never before a day done -- and, unless nothing was spent, the resin
+/// spent, a multiple of 10 up to [`MAX_RESIN_SPENT`]; each a lone field,
+/// nothing else. A week with no day done yet sends no list, which is too
+/// little to tell apart: those wait for the first day done. On every message
+/// of the recorded 7.1 sessions only this one passed.
+pub fn matches_week_active_notify(data: &[u8]) -> Option<WeekResin> {
+    let msg = parse(data)?;
+    let mut numbers = Vec::new();
+    let mut lists = Vec::new();
+    for values in fields_by_tag(&msg).values() {
+        let [value] = values.as_slice() else {
+            return None;
+        };
+        match value {
+            Varint(value) => numbers.push(*value),
+            LengthDelimited(bytes) => lists.push(packed_varints(bytes)?),
+            Fixed32(_) | Fixed64(_) => return None,
+        }
+    }
+    let is_days = |list: &Vec<u64>| {
+        !list.is_empty()
+            && list.windows(2).all(|pair| pair[0] < pair[1])
+            && list.iter().all(|day| (1..=7).contains(day))
+    };
+    let is_flags = |list: &Vec<u64>| list.iter().all(|flag| *flag <= 1);
+    // The days are the list that is not flags; a lone `[1]` is both, and is
+    // the days only when it is the only list.
+    let (flags, other): (Vec<Vec<u64>>, Vec<Vec<u64>>) = lists.into_iter().partition(is_flags);
+    let days = match (other.as_slice(), flags.as_slice()) {
+        ([days], _) if is_days(days) => days.clone(),
+        ([], [days]) if is_days(days) => days.clone(),
+        _ => return None,
+    };
+    let (today, spent): (Vec<u64>, Vec<u64>) =
+        numbers.into_iter().partition(|n| (1..=7).contains(n));
+    let [day] = today.as_slice() else {
+        return None;
+    };
+    let spent = match spent.as_slice() {
+        [] => 0,
+        [spent] if *spent % 10 == 0 && *spent <= u64::from(MAX_RESIN_SPENT) => *spent,
+        _ => return None,
+    };
+    if days.last().is_some_and(|last| last > day) {
+        return None;
+    }
+    Some(WeekResin {
+        day: *day as u32,
+        spent: spent as u32,
+        done_days: days.into_iter().map(|day| day as u32).collect(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1090,6 +1258,96 @@ mod tests {
             .flat_map(|n| b(15, &price(&format!("product_{n}"), "label")))
             .collect();
         assert_eq!(matches_recharge_data_notify(&other), None);
+    }
+
+    // -- commission progress --------------------------------------------------
+
+    #[test]
+    fn commission_progress_is_a_reward_id_beside_small_numbers() {
+        // 7.1's layout: finished 3, reward id 4, reward taken 9.
+        let full = cat(&[v(3, 4), v(4, 3_456), v(9, 1)]);
+        assert_eq!(
+            matches_daily_task_data_notify(&full),
+            Some(CommissionProgress {
+                reward_id: 3_456,
+                counts: vec![4, 1],
+            })
+        );
+        assert_eq!(
+            matches_daily_task_data_notify(&v(4, 3_456)),
+            Some(CommissionProgress {
+                reward_id: 3_456,
+                counts: vec![],
+            })
+        );
+        // The co-op finishers' list may sit beside it.
+        let pairs = cat(&[b(5, &cat(&[v(1, 7), v(2, 1)])), v(3, 2), v(4, 3_456)]);
+        assert_eq!(
+            matches_daily_task_data_notify(&pairs).map(|found| found.counts),
+            Some(vec![2])
+        );
+    }
+
+    #[test]
+    fn commission_progress_refuses_other_shapes() {
+        // No reward id, two of them, a number too big, three small ones.
+        for payload in [
+            cat(&[v(3, 4), v(9, 1)]),
+            cat(&[v(3, 3_456), v(4, 3_457)]),
+            cat(&[v(3, 40), v(4, 3_456)]),
+            cat(&[v(1, 1), v(2, 2), v(3, 3), v(4, 3_456)]),
+            cat(&[v(4, 3_456), f32_field(5, 1)]),
+        ] {
+            assert_eq!(matches_daily_task_data_notify(&payload), None);
+        }
+    }
+
+    // -- resin spent ----------------------------------------------------------
+
+    fn packed(values: &[u64]) -> Vec<u8> {
+        values.iter().flat_map(|value| varint(*value)).collect()
+    }
+
+    #[test]
+    fn resin_spent_is_the_day_beside_the_days_done() {
+        // 7.1's layout: spent 1, days done 3, flags 7, today 12.
+        let notify = cat(&[v(1, 160), b(3, &packed(&[1, 2])), v(12, 3)]);
+        assert_eq!(
+            matches_week_active_notify(&notify),
+            Some(WeekResin {
+                day: 3,
+                spent: 160,
+                done_days: vec![1, 2],
+            })
+        );
+        // A new day: nothing spent yet; flags beside the days.
+        let new_day = cat(&[b(3, &packed(&[1, 2, 3])), b(7, &packed(&[1, 0])), v(12, 4)]);
+        assert_eq!(
+            matches_week_active_notify(&new_day),
+            Some(WeekResin {
+                day: 4,
+                spent: 0,
+                done_days: vec![1, 2, 3],
+            })
+        );
+    }
+
+    #[test]
+    fn resin_spent_refuses_other_shapes() {
+        for payload in [
+            // No days list.
+            cat(&[v(1, 160), v(12, 3)]),
+            // A day done after today.
+            cat(&[v(1, 160), b(3, &packed(&[1, 5])), v(12, 3)]),
+            // Not a multiple of 10.
+            cat(&[v(1, 165), b(3, &packed(&[1])), v(12, 3)]),
+            // Two days.
+            cat(&[v(1, 2), b(3, &packed(&[1])), v(12, 3)]),
+            // Days out of order.
+            cat(&[b(3, &packed(&[2, 1])), v(12, 3)]),
+        ] {
+            assert_eq!(matches_week_active_notify(&payload), None, "{payload:?}");
+        }
     }
 
     // -- classification -------------------------------------------------------

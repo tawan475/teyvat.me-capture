@@ -680,6 +680,21 @@ pub struct GiTasks {
     /// seconds, ascending; a time already past means it is up.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub respawns: Option<BTreeMap<u32, Vec<u32>>>,
+    /// The Original Resin spent today (Capture 1.16.0).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub resin_spent: Option<GiResinSpent>,
+}
+
+/// `gi_tasks.resinSpent`: the Original Resin spent on one game day.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiResinSpent {
+    pub value: u32,
+    /// That day of the game's week, 1 (Monday) to 7.
+    pub day: u32,
+    /// When the game first said it (unix seconds): the day it belongs to is
+    /// the game day this falls in.
+    pub at: u32,
 }
 
 /// `gi_tasks.signIns`: one login event's calendar.
@@ -724,6 +739,7 @@ impl GiTasks {
             && self.ar_rewards.is_none()
             && self.sign_ins.is_none()
             && self.respawns.is_none()
+            && self.resin_spent.is_none()
     }
 }
 
@@ -753,6 +769,10 @@ pub struct GiResin {
 pub struct GiCommissions {
     pub finished: u32,
     pub total: u32,
+    /// Whether Katheryne's reward for the day was taken; absent when not
+    /// known (Capture 1.16.0).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub claimed: Option<bool>,
 }
 
 /// `gi_tasks.abyss`: the Spiral Abyss period running.
@@ -1099,6 +1119,7 @@ mod tests {
                 commissions: Some(GiCommissions {
                     finished: 4,
                     total: 4,
+                    claimed: None,
                 }),
                 abyss: Some(GiAbyss {
                     start: 1_789_502_400,
@@ -1131,6 +1152,7 @@ mod tests {
                 ar_rewards: None,
                 sign_ins: None,
                 respawns: None,
+                resin_spent: None,
             }),
             gi_collections: Some(GiCollections {
                 spincrystals: Some(vec![141001, 141002]),

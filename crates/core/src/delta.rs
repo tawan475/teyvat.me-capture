@@ -260,12 +260,14 @@ impl Keyed {
                 }
             }
         }
-        // The resin clock, whole: the regen notify moves it within a session,
-        // and it says to the second when the next resin comes (the batch
-        // carrying `gi_player.resin` can go out minutes after the tick).
-        // The rest of `gi_tasks` rides on snapshots only.
-        if let Some(resin) = good.get("gi_tasks").and_then(|tasks| tasks.get("resin")) {
-            entries.insert(path(&["gi_tasks", "resin"]), resin.clone());
+        // Each part of the routine whole (each message is the whole state of
+        // its part): the resin clock since 1.12.0, the rest since 1.16.0
+        // (commissions, expeditions, realm currency, resin spent… move
+        // within a session too). Trackers before that ignore all but resin.
+        if let Some(tasks) = good.get("gi_tasks").and_then(Value::as_object) {
+            for (part, value) in tasks {
+                entries.insert(path(&["gi_tasks", part]), value.clone());
+            }
         }
     }
 
@@ -635,6 +637,44 @@ mod tests {
             vec![
                 Change::Set(path(&["achievements", "81001"]), json!(1_792_000_000)),
                 Change::Set(path(&["achievements", "81002"]), json!(0)),
+            ]
+        );
+    }
+
+    #[test]
+    fn each_part_of_the_routine_goes_whole() {
+        let old = keyed(good(json!({
+            "gi_tasks": {
+                "commissions": { "finished": 2, "total": 4 },
+                "welkin": { "days": 30 }
+            }
+        })));
+        let new = keyed(good(json!({
+            "gi_tasks": {
+                "commissions": { "finished": 4, "total": 4, "claimed": true },
+                "resinSpent": { "value": 160, "day": 3, "at": 1_792_000_000 },
+                "welkin": { "days": 30 }
+            }
+        })));
+        assert_eq!(
+            diff(&old, &new),
+            vec![
+                Change::Set(
+                    path(&["gi_tasks", "commissions"]),
+                    json!({ "finished": 4, "total": 4, "claimed": true })
+                ),
+                Change::Set(
+                    path(&["gi_tasks", "resinSpent"]),
+                    json!({ "value": 160, "day": 3, "at": 1_792_000_000 })
+                ),
+            ]
+        );
+        assert_eq!(
+            diff(&new, &keyed(good(json!({})))),
+            vec![
+                Change::Del(path(&["gi_tasks", "commissions"]), None),
+                Change::Del(path(&["gi_tasks", "resinSpent"]), None),
+                Change::Del(path(&["gi_tasks", "welkin"]), None),
             ]
         );
     }

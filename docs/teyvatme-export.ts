@@ -228,8 +228,11 @@ type AnecdoteState = 0 | 2 | 3
 // ── gi_tasks ───────────────────────────────────────────────────── [shipped]
 
 export interface GiTasks {
-  /** [shipped] Today's Daily Commissions. */
-  commissions?: { finished: number; total: number }
+  /**
+   * [shipped] Today's Daily Commissions. [shipped] `claimed` (1.16.0): Katheryne's reward taken;
+   * absent when not known.
+   */
+  commissions?: { finished: number; total: number; claimed?: boolean }
   /** [shipped] The Spiral Abyss period running; `end` = when the next begins. */
   abyss?: { start: UnixSeconds; end: UnixSeconds; stars: number; maxStars: number }
   /** [shipped] Who is out on an expedition (empty = nobody), soonest done first. */
@@ -264,6 +267,11 @@ export interface GiTasks {
   respawns?: Record<IdKey, UnixSeconds[]>
   /** [shipped] Login events' calendars by config id: days signed in, days claimed, last sign-in, open/close. */
   signIns?: Record<IdKey, { days: number; claimed: number[]; lastAt: UnixSeconds; start: UnixSeconds; end: UnixSeconds }>
+  /**
+   * [shipped] (1.16.0) Original Resin spent on one game day: `day` 1 (Monday) to 7 of the game's
+   * week, `at` when the game first said this value (the game day `at` falls in is the day it counts).
+   */
+  resinSpent?: { value: number; day: number; at: UnixSeconds }
 }
 
 // ── gi_collections ─────────────────────────────────────── [shipped]

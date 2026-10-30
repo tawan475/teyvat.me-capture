@@ -159,6 +159,8 @@ impl DataReplacement {
                         | CommandMatch::SceneRequest(_)
                         | CommandMatch::Flat(_)
                         | CommandMatch::ResinClock(_)
+                        | CommandMatch::CommissionProgress(_)
+                        | CommandMatch::ResinSpent(_)
                         | CommandMatch::Records(_)
                 )
         });
@@ -374,6 +376,23 @@ pub fn apply_commands(
             CommandMatch::Commissions(found) => {
                 tracing::info!(total = found.total, finished = ?found.finished, "Found commissions");
                 player_data.process_routine(RoutinePart::Commissions(found));
+                applied.routine = true;
+            }
+            CommandMatch::CommissionProgress(found) => {
+                // Most are other traffic: only the learned reward id can say.
+                if player_data.apply_commission_progress(command_id, &found) {
+                    tracing::info!(?found, "Found commission progress");
+                    applied.routine = true;
+                    applied.live_updates += 1;
+                }
+            }
+            CommandMatch::ResinSpent(found) => {
+                tracing::debug!(
+                    spent = found.spent,
+                    day = found.day,
+                    "Found the resin spent today"
+                );
+                player_data.process_routine(RoutinePart::ResinSpent(found));
                 applied.routine = true;
             }
             CommandMatch::Abyss(found) => {
