@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 
 use chrono::Local;
 use egui::{Align, Id, Layout, Margin, Response, RichText, Ui, vec2};
+use teyvatme_core::FORMAT_NAME;
 
 use super::frame::BREAKPOINT;
 use super::{OptimizerExportTarget, Page, TeyvatmeApp, TrackerSignIn, today};
@@ -920,7 +921,7 @@ impl TeyvatmeApp {
                             ui,
                             ButtonKind::Fill,
                             Some(icons::download()),
-                            tr("Save GOOD JSON…"),
+                            &trf("Save {0} JSON…", &[&FORMAT_NAME]),
                             false,
                         )
                         .on_hover_text(good_json_hint())
@@ -942,7 +943,7 @@ impl TeyvatmeApp {
                             tr("Copy"),
                             false,
                         )
-                        .on_hover_text(tr("GOOD JSON to the clipboard"))
+                        .on_hover_text(trf("{0} JSON to the clipboard", &[&FORMAT_NAME]))
                         .on_disabled_hover_text(reason)
                     });
                     if copy.inner.clicked() {
@@ -1194,7 +1195,7 @@ impl TeyvatmeApp {
     pub(super) fn ask_where_to_save(&mut self) {
         let now = Local::now();
         self.file_request = Some(super::FileRequest::SaveGood {
-            name: format!("teyvatme_{}.json", now.format("%Y-%m-%d_%H-%M")),
+            name: teyvatme_core::export_file_name(now.format("%Y-%m-%d_%H-%M")),
             folder: self.export_folder(),
         });
     }
@@ -1216,7 +1217,7 @@ impl TeyvatmeApp {
             super::FileRequest::SaveGood { name, folder } => {
                 let mut dialog = rfd::FileDialog::new()
                     .set_parent(window)
-                    .set_title(tr("Save GOOD JSON"))
+                    .set_title(trf("Save {0} JSON", &[&FORMAT_NAME]))
                     .add_filter("JSON", &["json"])
                     .set_file_name(name);
                 if let Some(folder) = folder {
@@ -1313,10 +1314,10 @@ pub(super) fn strip_title(is_admin: bool, status: GameStatus, done: bool) -> &'s
     }
 }
 
-/// The Save GOOD JSON button's tooltip.
+/// The Save button's tooltip: the file is GOOD, so any GOOD reader loads it.
 #[rustfmt::skip]
-fn good_json_hint() -> &'static str {
-    tr("GOOD JSON, read by Genshin Optimizer, teyvat.me and any GOOD reader")
+fn good_json_hint() -> String {
+    trf("{0} JSON, read by Genshin Optimizer, teyvat.me and any GOOD reader", &[&FORMAT_NAME])
 }
 
 enum MoreExport {

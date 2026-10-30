@@ -18,6 +18,12 @@ val releaseVersionCode: Int = releaseVersion.substringBefore('-').split('.')
     .map { it.toInt() }
     .let { (major, minor, patch) -> major * 10_000 + minor * 100 + patch }
 
+// The export format's display name, from its one place: crates/core's
+// `FORMAT_NAME` (the desktop shows the same). Becomes BuildConfig.FORMAT_NAME.
+val formatName: String = rootProject.file("../../crates/core/src/lib.rs").readLines()
+    .first { it.startsWith("pub const FORMAT_NAME: &str = ") }
+    .substringAfter('"').substringBeforeLast('"')
+
 android {
     namespace = "me.teyvat.app"
     compileSdk = 36
@@ -35,6 +41,7 @@ android {
         targetSdk = 36
         versionCode = releaseVersionCode
         versionName = releaseVersion
+        buildConfigField("String", "FORMAT_NAME", "\"$formatName\"")
         ndk { abiFilters += listOf("arm64-v8a") }
     }
 

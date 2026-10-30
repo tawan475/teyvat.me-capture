@@ -88,8 +88,8 @@
     <string name="export_open_folder">เปิดโฟลเดอร์ส่งออก</string>
     <string name="export_no_folder">ยังไม่มีโฟลเดอร์ส่งออก</string>
     <string name="export_more">การส่งออกอื่น ๆ</string>
-    <string name="export_save">บันทึก GOOD JSON</string>
-    <string name="export_save_description">GOOD JSON ใช้กับ Genshin Optimizer, teyvat.me และโปรแกรมที่อ่าน GOOD ได้ทุกตัว</string>
+    <string name="export_save">บันทึก %1$s JSON</string>
+    <string name="export_save_description">%1$s JSON ใช้กับ Genshin Optimizer, teyvat.me และโปรแกรมที่อ่าน GOOD ได้ทุกตัว</string>
     <string name="export_share">แชร์</string>
     <string name="export_copy">คัดลอก</string>
     <string name="export_auto">ส่งออกอัตโนมัติ</string>
@@ -98,7 +98,7 @@
     <string name="export_auto_off">ปิด · เลือกโฟลเดอร์</string>
     <string name="export_saved">บันทึก %s แล้ว</string>
     <string name="export_save_failed">บันทึกไม่สำเร็จ</string>
-    <string name="export_copied">คัดลอก GOOD JSON แล้ว</string>
+    <string name="export_copied">คัดลอก %1$s JSON แล้ว</string>
     <string name="export_too_big">ใหญ่เกินกว่าจะคัดลอก · ใช้บันทึกหรือแชร์</string>
     <string name="export_not_captured">ยังไม่ได้สแกน: %s</string>
     <string name="export_nothing">ยังไม่ได้สแกนอะไร</string>
@@ -147,7 +147,7 @@
     <string name="no_log">ยังไม่มีล็อก</string>
 
     <!-- First run -->
-    <string name="welcome_tagline">บัญชี Genshin Impact ของคุณ อ่านจากการรับส่งข้อมูลของเกมเอง แล้วบันทึกเป็น GOOD JSON</string>
+    <string name="welcome_tagline">บัญชี Genshin Impact ของคุณ อ่านจากการรับส่งข้อมูลของเกมเอง แล้วบันทึกเป็น %1$s JSON</string>
     <string name="welcome_only_genshin">เฉพาะ Genshin Impact</string>
     <string name="welcome_only_genshin_line">แอปอื่นไม่ผ่าน VPN</string>
     <string name="welcome_read_only">อ่านอย่างเดียว</string>
@@ -159,7 +159,7 @@
     <string name="get_started">เริ่มต้นใช้งาน</string>
     <string name="setup_title">ก่อนเล่น</string>
     <string name="setup_choose_folder">เลือกโฟลเดอร์</string>
-    <string name="setup_choose_folder_line">ไฟล์ GOOD JSON หนึ่งไฟล์ต่อการสแกน</string>
+    <string name="setup_choose_folder_line">ไฟล์ %1$s JSON หนึ่งไฟล์ต่อการสแกน</string>
     <string name="always_on_vpn">VPN แบบเปิดตลอดเวลา</string>
     <string name="always_on_vpn_line">การสแกนพร้อมก่อนเปิดเกม</string>
     <string name="always_on_vpn_path">การตั้งค่า › เครือข่าย › VPN › Teyvat.me Capture</string>
@@ -187,7 +187,7 @@
     <!-- Settings › Export -->
     <string name="export_auto_section">ส่งออกอัตโนมัติ</string>
     <string name="export_auto_switch">บันทึกการสแกนแต่ละครั้งลงโฟลเดอร์</string>
-    <string name="export_auto_switch_line">GOOD JSON หนึ่งไฟล์ต่อการสแกน</string>
+    <string name="export_auto_switch_line">%1$s JSON หนึ่งไฟล์ต่อการสแกน</string>
     <string name="export_choose_another">เลือกโฟลเดอร์อื่น</string>
     <string name="export_use_downloads">ใช้ Download/Teyvat.me</string>
     <string name="filters">ตัวกรอง</string>
@@ -226,7 +226,7 @@
     <string name="channel_alerts_line">ปัญหาที่ต้องให้คุณจัดการ</string>
     <string name="stop_capture">หยุดสแกน</string>
     <string name="stop">หยุด</string>
-    <string name="share_good">แชร์ GOOD JSON</string>
+    <string name="share_good">แชร์ %1$s JSON</string>
     <string name="alert_capture_stopped">หยุดสแกนแล้ว</string>
     <string name="alert_vpn_ended">VPN ถูกตัดการเชื่อมต่อ</string>
     <!-- Background -->

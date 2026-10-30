@@ -92,8 +92,8 @@
     <string name="export_open_folder">Open export folder</string>
     <string name="export_no_folder">No export folder yet</string>
     <string name="export_more">More exports</string>
-    <string name="export_save">Save GOOD JSON</string>
-    <string name="export_save_description">GOOD JSON, read by Genshin Optimizer, teyvat.me and any GOOD reader</string>
+    <string name="export_save">Save %1$s JSON</string>
+    <string name="export_save_description">%1$s JSON, read by Genshin Optimizer, teyvat.me and any GOOD reader</string>
     <string name="export_share">Share</string>
     <string name="export_copy">Copy</string>
     <string name="export_auto">Auto-export</string>
@@ -102,7 +102,7 @@
     <string name="export_auto_off">Off · choose a folder</string>
     <string name="export_saved">Saved %s</string>
     <string name="export_save_failed">Save failed</string>
-    <string name="export_copied">GOOD JSON copied</string>
+    <string name="export_copied">%1$s JSON copied</string>
     <string name="export_too_big">Too big to copy · use Save or Share</string>
     <string name="export_not_captured">Not captured yet: %s</string>
     <string name="export_nothing">Nothing captured yet</string>
@@ -151,7 +151,7 @@
     <string name="no_log">No log yet</string>
 
     <!-- First run -->
-    <string name="welcome_tagline">Your Genshin account, read from the game\'s own traffic and saved as GOOD JSON</string>
+    <string name="welcome_tagline">Your Genshin account, read from the game\'s own traffic and saved as %1$s JSON</string>
     <string name="welcome_only_genshin">Only Genshin</string>
     <string name="welcome_only_genshin_line">Other apps skip the VPN</string>
     <string name="welcome_read_only">Read only</string>
@@ -163,7 +163,7 @@
     <string name="get_started">Get started</string>
     <string name="setup_title">Before you play</string>
     <string name="setup_choose_folder">Choose folder</string>
-    <string name="setup_choose_folder_line">One GOOD JSON file per capture</string>
+    <string name="setup_choose_folder_line">One %1$s JSON file per capture</string>
     <string name="always_on_vpn">Always-on VPN</string>
     <string name="always_on_vpn_line">Capture is up before the game</string>
     <string name="always_on_vpn_path">Settings › Network › VPN › Teyvat.me Capture</string>
@@ -191,7 +191,7 @@
     <!-- Settings › Export -->
     <string name="export_auto_section">Auto-export</string>
     <string name="export_auto_switch">Save each capture to a folder</string>
-    <string name="export_auto_switch_line">GOOD JSON, one file per capture</string>
+    <string name="export_auto_switch_line">%1$s JSON, one file per capture</string>
     <string name="export_choose_another">Choose another folder</string>
     <string name="export_use_downloads">Use Download/Teyvat.me</string>
     <string name="filters">Filters</string>
@@ -230,7 +230,7 @@
     <string name="channel_alerts_line">Problems that need you</string>
     <string name="stop_capture">Stop capture</string>
     <string name="stop">Stop</string>
-    <string name="share_good">Share GOOD JSON</string>
+    <string name="share_good">Share %1$s JSON</string>
     <string name="alert_capture_stopped">Capture stopped</string>
     <string name="alert_vpn_ended">VPN disconnected</string>
 

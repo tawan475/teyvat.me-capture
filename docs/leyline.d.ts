@@ -2,19 +2,27 @@
 // Copyright (c) 2026 tawan475
 
 /**
- * Teyvat.me Capture's export format, as TypeScript. See export-format.md.
+ * Leyline, the Teyvat record format, as TypeScript. Served at
+ * https://teyvat.me/developers/leyline.d.ts; the same bytes live in Capture's
+ * docs/leyline.d.ts and the tracker's apps/tracker/public/developers/leyline.d.ts
+ * — change both together. Prose: https://teyvat.me/developers and Capture's
+ * docs/export-format.md.
  *
- *   1. TeyvatmeExport   the export file / snapshot upload (GOOD + Teyvat.me's own keys)
- *   2. GoodXDelta       live sync batches between snapshots
+ * Leyline is GOOD, plus everything else your account holds: a GOOD file
+ * (`format: 'GOOD'`) with optional `gi_*` keys beside GOOD's and its version in
+ * `leyline`. Genshin Optimizer and any GOOD reader load it and skip the extra
+ * keys. Types only.
+ *
+ *   1. Leyline          the export file / snapshot upload (GOOD + Teyvat.me's own keys)
+ *   2. LeylineDelta     the Leyline delta: live sync's changes between snapshots
  *   3. WishImport       wish history sync
  *
  * Status tags on every part:
  *   [GOOD]      Genshin Optimizer's format. Not ours to change.
- *   [shipped]   In released versions.
- *   [next]      In the next release.
+ *   [shipped]   In Teyvat.me Capture; "(x.y.z)" names the version that added a field.
  *
- * The source of truth is `crates/core/src/good.rs`; a test there pins the key
- * names. Known quirks are listed at the end (§4).
+ * The source of truth is Capture's `crates/core/src/good.rs`; a test there pins
+ * the key names. Known quirks are listed at the end (§4).
  */
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -22,24 +30,25 @@
 // ═════════════════════════════════════════════════════════════════════════════
 
 /** Unix seconds. Every Teyvat.me time is this, except where noted. */
-type UnixSeconds = number
-/** Unix milliseconds: only GOOD's own `timestamp` and the live batch's `at`. */
-type UnixMs = number
+export type UnixSeconds = number
+/** Unix milliseconds: only GOOD's own `timestamp` and the Leyline delta's `at`. */
+export type UnixMs = number
 /** A GOOD key: the English name stripped and PascalCased ("Hu Tao" → "HuTao"). */
-type GoodKey = string
+export type GoodKey = string
 /** A character's GOOD key; the Traveler carries the element ("TravelerCryo"). */
-type CharacterKey = GoodKey
+export type CharacterKey = GoodKey
 /** The game's own numeric id (ExcelBinOutput row id); the tracker names it from the game data. */
-type GameId = number
+export type GameId = number
 /** A JSON object key holding a GameId (JSON keys are strings). */
-type IdKey = `${number}`
+export type IdKey = `${number}`
 /** A u64 the game uses (item guids): a decimal string, since it doesn't fit a JS number. */
-type U64String = string
+export type U64String = string
 
 // Rules:
 // - Every Teyvat.me key is optional and append-only: never renamed or removed, only added.
 // - A value that wasn't captured, or failed its check, is left out: never `null`, never guessed.
-// - Top-level keys are `gi_<snake_case>` (so they can't collide with GOOD's); fields inside are camelCase.
+// - Top-level keys are `gi_<snake_case>` (so they can't collide with GOOD's), besides `leyline`, the version;
+//   fields inside are camelCase.
 // - Something with a unique id is a Record keyed by that id; a list only when order or repeats matter.
 // - Enumerations are lowercase strings, not the game's numbers.  (§4.3: anecdotes don't yet)
 // - Readers treat an absent number as 0 (the game itself leaves zeros off the wire).
@@ -48,12 +57,17 @@ type U64String = string
 // 1. The export file
 // ═════════════════════════════════════════════════════════════════════════════
 
-export interface TeyvatmeExport {
+export interface Leyline {
   // ── GOOD ──────────────────────────────────────────────────────────── [GOOD]
   format: 'GOOD'
   version: 3
   /** What wrote the file: "Teyvat.me" from 1.3.0; earlier versions and irminsul wrote "Irminsul". */
   source: 'Teyvat.me' | 'Irminsul'
+  /**
+   * [shipped] (1.17.2) The Leyline version, Teyvat.me's own key (GOOD readers
+   * skip it). Every export and snapshot upload has it; a file from before it has none.
+   */
+  leyline?: 1
   characters: GoodCharacter[]
   artifacts: (GoodArtifact & ItemExtras)[]
   weapons: (GoodWeapon & ItemExtras)[]
@@ -223,7 +237,7 @@ export interface GiAnecdotes {
   wish?: { npcId?: GameId; lastWishTime: UnixSeconds }
 }
 /** The game's number, inferred from one account: 3 recorded, 2 in progress, 0 idle. (§4.3) */
-type AnecdoteState = 0 | 2 | 3
+export type AnecdoteState = 0 | 2 | 3
 
 // ── gi_tasks ───────────────────────────────────────────────────── [shipped]
 
@@ -272,6 +286,18 @@ export interface GiTasks {
    * week, `at` when the game first said this value (the game day `at` falls in is the day it counts).
    */
   resinSpent?: { value: number; day: number; at: UnixSeconds }
+  /**
+   * (1.17.2) Paimon's Bargains as the game last showed it: sent only when the player opens the shop
+   * (and after a purchase there), so its counts are this month's as of `at`. `bought`: anything at
+   * all bought there this month. `fates`: the Fates for Masterless Stardust and Starglitter
+   * (`item` IntertwinedFate | AcquaintFate, `currency` MasterlessStardust | MasterlessStarglitter,
+   * `cost` per Fate, `bought` this month, `limit` a month; absent = no limit).
+   */
+  bargains?: {
+    at: UnixSeconds
+    bought: boolean
+    fates: { item: GoodKey; currency: GoodKey; cost: number; bought: number; limit?: number }[]
+  }
 }
 
 // ── gi_collections ─────────────────────────────────────── [shipped]
@@ -355,7 +381,7 @@ export interface GiCollections {
    */
   quests?: { finished: GameId[]; active?: GameId[] }
 }
-interface Progress {
+export interface Progress {
   progress: number
   total: number
   /** "complete" = done but its reward not taken yet. */
@@ -377,14 +403,14 @@ export interface GiWardrobe {
   /** The team slot in use. */
   currentTeam?: GameId
 }
-interface Wardrobe {
+export interface Wardrobe {
   owned: GameId[]
   worn: Record<WornBy, GameId>
   /** Owned only until then (trial weapon skins). */
   expires?: Record<IdKey, UnixSeconds>
 }
 /** A character key, the way GOOD's weapon `location` has it: "Traveler" for any Traveler. */
-type WornBy = string
+export type WornBy = string
 
 // ── gi_exploration ──────────────────────────────────────────────── [shipped]
 // Every part is the game's state at login (or right after it); absent when not captured.
@@ -428,11 +454,12 @@ export interface GiCapture {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 2. Live sync: one batch of changes since the newest snapshot   [shipped]
+// 2. The Leyline delta: live sync's changes since the newest snapshot   [shipped]
 //    POST <api>/irminsul/changes
 // ═════════════════════════════════════════════════════════════════════════════
 
-export interface GoodXDelta {
+export interface LeylineDelta {
+  /** The wire value, kept from before the format had its name. */
   format: 'GOOD-X-delta'
   v: 1
   uid: number
@@ -442,10 +469,27 @@ export interface GoodXDelta {
   seq: number
   /** The `live.base` the tracker answered that snapshot with. */
   base: string
-  /** The capture's clock when the batch was built. */
+  /** The capture's clock when the delta was built. */
   at: UnixMs
   /** At most 2000 changes, 512 KB. Each is an absolute value, so re-applying is harmless. */
   changes: DeltaChange[]
+  /** [shipped] The whole account's totals after this delta, for the tracker's charts. */
+  sum?: DeltaSum
+}
+
+/** Counts over the whole account once the delta is applied, like a snapshot's summary. */
+export interface DeltaSum {
+  characters: number
+  weapons: number
+  artifacts: number
+  /** Keys in `materials`. */
+  materials: number
+  mora: number
+  primogem: number
+  /** Unlocked, unequipped 3★ artifacts. */
+  artifact3: number
+  /** Unlocked, unequipped 4★ artifacts. */
+  artifact4: number
 }
 
 /**
@@ -456,7 +500,10 @@ export interface GoodXDelta {
  *   characters.<key>.talent.auto|skill|burst          number
  *   weapons.<guid> / artifacts.<guid>                 add a whole item; del (hint {rarity})
  *   weapons.<guid>.<field> / artifacts.<guid>.<field> that field's value (gi_exp included)
- *   gi_player.<field>                                 number
+ *   gi_player.<field>                                 that field's value, any GiPlayer field:
+ *                                                     nickname, signature and gameData are strings,
+ *                                                     profilePicture and birthday objects, the rest
+ *                                                     numbers
  *   gi_characters.<key>.<field>                       number; del of the entry drops it
  *   achievements.<id>                                 finish time (0 = done, time unknown); del
  *   anecdotes.<id>                                    {state, finishCount}; del
@@ -478,10 +525,10 @@ export type DeltaChange =
 // ═════════════════════════════════════════════════════════════════════════════
 
 /** The wish history API's own banner codes ("400" = the second character banner). */
-type GachaType = '100' | '200' | '301' | '302' | '400' | '500'
+export type GachaType = '100' | '200' | '301' | '302' | '400' | '500'
 
 export interface WishImport {
-  /** (§4.4: a string here, a number in gi_player / GoodXDelta) */
+  /** (§4.4: a string here, a number in gi_player / LeylineDelta) */
   uid: string
   region: string
   lang: string
@@ -517,10 +564,10 @@ export interface WishCursor {
 // 4.2 Wish sync keeps the wish API's snake_case strings (`gacha_type`, "5") instead of
 //     our camelCase numbers. Deliberate: records pass through byte for byte, UIGF-style.
 // 4.3 Anecdote `state` is the game's number (0/2/3); new parts use strings ('open'…).
-// 4.4 The UID is a number in gi_player and GoodXDelta, a string in the wish payloads.
+// 4.4 The UID is a number in gi_player and LeylineDelta, a string in the wish payloads.
 // 4.5 Resin is in two places: gi_player.resin (at login) and gi_tasks.resin (with its clock).
 // 4.6 gi_player.maxStamina is in the game's units (24000), not what it shows (240).
-// 4.7 Times: GOOD's `timestamp` and GoodXDelta.at are milliseconds; everything else is
+// 4.7 Times: GOOD's `timestamp` and LeylineDelta.at are milliseconds; everything else is
 //     seconds; wish times are server-clock strings.
 // 4.8 `location` is "" for nobody (GOOD's rule) where our own parts leave a field out.
 // 4.10 EXP (gi_exp, exp, friendshipExp) is written as 0 when the game sends 0;

@@ -5,6 +5,7 @@
 //! first run, and the dialogs (§7).
 
 use egui::{Align, Context, Id, Layout, Modal, RichText, Ui};
+use teyvatme_core::FORMAT_NAME;
 
 use super::{Onboarding, TeyvatmeApp, View};
 use crate::game_watch::MissedLaunch;
@@ -80,7 +81,7 @@ impl TeyvatmeApp {
                             .color(pal.tx),
                     );
                     ui.label(secondary_text(
-                        tr("Your Genshin account, read from the game's own traffic and saved as GOOD JSON"),
+                        trf("Your Genshin account, read from the game's own traffic and saved as {0} JSON", &[&FORMAT_NAME]),
                         pal.tx2,
                     ));
                     card_frame(ui).show(ui, |ui| {

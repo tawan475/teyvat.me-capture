@@ -115,6 +115,11 @@ pub use crate::routine::{
     matches_recharge_data_notify, matches_resin_change_notify, matches_tower_all_data_rsp,
     matches_week_active_notify,
 };
+pub use crate::shop::{
+    ACQUAINT_FATE, Bargains, FateStock, INTERTWINED_FATE, MASTERLESS_STARDUST,
+    MASTERLESS_STARGLITTER, STARDUST_FATE_LIMIT, ShopEntry, matches_shop_goods,
+    matches_shop_purchase, read_bargains,
+};
 pub use crate::unk_util::{
     Achievement, AchievementMatchError, matches_achievement_all_data_notify,
     matches_achievement_update_notify, matches_avatars_all_data_notify,
@@ -144,6 +149,7 @@ pub mod oodle;
 mod quests;
 mod records;
 mod routine;
+mod shop;
 #[cfg(test)]
 mod test_support;
 mod unk_util;
@@ -1627,6 +1633,12 @@ pub enum CommandMatch {
     /// saved team is in use, once the caller matched the guids to its
     /// characters and teams. Never produced by [`classify_command`].
     Party(Vec<Vec<u64>>),
+    /// Paimon's Bargains, as opening it showed it: see [`read_bargains`].
+    Bargains(Bargains),
+    /// A shop purchase no matcher claimed (see [`matches_shop_purchase`]):
+    /// a purchase, which the caller believes when every goods is one of the
+    /// Paimon's Bargains it holds. Never produced by [`classify_command`].
+    ShopGoods(Vec<ShopEntry>),
 }
 
 impl CommandMatch {
@@ -1659,6 +1671,8 @@ impl CommandMatch {
             Self::Records(_) => "records",
             Self::TeamUpdate(_) => "team update",
             Self::Party(_) => "party",
+            Self::Bargains(_) => "paimon's bargains",
+            Self::ShopGoods(_) => "shop goods",
             Self::MusicGame(_) => "music game",
             Self::BeyondCosmetics(_) => "miliastra cosmetics",
             Self::SignIns(_) => "sign-ins",
@@ -1920,6 +1934,12 @@ pub fn classify_command(game_command: &GameCommand) -> Option<CommandMatch> {
     }
     if let Some(found) = matches_sign_in_rsp(&game_command.proto_data) {
         claims.push(CommandMatch::SignIns(found));
+    }
+    if let Some(found) = matches_shop_goods(&game_command.proto_data)
+        .as_deref()
+        .and_then(read_bargains)
+    {
+        claims.push(CommandMatch::Bargains(found));
     }
     // Last on purpose. Its shape -- one packed uint64 list beside a scalar or
     // two -- is the least specific of the five, so anything another matcher can

@@ -553,8 +553,8 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
     }
 
     override fun copyGood() = goodOrSay { json ->
-        if (Exports.copy(this, "GOOD JSON", json)) {
-            snack(getString(R.string.export_copied))
+        if (Exports.copy(this, "${BuildConfig.FORMAT_NAME} JSON", json)) {
+            snack(getString(R.string.export_copied, BuildConfig.FORMAT_NAME))
         } else {
             snack(getString(R.string.export_too_big))
         }

@@ -656,7 +656,7 @@ mod tests {
 
     fn good(mora: u32) -> Good {
         let mut good: Good = serde_json::from_value(serde_json::json!({
-            "format": "GOOD", "version": 3, "source": "Irminsul",
+            "format": "GOOD", "version": 3, "source": "Teyvat.me",
             "characters": [], "artifacts": [], "weapons": [], "materials": {}
         }))
         .unwrap();

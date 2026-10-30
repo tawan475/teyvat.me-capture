@@ -7,11 +7,19 @@ name: Rust
 
 # develop is the integration branch; main only receives develop when releasing.
 # main is protected and requires these checks; develop runs them on every push.
+# No pull_request run into main: its only PRs are develop's, whose head commit
+# the develop push already checked, and required checks are per commit (not
+# strict), so the PR shows that run's results. It ran the whole suite twice.
 on:
   push:
     branches: ["main", "develop"]
   pull_request:
-    branches: ["main", "develop"]
+    branches: ["develop"]
+
+# A newer push to the same branch cancels the run it makes stale.
+concurrency:
+  group: rust-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
   CARGO_TERM_COLOR: always

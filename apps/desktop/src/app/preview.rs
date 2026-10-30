@@ -225,7 +225,7 @@ impl TeyvatmeApp {
                 static RAISED: std::sync::Once = std::sync::Once::new();
                 RAISED.call_once(|| {
                     self.toasts
-                        .success("Saved teyvatme_2026-10-26_01-20.json")
+                        .success("Saved leyline-2026-10-26_01-20.json")
                         .action(crate::ui::toast::Action::Show(std::env::temp_dir()))
                         .saved();
                     self.toasts
@@ -295,7 +295,7 @@ impl TeyvatmeApp {
             self.saved_state.save_result_folder = Some(r"D:\Captures\Teyvatme".into());
             self.activity.push(
                 Event::ok(Topic::Export, "Auto-exported")
-                    .with_path(r"D:\Captures\Teyvatme\teyvatme_2026-10-25_21-04.json".into()),
+                    .with_path(r"D:\Captures\Teyvatme\leyline-2026-10-25_21-04-37.json".into()),
             );
             self.activity
                 .push(Event::ok(Topic::Destination, "Live sync · 12 changes"));

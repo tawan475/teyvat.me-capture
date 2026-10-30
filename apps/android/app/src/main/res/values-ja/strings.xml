@@ -88,8 +88,8 @@
     <string name="export_open_folder">エクスポート先フォルダを開く</string>
     <string name="export_no_folder">エクスポート先フォルダがまだありません</string>
     <string name="export_more">その他のエクスポート</string>
-    <string name="export_save">GOOD JSON を保存</string>
-    <string name="export_save_description">GOOD JSON。Genshin Optimizer、teyvat.me など GOOD 対応ツールで読み込めます</string>
+    <string name="export_save">%1$s JSON を保存</string>
+    <string name="export_save_description">%1$s JSON。Genshin Optimizer、teyvat.me など GOOD 対応ツールで読み込めます</string>
     <string name="export_share">共有</string>
     <string name="export_copy">コピー</string>
     <string name="export_auto">自動エクスポート</string>
@@ -98,7 +98,7 @@
     <string name="export_auto_off">オフ · フォルダを選択</string>
     <string name="export_saved">%s を保存しました</string>
     <string name="export_save_failed">保存に失敗しました</string>
-    <string name="export_copied">GOOD JSON をコピーしました</string>
+    <string name="export_copied">%1$s JSON をコピーしました</string>
     <string name="export_too_big">大きすぎてコピーできません · 保存か共有を使ってください</string>
     <string name="export_not_captured">未キャプチャ：%s</string>
     <string name="export_nothing">まだ何もキャプチャしていません</string>
@@ -147,7 +147,7 @@
     <string name="no_log">ログはまだありません</string>
 
     <!-- First run -->
-    <string name="welcome_tagline">ゲーム自身の通信から原神のアカウントを読み取り、GOOD JSON として保存</string>
+    <string name="welcome_tagline">ゲーム自身の通信から原神のアカウントを読み取り、%1$s JSON として保存</string>
     <string name="welcome_only_genshin">原神だけ</string>
     <string name="welcome_only_genshin_line">ほかのアプリは VPN を通りません</string>
     <string name="welcome_read_only">読み取り専用</string>
@@ -159,7 +159,7 @@
     <string name="get_started">はじめる</string>
     <string name="setup_title">プレイの前に</string>
     <string name="setup_choose_folder">フォルダを選択</string>
-    <string name="setup_choose_folder_line">キャプチャごとに GOOD JSON ファイルを 1 つ</string>
+    <string name="setup_choose_folder_line">キャプチャごとに %1$s JSON ファイルを 1 つ</string>
     <string name="always_on_vpn">常時接続 VPN</string>
     <string name="always_on_vpn_line">ゲームより先にキャプチャが動きます</string>
     <string name="always_on_vpn_path">設定 › ネットワーク › VPN › Teyvat.me Capture</string>
@@ -187,7 +187,7 @@
     <!-- Settings › Export -->
     <string name="export_auto_section">自動エクスポート</string>
     <string name="export_auto_switch">キャプチャごとにフォルダへ保存</string>
-    <string name="export_auto_switch_line">GOOD JSON、キャプチャごとに 1 ファイル</string>
+    <string name="export_auto_switch_line">%1$s JSON、キャプチャごとに 1 ファイル</string>
     <string name="export_choose_another">別のフォルダを選択</string>
     <string name="export_use_downloads">Download/Teyvat.me を使う</string>
     <string name="filters">フィルター</string>
@@ -226,7 +226,7 @@
     <string name="channel_alerts_line">対応が必要な問題</string>
     <string name="stop_capture">キャプチャを停止</string>
     <string name="stop">停止</string>
-    <string name="share_good">GOOD JSON を共有</string>
+    <string name="share_good">%1$s JSON を共有</string>
     <string name="alert_capture_stopped">キャプチャ停止</string>
     <string name="alert_vpn_ended">VPN が切断されました</string>
     <!-- Background -->

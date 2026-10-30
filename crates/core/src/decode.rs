@@ -18,8 +18,8 @@ use std::time::{Duration, Instant};
 use teyvatme_protocol::{
     CommandMatch, GameCommand, GamePacket, GameSniffer, KeyState, avatar_wardrobe,
     classify_command, classify_union, flat_message, matches_avatar_team_update,
-    matches_records_message, matches_scene_request, matches_scene_team_update, player_nickname,
-    union_commands,
+    matches_records_message, matches_scene_request, matches_scene_team_update,
+    matches_shop_purchase, player_nickname, union_commands,
 };
 use tokio::sync::mpsc;
 
@@ -165,6 +165,8 @@ impl DataReplacement {
                         | CommandMatch::Records(_)
                         | CommandMatch::TeamUpdate(_)
                         | CommandMatch::Party(_)
+                        | CommandMatch::Bargains(_)
+                        | CommandMatch::ShopGoods(_)
                 )
         });
         self.verdict(key, replaces)
@@ -286,6 +288,8 @@ pub fn classify_commands(commands: &[GameCommand]) -> Vec<(u16, CommandMatch)> {
                             .map(CommandMatch::TeamUpdate),
                     )
                     .chain(matches_scene_team_update(&command.proto_data).map(CommandMatch::Party))
+                    // A purchase: believed against the Bargains held.
+                    .chain(matches_shop_purchase(&command.proto_data).map(CommandMatch::ShopGoods))
                     .map(|found| (command.command_id, found))
                     .collect(),
             }
@@ -524,6 +528,23 @@ pub fn apply_commands(
                 tracing::info!(chapters = found.len(), "Found the Hangout Events");
                 player_data.process_collection(CollectionPart::Hangouts(found));
                 applied.routine = true;
+            }
+            CommandMatch::Bargains(found) => {
+                tracing::info!(
+                    fates = found.fates.len(),
+                    bought = found.bought_any,
+                    "Found Paimon's Bargains"
+                );
+                player_data.process_routine(RoutinePart::Bargains(found));
+                applied.routine = true;
+                applied.live_updates += 1;
+            }
+            CommandMatch::ShopGoods(goods) => {
+                if player_data.apply_bargains_purchase(&goods) {
+                    tracing::info!(goods = goods.len(), "Found a purchase in Paimon's Bargains");
+                    applied.routine = true;
+                    applied.live_updates += 1;
+                }
             }
             CommandMatch::TeamUpdate(teams) => {
                 // Only the held characters can say (never log the names).

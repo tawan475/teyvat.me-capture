@@ -88,8 +88,8 @@
     <string name="export_open_folder">내보내기 폴더 열기</string>
     <string name="export_no_folder">아직 내보내기 폴더 없음</string>
     <string name="export_more">다른 내보내기</string>
-    <string name="export_save">GOOD JSON 저장</string>
-    <string name="export_save_description">GOOD JSON으로, Genshin Optimizer, teyvat.me 등 GOOD을 읽는 모든 도구에서 쓸 수 있습니다</string>
+    <string name="export_save">%1$s JSON 저장</string>
+    <string name="export_save_description">%1$s JSON으로, Genshin Optimizer, teyvat.me 등 GOOD을 읽는 모든 도구에서 쓸 수 있습니다</string>
     <string name="export_share">공유</string>
     <string name="export_copy">복사</string>
     <string name="export_auto">자동 내보내기</string>
@@ -98,7 +98,7 @@
     <string name="export_auto_off">꺼짐 · 폴더를 선택하세요</string>
     <string name="export_saved">%s 저장됨</string>
     <string name="export_save_failed">저장 실패</string>
-    <string name="export_copied">GOOD JSON 복사됨</string>
+    <string name="export_copied">%1$s JSON 복사됨</string>
     <string name="export_too_big">너무 커서 복사할 수 없음 · 저장이나 공유를 사용하세요</string>
     <string name="export_not_captured">아직 캡처 안 됨: %s</string>
     <string name="export_nothing">아직 캡처한 것이 없음</string>
@@ -147,7 +147,7 @@
     <string name="no_log">아직 로그 없음</string>
 
     <!-- First run -->
-    <string name="welcome_tagline">게임 자체의 통신에서 원신 계정을 읽어 GOOD JSON으로 저장</string>
+    <string name="welcome_tagline">게임 자체의 통신에서 원신 계정을 읽어 %1$s JSON으로 저장</string>
     <string name="welcome_only_genshin">원신만</string>
     <string name="welcome_only_genshin_line">다른 앱은 VPN을 거치지 않음</string>
     <string name="welcome_read_only">읽기 전용</string>
@@ -159,7 +159,7 @@
     <string name="get_started">시작하기</string>
     <string name="setup_title">플레이하기 전에</string>
     <string name="setup_choose_folder">폴더 선택</string>
-    <string name="setup_choose_folder_line">캡처마다 GOOD JSON 파일 하나</string>
+    <string name="setup_choose_folder_line">캡처마다 %1$s JSON 파일 하나</string>
     <string name="always_on_vpn">상시 접속 VPN</string>
     <string name="always_on_vpn_line">게임보다 먼저 캡처가 켜짐</string>
     <string name="always_on_vpn_path">설정 › 네트워크 › VPN › Teyvat.me Capture</string>
@@ -187,7 +187,7 @@
     <!-- Settings › Export -->
     <string name="export_auto_section">자동 내보내기</string>
     <string name="export_auto_switch">캡처할 때마다 폴더에 저장</string>
-    <string name="export_auto_switch_line">GOOD JSON, 캡처마다 파일 하나</string>
+    <string name="export_auto_switch_line">%1$s JSON, 캡처마다 파일 하나</string>
     <string name="export_choose_another">다른 폴더 선택</string>
     <string name="export_use_downloads">Download/Teyvat.me 사용</string>
     <string name="filters">필터</string>
@@ -226,7 +226,7 @@
     <string name="channel_alerts_line">확인이 필요한 문제</string>
     <string name="stop_capture">캡처 중지</string>
     <string name="stop">중지</string>
-    <string name="share_good">GOOD JSON 공유</string>
+    <string name="share_good">%1$s JSON 공유</string>
     <string name="alert_capture_stopped">캡처 중지됨</string>
     <string name="alert_vpn_ended">VPN 연결이 끊어짐</string>
     <!-- Background -->

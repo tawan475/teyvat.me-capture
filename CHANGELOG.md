@@ -2,6 +2,28 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.17.2
+
+- New `gi_tasks.bargains`: Paimon's Bargains as the shop showed it. Opening
+  the shop in-game sends how many Intertwined and Acquaint Fates were bought
+  this month for Masterless Stardust and Starglitter, and whether anything
+  there was bought at all; a purchase there updates it. The tracker's
+  Planner ticks Paimon's Bargains by itself once something was bought this
+  month, and its Wishes page shows the Fates left. Live sync sends it as
+  soon as the shop is opened. Needs the tracker of 2026-10-31 or later (an
+  older one ignores it).
+- The export format has a name: Leyline, the Teyvat record format: GOOD,
+  plus everything else your account holds. Buttons and messages say
+  Leyline JSON, and saved files are named `leyline-<date>.json`. A Leyline
+  file is still a GOOD file (`"format": "GOOD"`), so Genshin Optimizer and
+  any GOOD reader load it as before. Its keys are described for developers
+  at https://teyvat.me/developers, and typed in `docs/leyline.d.ts` (was
+  `docs/teyvatme-export.ts`; also served at
+  https://teyvat.me/developers/leyline.d.ts).
+- Every export and upload now says which Leyline it is: a new top-level
+  `"leyline": 1`. GOOD readers skip it; the tracker reads files with or
+  without it.
+
 ## 1.17.1
 
 - Live sync: saved teams go to the tracker as they change. Choosing another

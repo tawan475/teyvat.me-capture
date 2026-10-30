@@ -77,11 +77,21 @@ pub struct Character {
     pub talent: TalentLevel,
 }
 
+/// `skip_serializing_if` for [`Good::leyline`].
+fn is_zero(value: &u32) -> bool {
+    *value == 0
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Good {
     pub format: String,
     pub version: u32,
     pub source: String,
+    /// The Leyline version ([`crate::LEYLINE_VERSION`]) every export carries.
+    /// Teyvat.me's own key, not GOOD's (GOOD readers skip it). A file from
+    /// before it existed reads as 0, and 0 is never written back.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub leyline: u32,
     pub characters: Vec<Character>,
     pub artifacts: Vec<Artifact>,
     pub weapons: Vec<Weapon>,
@@ -451,7 +461,7 @@ pub struct GiTeam {
     pub characters: Vec<String>,
 }
 
-/// `gi_exploration` (see `docs/teyvatme-export.ts`). Ids are the game's; keys
+/// `gi_exploration` (see `docs/leyline.d.ts`). Ids are the game's; keys
 /// are JSON strings. Each part omitted when it was not captured.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -697,6 +707,39 @@ pub struct GiTasks {
     /// The Original Resin spent today (Capture 1.16.0).
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub resin_spent: Option<GiResinSpent>,
+    /// Paimon's Bargains as the game last showed it (Capture 1.17.2).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub bargains: Option<GiBargains>,
+}
+
+/// `gi_tasks.bargains`: Paimon's Bargains as opening it (or a purchase
+/// there) last showed it. Its counts are this month's, as of `at`.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiBargains {
+    /// When the game said it (unix seconds).
+    pub at: u32,
+    /// Whether anything at all was bought there this month.
+    pub bought: bool,
+    /// The Fates on sale for Masterless Stardust and Starglitter.
+    pub fates: Vec<GiFateStock>,
+}
+
+/// One Fate on sale in Paimon's Bargains.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiFateStock {
+    /// `IntertwinedFate` or `AcquaintFate`.
+    pub item: String,
+    /// `MasterlessStardust` or `MasterlessStarglitter`.
+    pub currency: String,
+    /// How much of it one costs.
+    pub cost: u32,
+    /// Bought this month.
+    pub bought: u32,
+    /// How many a month; absent when it has no limit.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub limit: Option<u32>,
 }
 
 /// `gi_tasks.resinSpent`: the Original Resin spent on one game day.
@@ -754,6 +797,7 @@ impl GiTasks {
             && self.sign_ins.is_none()
             && self.respawns.is_none()
             && self.resin_spent.is_none()
+            && self.bargains.is_none()
     }
 }
 
@@ -1039,7 +1083,8 @@ mod tests {
         let good = Good {
             format: "GOOD".to_string(),
             version: 3,
-            source: "Irminsul".to_string(),
+            source: "Teyvat.me".to_string(),
+            leyline: crate::LEYLINE_VERSION,
             characters: vec![Character {
                 key: "HuTao".to_string(),
                 level: 90,
@@ -1167,6 +1212,7 @@ mod tests {
                 sign_ins: None,
                 respawns: None,
                 resin_spent: None,
+                bargains: None,
             }),
             gi_collections: Some(GiCollections {
                 spincrystals: Some(vec![141001, 141002]),
@@ -1242,7 +1288,7 @@ mod tests {
 
         // `format`/`version`/`source` are inert for the tracker but are what
         // Genshin Optimizer identifies the file by, so they are part of the
-        // contract too.
+        // contract too. `leyline` is the Leyline version (Teyvat.me's own).
         assert_eq!(
             keys(&json),
             [
@@ -1263,6 +1309,7 @@ mod tests {
                 "gi_tasks",
                 "gi_teapot",
                 "gi_wardrobe",
+                "leyline",
                 "materials",
                 "source",
                 "timestamp",
@@ -1437,7 +1484,7 @@ mod tests {
             })
         );
 
-        // `docs/teyvatme-export.ts` GiExploration: id-keyed objects.
+        // `docs/leyline.d.ts` GiExploration: id-keyed objects.
         assert_eq!(
             json["gi_exploration"],
             serde_json::json!({
@@ -1460,7 +1507,8 @@ mod tests {
         let good = Good {
             format: "GOOD".to_string(),
             version: 3,
-            source: "Irminsul".to_string(),
+            source: "Teyvat.me".to_string(),
+            leyline: crate::LEYLINE_VERSION,
             characters: Vec::new(),
             artifacts: Vec::new(),
             weapons: Vec::new(),
