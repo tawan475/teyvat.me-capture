@@ -89,7 +89,7 @@ impl Event {
 
     /// "21:06 · <text>".
     pub fn line(&self) -> String {
-        format!("{} · {}", self.at.format("%H:%M"), self.text)
+        format!("{} · {}", self.at.format(crate::clock::hm()), self.text)
     }
 }
 

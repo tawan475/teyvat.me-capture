@@ -176,6 +176,7 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
 
     override fun onResume() {
         super.onResume()
+        Clock.refresh(this)
         Updater.foreground = true
         updater.onResume()
         // Back from Settings › Install unknown apps: carry on.

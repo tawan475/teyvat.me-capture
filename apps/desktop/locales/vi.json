@@ -1,4 +1,6 @@
 {
+  "12-hour": "12 giờ",
+  "24-hour": "24 giờ",
   "A Windows notification when your resin reaches this": "Thông báo Windows khi Nhựa đạt số này",
   "A wish key comes when the game opens its wish history page, and lasts about a day. Each login starts fresh: a new login (or another account) clears the key.": "Khóa cầu nguyện có khi game mở trang lịch sử cầu nguyện và dùng được khoảng một ngày. Mỗi lần đăng nhập bắt đầu lại từ đầu: đăng nhập mới (hoặc tài khoản khác) sẽ xóa khóa.",
   "AR {0}": "AR {0}",
@@ -62,6 +64,7 @@
   "Choose where uploads go, on {0}": "Chọn nơi tải lên, trên {0}",
   "Chronicled": "Sử Ký",
   "Clear": "Xóa",
+  "Clock": "Đồng hồ",
   "Close": "Đóng",
   "Close Genshin": "Đóng Genshin",
   "Closed {0} Genshin processes. Start it again to capture.": "Đã đóng {0} tiến trình Genshin. Mở lại game để ghi.",
@@ -311,6 +314,8 @@
   "Synced {0} · up to date": "Đã đồng bộ {0} · đã mới nhất",
   "Syncing wishes: banner {0}, page {1}…": "Đang đồng bộ cầu nguyện: banner {0}, trang {1}…",
   "System": "Theo hệ thống",
+  "System · 12-hour": "Theo hệ thống · 12 giờ",
+  "System · 24-hour": "Theo hệ thống · 24 giờ",
   "System · {0}": "Theo hệ thống · {0}",
   "Taskbar": "Thanh tác vụ",
   "Test": "Thử",

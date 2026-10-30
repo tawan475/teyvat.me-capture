@@ -79,7 +79,7 @@ impl SyncStatus {
             Phase::Idle => {}
         }
         let last = self.last.as_ref()?;
-        let at = last.at.format("%H:%M");
+        let at = last.at.format(crate::clock::hm());
         Some(match &last.outcome {
             Outcome::Sent { added, .. } => trf("Synced {0} · added {1}", &[&at, &added]),
             Outcome::UpToDate => trf("Synced {0} · up to date", &[&at]),
@@ -451,7 +451,7 @@ mod tests {
             .line()
             .unwrap()
         };
-        let hm = at.format("%H:%M").to_string();
+        let hm = at.format(crate::clock::hm()).to_string();
         assert_eq!(
             line(Outcome::Sent {
                 sent: 40,

@@ -402,7 +402,7 @@ fn short_time(time: Option<DateTime<Utc>>) -> String {
     match time {
         Some(time) => time
             .with_timezone(&Local)
-            .format("%b %-d, %H:%M")
+            .format(&format!("%b %-d, {}", crate::clock::hm()))
             .to_string(),
         None => "time unknown".to_string(),
     }

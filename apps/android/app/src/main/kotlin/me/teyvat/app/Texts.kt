@@ -25,8 +25,24 @@ fun Hero.title(): Int = when (this) {
     Hero.KeyLost -> R.string.home_key_lost_title
 }
 
-/** `HH:mm`, 24 h. */
-fun hhmm(at: Long): String = SimpleDateFormat("HH:mm", Locale.ROOT).format(Date(at))
+/**
+ * Whether times show in 12 hours ("2:45 PM"), from the phone's own setting
+ * (Settings > System > Date & time > Use 24-hour format). Read at start and
+ * each time the app comes to the front.
+ */
+object Clock {
+    @Volatile
+    var twelveHour = false
+        private set
+
+    fun refresh(context: Context) {
+        twelveHour = !android.text.format.DateFormat.is24HourFormat(context)
+    }
+}
+
+/** A time of day: `HH:mm`, or `h:mm a` when the phone uses 12 hours. */
+fun hhmm(at: Long): String =
+    SimpleDateFormat(if (Clock.twelveHour) "h:mm a" else "HH:mm", Locale.ROOT).format(Date(at))
 
 /** The hero's line under the title. */
 fun Hero.line(context: Context, summary: Summary): String = when (this) {

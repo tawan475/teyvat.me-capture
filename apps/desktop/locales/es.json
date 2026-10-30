@@ -1,4 +1,6 @@
 {
+  "12-hour": "12 horas",
+  "24-hour": "24 horas",
   "A Windows notification when your resin reaches this": "Una notificación de Windows cuando tu resina llegue a esta cantidad",
   "A wish key comes when the game opens its wish history page, and lasts about a day. Each login starts fresh: a new login (or another account) clears the key.": "La clave de deseos llega cuando el juego abre su página de historial de deseos y dura alrededor de un día. Cada inicio de sesión empieza de cero: uno nuevo (u otra cuenta) borra la clave.",
   "AR {0}": "AR {0}",
@@ -62,6 +64,7 @@
   "Choose where uploads go, on {0}": "Elige adónde van las subidas, en {0}",
   "Chronicled": "Recopilatorio",
   "Clear": "Borrar",
+  "Clock": "Reloj",
   "Close": "Cerrar",
   "Close Genshin": "Cerrar Genshin",
   "Closed {0} Genshin processes. Start it again to capture.": "Se cerraron {0} procesos de Genshin. Vuelve a abrirlo para capturar.",
@@ -311,6 +314,8 @@
   "Synced {0} · up to date": "Sincronizado {0} · al día",
   "Syncing wishes: banner {0}, page {1}…": "Sincronizando deseos: gachapón {0}, página {1}…",
   "System": "Sistema",
+  "System · 12-hour": "Sistema · 12 horas",
+  "System · 24-hour": "Sistema · 24 horas",
   "System · {0}": "Sistema · {0}",
   "Taskbar": "Barra de tareas",
   "Test": "Probar",

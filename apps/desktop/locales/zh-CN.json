@@ -1,4 +1,6 @@
 {
+  "12-hour": "12 小时制",
+  "24-hour": "24 小时制",
   "A Windows notification when your resin reaches this": "树脂达到此数值时发送 Windows 通知",
   "A wish key comes when the game opens its wish history page, and lasts about a day. Each login starts fresh: a new login (or another account) clears the key.": "游戏打开祈愿记录页面时会发来祈愿密钥，有效期约一天。每次登录都会重新开始：新的登录（或换另一个账号）会清除该密钥。",
   "AR {0}": "AR {0}",
@@ -62,6 +64,7 @@
   "Choose where uploads go, on {0}": "在 {0} 上选择上传目标",
   "Chronicled": "集录祈愿",
   "Clear": "清除",
+  "Clock": "时钟",
   "Close": "关闭",
   "Close Genshin": "关闭原神",
   "Closed {0} Genshin processes. Start it again to capture.": "已关闭 {0} 个原神进程。请重新启动它以进行抓取。",
@@ -311,6 +314,8 @@
   "Synced {0} · up to date": "已同步 {0} · 已是最新",
   "Syncing wishes: banner {0}, page {1}…": "正在同步祈愿：卡池 {0}，第 {1} 页…",
   "System": "跟随系统",
+  "System · 12-hour": "跟随系统 · 12 小时制",
+  "System · 24-hour": "跟随系统 · 24 小时制",
   "System · {0}": "跟随系统 · {0}",
   "Taskbar": "任务栏",
   "Test": "测试",

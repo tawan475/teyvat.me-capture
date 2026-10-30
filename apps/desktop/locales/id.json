@@ -1,4 +1,6 @@
 {
+  "12-hour": "12 jam",
+  "24-hour": "24 jam",
   "A Windows notification when your resin reaches this": "Notifikasi Windows saat Resin mencapai jumlah ini",
   "A wish key comes when the game opens its wish history page, and lasts about a day. Each login starts fresh: a new login (or another account) clears the key.": "Kunci permohonan didapat saat game membuka halaman riwayat permohonan, dan berlaku sekitar sehari. Setiap login mulai dari awal: login baru (atau akun lain) menghapus kuncinya.",
   "AR {0}": "AR {0}",
@@ -62,6 +64,7 @@
   "Choose where uploads go, on {0}": "Pilih tujuan unggahan, di {0}",
   "Chronicled": "Chronicled",
   "Clear": "Hapus",
+  "Clock": "Jam",
   "Close": "Tutup",
   "Close Genshin": "Tutup Genshin",
   "Closed {0} Genshin processes. Start it again to capture.": "Proses Genshin ditutup: {0}. Buka lagi untuk menangkap.",
@@ -311,6 +314,8 @@
   "Synced {0} · up to date": "Disinkronkan {0} · sudah terbaru",
   "Syncing wishes: banner {0}, page {1}…": "Menyinkronkan permohonan: banner {0}, hal. {1}…",
   "System": "Sistem",
+  "System · 12-hour": "Sistem · 12 jam",
+  "System · 24-hour": "Sistem · 24 jam",
   "System · {0}": "Sistem · {0}",
   "Taskbar": "Bilah tugas",
   "Test": "Uji",

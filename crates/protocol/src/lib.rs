@@ -90,7 +90,9 @@ pub use crate::collections::{
     player_nickname,
 };
 use crate::connection::parse_frame;
-use crate::crypto::{bruteforce, decrypt_command, guess, lookup_initial_key};
+use crate::crypto::{
+    LatePass, LateWindow, bruteforce, decrypt_command, guess, late_search, lookup_initial_key,
+};
 pub use crate::fetter::matches_fetter_notify;
 pub use crate::flat::{FlatMessage, flat_message, parse_avatar_info};
 pub use crate::gacha::{
@@ -212,6 +214,31 @@ const MAX_TIME_ANCHORS: usize = 4;
 /// Four magic bytes are checked per candidate, so 40,000 candidates leave a
 /// false-positive chance of about 1 in 100,000.
 const RECONNECT_SEED_DEPTH: i32 = 10_000;
+
+/// Slack around the ends of a late search's window: the game's start time is
+/// known to the second, and the client's clock may run a little apart from
+/// the send time the server stamps.
+const LATE_SLACK_MS: u64 = 5_000;
+
+/// The part of a late search's window searched at every draw depth: from the
+/// game's start, or back from the login when the start is unknown. Most first
+/// logins come within a minute or two of the start. A minute in this crate's
+/// tests.
+const LATE_NEAR_MS: u64 = if cfg!(test) { 60_000 } else { 30 * 60_000 };
+
+/// The rest of the window, searched at the shallow depths only, reaches this
+/// far: from the game's start, or back from the login when the start is
+/// unknown (the Android capture, a replay). Each hour costs ~0.7 s on eight
+/// threads (~5 s on one). A few minutes in this crate's tests, where many
+/// logins are meant to fail.
+const LATE_FAR_FROM_START_MS: u64 = if cfg!(test) { 300_000 } else { 12 * 3_600_000 };
+const LATE_FAR_BLIND_MS: u64 = if cfg!(test) { 300_000 } else { 8 * 3_600_000 };
+
+/// Draw depths of a late search: every login after the first draws one more
+/// value (real sessions reach 3 after hours of play), so the shallow ones are
+/// searched over the whole window and the deep ones only near its likely end.
+const LATE_SHALLOW: std::ops::Range<u32> = 0..8;
+const LATE_ALL: std::ops::Range<u32> = 0..32;
 
 /// Conversations of ended connections remembered by
 /// [`GameSniffer::retire_conversation`].
@@ -664,6 +691,13 @@ pub struct GameSniffer {
     /// possibly hours later. Searching around that new send time alone is what
     /// left every reconnect undecryptable.
     time_anchors: Vec<u64>,
+    /// When the game process started (unix ms), if the caller knows: the
+    /// first login, whose time seeded the generator every later login draws
+    /// from, came after it. See [`GameSniffer::set_game_started_ms`].
+    game_started_ms: Option<u64>,
+    /// The late search has run for the current [`SessionSeeds`]. It looks
+    /// back over hours, so it runs once per set of seeds, not per message.
+    late_search_spent: bool,
     key: Option<Key>,
     initial_keys: HashMap<u16, Vec<u8>>,
     rsa_keys: Vec<RsaPrivateKey>,
@@ -723,6 +757,21 @@ impl GameSniffer {
     pub fn set_initial_keys(mut self, initial_keys: HashMap<u16, Vec<u8>>) -> Self {
         self.initial_keys = initial_keys;
         self
+    }
+
+    /// Tell the sniffer when the game process started (unix ms), or that no
+    /// game process is known (`None`).
+    ///
+    /// The game seeds the generator its session keys come from at its first
+    /// login, and every later login -- back to the title screen and in again,
+    /// or a reconnect -- draws the next value from it. When the capture
+    /// started after that first login, a later login's key can only be found
+    /// by searching for the first login's time, and the game's start bounds
+    /// that search: the login came after it, usually within a minute or two.
+    /// Without it the search looks back some hours from the
+    /// login instead.
+    pub fn set_game_started_ms(&mut self, started: Option<u64>) {
+        self.game_started_ms = started;
     }
 
     /// How many times this sniffer has torn down its per-connection state.
@@ -860,6 +909,7 @@ impl GameSniffer {
         self.session_failures = 0;
         self.session_rederive_exhausted = false;
         self.bruteforce_attempts = 0;
+        self.late_search_spent = false;
         self.seedless_login = false;
         self.decompress_failure_reported = false;
         self.pending_reset = false;
@@ -1299,6 +1349,16 @@ impl GameSniffer {
             }
         }
 
+        // The login's key comes from a generator seeded before anything here
+        // saw it: search back for that seed, once per set of seeds.
+        if !self.late_search_spent {
+            self.late_search_spent = true;
+            if let Some((time_seed, key)) = self.run_late_search(&session, data) {
+                self.install_session_key(key, time_seed);
+                return true;
+            }
+        }
+
         // Charged only now, on the way out. The budget caps *futile* work, and a
         // run that recovered a key was not futile; counting successes too meant
         // five legitimate re-derivations inside one login exhausted it, after
@@ -1321,6 +1381,34 @@ impl GameSniffer {
             );
         }
         false
+    }
+
+    /// Search for the time seed of a first login nothing here saw; see
+    /// [`late_search`].
+    fn run_late_search(&self, session: &SessionSeeds, data: &[u8]) -> Option<(u64, Vec<u8>)> {
+        let passes = late_passes(self.game_started_ms, session.sent_ms);
+        // Half the machine: the game is running beside this.
+        let threads = std::thread::available_parallelism()
+            .map_or(1, |n| n.get() / 2)
+            .clamp(1, 8);
+        info!(
+            minutes = passes
+                .iter()
+                .map(|pass| pass.window.to_ms.saturating_sub(pass.window.from_ms))
+                .sum::<u64>()
+                / 60_000,
+            from_game_start = !passes[0].window.newest_first,
+            threads,
+            "this login draws from a key generator seeded before the capture started;              searching for it"
+        );
+        let started = std::time::Instant::now();
+        let found = late_search(&passes, &session.seeds, data, threads);
+        info!(
+            found = found.is_some(),
+            secs = started.elapsed().as_secs_f32(),
+            "late key search finished"
+        );
+        found
     }
 
     fn install_session_key(&mut self, key: Vec<u8>, time_seed: u64) {
@@ -1401,6 +1489,7 @@ impl GameSniffer {
                 // `time_anchors` stays: that is where a reconnect's key is found.
                 self.last_time_seed = None;
                 self.bruteforce_attempts = 0;
+                self.late_search_spent = false;
                 self.seedless_login = false;
             }
             Err(e) => {
@@ -1410,6 +1499,42 @@ impl GameSniffer {
                     "token response header did not parse; session seeds not installed"
                 );
             }
+        }
+    }
+}
+
+/// The passes of a late search for a login sent at `sent_ms`: every depth near
+/// the likely first login, then the shallow depths over the rest.
+///
+/// With the game's start known, the first login came after it, usually soon:
+/// search forwards from it. Without, search back from the login.
+fn late_passes(game_started_ms: Option<u64>, sent_ms: u64) -> [LatePass; 2] {
+    let to_ms = sent_ms.saturating_add(LATE_SLACK_MS);
+    let pass = |from_ms: u64, to_ms: u64, newest_first, depths| LatePass {
+        window: LateWindow {
+            from_ms,
+            to_ms,
+            newest_first,
+        },
+        depths,
+    };
+    match game_started_ms.filter(|&started| started < to_ms) {
+        Some(started) => {
+            let from = started.saturating_sub(LATE_SLACK_MS);
+            let near = from.saturating_add(LATE_NEAR_MS).min(to_ms);
+            let far = from.saturating_add(LATE_FAR_FROM_START_MS).min(to_ms);
+            [
+                pass(from, near, false, LATE_ALL),
+                pass(near.saturating_add(1), far, false, LATE_SHALLOW),
+            ]
+        }
+        None => {
+            let near = to_ms.saturating_sub(LATE_NEAR_MS);
+            let far = to_ms.saturating_sub(LATE_FAR_BLIND_MS);
+            [
+                pass(near, to_ms, true, LATE_ALL),
+                pass(far, near.saturating_sub(1), true, LATE_SHALLOW),
+            ]
         }
     }
 }
@@ -3703,6 +3828,75 @@ mod tests {
         );
         assert_eq!(sniffer.session_generation(), 2);
         assert_eq!(sniffer.last_time_seed, Some(LOGIN_MS));
+    }
+
+    #[test]
+    fn a_login_after_a_first_login_nobody_saw_is_found_from_the_games_start() {
+        // The capture started with the game already in the world (the report
+        // of 2026-10-31): back to the title screen and in again draws the next
+        // value from a generator seeded at a login this sniffer never saw.
+        let started = LOGIN_MS - 20_000;
+        for hint in [Some(started), None] {
+            let mut sniffer = connected_sniffer();
+            sniffer.set_game_started_ms(hint);
+            let mut conn = Conn::new(122_486);
+            let decoded = log_in(
+                &mut sniffer,
+                &mut conn,
+                LOGIN_MS + 2 * 60_000,
+                client_draw(LOGIN_MS, 1),
+                0x2468_1357_9bdf_ace0,
+            );
+            assert_eq!(decoded, vec![SESSION_MESSAGE], "hint {hint:?}");
+            assert_eq!(sniffer.last_time_seed, Some(LOGIN_MS));
+
+            // And the next trip to the title screen is found from it at once.
+            let mut next = Conn::new(122_586);
+            let decoded = log_in(
+                &mut sniffer,
+                &mut next,
+                LOGIN_MS + 9 * 60_000,
+                client_draw(LOGIN_MS, 2),
+                0x1357_9bdf_2468_ace0,
+            );
+            assert_eq!(decoded, vec![SESSION_MESSAGE], "hint {hint:?}");
+            assert_eq!(sniffer.bruteforce_attempts, 0);
+        }
+    }
+
+    #[test]
+    fn the_late_search_runs_once_per_set_of_seeds() {
+        let mut sniffer = connected_sniffer();
+        sniffer.set_game_started_ms(Some(LOGIN_MS - HOUR_MS));
+        let mut conn = Conn::new(122_486);
+        // Seeded by nothing in reach: every search fails.
+        let decoded = log_in(&mut sniffer, &mut conn, LOGIN_MS, 1, 0x0f0f_0f0f_0f0f_0f0f);
+        assert!(decoded.is_empty());
+        assert!(sniffer.late_search_spent);
+        assert_eq!(sniffer.bruteforce_attempts, 1);
+    }
+
+    #[test]
+    fn late_passes_start_at_the_game_or_look_back_from_the_login() {
+        let sent = LOGIN_MS;
+        let [near, far] = late_passes(Some(sent - HOUR_MS), sent);
+        assert_eq!(near.window.from_ms, sent - HOUR_MS - LATE_SLACK_MS);
+        assert!(!near.window.newest_first && near.depths == LATE_ALL);
+        assert_eq!(far.window.from_ms, near.window.to_ms + 1);
+        assert_eq!(
+            far.window.to_ms,
+            near.window.from_ms + LATE_FAR_FROM_START_MS
+        );
+        assert_eq!(far.depths, LATE_SHALLOW);
+
+        // A start after the login is another process's: no hint at all.
+        for hint in [None, Some(sent + HOUR_MS)] {
+            let [near, far] = late_passes(hint, sent);
+            assert!(near.window.newest_first && far.window.newest_first);
+            assert_eq!(near.window.to_ms, sent + LATE_SLACK_MS);
+            assert_eq!(far.window.to_ms + 1, near.window.from_ms);
+            assert_eq!(far.window.from_ms, sent + LATE_SLACK_MS - LATE_FAR_BLIND_MS);
+        }
     }
 
     #[test]

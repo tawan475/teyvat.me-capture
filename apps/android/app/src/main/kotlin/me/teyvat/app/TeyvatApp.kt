@@ -34,6 +34,7 @@ class TeyvatApp : Application() {
         super.onCreate()
         instance = this
         AppLocale.applyToApp(this)
+        Clock.refresh(this)
         keepCrashes()
         NativeBridge.init(filesDir.path)
         prefs = Prefs(this)

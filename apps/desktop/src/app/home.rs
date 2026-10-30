@@ -283,7 +283,7 @@ impl TeyvatmeApp {
         };
         let decoding_since = self
             .decoding_since
-            .map(|at| at.format("%H:%M").to_string())
+            .map(|at| at.format(crate::clock::hm()).to_string())
             .unwrap_or_default();
         let session_line = trf("Login detected · {0}", &[&decoding_since]);
 
@@ -494,8 +494,9 @@ impl TeyvatmeApp {
         let time = app_state.captured_at.map(|at| {
             let ago = widgets::ago((Local::now() - at).num_seconds());
             (
-                format!("{} · {ago}", at.format("%H:%M")),
-                at.format("%Y-%m-%d %H:%M:%S").to_string(),
+                format!("{} · {ago}", at.format(crate::clock::hm())),
+                at.format(&format!("%Y-%m-%d {}", crate::clock::hms()))
+                    .to_string(),
             )
         });
         if app_state.captured_at.is_some() {
@@ -639,7 +640,9 @@ impl TeyvatmeApp {
                 tr("Stars this period"),
             ),
         ];
-        let at = app_state.tasks_at.map(|at| at.format("%H:%M").to_string());
+        let at = app_state
+            .tasks_at
+            .map(|at| at.format(crate::clock::hm()).to_string());
         card(
             ui,
             tr("Today"),
@@ -720,7 +723,9 @@ impl TeyvatmeApp {
             save.line().unwrap_or_default()
         } else {
             match self.wishes.key_received(now) {
-                Some(at) if url.is_some() => trf("URL ready · {0}", &[&at.format("%H:%M")]),
+                Some(at) if url.is_some() => {
+                    trf("URL ready · {0}", &[&at.format(crate::clock::hm())])
+                }
                 _ if url.is_some() => tr("URL ready").to_owned(),
                 _ => no_key.to_owned(),
             }
@@ -999,7 +1004,7 @@ impl TeyvatmeApp {
             return secondary_text(tr("Off · choose a folder"), pal.tx2);
         }
         if let Some(event) = self.activity.latest_of(crate::activity::Topic::Export) {
-            let time = event.at.format("%H:%M");
+            let time = event.at.format(crate::clock::hm());
             return match (&event.kind, &event.path) {
                 (crate::activity::Kind::Ok, Some(path)) => {
                     let name = path
@@ -1181,7 +1186,11 @@ impl TeyvatmeApp {
                     _ => "",
                 };
                 (
-                    format!("{mark}{} · {}", event.text, event.at.format("%H:%M")),
+                    format!(
+                        "{mark}{} · {}",
+                        event.text,
+                        event.at.format(crate::clock::hm())
+                    ),
                     event.kind == crate::activity::Kind::Error,
                 )
             }

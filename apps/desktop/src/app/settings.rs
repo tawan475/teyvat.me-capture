@@ -11,6 +11,7 @@ use teyvatme_core::FORMAT_NAME;
 use super::frame::BREAKPOINT;
 use super::{AddressChange, Page, TeyvatmeApp, ThemeChoice, TrackerSignIn};
 use crate::TracingLevel;
+use crate::clock::ClockChoice;
 use crate::i18n::{Lang, tr, trf};
 use crate::signin::{self, AuthStatus, TrackerRequest, UploadScope, Whoami};
 use crate::ui::icons;
@@ -241,6 +242,28 @@ impl TeyvatmeApp {
                     ],
                 );
             });
+            divider(ui);
+            let clock = self.saved_state.clock;
+            list_row(ui, None, title_text(tr("Clock"), pal.tx), None, |ui| {
+                // The system choice says what it is now, like Language does.
+                let system = if crate::clock::system_is_twelve_hour() {
+                    tr("System · 12-hour")
+                } else {
+                    tr("System · 24-hour")
+                };
+                widgets::segmented(
+                    ui,
+                    &mut self.saved_state.clock,
+                    &[
+                        (ClockChoice::System, system),
+                        (ClockChoice::TwelveHour, tr("12-hour")),
+                        (ClockChoice::TwentyFourHour, tr("24-hour")),
+                    ],
+                );
+            });
+            if self.saved_state.clock != clock {
+                crate::clock::set(self.saved_state.clock);
+            }
             divider(ui);
             let previous = self.saved_state.language;
             list_row(ui, None, title_text(tr("Language"), pal.tx), None, |ui| {

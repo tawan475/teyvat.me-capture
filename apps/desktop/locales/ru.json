@@ -1,4 +1,6 @@
 {
+  "12-hour": "12 часов",
+  "24-hour": "24 часа",
   "A Windows notification when your resin reaches this": "Уведомление Windows, когда смола дойдёт до этого числа",
   "A wish key comes when the game opens its wish history page, and lasts about a day. Each login starts fresh: a new login (or another account) clears the key.": "Ключ молитв появляется, когда игра открывает страницу истории молитв, и действует около суток. Каждый вход начинается заново: новый вход (или другой аккаунт) сбрасывает ключ.",
   "AR {0}": "AR {0}",
@@ -62,6 +64,7 @@
   "Choose where uploads go, on {0}": "Выберите, куда загружать, на {0}",
   "Chronicled": "Хроники",
   "Clear": "Очистить",
+  "Clock": "Часы",
   "Close": "Закрыть",
   "Close Genshin": "Закрыть Genshin",
   "Closed {0} Genshin processes. Start it again to capture.": "Закрыто процессов Genshin: {0}. Запустите игру снова для захвата.",
@@ -311,6 +314,8 @@
   "Synced {0} · up to date": "Синхронизировано {0} · всё актуально",
   "Syncing wishes: banner {0}, page {1}…": "Синхронизация молитв: баннер {0}, стр. {1}…",
   "System": "Системная",
+  "System · 12-hour": "Системная · 12 часов",
+  "System · 24-hour": "Системная · 24 часа",
   "System · {0}": "Системная · {0}",
   "Taskbar": "Панель задач",
   "Test": "Проверить",

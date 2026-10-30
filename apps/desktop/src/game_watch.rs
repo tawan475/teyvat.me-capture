@@ -665,6 +665,26 @@ impl SystemProcessDetector {
     }
 }
 
+impl SystemProcessDetector {
+    /// When the newest game process of the last scan started, in unix ms.
+    ///
+    /// The game seeds the generator its session keys come from at its first
+    /// login, which came after this; the sniffer searches from here for a
+    /// login it did not see (see `GameSniffer::set_game_started_ms`). The
+    /// start time is read once when sysinfo first sees a process, so this
+    /// costs nothing per scan.
+    pub fn game_started_ms(&self) -> Option<u64> {
+        self.system
+            .processes()
+            .values()
+            .filter(|process| process.name().to_str().is_some_and(is_game_process_name))
+            .map(|process| process.start_time())
+            .filter(|&secs| secs > 0)
+            .max()
+            .map(|secs| secs.saturating_mul(1000))
+    }
+}
+
 impl ProcessDetector for SystemProcessDetector {
     fn game_running(&mut self) -> bool {
         self.count_matching(is_game_process_name) > 0
