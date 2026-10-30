@@ -522,7 +522,7 @@ mod tests {
 
     fn good(extra: Value) -> Value {
         let mut base = json!({
-            "format": "GOOD", "version": 3, "source": "Irminsul",
+            "format": "GOOD", "version": 3, "source": "Teyvat.me",
             "characters": [], "artifacts": [], "weapons": [], "materials": {}
         });
         for (key, value) in extra.as_object().unwrap() {

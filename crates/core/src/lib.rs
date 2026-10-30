@@ -25,9 +25,14 @@ pub mod wish;
 /// (the desktop's texts fill it in; Android's build reads this line into
 /// `BuildConfig.FORMAT_NAME`, so keep it a plain one-line string literal).
 ///
-/// Only ever shown to people: it never goes into the file, which stays GOOD
-/// (`"format": "GOOD"`) with Teyvat.me's optional `gi_*` keys beside it.
+/// Only ever shown to people: the name never goes into the file, which stays
+/// GOOD (`"format": "GOOD"`) with Teyvat.me's optional `gi_*` keys beside it.
+/// The file says which Leyline it is with [`LEYLINE_VERSION`].
 pub const FORMAT_NAME: &str = "Leyline";
+
+/// The Leyline version: every export and snapshot upload carries it as its
+/// top-level `"leyline"` key (`good::Good::leyline`). GOOD readers skip it.
+pub const LEYLINE_VERSION: u32 = 1;
 
 /// A saved export's file name: `leyline-<date>.json`, `date` as the caller
 /// formats it.

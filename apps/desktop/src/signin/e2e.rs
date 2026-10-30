@@ -232,12 +232,13 @@ fn made_up_user() -> (String, String) {
     (format!("e2e_{suffix}"), format!("E2e-pass-{suffix}-0000"))
 }
 
-/// A synthetic GOOD capture: no inventory, only the made-up UID.
+/// A synthetic Leyline capture: no inventory, only the made-up UID.
 fn capture() -> String {
     serde_json::json!({
         "format": "GOOD",
         "version": 2,
-        "source": "Irminsul",
+        "source": "Teyvat.me",
+        "leyline": teyvatme_core::LEYLINE_VERSION,
         "characters": [],
         "weapons": [],
         "artifacts": [],

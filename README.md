@@ -162,7 +162,8 @@ reader load it and skip the extra keys. The file still says
 
 What each key holds, which export carries which, and the rules they keep:
 [docs/export-format.md](docs/export-format.md); every field typed in
-[docs/teyvatme-export.ts](docs/teyvatme-export.ts). On the developer page:
+[docs/leyline.d.ts](docs/leyline.d.ts) (also served at
+[teyvat.me/developers/leyline.d.ts](https://teyvat.me/developers/leyline.d.ts)). On the developer page:
 [keys](https://teyvat.me/developers#keys), [rules](https://teyvat.me/developers#rules), [uploads](https://teyvat.me/developers#upload), and the
 [Leyline delta](https://teyvat.me/developers#live) that live sync sends.
 
@@ -180,7 +181,8 @@ Some names keep irminsul's spelling on purpose, or must still be read in it:
 - **The file's header.** `format` stays `"GOOD"`. `source` is `"Teyvat.me"`,
   what the app writes since 1.3.0; older builds and irminsul wrote
   `"Irminsul"`. Readers must accept both (the tracker takes it as a label:
-  any string up to 64 characters).
+  any string up to 64 characters). New in 1.17.2: `leyline`, the Leyline
+  version (`1`), on every export and upload; files from before have none.
 
 </details>
 

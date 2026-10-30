@@ -1969,6 +1969,8 @@ impl PlayerData {
             // What wrote the file. Irminsul's files say "Irminsul"; readers
             // take any name (the tracker stores it, nothing branches on it).
             source: "Teyvat.me".to_string(),
+            // Which Leyline this is: on every export, Save/Copy and upload.
+            leyline: crate::LEYLINE_VERSION,
             characters: Vec::new(),
             artifacts: Vec::new(),
             weapons: Vec::new(),
@@ -3636,10 +3638,12 @@ mod tests {
         serde_json::to_string(&good).unwrap()
     }
 
-    /// The GOOD part of an export, byte for byte. A change here is a change to
-    /// what Genshin Optimizer, the old backend and the tracker all read.
+    /// The GOOD part of an export, byte for byte, with the Leyline version
+    /// after `source` (the one key of Teyvat.me's own every export has). A
+    /// change here is a change to what Genshin Optimizer, the old backend and
+    /// the tracker all read.
     const GOLDEN_GOOD: &str = concat!(
-        r#"{"format":"GOOD","version":3,"source":"Teyvat.me","#,
+        r#"{"format":"GOOD","version":3,"source":"Teyvat.me","leyline":1,"#,
         r#""characters":[{"key":"HuTao","level":90,"constellation":0,"ascension":6,"#,
         r#""talent":{"auto":10,"skill":9,"burst":8}}],"#,
         r#""artifacts":[{"setKey":"CrimsonWitchOfFlames","slotKey":"flower","level":20,"#,
@@ -5617,5 +5621,57 @@ mod tests {
         assert_eq!(group_thousands(999), "999");
         assert_eq!(group_thousands(1_000), "1,000");
         assert_eq!(group_thousands(1_234_567), "1,234,567");
+    }
+
+    /// Leyline only adds: every export, a Save/Copy file and a tracker
+    /// upload alike, is still a GOOD file (`format` "GOOD", GOOD's keys) with
+    /// `leyline` right after `source`, and nothing else new at the top.
+    #[test]
+    fn every_export_is_good_with_the_leyline_version() {
+        let data = player_data();
+        for settings in [ExportSettings::default(), ExportSettings::for_tracker()] {
+            let good = data.export_at(&settings, NOW_SECS * 1000).0;
+            let text = serde_json::to_string(&good).unwrap();
+            assert!(
+                text.starts_with(
+                    r#"{"format":"GOOD","version":3,"source":"Teyvat.me","leyline":1,"characters":"#
+                ),
+                "{text}"
+            );
+            let json: serde_json::Value = serde_json::from_str(&text).unwrap();
+            let mut keys: Vec<&str> = json
+                .as_object()
+                .unwrap()
+                .keys()
+                .map(String::as_str)
+                .collect();
+            keys.sort_unstable();
+            assert_eq!(
+                keys,
+                [
+                    "artifacts",
+                    "characters",
+                    "format",
+                    "leyline",
+                    "materials",
+                    "source",
+                    "timestamp",
+                    "version",
+                    "weapons"
+                ],
+                "{text}"
+            );
+            assert_eq!(json["leyline"], crate::LEYLINE_VERSION);
+        }
+    }
+
+    /// A file from before Leyline (no `leyline`) still reads, and writing it
+    /// back doesn't claim a version it never had.
+    #[test]
+    fn a_file_without_leyline_reads_and_stays_without_it() {
+        let old = r#"{"format":"GOOD","version":3,"source":"Irminsul","characters":[],"artifacts":[],"weapons":[],"materials":{}}"#;
+        let good: good::Good = serde_json::from_str(old).unwrap();
+        assert_eq!(good.leyline, 0);
+        assert_eq!(serde_json::to_string(&good).unwrap(), old);
     }
 }

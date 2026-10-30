@@ -13,7 +13,8 @@ file, the format Genshin Optimizer reads, with optional `gi_*` keys of
 Teyvat.me's own beside GOOD's. Genshin Optimizer and any GOOD reader load it
 and skip the extra keys. The file still says `"format": "GOOD"`.
 
-Every field, with its type and meaning: [`teyvatme-export.ts`](teyvatme-export.ts).
+Every field, with its type and meaning: [`leyline.d.ts`](leyline.d.ts) (also
+served at https://teyvat.me/developers/leyline.d.ts).
 
 ## What it sends, and where
 
@@ -23,15 +24,16 @@ On the developer page: [what a file holds](https://teyvat.me/developers#file) an
 | | Save / Copy (a Leyline file) | Upload to a tracker |
 |---|---|---|
 | GOOD: `characters`, `weapons`, `artifacts`, `materials`, `timestamp` | yes, filtered by your export settings | yes, the whole account |
+| [`leyline`](https://teyvat.me/developers#file) (the Leyline version, `1`) | yes | yes |
 | `gi_achievements`, `gi_achievement_times`, `gi_player`, `gi_characters`, `gi_anecdotes`, `gi_tasks`, `gi_collections`, `gi_wardrobe`, `gi_exploration`, `gi_achievement_progress`, `gi_events`, `gi_teapot`, `gi_miliastra` | yes | yes |
 | [`gi_guid` and `gi_exp`](https://teyvat.me/developers#gi_guid) on each weapon and artifact | no | yes |
 | `gi_capture` (why the snapshot was taken) | no | yes |
 
 A tracker also gets two more payloads, typed in the same file:
 
-- **Live sync** (`GoodXDelta`, the [Leyline delta](https://teyvat.me/developers#live)):
-  small batches of changes between snapshots, while you play. Each also
-  carries the account's totals after it (`sum`).
+- **Live sync**: the [Leyline delta](https://teyvat.me/developers#live) (`LeylineDelta`), the
+  changes since the newest snapshot, sent in small steps while you play.
+  Each also carries the account's totals after it (`sum`).
 - **Wish history** (`WishImport`): new wish records, after you open
   Wish → History in game.
 
@@ -41,6 +43,7 @@ Each key links to its entry on the [developer page](https://teyvat.me/developers
 
 | Key | What it holds |
 |---|---|
+| [`leyline`](https://teyvat.me/developers#file) | The Leyline version: `1`. On every export; a file from before it has none. |
 | [`gi_achievements`](https://teyvat.me/developers#gi_achievements) | Achievement ids done. |
 | [`gi_achievement_times`](https://teyvat.me/developers#gi_achievement_times) | When each was done, for those the game timed. |
 | [`gi_player`](https://teyvat.me/developers#gi_player) | Adventure Rank and EXP, World Level, resin at login, Story Keys, stamina, the UID, and the nickname, signature, name card, profile picture and birthday. |
@@ -64,8 +67,8 @@ Also on the [developer page](https://teyvat.me/developers#rules).
   reader written today keeps working. New ones are optional.
 - **Left out, never guessed.** A value that wasn't captured, or doesn't pass
   its checks, is not there: never `null`, never a default made up.
-- **Times are unix seconds,** except GOOD's own `timestamp` and the live
-  batch's `at` (milliseconds).
+- **Times are unix seconds,** except GOOD's own `timestamp` and the Leyline
+  delta's `at` (milliseconds).
 - **Ids are the game's own;** characters and weapons use GOOD keys. Names in a
   language come from the game data, not the file.
 - **Personal text stays yours.** The file holds your UID; nothing in it is sent

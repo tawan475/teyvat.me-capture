@@ -77,11 +77,21 @@ pub struct Character {
     pub talent: TalentLevel,
 }
 
+/// `skip_serializing_if` for [`Good::leyline`].
+fn is_zero(value: &u32) -> bool {
+    *value == 0
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Good {
     pub format: String,
     pub version: u32,
     pub source: String,
+    /// The Leyline version ([`crate::LEYLINE_VERSION`]) every export carries.
+    /// Teyvat.me's own key, not GOOD's (GOOD readers skip it). A file from
+    /// before it existed reads as 0, and 0 is never written back.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub leyline: u32,
     pub characters: Vec<Character>,
     pub artifacts: Vec<Artifact>,
     pub weapons: Vec<Weapon>,
@@ -451,7 +461,7 @@ pub struct GiTeam {
     pub characters: Vec<String>,
 }
 
-/// `gi_exploration` (see `docs/teyvatme-export.ts`). Ids are the game's; keys
+/// `gi_exploration` (see `docs/leyline.d.ts`). Ids are the game's; keys
 /// are JSON strings. Each part omitted when it was not captured.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1073,7 +1083,8 @@ mod tests {
         let good = Good {
             format: "GOOD".to_string(),
             version: 3,
-            source: "Irminsul".to_string(),
+            source: "Teyvat.me".to_string(),
+            leyline: crate::LEYLINE_VERSION,
             characters: vec![Character {
                 key: "HuTao".to_string(),
                 level: 90,
@@ -1277,7 +1288,7 @@ mod tests {
 
         // `format`/`version`/`source` are inert for the tracker but are what
         // Genshin Optimizer identifies the file by, so they are part of the
-        // contract too.
+        // contract too. `leyline` is the Leyline version (Teyvat.me's own).
         assert_eq!(
             keys(&json),
             [
@@ -1298,6 +1309,7 @@ mod tests {
                 "gi_tasks",
                 "gi_teapot",
                 "gi_wardrobe",
+                "leyline",
                 "materials",
                 "source",
                 "timestamp",
@@ -1472,7 +1484,7 @@ mod tests {
             })
         );
 
-        // `docs/teyvatme-export.ts` GiExploration: id-keyed objects.
+        // `docs/leyline.d.ts` GiExploration: id-keyed objects.
         assert_eq!(
             json["gi_exploration"],
             serde_json::json!({
@@ -1495,7 +1507,8 @@ mod tests {
         let good = Good {
             format: "GOOD".to_string(),
             version: 3,
-            source: "Irminsul".to_string(),
+            source: "Teyvat.me".to_string(),
+            leyline: crate::LEYLINE_VERSION,
             characters: Vec::new(),
             artifacts: Vec::new(),
             weapons: Vec::new(),
