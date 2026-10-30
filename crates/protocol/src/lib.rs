@@ -117,7 +117,8 @@ pub use crate::routine::{
 };
 pub use crate::shop::{
     ACQUAINT_FATE, Bargains, FateStock, INTERTWINED_FATE, MASTERLESS_STARDUST,
-    MASTERLESS_STARGLITTER, STARDUST_FATE_LIMIT, ShopEntry, matches_shop_goods, matches_shop_purchase, read_bargains,
+    MASTERLESS_STARGLITTER, STARDUST_FATE_LIMIT, ShopEntry, matches_shop_goods,
+    matches_shop_purchase, read_bargains,
 };
 pub use crate::unk_util::{
     Achievement, AchievementMatchError, matches_achievement_all_data_notify,
