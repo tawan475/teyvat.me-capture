@@ -208,6 +208,20 @@ pub struct GiCollections {
     /// NPCs met (`NpcFirstMetExcelConfigData` ids).
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub npcs_met: Option<Vec<u32>>,
+    /// Every parent quest touched (Capture 1.17.0).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub quests: Option<GiQuests>,
+}
+
+/// `gi_collections.quests`: parent quest ids (`MainQuestExcelConfigData`),
+/// ascending, from the login's list.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiQuests {
+    pub finished: Vec<u32>,
+    /// Accepted, not finished; left out when there are none.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub active: Vec<u32>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]

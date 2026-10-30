@@ -10,8 +10,8 @@ use std::collections::BTreeMap;
 
 use teyvatme_protocol::{
     AranaraState, ArchiveTab, AvatarWardrobe, DefeatCount, EndingState, EventInfo, Handbook,
-    HandbookProgress, HandbookState, HangoutChapter, HomeComfort, MusicSong, RecordsMessage,
-    SignIn, TcgChallenges, TcgCollection, WeaponSkin,
+    HandbookProgress, HandbookState, HangoutChapter, HomeComfort, MusicSong, ParentQuests,
+    RecordsMessage, SignIn, TcgChallenges, TcgCollection, WeaponSkin,
 };
 
 use super::PlayerData;
@@ -40,6 +40,7 @@ pub(super) struct CollectionsState {
     pub music_game: Option<BTreeMap<u32, MusicSong>>,
     pub beyond_cosmetics: Option<BTreeMap<u32, u32>>,
     pub sign_ins: Option<BTreeMap<u32, SignIn>>,
+    pub quests: Option<ParentQuests>,
     /// Crafting, forging and processing recipes unlocked.
     pub crafting: Option<Vec<u32>>,
     pub forging: Option<Vec<u32>>,
@@ -113,6 +114,7 @@ pub enum CollectionPart {
     MusicGame(BTreeMap<u32, MusicSong>),
     BeyondCosmetics(BTreeMap<u32, u32>),
     SignIns(BTreeMap<u32, SignIn>),
+    Quests(ParentQuests),
 }
 
 fn tab_key(tab: ArchiveTab) -> &'static str {
@@ -484,6 +486,7 @@ impl PlayerData {
             CollectionPart::MusicGame(found) => state.music_game = Some(found),
             CollectionPart::BeyondCosmetics(found) => state.beyond_cosmetics = Some(found),
             CollectionPart::SignIns(found) => state.sign_ins = Some(found),
+            CollectionPart::Quests(found) => state.quests = Some(found),
         }
     }
 
@@ -497,6 +500,10 @@ impl PlayerData {
             furnishing_sets: state.furnishing_sets.clone(),
             companion_rewards: state.companion_rewards.clone(),
             npcs_met: state.npcs_met.clone(),
+            quests: state.quests.as_ref().map(|quests| good::GiQuests {
+                finished: quests.finished.clone(),
+                active: quests.active.clone(),
+            }),
             music_game: state.music_game.as_ref().map(|songs| {
                 songs
                     .iter()

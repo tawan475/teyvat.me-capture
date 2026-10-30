@@ -100,6 +100,10 @@ pub use crate::gacha::{
 use crate::r#gen::protos::{AvatarInfo, Item, PacketHead, PropValue, Unk, prop_value};
 use crate::kcp::{KcpSniffer, SegmentHead, segment_head};
 use crate::oodle::TcpDecoder;
+pub use crate::quests::{
+    MAX_PARENT_QUESTS, MIN_PARENT_QUESTS, PARENT_QUEST_IDS, ParentQuests,
+    matches_finished_parent_quest_notify,
+};
 pub use crate::records::{Record, RecordsMessage, matches_records_message};
 pub use crate::routine::{
     ABYSS_FLOOR_IDS, ABYSS_STARS_PER_FLOOR, AbyssPeriod, COMMISSION_REWARD_IDS, CommissionProgress,
@@ -136,6 +140,7 @@ mod flat;
 mod gacha;
 mod kcp;
 pub mod oodle;
+mod quests;
 mod records;
 mod routine;
 #[cfg(test)]
@@ -1558,6 +1563,9 @@ pub enum CommandMatch {
     /// A resin clock *candidate*: see [`matches_resin_change_notify`]; the
     /// caller believes it only beside the resin it holds.
     ResinClock(ResinClock),
+    /// Every parent quest touched, finished or not: see
+    /// [`matches_finished_parent_quest_notify`].
+    Quests(ParentQuests),
     /// The Archive's unlocked entries by tab: see [`matches_codex_notify`].
     Archive(BTreeMap<ArchiveTab, Vec<u32>>),
     /// Enemies defeated and creatures captured: see
@@ -1645,6 +1653,7 @@ impl CommandMatch {
             Self::TcgChallenges(_) => "tcg challenges",
             Self::TcgTavern(_) => "tcg tavern",
             Self::Archive(_) => "archive",
+            Self::Quests(_) => "quests",
             Self::Defeats(_) => "defeats",
             Self::Handbook(_) => "handbook",
             Self::Tcg(_) => "tcg",
@@ -1848,6 +1857,9 @@ pub fn classify_command(game_command: &GameCommand) -> Option<CommandMatch> {
     }
     if let Some(version) = matches_client_version_packet(game_command) {
         claims.push(CommandMatch::ClientVersion(version));
+    }
+    if let Some(quests) = matches_finished_parent_quest_notify(&game_command.proto_data) {
+        claims.push(CommandMatch::Quests(quests));
     }
     if let Some(archive) = matches_codex_notify(&game_command.proto_data) {
         claims.push(CommandMatch::Archive(archive));

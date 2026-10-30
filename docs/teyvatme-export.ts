@@ -348,6 +348,12 @@ export interface GiCollections {
   companionRewards?: GameId[]
   /** [shipped] NPCs met (NpcFirstMetExcelConfigData ids, ascending). */
   npcsMet?: GameId[]
+  /**
+   * [shipped] (1.17.0) Every parent quest touched (MainQuestExcelConfigData ids, ascending, all kinds:
+   * Archon, Story, World, Event…), from the login's list: `active` = accepted, not finished
+   * (absent when none). Login only: the next login's list replaces it.
+   */
+  quests?: { finished: GameId[]; active?: GameId[] }
 }
 interface Progress {
   progress: number
