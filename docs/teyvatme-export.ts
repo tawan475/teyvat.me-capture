@@ -272,6 +272,18 @@ export interface GiTasks {
    * week, `at` when the game first said this value (the game day `at` falls in is the day it counts).
    */
   resinSpent?: { value: number; day: number; at: UnixSeconds }
+  /**
+   * (1.17.2) Paimon's Bargains as the game last showed it: sent only when the player opens the shop
+   * (and after a purchase there), so its counts are this month's as of `at`. `bought`: anything at
+   * all bought there this month. `fates`: the Fates for Masterless Stardust and Starglitter
+   * (`item` IntertwinedFate | AcquaintFate, `currency` MasterlessStardust | MasterlessStarglitter,
+   * `cost` per Fate, `bought` this month, `limit` a month; absent = no limit).
+   */
+  bargains?: {
+    at: UnixSeconds
+    bought: boolean
+    fates: { item: GoodKey; currency: GoodKey; cost: number; bought: number; limit?: number }[]
+  }
 }
 
 // ── gi_collections ─────────────────────────────────────── [shipped]

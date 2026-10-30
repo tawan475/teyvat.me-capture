@@ -14,9 +14,10 @@ use teyvatme_game_data::{AnimeGameData, Property, SkillType};
 pub use teyvatme_protocol::Achievement;
 pub use teyvatme_protocol::r#gen::protos::{AvatarInfo, Item, PropValue};
 use teyvatme_protocol::{
-    ANECDOTE_AREA_IDS, ANECDOTE_IDS, AbyssPeriod, AnecdoteData, BossList, CommissionProgress,
-    DailyCommissions, EpitomizedPath, Expedition, HomeResources, MAX_ANECDOTE_FINISH_COUNT,
-    MAX_ANECDOTE_STATE, MAX_ANECDOTES, RecordsMessage, ResinClock, WeekResin,
+    ANECDOTE_AREA_IDS, ANECDOTE_IDS, AbyssPeriod, AnecdoteData, Bargains, BossList,
+    CommissionProgress, DailyCommissions, EpitomizedPath, Expedition, HomeResources,
+    MAX_ANECDOTE_FINISH_COUNT, MAX_ANECDOTE_STATE, MAX_ANECDOTES, RecordsMessage, ResinClock,
+    ShopEntry, WeekResin,
 };
 
 use crate::good::{self, fake_uninitialized_4th_line};
@@ -638,6 +639,8 @@ pub enum RoutinePart {
     Bosses(BossList),
     /// The Original Resin spent today.
     ResinSpent(WeekResin),
+    /// Paimon's Bargains, as opening it showed it.
+    Bargains(Bargains),
 }
 
 /// The planner's routine as captured: each part `None` until its message
@@ -658,6 +661,8 @@ struct Routine {
     commission_claimed: Option<bool>,
     /// (spent, day of the week, when first said): see [`good::GiResinSpent`].
     resin_spent: Option<(u32, u32, u32)>,
+    /// Paimon's Bargains and when the game last said it (unix seconds).
+    bargains: Option<(Bargains, u32)>,
 }
 
 /// Commission progress candidates (command id, reward id) followed while
@@ -911,6 +916,27 @@ impl PlayerData {
         Some(count)
     }
 
+    /// Whether Paimon's Bargains was read this session, which a purchase is
+    /// read against.
+    pub fn has_bargains(&self) -> bool {
+        self.routine.bargains.is_some()
+    }
+
+    /// Take a shop purchase (`BuyGoodsRsp`'s goods): `true` when it was in
+    /// the Paimon's Bargains held. A shop's goods list is no rarer than a
+    /// shop, so only goods ids the Bargains sent are believed.
+    pub fn apply_bargains_purchase(&mut self, goods: &[ShopEntry]) -> bool {
+        let now = self.clock_secs.unwrap_or_default() as u32;
+        let Some((bargains, at)) = self.routine.bargains.as_mut() else {
+            return false;
+        };
+        if !bargains.apply_purchase(goods) {
+            return false;
+        }
+        *at = now;
+        true
+    }
+
     /// Keep one part of the planner's routine, replacing what the game sent
     /// for it before.
     pub fn process_routine(&mut self, part: RoutinePart) {
@@ -930,6 +956,10 @@ impl PlayerData {
             RoutinePart::Welkin(days) => self.routine.welkin = Some(days),
             RoutinePart::WishPath(found) => self.routine.wish_path = Some(found),
             RoutinePart::Bosses(found) => self.routine.bosses = Some(found),
+            RoutinePart::Bargains(found) => {
+                let at = self.clock_secs.unwrap_or_default() as u32;
+                self.routine.bargains = Some((found, at));
+            }
             RoutinePart::Resin(clock) => {
                 // A three-number shape a dozen messages share: believed only
                 // when its time is the next resin's, at most 8 minutes from
@@ -1450,8 +1480,42 @@ impl PlayerData {
                 .resin_spent
                 .filter(|(_, _, at)| plausible_time(u64::from(*at), now_secs))
                 .map(|(value, day, at)| good::GiResinSpent { value, day, at }),
+            bargains: routine
+                .bargains
+                .as_ref()
+                .filter(|(_, at)| plausible_time(u64::from(*at), now_secs))
+                .and_then(|(found, at)| self.export_bargains(found, *at)),
         };
         (!tasks.is_empty()).then_some(tasks)
+    }
+
+    /// `gi_tasks.bargains`, or `None` when an item has no GOOD key.
+    fn export_bargains(&self, found: &Bargains, at: u32) -> Option<good::GiBargains> {
+        let key = |id: u32| match self.game_data.get_material(id) {
+            Ok(name) => Some(good::to_good_key(name)),
+            Err(_) => {
+                tracing::warn!(item_id = id, "no game data for a Bargains item; left out");
+                None
+            }
+        };
+        let fates = found
+            .fates
+            .iter()
+            .map(|fate| {
+                Some(good::GiFateStock {
+                    item: key(fate.item)?,
+                    currency: key(fate.currency)?,
+                    cost: fate.cost,
+                    bought: fate.bought,
+                    limit: fate.limit,
+                })
+            })
+            .collect::<Option<Vec<_>>>()?;
+        Some(good::GiBargains {
+            at,
+            bought: found.bought_any,
+            fates,
+        })
     }
 
     /// `gi_exploration`, or `None` when none of it was captured.
@@ -4162,6 +4226,114 @@ mod tests {
             exported_commissions(&data).map(|c| (c.finished, c.claimed)),
             Some((3, Some(false)))
         );
+    }
+
+    /// Paimon's Bargains' Fates in 7.1's `GetShopRsp` layout (see the
+    /// protocol crate's shop module), `bought` by goods id.
+    fn bargains_rsp(bought: &[(u64, u64)]) -> Vec<u8> {
+        fn varint(mut value: u64, out: &mut Vec<u8>) {
+            loop {
+                let byte = (value & 0x7f) as u8;
+                value >>= 7;
+                if value == 0 {
+                    out.push(byte);
+                    return;
+                }
+                out.push(byte | 0x80);
+            }
+        }
+        let v = |tag: u64, value: u64| {
+            let mut out = Vec::new();
+            varint(tag << 3, &mut out);
+            varint(value, &mut out);
+            out
+        };
+        let b = |tag: u64, payload: &[u8]| {
+            let mut out = Vec::new();
+            varint((tag << 3) | 2, &mut out);
+            varint(payload.len() as u64, &mut out);
+            out.extend_from_slice(payload);
+            out
+        };
+        let goods = |id: u64, item: u64, currency: u64, cost: u64| {
+            let mut out = [
+                v(1, 99),
+                b(2, &[v(1, item), v(2, 1)].concat()),
+                v(5, id),
+                b(8, &[v(1, currency), v(2, cost)].concat()),
+                v(11, 1),
+                v(14, 5),
+            ]
+            .concat();
+            if let Some((_, n)) = bought.iter().find(|(g, _)| *g == id) {
+                out.extend(v(13, *n));
+            }
+            out
+        };
+        let shop: Vec<u8> = [
+            goods(102003, 223, 221, 5),
+            goods(102004, 224, 221, 5),
+            goods(102501, 223, 222, 75),
+            goods(102502, 224, 222, 75),
+        ]
+        .iter()
+        .flat_map(|g| b(4, g))
+        .collect();
+        [b(9, &shop), v(7, 1001)].concat()
+    }
+
+    #[test]
+    fn paimons_bargains_export_its_fates_and_take_purchases() {
+        let game_data = TestGameData {
+            material_map: r#""221": "Masterless Starglitter", "222": "Masterless Stardust",
+                             "223": "Intertwined Fate", "224": "Acquaint Fate""#,
+            ..Default::default()
+        };
+        let mut data = PlayerData::new(game_data.build());
+        data.set_clock(NOW_SECS - 600);
+        let read = |bytes: &[u8]| {
+            teyvatme_protocol::read_bargains(&teyvatme_protocol::matches_shop_goods(bytes).unwrap())
+                .unwrap()
+        };
+        data.process_routine(RoutinePart::Bargains(read(&bargains_rsp(&[(102501, 2)]))));
+        let bargains = |data: &PlayerData| data.export_tasks(NOW_SECS).and_then(|t| t.bargains);
+        let found = bargains(&data).unwrap();
+        assert_eq!(found.at, (NOW_SECS - 600) as u32);
+        assert!(found.bought);
+        let stock: Vec<(&str, &str, u32, u32, Option<u32>)> = found
+            .fates
+            .iter()
+            .map(|f| {
+                (
+                    f.item.as_str(),
+                    f.currency.as_str(),
+                    f.cost,
+                    f.bought,
+                    f.limit,
+                )
+            })
+            .collect();
+        assert_eq!(
+            stock,
+            vec![
+                ("IntertwinedFate", "MasterlessStarglitter", 5, 0, Some(5)),
+                ("AcquaintFate", "MasterlessStarglitter", 5, 0, Some(5)),
+                ("IntertwinedFate", "MasterlessStardust", 75, 2, Some(5)),
+                ("AcquaintFate", "MasterlessStardust", 75, 0, Some(5)),
+            ]
+        );
+        // A purchase of Acquaint Fates for Starglitter, later.
+        data.set_clock(NOW_SECS);
+        let shop = bargains_rsp(&[(102004, 3)]);
+        let goods = teyvatme_protocol::matches_shop_goods(&shop).unwrap();
+        let bought: Vec<_> = goods
+            .into_iter()
+            .filter(|g| g.varints.get(&5) == Some(&102004))
+            .collect();
+        assert!(data.apply_bargains_purchase(&bought));
+        let found = bargains(&data).unwrap();
+        assert_eq!(found.at, NOW_SECS as u32);
+        assert_eq!(found.fates[1].bought, 3);
     }
 
     #[test]

@@ -697,6 +697,39 @@ pub struct GiTasks {
     /// The Original Resin spent today (Capture 1.16.0).
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub resin_spent: Option<GiResinSpent>,
+    /// Paimon's Bargains as the game last showed it (Capture 1.17.2).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub bargains: Option<GiBargains>,
+}
+
+/// `gi_tasks.bargains`: Paimon's Bargains as opening it (or a purchase
+/// there) last showed it. Its counts are this month's, as of `at`.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiBargains {
+    /// When the game said it (unix seconds).
+    pub at: u32,
+    /// Whether anything at all was bought there this month.
+    pub bought: bool,
+    /// The Fates on sale for Masterless Stardust and Starglitter.
+    pub fates: Vec<GiFateStock>,
+}
+
+/// One Fate on sale in Paimon's Bargains.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiFateStock {
+    /// `IntertwinedFate` or `AcquaintFate`.
+    pub item: String,
+    /// `MasterlessStardust` or `MasterlessStarglitter`.
+    pub currency: String,
+    /// How much of it one costs.
+    pub cost: u32,
+    /// Bought this month.
+    pub bought: u32,
+    /// How many a month; absent when it has no limit.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub limit: Option<u32>,
 }
 
 /// `gi_tasks.resinSpent`: the Original Resin spent on one game day.
@@ -754,6 +787,7 @@ impl GiTasks {
             && self.sign_ins.is_none()
             && self.respawns.is_none()
             && self.resin_spent.is_none()
+            && self.bargains.is_none()
     }
 }
 
@@ -1167,6 +1201,7 @@ mod tests {
                 sign_ins: None,
                 respawns: None,
                 resin_spent: None,
+                bargains: None,
             }),
             gi_collections: Some(GiCollections {
                 spincrystals: Some(vec![141001, 141002]),
