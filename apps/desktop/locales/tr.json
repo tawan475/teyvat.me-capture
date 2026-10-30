@@ -1,4 +1,6 @@
 {
+  "12-hour": "12 saat",
+  "24-hour": "24 saat",
   "A Windows notification when your resin reaches this": "Reçinen bu sayıya ulaşınca bir Windows bildirimi",
   "A wish key comes when the game opens its wish history page, and lasts about a day. Each login starts fresh: a new login (or another account) clears the key.": "Dilek anahtarı, oyun dilek geçmişi sayfasını açtığında gelir ve yaklaşık bir gün geçerlidir. Her giriş sıfırdan başlar: yeni bir giriş (ya da başka bir hesap) anahtarı siler.",
   "AR {0}": "AR {0}",
@@ -62,6 +64,7 @@
   "Choose where uploads go, on {0}": "Yüklemelerin gideceği yeri seç: {0}",
   "Chronicled": "Nostaljik",
   "Clear": "Temizle",
+  "Clock": "Saat",
   "Close": "Kapat",
   "Close Genshin": "Genshin'i kapat",
   "Closed {0} Genshin processes. Start it again to capture.": "Kapatılan Genshin işlemi: {0}. Taramak için yeniden başlat.",
@@ -311,6 +314,8 @@
   "Synced {0} · up to date": "Eşitlendi {0} · güncel",
   "Syncing wishes: banner {0}, page {1}…": "Dilekler eşitleniyor: afiş {0}, sayfa {1}…",
   "System": "Sistem",
+  "System · 12-hour": "Sistem · 12 saat",
+  "System · 24-hour": "Sistem · 24 saat",
   "System · {0}": "Sistem · {0}",
   "Taskbar": "Görev çubuğu",
   "Test": "Dene",

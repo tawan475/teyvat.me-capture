@@ -2,6 +2,23 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.17.3
+
+- Fixed: started while Genshin was already past its first login (in the
+  world, or back at the title screen), Teyvat.me could not read any later
+  login, so going back to the title screen and entering again never worked
+  and only restarting the game did. The game draws every login's key from
+  one generator seeded at its first login of the session; Teyvat.me now
+  searches for that first login from the moment the game started (a second
+  or so, at most a few seconds when the game has been open for hours), and
+  every later login of that game is read at once. The Android app looks back
+  from the login instead (it cannot see when the game started).
+- Settings › App › Clock: 12-hour ("2:45 PM") or 24-hour ("14:45") times
+  everywhere in the app. It follows Windows' own time format until you pick
+  one. On Android times follow the phone's 24-hour setting.
+- Finding a session key is faster: each candidate key is checked with a
+  quarter of the work it took before.
+
 ## 1.17.2
 
 - New `gi_tasks.bargains`: Paimon's Bargains as the shop showed it. Opening

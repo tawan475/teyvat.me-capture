@@ -872,7 +872,7 @@ mod windows_impl {
             .and_then(|metadata| metadata.modified().ok())
             .map(|modified| {
                 chrono::DateTime::<chrono::Local>::from(modified)
-                    .format("%Y-%m-%d %H:%M")
+                    .format(&format!("%Y-%m-%d {}", crate::clock::hm()))
                     .to_string()
             });
         let registered_exists = registered

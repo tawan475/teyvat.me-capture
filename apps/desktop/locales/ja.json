@@ -1,4 +1,6 @@
 {
+  "12-hour": "12時間制",
+  "24-hour": "24時間制",
   "A Windows notification when your resin reaches this": "天然樹脂がこの値に達したら Windows で通知",
   "A wish key comes when the game opens its wish history page, and lasts about a day. Each login starts fresh: a new login (or another account) clears the key.": "祈願キーはゲームが祈願履歴ページを開いたときに届き、約1日有効です。ログインごとにリセットされます：新しいログイン（または別のアカウント）でキーは消去されます。",
   "AR {0}": "AR {0}",
@@ -62,6 +64,7 @@
   "Choose where uploads go, on {0}": "{0} でアップロード先を選択",
   "Chronicled": "集録祈願",
   "Clear": "クリア",
+  "Clock": "時刻表示",
   "Close": "閉じる",
   "Close Genshin": "原神を閉じる",
   "Closed {0} Genshin processes. Start it again to capture.": "原神のプロセスを {0} 個終了しました。キャプチャするにはもう一度起動してください。",
@@ -311,6 +314,8 @@
   "Synced {0} · up to date": "{0} を同期 · 最新です",
   "Syncing wishes: banner {0}, page {1}…": "祈願を同期中：{0}、{1} ページ…",
   "System": "システム",
+  "System · 12-hour": "システム · 12時間制",
+  "System · 24-hour": "システム · 24時間制",
   "System · {0}": "システム · {0}",
   "Taskbar": "タスクバー",
   "Test": "テスト",

@@ -31,6 +31,7 @@ mod admin;
 mod app;
 mod autostart;
 mod capture;
+mod clock;
 mod crash;
 mod game_watch;
 mod i18n;

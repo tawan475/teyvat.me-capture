@@ -1,4 +1,6 @@
 {
+  "12-hour": "12 ชั่วโมง",
+  "24-hour": "24 ชั่วโมง",
   "A Windows notification when your resin reaches this": "แจ้งเตือนผ่าน Windows เมื่อ Resin ถึงจำนวนนี้",
   "A wish key comes when the game opens its wish history page, and lasts about a day. Each login starts fresh: a new login (or another account) clears the key.": "คีย์การอธิษฐานจะมาเมื่อเกมเปิดหน้าประวัติการอธิษฐาน และใช้ได้ประมาณหนึ่งวัน การล็อกอินแต่ละครั้งเริ่มใหม่: การล็อกอินใหม่ (หรือบัญชีอื่น) จะล้างคีย์",
   "AR {0}": "AR {0}",
@@ -62,6 +64,7 @@
   "Choose where uploads go, on {0}": "เลือกปลายทางการอัปโหลดบน {0}",
   "Chronicled": "การอธิษฐานรวมปรารถนา",
   "Clear": "ล้าง",
+  "Clock": "นาฬิกา",
   "Close": "ปิด",
   "Close Genshin": "ปิด Genshin Impact",
   "Closed {0} Genshin processes. Start it again to capture.": "ปิดโปรเซส Genshin Impact แล้ว {0} รายการ เปิดเกมอีกครั้งเพื่อสแกน",
@@ -311,6 +314,8 @@
   "Synced {0} · up to date": "ซิงก์ {0} แล้ว · เป็นปัจจุบัน",
   "Syncing wishes: banner {0}, page {1}…": "กำลังซิงก์การอธิษฐาน: แบนเนอร์ {0} หน้า {1}…",
   "System": "ตามระบบ",
+  "System · 12-hour": "ตามระบบ · 12 ชั่วโมง",
+  "System · 24-hour": "ตามระบบ · 24 ชั่วโมง",
   "System · {0}": "ตามระบบ · {0}",
   "Taskbar": "แถบงาน",
   "Test": "ทดสอบ",

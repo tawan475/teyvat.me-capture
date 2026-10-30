@@ -1,4 +1,6 @@
 {
+  "12-hour": "12시간제",
+  "24-hour": "24시간제",
   "A Windows notification when your resin reaches this": "레진이 이 값에 도달하면 Windows 알림",
   "A wish key comes when the game opens its wish history page, and lasts about a day. Each login starts fresh: a new login (or another account) clears the key.": "기원 키는 게임이 기원 기록 페이지를 열 때 전달되며 약 하루 동안 유효합니다. 로그인할 때마다 새로 시작합니다: 새 로그인(또는 다른 계정)은 키를 지웁니다.",
   "AR {0}": "AR {0}",
@@ -62,6 +64,7 @@
   "Choose where uploads go, on {0}": "{0}에서 업로드할 곳 선택",
   "Chronicled": "묶음 기원",
   "Clear": "지우기",
+  "Clock": "시계",
   "Close": "닫기",
   "Close Genshin": "원신 닫기",
   "Closed {0} Genshin processes. Start it again to capture.": "원신 프로세스 {0}개를 닫았습니다. 캡처하려면 다시 실행하세요.",
@@ -311,6 +314,8 @@
   "Synced {0} · up to date": "{0} 동기화됨 · 최신 상태",
   "Syncing wishes: banner {0}, page {1}…": "기원 동기화 중: {0}, {1}페이지…",
   "System": "시스템",
+  "System · 12-hour": "시스템 · 12시간제",
+  "System · 24-hour": "시스템 · 24시간제",
   "System · {0}": "시스템 · {0}",
   "Taskbar": "작업 표시줄",
   "Test": "테스트",

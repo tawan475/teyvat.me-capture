@@ -166,7 +166,7 @@ fn abyss(abyss: Option<GiAbyss>, now: u64) -> Figure {
 fn full_at(at: u64, now: u64) -> String {
     match (local(at), local(now)) {
         (Some(at_time), Some(now_time)) if at_time.date_naive() == now_time.date_naive() => {
-            trf("Full at {0}", &[&at_time.format("%H:%M")])
+            trf("Full at {0}", &[&at_time.format(crate::clock::hm())])
         }
         _ => trf("Full {0}", &[&clock(at, now)]),
     }
@@ -176,7 +176,7 @@ fn full_at(at: u64, now: u64) -> String {
 fn clock(at: u64, now: u64) -> String {
     match (local(at), local(now)) {
         (Some(at_time), Some(now_time)) => {
-            let time = at_time.format("%H:%M").to_string();
+            let time = at_time.format(crate::clock::hm()).to_string();
             if at_time.date_naive() == now_time.date_naive() {
                 time
             } else {

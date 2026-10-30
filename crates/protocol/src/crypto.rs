@@ -75,6 +75,60 @@ pub fn lookup_initial_key(initial_keys: &HashMap<u16, Vec<u8>>, bytes: &[u8]) ->
     }
 }
 
+/// MT19937-64's middle word, twist matrix and masks.
+const MT_M: usize = 156;
+const MT_MATRIX_A: u64 = 0xB502_6F5A_A966_19E9;
+const MT_UPPER: u64 = 0xFFFF_FFFF_8000_0000;
+const MT_LOWER: u64 = 0x7FFF_FFFF;
+
+/// Output `index` (0 or 1) of `Mt64::new(seed)` for each of `seeds`,
+/// computing only the state words that output reads.
+///
+/// A real generator initialises all 312 words of its state and twists all of
+/// them before its first output, but output `i` only reads words `i`, `i + 1`
+/// and `i + MT_M` of the initial state. Stopping there is ~4x less work, and
+/// this runs once per candidate in every key search. Several seeds at once
+/// run as independent chains the CPU can overlap.
+fn mt64_early_outputs<const L: usize>(seeds: [u64; L], index: usize) -> [u64; L] {
+    debug_assert!(index < 2);
+    let mut word = seeds;
+    let mut at_index = seeds;
+    let mut after_index = seeds;
+    for i in 1..=index + MT_M {
+        for w in &mut word {
+            *w = 6_364_136_223_846_793_005u64
+                .wrapping_mul(*w ^ (*w >> 62))
+                .wrapping_add(i as u64);
+        }
+        if i == index {
+            at_index = word;
+        } else if i == index + 1 {
+            after_index = word;
+        }
+    }
+    // `word` is now state word `index + MT_M`.
+    std::array::from_fn(|lane| {
+        let x = (at_index[lane] & MT_UPPER) | (after_index[lane] & MT_LOWER);
+        let mut y = word[lane] ^ (x >> 1) ^ if x & 1 == 0 { 0 } else { MT_MATRIX_A };
+        y ^= (y >> 29) & 0x5555_5555_5555_5555;
+        y ^= (y << 17) & 0x71D6_7FFF_EDA6_0000;
+        y ^= (y << 37) & 0xFFF7_EEE0_0000_0000;
+        y ^ (y >> 43)
+    })
+}
+
+/// The first 64-bit word of `new_key_from_seed(seed)` for each of `seeds`,
+/// without building generators.
+fn first_key_words<const L: usize>(seeds: [u64; L]) -> [u64; L] {
+    // `key_generator`: seeded with the first generator's first output, then
+    // that generator's first output skipped.
+    mt64_early_outputs(mt64_early_outputs(seeds, 0), 1)
+}
+
+fn first_key_word(seed: u64) -> u64 {
+    first_key_words([seed])[0]
+}
+
 /// The Mersenne Twister that produces a session key's bytes, positioned at the
 /// key's first 64-bit word.
 fn key_generator(seed: u64) -> Mt64 {
@@ -145,12 +199,20 @@ impl MagicProbe {
     /// one candidate in 2^16 is rejected after a single draw and without
     /// allocating a key at all.
     fn matches(&self, seed: u64) -> bool {
-        let mut generator = key_generator(seed);
+        self.prefix_matches(first_key_word(seed)) && self.matches_after_prefix(seed)
+    }
 
+    /// Whether the key's first word, from [`first_key_words`], carries the
+    /// two leading magic bytes.
+    fn prefix_matches(&self, first_word: u64) -> bool {
+        let first = first_word.to_be_bytes();
+        first[0] == self.prefix[0] && first[1] == self.prefix[1]
+    }
+
+    /// The trailing magic bytes, for a seed whose prefix already matched.
+    fn matches_after_prefix(&self, seed: u64) -> bool {
+        let mut generator = key_generator(seed);
         let mut word = generator.next_u64().to_be_bytes();
-        if word[0] != self.prefix[0] || word[1] != self.prefix[1] {
-            return false;
-        }
 
         // Byte index of `word`'s first byte.
         let mut base = 0usize;
@@ -258,6 +320,189 @@ pub fn bruteforce(sent_time: u64, server_seed: u64, data: Vec<u8>) -> Option<(u6
         "unable to find the session encryption key seed"
     );
     None
+}
+
+/// One pass of a late search: the time seeds of `window`, each at the draw
+/// depths `depths`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LatePass {
+    pub window: LateWindow,
+    pub depths: std::ops::Range<u32>,
+}
+
+/// Candidate time seeds per unit of work handed to a search thread.
+const LATE_CHUNK_MS: u64 = 1_024;
+
+/// Candidates whose first key word is computed together. Independent
+/// Mersenne Twister chains in step keep the CPU busy where one chain waits on
+/// each multiplication in turn.
+const LANES: usize = 4;
+
+/// The send times a late search tries as the first login's time seed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LateWindow {
+    pub from_ms: u64,
+    pub to_ms: u64,
+    /// Search from `to_ms` back: with no idea when the game started, the
+    /// login is as likely anywhere, and a recent one is cheaper to find.
+    /// Otherwise from `from_ms` on, because a window that opens at the game's
+    /// start has its first login near there.
+    pub newest_first: bool,
+}
+
+impl LateWindow {
+    fn chunks(&self) -> u64 {
+        if self.to_ms < self.from_ms {
+            return 0;
+        }
+        (self.to_ms - self.from_ms) / LATE_CHUNK_MS + 1
+    }
+
+    /// The time seeds of chunk `index`, in search order.
+    fn chunk(&self, index: u64) -> Box<dyn Iterator<Item = u64>> {
+        let offset = index * LATE_CHUNK_MS;
+        if self.newest_first {
+            let hi = self.to_ms.saturating_sub(offset);
+            let lo = hi.saturating_sub(LATE_CHUNK_MS - 1).max(self.from_ms);
+            Box::new((lo..=hi).rev())
+        } else {
+            let lo = self.from_ms.saturating_add(offset);
+            let hi = lo.saturating_add(LATE_CHUNK_MS - 1).min(self.to_ms);
+            Box::new(lo..=hi)
+        }
+    }
+}
+
+/// Whether `data` decrypted with `key` is a whole run of game commands: each
+/// one's magic bytes where its own lengths put them, the last ending exactly
+/// at the end.
+///
+/// The magic-byte probe checks four bytes, enough for the few million
+/// candidates of one [`bruteforce`], but a late search tries billions, where
+/// four bytes alone would let a wrong key through now and then. The lengths
+/// have to add up as well, which no wrong key does by chance.
+fn decrypts_to_commands(key: &[u8], data: &[u8]) -> bool {
+    let mut plain = data.to_vec();
+    decrypt_command(key, &mut plain);
+    let mut offset = 0usize;
+    while offset < plain.len() {
+        let rest = &plain[offset..];
+        if rest.len() < 12 || rest[0] != 0x45 || rest[1] != 0x67 {
+            return false;
+        }
+        let header_len = u16::from_be_bytes([rest[4], rest[5]]) as usize;
+        let data_len = u32::from_be_bytes([rest[6], rest[7], rest[8], rest[9]]) as usize;
+        let Some(end) = (10 + header_len).checked_add(data_len) else {
+            return false;
+        };
+        if end + 2 > rest.len() || rest[end] != 0x89 || rest[end + 1] != 0xAB {
+            return false;
+        }
+        offset += end + 2;
+    }
+    true
+}
+
+/// Find the session key of a login whose generator was seeded before the
+/// capture saw anything: every time seed and draw depth of each pass in turn,
+/// against each server seed, on `threads` threads.
+///
+/// [`bruteforce`] looks around the login's own send time, which is right for
+/// the first login of a game process and wrong for every later one -- after
+/// the title screen the game draws from the generator its first login seeded,
+/// possibly hours earlier. When the capture started after that first login,
+/// that seed was never seen, so it has to be searched for. Returns the time
+/// seed (to keep for the next login) and the key.
+pub fn late_search(
+    passes: &[LatePass],
+    server_seeds: &[u64],
+    data: &[u8],
+    threads: usize,
+) -> Option<(u64, Vec<u8>)> {
+    use std::sync::Mutex;
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+
+    let probe = MagicProbe::new(data)?;
+    let found: Mutex<Option<(u64, Vec<u8>)>> = Mutex::new(None);
+    let done = AtomicBool::new(false);
+
+    // Whether `combined`, whose first key word already matched, is this
+    // message's key; recorded when it is.
+    let accept = |time: u64, combined: u64| {
+        if !probe.matches_after_prefix(combined) {
+            return false;
+        }
+        let key = new_key_from_seed(combined);
+        if !decrypts_to_commands(&key, data) {
+            return false;
+        }
+        trace!(time_seed = time, combined, "late search seed");
+        done.store(true, Ordering::Relaxed);
+        *found.lock().unwrap() = Some((time, key));
+        true
+    };
+
+    for pass in passes {
+        let chunks = pass.window.chunks();
+        let next = AtomicU64::new(0);
+        std::thread::scope(|scope| {
+            for _ in 0..threads.max(1) {
+                scope.spawn(|| {
+                    // `(depth, combined seed)` of the candidates waiting for a
+                    // full set of lanes. Never carried over to the next time
+                    // seed, so a match is credited to its own.
+                    let mut lanes = [(0u32, 0u64); LANES];
+                    let mut filled = 0;
+                    while !done.load(Ordering::Relaxed) {
+                        let index = next.fetch_add(1, Ordering::Relaxed);
+                        if index >= chunks {
+                            return;
+                        }
+                        for time in pass.window.chunk(index) {
+                            let mut generator = Random::seeded(time as i32);
+                            for _ in 0..pass.depths.start {
+                                generator.next_safe_uint64();
+                            }
+                            for depth in pass.depths.clone() {
+                                let client_seed = generator.next_safe_uint64();
+                                for &server_seed in server_seeds {
+                                    lanes[filled] = (depth, client_seed ^ server_seed);
+                                    filled += 1;
+                                    if filled < LANES {
+                                        continue;
+                                    }
+                                    filled = 0;
+                                    let words = first_key_words(lanes.map(|(_, seed)| seed));
+                                    for (&(depth, combined), word) in lanes.iter().zip(words) {
+                                        if probe.prefix_matches(word) && accept(time, combined) {
+                                            info!(
+                                                depth,
+                                                "session key recovered by the late search"
+                                            );
+                                            return;
+                                        }
+                                    }
+                                }
+                            }
+                            for &(depth, combined) in &lanes[..filled] {
+                                if probe.prefix_matches(first_key_word(combined))
+                                    && accept(time, combined)
+                                {
+                                    info!(depth, "session key recovered by the late search");
+                                    return;
+                                }
+                            }
+                            filled = 0;
+                        }
+                    }
+                });
+            }
+        });
+        if done.load(Ordering::Relaxed) {
+            break;
+        }
+    }
+    found.into_inner().unwrap()
 }
 
 #[cfg(test)]
@@ -557,6 +802,170 @@ mod tests {
         // The planted seed is the 6th draw, so depth 6 reaches it and 5 does not.
         assert_eq!(guess(time, server_seed, 6, &data), Some(key));
         assert_eq!(guess(time, server_seed, 5, &data), None);
+    }
+
+    #[test]
+    fn the_early_mt_outputs_match_the_full_generator() {
+        let mut seeds = Mt64::new(0x7e57);
+        for seed in [0, 1, u64::MAX, 0x8000_0000_0000_0000]
+            .into_iter()
+            .chain((0..2_000).map(|_| seeds.next_u64()))
+        {
+            let mut full = Mt64::new(seed);
+            let first = full.next_u64();
+            let second = full.next_u64();
+            assert_eq!(mt64_early_outputs([seed], 0), [first], "seed {seed}");
+            assert_eq!(
+                mt64_early_outputs([seed, !seed], 1)[0],
+                second,
+                "seed {seed}"
+            );
+            assert_eq!(
+                first_key_word(seed).to_be_bytes(),
+                new_key_from_seed(seed)[..8],
+                "seed {seed}"
+            );
+        }
+    }
+
+    /// A real one-command message under `key`: magic, lengths, a header and
+    /// payload, tail.
+    fn framed_command(key: &[u8], payload_len: usize) -> Vec<u8> {
+        let mut data = vec![0x45, 0x67, 0x12, 0x34, 0, 3];
+        data.extend_from_slice(&(payload_len as u32).to_be_bytes());
+        data.extend_from_slice(&[0x08, 0x01, 0x10]);
+        data.extend((0..payload_len).map(|i| i as u8));
+        data.extend_from_slice(&[0x89, 0xAB]);
+        decrypt_command(key, &mut data);
+        data
+    }
+
+    #[test]
+    fn only_a_key_that_frames_the_whole_message_passes() {
+        let key = new_key_from_seed(99);
+        let data = framed_command(&key, 40);
+        assert!(decrypts_to_commands(&key, &data));
+        assert!(!decrypts_to_commands(&new_key_from_seed(98), &data));
+
+        // Four magic bytes right but lengths that do not add up: what a wrong
+        // key that slipped past the probe looks like.
+        let crafted = craft_command(&key, 64);
+        assert!(MagicProbe::new(&crafted).unwrap().matches(99));
+        assert!(!decrypts_to_commands(&key, &crafted));
+
+        // Two commands back to back are one message.
+        let mut plain = framed_command(&key, 5);
+        decrypt_command(&key, &mut plain);
+        let mut two = plain.clone();
+        two.extend_from_slice(&plain);
+        decrypt_command(&key, &mut two);
+        assert!(decrypts_to_commands(&key, &two));
+    }
+
+    fn pass(
+        from_ms: u64,
+        to_ms: u64,
+        newest_first: bool,
+        depths: std::ops::Range<u32>,
+    ) -> LatePass {
+        LatePass {
+            window: LateWindow {
+                from_ms,
+                to_ms,
+                newest_first,
+            },
+            depths,
+        }
+    }
+
+    #[test]
+    fn the_late_search_finds_a_login_seeded_long_before() {
+        // The game's first login 20 minutes after it started, the capture
+        // only seeing its third login after that (draw 3), an hour later.
+        let started = 1_760_000_000_000u64;
+        let first_login = started + 20 * 60_000 + 417;
+        let sent = first_login + 3_600_000;
+        let combined = 0x0bad_c0de_0bad_c0de;
+        let key = new_key_from_seed(combined);
+        let server_seed = plant_seed(first_login as i64, 3, combined);
+        let data = framed_command(&key, 300);
+
+        // Not what the search around the login's own time can reach.
+        assert!(bruteforce(sent, server_seed, data.clone()).is_none());
+
+        let from_start = pass(started, sent, false, 0..8);
+        let (time, found) =
+            late_search(&[from_start], &[1, server_seed], &data, 4).expect("recoverable");
+        assert_eq!((time, &found), (first_login, &key));
+
+        let back_from_now = pass(sent - 2 * 3_600_000, sent, true, 0..8);
+        assert_eq!(
+            late_search(&[back_from_now], &[server_seed], &data, 4),
+            Some((first_login, key))
+        );
+    }
+
+    #[test]
+    fn the_late_search_reaches_its_deeper_band_and_stops_at_the_window() {
+        let login = 5_000_000u64;
+        let combined = 0x1357_9bdf_2468_ace0;
+        let key = new_key_from_seed(combined);
+        let server_seed = plant_seed(login as i64, 20, combined);
+        let data = framed_command(&key, 12);
+        let around = |from_ms, to_ms| {
+            [
+                pass(from_ms, to_ms, false, 0..8),
+                pass(from_ms, to_ms, false, 8..32),
+            ]
+        };
+
+        assert_eq!(
+            late_search(
+                &around(login - 3_000, login + 3_000),
+                &[server_seed],
+                &data,
+                2
+            ),
+            Some((login, key))
+        );
+        assert_eq!(
+            late_search(&around(login + 1, login + 3_000), &[server_seed], &data, 2),
+            None
+        );
+        // Not in a pass whose depths stop short of it.
+        assert_eq!(
+            late_search(
+                &[pass(login, login, false, 0..20)],
+                &[server_seed],
+                &data,
+                2
+            ),
+            None
+        );
+        // One thread does the same work, and every lane count: one server
+        // seed or three.
+        assert!(late_search(&around(login, login), &[server_seed], &data, 1).is_some());
+        assert!(late_search(&around(login, login), &[7, 8, server_seed], &data, 1).is_some());
+    }
+
+    #[test]
+    fn late_window_chunks_cover_it_once() {
+        for newest_first in [false, true] {
+            let window = LateWindow {
+                from_ms: 10,
+                to_ms: 10 + 3 * LATE_CHUNK_MS + 5,
+                newest_first,
+            };
+            let mut times: Vec<u64> = (0..window.chunks()).flat_map(|i| window.chunk(i)).collect();
+            if newest_first {
+                assert_eq!(times.first(), Some(&window.to_ms));
+            } else {
+                assert_eq!(times.first(), Some(&window.from_ms));
+            }
+            times.sort_unstable();
+            times.dedup();
+            assert_eq!(times, (window.from_ms..=window.to_ms).collect::<Vec<_>>());
+        }
     }
 
     #[test]

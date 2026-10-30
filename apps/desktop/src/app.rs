@@ -167,6 +167,9 @@ pub struct SavedAppState {
     /// Settings › App › Language; None follows the system's.
     #[serde(default)]
     pub language: Option<crate::i18n::Lang>,
+    /// Settings › App › Clock: 12 or 24 hours, or the system's.
+    #[serde(default)]
+    pub clock: crate::clock::ClockChoice,
     /// Send the wish history to the linked tracker account (the wish card's
     /// switch). On by default; needs a sign-in or a verified import key.
     #[serde(default = "default_true")]
@@ -319,6 +322,7 @@ impl Default for SavedAppState {
             onboarded: false,
             theme: ThemeChoice::System,
             language: None,
+            clock: crate::clock::ClockChoice::System,
             send_wishes: true,
             resin_alert: false,
             resin_alert_at: default_resin_alert_at(),
@@ -1215,6 +1219,7 @@ impl TeyvatmeApp {
         };
         saved_state.migrate();
         let lang = crate::i18n::set(saved_state.language);
+        crate::clock::set(saved_state.clock);
         tracing::info!("language: {}", lang.code());
         crate::ui::theme::install(&cc.egui_ctx, lang);
 

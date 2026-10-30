@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 use std::io::{BufWriter, Write};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, mpsc as blocking_mpsc};
 use std::time::{Duration, Instant};
 
@@ -351,6 +351,9 @@ struct SnifferThread {
     packet_tx: blocking_mpsc::Sender<Vec<u8>>,
     /// Packets handed over but not yet decoded.
     queued: Arc<AtomicUsize>,
+    /// When the newest game process started (unix ms; 0 = none running), for
+    /// [`GameSniffer::set_game_started_ms`].
+    game_started_ms: Arc<AtomicU64>,
 }
 
 /// Move packet decoding off the monitor's `select!` loop.
@@ -368,6 +371,8 @@ fn spawn_sniffer_thread(
     let (packet_tx, packet_rx) = blocking_mpsc::channel::<Vec<u8>>();
     let queued = Arc::new(AtomicUsize::new(0));
     let thread_queued = Arc::clone(&queued);
+    let game_started_ms = Arc::new(AtomicU64::new(0));
+    let thread_game_started = Arc::clone(&game_started_ms);
 
     std::thread::Builder::new()
         .name("teyvatme-sniffer".to_string())
@@ -382,6 +387,8 @@ fn spawn_sniffer_thread(
                 match packet_rx.recv_timeout(wait) {
                     Ok(packet) => {
                         stats.note_frame(thread_queued.load(Ordering::Relaxed));
+                        let started = thread_game_started.load(Ordering::Relaxed);
+                        sniffer.set_game_started_ms((started != 0).then_some(started));
                         let delivered = decode_one_packet(
                             &mut sniffer,
                             &mut last_generation,
@@ -423,7 +430,11 @@ fn spawn_sniffer_thread(
         })
         .context("Unable to start the packet decoding thread")?;
 
-    Ok(SnifferThread { packet_tx, queued })
+    Ok(SnifferThread {
+        packet_tx,
+        queued,
+        game_started_ms,
+    })
 }
 
 /// One binary record for the raw packet log.
@@ -1207,6 +1218,10 @@ impl Monitor {
         let first_look = !self.game_watch.has_polled();
         let capturing = self.app_state.app_state.capturing;
         let status = self.game_watch.poll(&mut self.game_detector, capturing);
+        if let Some(sniffer) = &self.sniffer {
+            let started = self.game_detector.game_started_ms().unwrap_or(0);
+            sniffer.game_started_ms.store(started, Ordering::Relaxed);
+        }
 
         // The two facts that explain any wrong verdict: whether the scan can
         // name the game's process on this machine at all, and how stale the
@@ -1614,7 +1629,11 @@ impl Monitor {
         let text = match resin_reaches(resin, RESIN_CAP).filter(|full| *full > now) {
             Some(full) => {
                 let at = chrono::DateTime::from_timestamp(full as i64, 0)
-                    .map(|at| at.with_timezone(&chrono::Local).format("%H:%M").to_string())
+                    .map(|at| {
+                        at.with_timezone(&chrono::Local)
+                            .format(crate::clock::hm())
+                            .to_string()
+                    })
                     .unwrap_or_default();
                 trf("Full at {0}", &[&at])
             }

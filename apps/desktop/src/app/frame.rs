@@ -122,7 +122,7 @@ impl TeyvatmeApp {
                                             Kind::Error => (icons::circle_x(), pal.bad),
                                         };
                                         ui.label(small_text(
-                                            event.at.format("%H:%M").to_string(),
+                                            event.at.format(crate::clock::hm()).to_string(),
                                             pal.tx3,
                                         ));
                                         ui.add(icons::image(icon, 14.0, color));
