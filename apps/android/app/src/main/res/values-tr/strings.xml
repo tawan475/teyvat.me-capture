@@ -88,8 +88,8 @@
     <string name="export_open_folder">Dışa aktarma klasörünü aç</string>
     <string name="export_no_folder">Henüz dışa aktarma klasörü yok</string>
     <string name="export_more">Diğer dışa aktarmalar</string>
-    <string name="export_save">GOOD JSON kaydet</string>
-    <string name="export_save_description">GOOD JSON; Genshin Optimizer, teyvat.me ve her GOOD okuyucu okur</string>
+    <string name="export_save">%1$s JSON kaydet</string>
+    <string name="export_save_description">%1$s JSON; Genshin Optimizer, teyvat.me ve her GOOD okuyucu okur</string>
     <string name="export_share">Paylaş</string>
     <string name="export_copy">Kopyala</string>
     <string name="export_auto">Otomatik dışa aktarma</string>
@@ -98,7 +98,7 @@
     <string name="export_auto_off">Kapalı · klasör seç</string>
     <string name="export_saved">Kaydedildi: %s</string>
     <string name="export_save_failed">Kaydedilemedi</string>
-    <string name="export_copied">GOOD JSON kopyalandı</string>
+    <string name="export_copied">%1$s JSON kopyalandı</string>
     <string name="export_too_big">Kopyalamak için çok büyük · Kaydet veya Paylaş kullan</string>
     <string name="export_not_captured">Henüz taranmadı: %s</string>
     <string name="export_nothing">Henüz bir şey taranmadı</string>
@@ -147,7 +147,7 @@
     <string name="no_log">Henüz günlük yok</string>
 
     <!-- First run -->
-    <string name="welcome_tagline">Genshin hesabın, oyunun kendi trafiğinden okunur ve GOOD JSON olarak kaydedilir</string>
+    <string name="welcome_tagline">Genshin hesabın, oyunun kendi trafiğinden okunur ve %1$s JSON olarak kaydedilir</string>
     <string name="welcome_only_genshin">Yalnızca Genshin</string>
     <string name="welcome_only_genshin_line">Diğer uygulamalar VPN\'i atlar</string>
     <string name="welcome_read_only">Salt okunur</string>
@@ -159,7 +159,7 @@
     <string name="get_started">Başla</string>
     <string name="setup_title">Oynamadan önce</string>
     <string name="setup_choose_folder">Klasör seç</string>
-    <string name="setup_choose_folder_line">Tarama başına bir GOOD JSON dosyası</string>
+    <string name="setup_choose_folder_line">Tarama başına bir %1$s JSON dosyası</string>
     <string name="always_on_vpn">Her zaman açık VPN</string>
     <string name="always_on_vpn_line">Tarama oyundan önce hazır olur</string>
     <string name="always_on_vpn_path">Ayarlar › Ağ › VPN › Teyvat.me Capture</string>
@@ -187,7 +187,7 @@
     <!-- Settings › Export -->
     <string name="export_auto_section">Otomatik dışa aktarma</string>
     <string name="export_auto_switch">Her taramayı bir klasöre kaydet</string>
-    <string name="export_auto_switch_line">GOOD JSON, tarama başına bir dosya</string>
+    <string name="export_auto_switch_line">%1$s JSON, tarama başına bir dosya</string>
     <string name="export_choose_another">Başka klasör seç</string>
     <string name="export_use_downloads">Download/Teyvat.me kullan</string>
     <string name="filters">Filtreler</string>
@@ -226,7 +226,7 @@
     <string name="channel_alerts_line">İlgilenmen gereken sorunlar</string>
     <string name="stop_capture">Taramayı durdur</string>
     <string name="stop">Durdur</string>
-    <string name="share_good">GOOD JSON paylaş</string>
+    <string name="share_good">%1$s JSON paylaş</string>
     <string name="alert_capture_stopped">Tarama durdu</string>
     <string name="alert_vpn_ended">VPN bağlantısı kesildi</string>
     <!-- Background -->

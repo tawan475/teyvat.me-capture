@@ -1948,7 +1948,8 @@ impl TeyvatmeApp {
 
     fn optimizer_save_to_clipboard(&mut self, ctx: &Context, json: String) -> Result<()> {
         ctx.copy_text(json);
-        self.toasts.info(tr("GOOD JSON copied"));
+        self.toasts
+            .info(trf("{0} JSON copied", &[&teyvatme_core::FORMAT_NAME]));
         Ok(())
     }
 

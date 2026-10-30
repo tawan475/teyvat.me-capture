@@ -27,8 +27,10 @@
 
 Reads your Genshin Impact account (characters, weapons, artifacts, materials,
 achievements and wish history) from the game's own network traffic while you
-play, and saves it as [GOOD](https://frzyc.github.io/genshin-optimizer/#/doc)
-JSON for Genshin Optimizer and most other tools. No account or sign-in needed;
+play, and saves it as [Leyline](https://teyvat.me/developers) JSON, the Teyvat record
+format: GOOD, plus everything else your account holds. A Leyline file is a
+[GOOD](https://frzyc.github.io/genshin-optimizer/#/doc) file, so Genshin
+Optimizer and most other tools read it. No account or sign-in needed;
 [teyvat.me](https://teyvat.me), the tracker website, is optional.
 
 > [!IMPORTANT]
@@ -55,8 +57,8 @@ JSON for Genshin Optimizer and most other tools. No account or sign-in needed;
 1. Start Teyvat.me Capture. On Windows, accept the administrator prompt.
 2. Start Genshin and enter the world. The status goes **Capture → Open
    Genshin → Enter world**, then says **Data decrypting**.
-3. **Save GOOD JSON** (or **Copy**) and import it in Genshin Optimizer or any
-   tool that reads GOOD. Turn on **Auto-export** to write a file after every
+3. **Save Leyline JSON** (or **Copy**) and import it in Genshin Optimizer or
+   any tool that reads GOOD. Turn on **Auto-export** to write a file after every
    capture.
 4. For wish history, open **Wish → History** in game once per login. Then copy
    the wish URL for paimon.moe or StarDB, or save the history as UIGF.
@@ -104,7 +106,7 @@ from this page.
 |---|---|
 | `apps/desktop` | The desktop app (Windows, Linux, macOS): capture, decoding, export, tracker sign-in and uploads, live sync, wish history. Package `teyvatme`, binary `teyvatme`; egui UI with the OS's own window frame and dialogs. |
 | `apps/android` | The Android app: a per-app VPN that forwards the game's traffic and decodes it on the phone (Kotlin + Compose, and a Rust native library in `apps/android/native`). |
-| `crates/core` | `teyvatme-core`: everything platform-free that both apps share. That is the decode layer from captured frames to account data, the account model, the GOOD export, live sync's deltas and policy, and the capture recordings. |
+| `crates/core` | `teyvatme-core`: everything platform-free that both apps share. That is the decode layer from captured frames to account data, the account model, the Leyline export, live sync's deltas and policy, and the capture recordings. |
 | `crates/protocol` | `teyvatme-protocol`: KCP, the game's encryption and key recovery, Oodle decompression, and the message matchers. |
 | `crates/game-data` | `teyvatme-game-data`: indexes the game data (characters, weapons, artifacts, materials, talents) from the pinned copy in [`game-data/`](game-data/README.md), at build time and run time. |
 
@@ -150,22 +152,35 @@ publishes them with checksums.
 <details>
 <summary><b>Export format</b></summary>
 
-The file is GOOD JSON with a few keys of Teyvat.me's own beside it. What each
-holds, which export carries which, and the rules they keep:
+For people writing a reader: [teyvat.me/developers](https://teyvat.me/developers).
+
+The export format is Leyline, the Teyvat record format: GOOD, plus everything
+else your account holds. It is GOOD-compatible: a GOOD file with optional
+`gi_*` keys of Teyvat.me's own beside GOOD's. Genshin Optimizer and any GOOD
+reader load it and skip the extra keys. The file still says
+`"format": "GOOD"`.
+
+What each key holds, which export carries which, and the rules they keep:
 [docs/export-format.md](docs/export-format.md); every field typed in
-[docs/teyvatme-export.ts](docs/teyvatme-export.ts).
+[docs/teyvatme-export.ts](docs/teyvatme-export.ts). On the developer page:
+[keys](https://teyvat.me/developers#keys), [rules](https://teyvat.me/developers#rules), [uploads](https://teyvat.me/developers#upload), and the
+[Leyline delta](https://teyvat.me/developers#live) that live sync sends.
 
 </details>
 
 <details>
 <summary><b>Contracts with the tracker and with irminsul installs</b></summary>
 
-Some names keep irminsul's spelling on purpose:
+Some names keep irminsul's spelling on purpose, or must still be read in it:
 
 - **The tracker's API.** That means the `irminsul` OAuth client and token
   audience, the `/api/oauth/irminsul` and `/api/irminsul/{whoami,import,changes}`
-  routes, the GOOD `gi_*` keys, the GOOD `source` value `"Irminsul"`, and the
-  upload's `irminsul_capture.json` file name.
+  routes, the upload's `irminsul_capture.json` file name, and the
+  [`gi_*` keys](https://teyvat.me/developers#keys) of a Leyline file.
+- **The file's header.** `format` stays `"GOOD"`. `source` is `"Teyvat.me"`,
+  what the app writes since 1.3.0; older builds and irminsul wrote
+  `"Irminsul"`. Readers must accept both (the tracker takes it as a label:
+  any string up to 64 characters).
 
 </details>
 

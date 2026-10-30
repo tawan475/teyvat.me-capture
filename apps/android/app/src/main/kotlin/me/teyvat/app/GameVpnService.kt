@@ -236,7 +236,7 @@ class GameVpnService : VpnService() {
                 Action.Stop -> getString(R.string.stop_capture) to PendingIntent.getService(
                     this, 1, Intent(this, GameVpnService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE,
                 )
-                Action.ShareGood -> getString(R.string.share_good) to PendingIntent.getActivity(
+                Action.ShareGood -> getString(R.string.share_good, BuildConfig.FORMAT_NAME) to PendingIntent.getActivity(
                     this, 2, Intent(this, MainActivity::class.java).setAction(MainActivity.ACTION_SHARE_GOOD),
                     PendingIntent.FLAG_IMMUTABLE,
                 )

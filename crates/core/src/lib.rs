@@ -20,3 +20,17 @@ pub mod pcapng;
 pub mod player_data;
 pub mod recording;
 pub mod wish;
+
+/// The export format's display name, the one place both apps take it from
+/// (the desktop's texts fill it in; Android's build reads this line into
+/// `BuildConfig.FORMAT_NAME`, so keep it a plain one-line string literal).
+///
+/// Only ever shown to people: it never goes into the file, which stays GOOD
+/// (`"format": "GOOD"`) with Teyvat.me's optional `gi_*` keys beside it.
+pub const FORMAT_NAME: &str = "Leyline";
+
+/// A saved export's file name: `leyline-<date>.json`, `date` as the caller
+/// formats it.
+pub fn export_file_name(date: impl std::fmt::Display) -> String {
+    format!("{}-{date}.json", FORMAT_NAME.to_ascii_lowercase())
+}

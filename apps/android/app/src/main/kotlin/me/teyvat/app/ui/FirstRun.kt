@@ -48,7 +48,7 @@ fun WelcomeScreen(padding: PaddingValues, onStart: () -> Unit) {
         Spacer(Modifier.height(24.dp))
         Spark(56)
         Text(stringResource(R.string.app_name), style = MaterialTheme.typography.displaySmall)
-        Text(stringResource(R.string.welcome_tagline), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.welcome_tagline, me.teyvat.app.BuildConfig.FORMAT_NAME), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         TmCard {
             ListRow(stringResource(R.string.welcome_only_genshin), stringResource(R.string.welcome_only_genshin_line), R.drawable.ic_shield_check)
             CardDivider()
@@ -95,7 +95,7 @@ fun SetUpScreen(
             SwitchRow(stringResource(R.string.export_auto), folderLabel, settings.autoExport, actions::setAutoExport, icon = R.drawable.ic_folder)
             CardDivider()
             ListRow(
-                stringResource(R.string.setup_choose_folder), stringResource(R.string.setup_choose_folder_line),
+                stringResource(R.string.setup_choose_folder), stringResource(R.string.setup_choose_folder_line, me.teyvat.app.BuildConfig.FORMAT_NAME),
                 onClick = actions::chooseFolder,
             ) { TmIcon(R.drawable.ic_chevron_right, null) }
         }

@@ -1837,10 +1837,8 @@ impl Monitor {
 
         std::fs::create_dir_all(&output_dir)
             .with_context(|| format!("Unable to create output directory {:?}", output_dir))?;
-        let file_name = format!(
-            "genshin_export_{}.json",
-            chrono::Local::now().format("%Y-%m-%d_%H-%M-%S")
-        );
+        let file_name =
+            teyvatme_core::export_file_name(chrono::Local::now().format("%Y-%m-%d_%H-%M-%S"));
         let path = output_dir.join(file_name);
 
         // `fs::write` rather than a `BufWriter`: the buffered version reported

@@ -88,8 +88,8 @@
     <string name="export_open_folder">Открыть папку экспорта</string>
     <string name="export_no_folder">Папки экспорта пока нет</string>
     <string name="export_more">Другой экспорт</string>
-    <string name="export_save">Сохранить GOOD JSON</string>
-    <string name="export_save_description">GOOD JSON для Genshin Optimizer, teyvat.me и любых программ, читающих GOOD</string>
+    <string name="export_save">Сохранить %1$s JSON</string>
+    <string name="export_save_description">%1$s JSON для Genshin Optimizer, teyvat.me и любых программ, читающих GOOD</string>
     <string name="export_share">Поделиться</string>
     <string name="export_copy">Копировать</string>
     <string name="export_auto">Автоэкспорт</string>
@@ -98,7 +98,7 @@
     <string name="export_auto_off">Выкл · выберите папку</string>
     <string name="export_saved">Сохранено: %s</string>
     <string name="export_save_failed">Не удалось сохранить</string>
-    <string name="export_copied">GOOD JSON скопирован</string>
+    <string name="export_copied">%1$s JSON скопирован</string>
     <string name="export_too_big">Слишком большой · сохраните или поделитесь</string>
     <string name="export_not_captured">Ещё не захвачено: %s</string>
     <string name="export_nothing">Пока ничего не захвачено</string>
@@ -147,7 +147,7 @@
     <string name="no_log">Лога пока нет</string>
 
     <!-- First run -->
-    <string name="welcome_tagline">Ваш аккаунт Genshin, прочитанный из трафика самой игры и сохранённый в GOOD JSON</string>
+    <string name="welcome_tagline">Ваш аккаунт Genshin, прочитанный из трафика самой игры и сохранённый в %1$s JSON</string>
     <string name="welcome_only_genshin">Только Genshin</string>
     <string name="welcome_only_genshin_line">Другие приложения идут мимо VPN</string>
     <string name="welcome_read_only">Только чтение</string>
@@ -159,7 +159,7 @@
     <string name="get_started">Начать</string>
     <string name="setup_title">Перед игрой</string>
     <string name="setup_choose_folder">Выбрать папку</string>
-    <string name="setup_choose_folder_line">Один файл GOOD JSON на каждый захват</string>
+    <string name="setup_choose_folder_line">Один файл %1$s JSON на каждый захват</string>
     <string name="always_on_vpn">Постоянная VPN</string>
     <string name="always_on_vpn_line">Захват работает ещё до игры</string>
     <string name="always_on_vpn_path">Настройки › Сеть › VPN › Teyvat.me Capture</string>
@@ -187,7 +187,7 @@
     <!-- Settings › Export -->
     <string name="export_auto_section">Автоэкспорт</string>
     <string name="export_auto_switch">Сохранять каждый захват в папку</string>
-    <string name="export_auto_switch_line">GOOD JSON, один файл на захват</string>
+    <string name="export_auto_switch_line">%1$s JSON, один файл на захват</string>
     <string name="export_choose_another">Выбрать другую папку</string>
     <string name="export_use_downloads">Использовать Download/Teyvat.me</string>
     <string name="filters">Фильтры</string>
@@ -226,7 +226,7 @@
     <string name="channel_alerts_line">Проблемы, которым нужно ваше внимание</string>
     <string name="stop_capture">Остановить захват</string>
     <string name="stop">Стоп</string>
-    <string name="share_good">Поделиться GOOD JSON</string>
+    <string name="share_good">Поделиться %1$s JSON</string>
     <string name="alert_capture_stopped">Захват остановлен</string>
     <string name="alert_vpn_ended">VPN отключён</string>
     <!-- Background -->

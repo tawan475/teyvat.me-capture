@@ -88,8 +88,8 @@
     <string name="export_open_folder">Buka folder ekspor</string>
     <string name="export_no_folder">Belum ada folder ekspor</string>
     <string name="export_more">Ekspor lainnya</string>
-    <string name="export_save">Simpan GOOD JSON</string>
-    <string name="export_save_description">GOOD JSON, dibaca oleh Genshin Optimizer, teyvat.me, dan pembaca GOOD apa pun</string>
+    <string name="export_save">Simpan %1$s JSON</string>
+    <string name="export_save_description">%1$s JSON, dibaca oleh Genshin Optimizer, teyvat.me, dan pembaca GOOD apa pun</string>
     <string name="export_share">Bagikan</string>
     <string name="export_copy">Salin</string>
     <string name="export_auto">Ekspor otomatis</string>
@@ -98,7 +98,7 @@
     <string name="export_auto_off">Mati · pilih folder</string>
     <string name="export_saved">Tersimpan: %s</string>
     <string name="export_save_failed">Gagal menyimpan</string>
-    <string name="export_copied">GOOD JSON disalin</string>
+    <string name="export_copied">%1$s JSON disalin</string>
     <string name="export_too_big">Terlalu besar untuk disalin · pakai Simpan atau Bagikan</string>
     <string name="export_not_captured">Belum tertangkap: %s</string>
     <string name="export_nothing">Belum ada yang tertangkap</string>
@@ -147,7 +147,7 @@
     <string name="no_log">Belum ada log</string>
 
     <!-- First run -->
-    <string name="welcome_tagline">Akun Genshin kamu, dibaca dari lalu lintas game itu sendiri dan disimpan sebagai GOOD JSON</string>
+    <string name="welcome_tagline">Akun Genshin kamu, dibaca dari lalu lintas game itu sendiri dan disimpan sebagai %1$s JSON</string>
     <string name="welcome_only_genshin">Hanya Genshin</string>
     <string name="welcome_only_genshin_line">Aplikasi lain tidak lewat VPN</string>
     <string name="welcome_read_only">Hanya baca</string>
@@ -159,7 +159,7 @@
     <string name="get_started">Mulai</string>
     <string name="setup_title">Sebelum bermain</string>
     <string name="setup_choose_folder">Pilih folder</string>
-    <string name="setup_choose_folder_line">Satu file GOOD JSON per tangkapan</string>
+    <string name="setup_choose_folder_line">Satu file %1$s JSON per tangkapan</string>
     <string name="always_on_vpn">VPN selalu aktif</string>
     <string name="always_on_vpn_line">Penangkapan siap sebelum game</string>
     <string name="always_on_vpn_path">Setelan › Jaringan › VPN › Teyvat.me Capture</string>
@@ -187,7 +187,7 @@
     <!-- Settings › Export -->
     <string name="export_auto_section">Ekspor otomatis</string>
     <string name="export_auto_switch">Simpan setiap tangkapan ke folder</string>
-    <string name="export_auto_switch_line">GOOD JSON, satu file per tangkapan</string>
+    <string name="export_auto_switch_line">%1$s JSON, satu file per tangkapan</string>
     <string name="export_choose_another">Pilih folder lain</string>
     <string name="export_use_downloads">Pakai Download/Teyvat.me</string>
     <string name="filters">Filter</string>
@@ -226,7 +226,7 @@
     <string name="channel_alerts_line">Masalah yang perlu kamu tangani</string>
     <string name="stop_capture">Hentikan penangkapan</string>
     <string name="stop">Berhenti</string>
-    <string name="share_good">Bagikan GOOD JSON</string>
+    <string name="share_good">Bagikan %1$s JSON</string>
     <string name="alert_capture_stopped">Penangkapan berhenti</string>
     <string name="alert_vpn_ended">VPN terputus</string>
     <!-- Background -->

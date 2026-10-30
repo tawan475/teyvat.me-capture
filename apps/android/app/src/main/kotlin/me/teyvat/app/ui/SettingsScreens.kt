@@ -296,7 +296,7 @@ fun ExportSettingsScreen(padding: PaddingValues, settings: Settings, folderLabel
     SectionLabel(stringResource(R.string.export_auto_section))
     Group {
         SwitchRow(
-            stringResource(R.string.export_auto_switch), stringResource(R.string.export_auto_switch_line), settings.autoExport,
+            stringResource(R.string.export_auto_switch), stringResource(R.string.export_auto_switch_line, me.teyvat.app.BuildConfig.FORMAT_NAME), settings.autoExport,
             actions::setAutoExport, icon = R.drawable.ic_folder,
         )
         CardDivider()

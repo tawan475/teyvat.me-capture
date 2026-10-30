@@ -46,9 +46,10 @@ object Exports {
     fun wishFileName(at: Long = System.currentTimeMillis()): String =
         "teyvatme_wishes_" + SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.ROOT).format(Date(at)) + ".json"
 
-    /** `teyvatme_<yyyy-MM-dd_HH-mm>.json`. */
+    /** `leyline-<yyyy-MM-dd_HH-mm>.json`: the format's name (BuildConfig.FORMAT_NAME) in lower case, like the desktop's. */
     fun fileName(at: Long = System.currentTimeMillis()): String =
-        "teyvatme_" + SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.ROOT).format(Date(at)) + ".json"
+        BuildConfig.FORMAT_NAME.lowercase(Locale.ROOT) + "-" +
+            SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.ROOT).format(Date(at)) + ".json"
 
     /** What the filters need that is not captured yet; null when it can export. */
     fun problem(summary: Summary, filters: ExportFilters): ExportProblem? {

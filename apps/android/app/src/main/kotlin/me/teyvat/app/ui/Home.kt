@@ -532,8 +532,8 @@ private fun ExportCard(summary: Summary, settings: Settings, folderLabel: String
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             TmButton(
-                stringResource(R.string.export_save), actions::saveGood, Modifier.weight(2f),
-                enabled = enabled, contentDescription = stringResource(R.string.export_save_description),
+                stringResource(R.string.export_save, BuildConfig.FORMAT_NAME), actions::saveGood, Modifier.weight(2f),
+                enabled = enabled, contentDescription = stringResource(R.string.export_save_description, BuildConfig.FORMAT_NAME),
             )
             TmButton(stringResource(R.string.export_share), actions::shareGood, Modifier.weight(1f), kind = ButtonKind.Outlined, enabled = enabled)
             TmButton(stringResource(R.string.export_copy), actions::copyGood, Modifier.weight(1f), kind = ButtonKind.Outlined, enabled = enabled)

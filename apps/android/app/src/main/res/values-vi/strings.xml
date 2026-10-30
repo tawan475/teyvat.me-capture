@@ -88,8 +88,8 @@
     <string name="export_open_folder">Mở thư mục xuất</string>
     <string name="export_no_folder">Chưa có thư mục xuất</string>
     <string name="export_more">Cách xuất khác</string>
-    <string name="export_save">Lưu GOOD JSON</string>
-    <string name="export_save_description">GOOD JSON, đọc được bằng Genshin Optimizer, teyvat.me và mọi trình đọc GOOD</string>
+    <string name="export_save">Lưu %1$s JSON</string>
+    <string name="export_save_description">%1$s JSON, đọc được bằng Genshin Optimizer, teyvat.me và mọi trình đọc GOOD</string>
     <string name="export_share">Chia sẻ</string>
     <string name="export_copy">Sao chép</string>
     <string name="export_auto">Tự động xuất</string>
@@ -98,7 +98,7 @@
     <string name="export_auto_off">Tắt · chọn thư mục</string>
     <string name="export_saved">Đã lưu %s</string>
     <string name="export_save_failed">Lưu thất bại</string>
-    <string name="export_copied">Đã sao chép GOOD JSON</string>
+    <string name="export_copied">Đã sao chép %1$s JSON</string>
     <string name="export_too_big">Quá lớn để sao chép · hãy Lưu hoặc Chia sẻ</string>
     <string name="export_not_captured">Chưa ghi được: %s</string>
     <string name="export_nothing">Chưa ghi được gì</string>
@@ -147,7 +147,7 @@
     <string name="no_log">Chưa có log</string>
 
     <!-- First run -->
-    <string name="welcome_tagline">Tài khoản Genshin của bạn, đọc từ chính lưu lượng của game và lưu thành GOOD JSON</string>
+    <string name="welcome_tagline">Tài khoản Genshin của bạn, đọc từ chính lưu lượng của game và lưu thành %1$s JSON</string>
     <string name="welcome_only_genshin">Chỉ Genshin</string>
     <string name="welcome_only_genshin_line">Ứng dụng khác không đi qua VPN</string>
     <string name="welcome_read_only">Chỉ đọc</string>
@@ -159,7 +159,7 @@
     <string name="get_started">Bắt đầu</string>
     <string name="setup_title">Trước khi chơi</string>
     <string name="setup_choose_folder">Chọn thư mục</string>
-    <string name="setup_choose_folder_line">Mỗi bản ghi một tệp GOOD JSON</string>
+    <string name="setup_choose_folder_line">Mỗi bản ghi một tệp %1$s JSON</string>
     <string name="always_on_vpn">VPN luôn bật</string>
     <string name="always_on_vpn_line">Ghi sẵn sàng trước khi vào game</string>
     <string name="always_on_vpn_path">Cài đặt › Mạng › VPN › Teyvat.me Capture</string>
@@ -187,7 +187,7 @@
     <!-- Settings › Export -->
     <string name="export_auto_section">Tự động xuất</string>
     <string name="export_auto_switch">Lưu mỗi bản ghi vào thư mục</string>
-    <string name="export_auto_switch_line">GOOD JSON, mỗi bản ghi một tệp</string>
+    <string name="export_auto_switch_line">%1$s JSON, mỗi bản ghi một tệp</string>
     <string name="export_choose_another">Chọn thư mục khác</string>
     <string name="export_use_downloads">Dùng Download/Teyvat.me</string>
     <string name="filters">Bộ lọc</string>
@@ -226,7 +226,7 @@
     <string name="channel_alerts_line">Sự cố cần bạn xử lý</string>
     <string name="stop_capture">Dừng ghi</string>
     <string name="stop">Dừng</string>
-    <string name="share_good">Chia sẻ GOOD JSON</string>
+    <string name="share_good">Chia sẻ %1$s JSON</string>
     <string name="alert_capture_stopped">Đã dừng ghi</string>
     <string name="alert_vpn_ended">VPN đã bị ngắt kết nối</string>
     <!-- Background -->

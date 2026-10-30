@@ -6,6 +6,7 @@
 //! Tracker, Automation, Optimizer, Power tools and Bug report dialogs.
 
 use egui::{Align, DragValue, Layout, RichText, Ui, vec2};
+use teyvatme_core::FORMAT_NAME;
 
 use super::frame::BREAKPOINT;
 use super::{AddressChange, Page, TeyvatmeApp, ThemeChoice, TrackerSignIn};
@@ -326,7 +327,7 @@ impl TeyvatmeApp {
                 ui,
                 tr("Save each capture to a folder"),
                 Some(secondary_text(
-                    tr("GOOD JSON, one file per capture"),
+                    trf("{0} JSON, one file per capture", &[&FORMAT_NAME]),
                     pal.tx2,
                 )),
                 &mut self.saved_state.save_result_to_file,

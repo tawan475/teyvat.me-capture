@@ -88,8 +88,8 @@
     <string name="export_open_folder">開啟匯出資料夾</string>
     <string name="export_no_folder">尚無匯出資料夾</string>
     <string name="export_more">更多匯出</string>
-    <string name="export_save">儲存 GOOD JSON</string>
-    <string name="export_save_description">GOOD JSON，可供 Genshin Optimizer、teyvat.me 及任何 GOOD 讀取工具讀取</string>
+    <string name="export_save">儲存 %1$s JSON</string>
+    <string name="export_save_description">%1$s JSON，可供 Genshin Optimizer、teyvat.me 及任何 GOOD 讀取工具讀取</string>
     <string name="export_share">分享</string>
     <string name="export_copy">複製</string>
     <string name="export_auto">自動匯出</string>
@@ -98,7 +98,7 @@
     <string name="export_auto_off">已關閉 · 選擇資料夾</string>
     <string name="export_saved">已儲存 %s</string>
     <string name="export_save_failed">儲存失敗</string>
-    <string name="export_copied">已複製 GOOD JSON</string>
+    <string name="export_copied">已複製 %1$s JSON</string>
     <string name="export_too_big">內容過大，無法複製 · 請使用儲存或分享</string>
     <string name="export_not_captured">尚未擷取：%s</string>
     <string name="export_nothing">尚未擷取任何內容</string>
@@ -147,7 +147,7 @@
     <string name="no_log">尚無日誌</string>
 
     <!-- First run -->
-    <string name="welcome_tagline">你的原神帳號，從遊戲本身的流量中讀取，並儲存為 GOOD JSON</string>
+    <string name="welcome_tagline">你的原神帳號，從遊戲本身的流量中讀取，並儲存為 %1$s JSON</string>
     <string name="welcome_only_genshin">僅限原神</string>
     <string name="welcome_only_genshin_line">其他應用程式不經過 VPN</string>
     <string name="welcome_read_only">唯讀</string>
@@ -159,7 +159,7 @@
     <string name="get_started">開始使用</string>
     <string name="setup_title">遊玩之前</string>
     <string name="setup_choose_folder">選擇資料夾</string>
-    <string name="setup_choose_folder_line">每次擷取一個 GOOD JSON 檔案</string>
+    <string name="setup_choose_folder_line">每次擷取一個 %1$s JSON 檔案</string>
     <string name="always_on_vpn">永久連線的 VPN</string>
     <string name="always_on_vpn_line">擷取會在遊戲之前就緒</string>
     <string name="always_on_vpn_path">設定 › 網路 › VPN › Teyvat.me Capture</string>
@@ -187,7 +187,7 @@
     <!-- Settings › Export -->
     <string name="export_auto_section">自動匯出</string>
     <string name="export_auto_switch">將每次擷取儲存到資料夾</string>
-    <string name="export_auto_switch_line">GOOD JSON，每次擷取一個檔案</string>
+    <string name="export_auto_switch_line">%1$s JSON，每次擷取一個檔案</string>
     <string name="export_choose_another">選擇其他資料夾</string>
     <string name="export_use_downloads">使用 Download/Teyvat.me</string>
     <string name="filters">篩選</string>
@@ -226,7 +226,7 @@
     <string name="channel_alerts_line">需要你處理的問題</string>
     <string name="stop_capture">停止擷取</string>
     <string name="stop">停止</string>
-    <string name="share_good">分享 GOOD JSON</string>
+    <string name="share_good">分享 %1$s JSON</string>
     <string name="alert_capture_stopped">擷取已停止</string>
     <string name="alert_vpn_ended">VPN 已中斷連線</string>
     <!-- Background -->
