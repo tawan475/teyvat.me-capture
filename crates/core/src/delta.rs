@@ -269,6 +269,15 @@ impl Keyed {
                 entries.insert(path(&["gi_tasks", part]), value.clone());
             }
         }
+        // The saved teams whole and the team in use (1.17.1): the parts of
+        // the wardrobe that move within a session.
+        if let Some(wardrobe) = good.get("gi_wardrobe").and_then(Value::as_object) {
+            for part in ["teams", "currentTeam"] {
+                if let Some(value) = wardrobe.get(part) {
+                    entries.insert(path(&["gi_wardrobe", part]), value.clone());
+                }
+            }
+        }
     }
 
     fn hint(&self, at: &Path, value: &Value) -> Option<Value> {
@@ -675,6 +684,37 @@ mod tests {
                 Change::Del(path(&["gi_tasks", "commissions"]), None),
                 Change::Del(path(&["gi_tasks", "resinSpent"]), None),
                 Change::Del(path(&["gi_tasks", "welkin"]), None),
+            ]
+        );
+    }
+
+    #[test]
+    fn teams_go_whole_and_the_rest_of_the_wardrobe_stays_out() {
+        let wardrobe = |current: u32, second: &[&str]| {
+            json!({
+                "gi_wardrobe": {
+                    "gliders": { "owned": [140_001], "worn": {} },
+                    "teams": {
+                        "1": { "name": "", "characters": ["HuTao"] },
+                        "2": { "name": "", "characters": second }
+                    },
+                    "currentTeam": current
+                }
+            })
+        };
+        let old = keyed(good(wardrobe(1, &["HuTao"])));
+        let new = keyed(good(wardrobe(2, &["Traveler", "HuTao"])));
+        assert_eq!(
+            diff(&old, &new),
+            vec![
+                Change::Set(path(&["gi_wardrobe", "currentTeam"]), json!(2)),
+                Change::Set(
+                    path(&["gi_wardrobe", "teams"]),
+                    json!({
+                        "1": { "name": "", "characters": ["HuTao"] },
+                        "2": { "name": "", "characters": ["Traveler", "HuTao"] }
+                    })
+                ),
             ]
         );
     }

@@ -82,11 +82,12 @@ pub use crate::collections::{
     HangoutChapter, HomeComfort, MusicSong, OUTFIT_IDS, ProfilePicture, SavedTeam, SceneRequest,
     SignIn, SocialProfile, TRAIL_IDS, TcgCard, TcgChallenges, TcgCollection, TcgDeck, WeaponSkin,
     WeeklyDiscounts, avatar_wardrobe, matches_activity_info_rsp, matches_aranara_notify,
-    matches_beyond_cosmetic_notify, matches_codex_kill_count, matches_codex_notify,
-    matches_coop_notify, matches_home_comfort_notify, matches_investigation_monster_rsp,
-    matches_investigation_notify, matches_music_game_notify, matches_scene_request,
-    matches_sign_in_rsp, matches_social_detail, matches_tcg_challenges, matches_tcg_notify,
-    matches_tcg_tavern, matches_weapon_skin_notify, player_nickname,
+    matches_avatar_team_update, matches_beyond_cosmetic_notify, matches_codex_kill_count,
+    matches_codex_notify, matches_coop_notify, matches_home_comfort_notify,
+    matches_investigation_monster_rsp, matches_investigation_notify, matches_music_game_notify,
+    matches_scene_request, matches_scene_team_update, matches_sign_in_rsp, matches_social_detail,
+    matches_tcg_challenges, matches_tcg_notify, matches_tcg_tavern, matches_weapon_skin_notify,
+    player_nickname,
 };
 use crate::connection::parse_frame;
 use crate::crypto::{bruteforce, decrypt_command, guess, lookup_initial_key};
@@ -1617,6 +1618,15 @@ pub enum CommandMatch {
     /// recognises (or not) against the game data's ids. Never produced by
     /// [`classify_command`]; the caller falls back to it.
     Records(RecordsMessage),
+    /// Saved teams edited (see [`matches_avatar_team_update`]): a candidate
+    /// only, which the caller believes when every guid is one of its
+    /// characters. Never produced by [`classify_command`]; the caller falls
+    /// back to it.
+    TeamUpdate(BTreeMap<u32, SavedTeam>),
+    /// The party on the field (see [`matches_scene_team_update`]): which
+    /// saved team is in use, once the caller matched the guids to its
+    /// characters and teams. Never produced by [`classify_command`].
+    Party(Vec<Vec<u64>>),
 }
 
 impl CommandMatch {
@@ -1647,6 +1657,8 @@ impl CommandMatch {
             Self::Welkin(_) => "welkin",
             Self::ResinClock(_) => "resin clock",
             Self::Records(_) => "records",
+            Self::TeamUpdate(_) => "team update",
+            Self::Party(_) => "party",
             Self::MusicGame(_) => "music game",
             Self::BeyondCosmetics(_) => "miliastra cosmetics",
             Self::SignIns(_) => "sign-ins",

@@ -1033,6 +1033,98 @@ pub fn avatar_wardrobe(data: &[u8]) -> Option<AvatarWardrobe> {
     Some(out)
 }
 
+/// The saved teams an `AvatarTeamUpdateNotify` payload changes, by slot, or
+/// `None` if it is not one: one repeated field of slot-to-team map entries
+/// (as in [`avatar_wardrobe`]), each team holding characters, beside at most
+/// a list of guids (7.1's trial characters). The game sends only the teams
+/// that changed (7.1: command 25632, after an edit in the party setup).
+///
+/// A candidate only: the shape is a map of small messages, so the caller
+/// believes it only when every guid is one of the account's characters.
+pub fn matches_avatar_team_update(data: &[u8]) -> Option<BTreeMap<u32, SavedTeam>> {
+    let msg = parse(data)?;
+    let mut teams = None;
+    let mut guid_list = false;
+    for values in fields_by_tag(&msg).values() {
+        let found: Option<BTreeMap<u32, SavedTeam>> = values
+            .iter()
+            .map(|value| match value {
+                LengthDelimited(bytes) => {
+                    saved_team(bytes).filter(|(_, team)| !team.avatar_guids.is_empty())
+                }
+                _ => None,
+            })
+            .collect();
+        match found {
+            Some(found) if found.len() == values.len() && values.len() <= MAX_TEAMS => {
+                if teams.replace(found).is_some() {
+                    return None;
+                }
+            }
+            _ => {
+                let guids = numbers(values)?;
+                if guid_list || !guids.iter().all(|g| *g >= MIN_GUID) {
+                    return None;
+                }
+                guid_list = true;
+            }
+        }
+    }
+    teams
+}
+
+/// The most characters on the field believed: four, also in co-op (one to
+/// three each).
+const MAX_PARTY: usize = 4;
+
+/// The party on the field, from a `SceneTeamUpdateNotify` payload: for each
+/// character entry, its guid-sized numbers (the character's and its weapon's
+/// guids, 7.1), or `None` if it is not one. The game sends it whenever the
+/// party is set up again: a team chosen or edited, a scene entered, co-op
+/// (7.1: command 29245, ~200 a session).
+///
+/// The shape: one repeated field of one to four entries beside at
+/// most one flag (`is_in_mp`), each entry a message with at least two guids
+/// (a character and its weapon) and at least three nested messages (the
+/// entity, its abilities, the character). 7.1's per-character outfit list
+/// (command 29173) has one guid an entry.
+/// The caller tells which guids are its own characters' (co-op lists the
+/// other players' too) and which saved team they are.
+pub fn matches_scene_team_update(data: &[u8]) -> Option<Vec<Vec<u64>>> {
+    let msg = parse(data)?;
+    let mut party = None;
+    let mut flag = false;
+    for values in fields_by_tag(&msg).values() {
+        match values.as_slice() {
+            [Varint(v)] if *v <= 1 && !flag => flag = true,
+            _ if party.is_none() && values.len() <= MAX_PARTY => {
+                let entries = values
+                    .iter()
+                    .map(|value| {
+                        let LengthDelimited(bytes) = value else {
+                            return None;
+                        };
+                        let member = entry(bytes)?;
+                        let guids: Vec<u64> = member
+                            .varints
+                            .values()
+                            .copied()
+                            .filter(|v| *v >= MIN_GUID)
+                            .collect();
+                        // Length-delimited fields: a small message reads as
+                        // packed numbers too, so all of them count.
+                        let nested = member.other.len();
+                        (!member.fixed && guids.len() >= 2 && nested >= 3).then_some(guids)
+                    })
+                    .collect::<Option<Vec<_>>>()?;
+                party = Some(entries);
+            }
+            _ => return None,
+        }
+    }
+    party
+}
+
 // ----------------------------------------------------------------- hangouts
 
 /// Hangout Event chapter ids (7.1: 101 401-108 301). Everything inside a
@@ -2486,6 +2578,96 @@ mod tests {
         assert_eq!(found.teams[&5].name, "Freeze");
         assert_eq!(found.teams[&14].avatar_guids, vec![guid, guid + 1]);
         assert_eq!(found.current_team, Some(14));
+    }
+
+    #[test]
+    fn an_edited_team_comes_alone() {
+        let guid = (812_345_678u64 << 32) + 7;
+        // 7.1's layout: the map on 2, a team's name on 9 and guids on 12.
+        let team = |slot: u64, name: &str, guids: &[u64]| {
+            let mut inner = Vec::new();
+            if !name.is_empty() {
+                inner.extend(b(9, name.as_bytes()));
+            }
+            inner.extend(list(12, guids));
+            b(2, &[v(1, slot), b(2, &inner)].concat())
+        };
+        let found = matches_avatar_team_update(&team(5, "", &[guid, guid + 1])).unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[&5].avatar_guids, vec![guid, guid + 1]);
+        let two = [
+            team(1, "Freeze", &[guid]),
+            team(5, "", &[guid + 2]),
+            list(4, &[guid + 9]),
+        ];
+        let found = matches_avatar_team_update(&two.concat()).unwrap();
+        assert_eq!(found[&1].name, "Freeze");
+        assert_eq!(found[&5].avatar_guids, vec![guid + 2]);
+        // A team without characters, a lone number beside, small numbers in
+        // the list, or two maps: another message.
+        assert_eq!(matches_avatar_team_update(&team(5, "Empty", &[])), None);
+        assert_eq!(
+            matches_avatar_team_update(&[team(5, "", &[guid]), v(3, 1)].concat()),
+            None
+        );
+        assert_eq!(
+            matches_avatar_team_update(&[team(5, "", &[guid]), list(4, &[7, 9])].concat()),
+            None
+        );
+        let other_map = b(7, &[v(1, 2), b(2, &list(12, &[guid]))].concat());
+        assert_eq!(
+            matches_avatar_team_update(&[team(5, "", &[guid]), other_map].concat()),
+            None
+        );
+    }
+
+    #[test]
+    fn the_party_on_the_field_is_its_guids() {
+        let guid = (812_345_678u64 << 32) + 7;
+        // 7.1's entry: avatar guid 5, weapon guid 7, uid 13, entity 8, and
+        // the entity, abilities and character as messages.
+        let member = |avatar: u64, weapon: u64| {
+            b(
+                8,
+                &[
+                    v(5, avatar),
+                    v(7, weapon),
+                    v(13, 812_345_678),
+                    v(8, 16_777_217),
+                    b(15, &v(1, 3)),
+                    b(14, &v(2, 1)),
+                    b(4, &v(1, avatar)),
+                ]
+                .concat(),
+            )
+        };
+        let data = [
+            member(guid, guid + 100),
+            member(guid + 1, guid + 101),
+            v(5, 1),
+        ]
+        .concat();
+        assert_eq!(
+            matches_scene_team_update(&data),
+            Some(vec![vec![guid, guid + 100], vec![guid + 1, guid + 101]])
+        );
+        // Five on the field, an entry without its messages, or a second
+        // number: another message.
+        let five: Vec<u8> = (0..5)
+            .flat_map(|n| member(guid + n, guid + 100 + n))
+            .collect();
+        assert_eq!(matches_scene_team_update(&five), None);
+        let bare = b(8, &[v(5, guid), b(15, &v(1, 3))].concat());
+        assert_eq!(matches_scene_team_update(&bare), None);
+        let no_weapon = b(
+            8,
+            &[v(5, guid), b(15, &v(1, 3)), b(14, &v(2, 1)), b(4, &v(1, 2))].concat(),
+        );
+        assert_eq!(matches_scene_team_update(&no_weapon), None);
+        assert_eq!(
+            matches_scene_team_update(&[member(guid, guid + 100), v(5, 1), v(6, 9)].concat()),
+            None
+        );
     }
 
     #[test]

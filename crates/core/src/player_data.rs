@@ -4729,6 +4729,82 @@ mod tests {
         assert!(data.is_empty());
     }
 
+    #[test]
+    fn teams_follow_the_party_setup() {
+        use teyvatme_protocol::{AvatarWardrobe, SavedTeam};
+        let mut data = PlayerData::new(
+            TestGameData {
+                character_map: r#""10000046": "Hu Tao", "10000005": "Traveler""#,
+                ..Default::default()
+            }
+            .build(),
+        );
+        let guid = |n: u64| (812_345_678u64 << 32) + n;
+        let team = |name: &str, guids: &[u64]| SavedTeam {
+            name: name.to_string(),
+            avatar_guids: guids.to_vec(),
+        };
+        let mut hu_tao = avatar(10000046, &[]);
+        hu_tao.guid = guid(1);
+        let mut traveler = avatar(10000005, &[]);
+        traveler.guid = guid(2);
+        data.process_characters(&[hu_tao, traveler]);
+        // Nothing before the login's wardrobe.
+        let edit = BTreeMap::from([(3, team("", &[guid(2)]))]);
+        assert_eq!(data.apply_team_update(&edit), 0);
+        assert_eq!(data.apply_party(&[vec![guid(2), guid(102)]]), None);
+        data.process_collection(CollectionPart::Wardrobe(AvatarWardrobe {
+            teams: BTreeMap::from([
+                (1, team("Vape", &[guid(1), guid(2)])),
+                (2, team("", &[guid(1)])),
+            ]),
+            current_team: Some(1),
+            ..Default::default()
+        }));
+        let teams = |data: &PlayerData| {
+            let json =
+                serde_json::to_value(data.export_at(&settings(), NOW_SECS * 1000).0).unwrap();
+            (
+                json["gi_wardrobe"]["teams"].clone(),
+                json["gi_wardrobe"]["currentTeam"].clone(),
+            )
+        };
+
+        // A new team, and an edit; again is no change.
+        assert_eq!(data.apply_team_update(&edit), 1);
+        let edit = BTreeMap::from([(1, team("Vape", &[guid(2), guid(1)]))]);
+        assert_eq!(data.apply_team_update(&edit), 1);
+        assert_eq!(data.apply_team_update(&edit), 0);
+        // A guid that is no held character: not the team message.
+        let stranger = BTreeMap::from([(2, team("", &[guid(1), guid(9)]))]);
+        assert_eq!(data.apply_team_update(&stranger), 0);
+        assert_eq!(
+            teams(&data).0,
+            serde_json::json!({
+                "1": {"name": "Vape", "characters": ["Traveler", "HuTao"]},
+                "2": {"name": "", "characters": ["HuTao"]},
+                "3": {"name": "", "characters": ["Traveler"]},
+            })
+        );
+
+        // The party names the team, guids beside (weapons) or not.
+        assert_eq!(data.apply_party(&[vec![guid(1), guid(101)]]), Some(2));
+        assert_eq!(data.apply_party(&[vec![guid(1), guid(101)]]), None);
+        assert_eq!(teams(&data).1, serde_json::json!(2));
+        // Out of order, someone else's character beside, or a trial
+        // character: no saved team.
+        assert_eq!(data.apply_party(&[vec![guid(1)], vec![guid(2)]]), None);
+        assert_eq!(
+            data.apply_party(&[vec![guid(2)], vec![guid(1)], vec![guid(50)]]),
+            None
+        );
+        assert_eq!(data.apply_party(&[vec![guid(2)], vec![guid(1)]]), Some(1));
+        // Two teams alike: which one is in use is unknown.
+        data.apply_team_update(&BTreeMap::from([(4, team("", &[guid(2)]))]));
+        assert_eq!(data.apply_party(&[vec![guid(2)]]), None);
+        assert_eq!(teams(&data).1, serde_json::json!(1));
+    }
+
     // -- gi_anecdotes ----------------------------------------------------------------
 
     fn book() -> AnecdoteData {
