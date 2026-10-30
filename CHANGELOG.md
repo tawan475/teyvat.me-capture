@@ -2,6 +2,15 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.17.1
+
+- Live sync: saved teams go to the tracker as they change. Choosing another
+  team or changing who is in one shows on the tracker's Characters page
+  without waiting for the next login. The team in use is read from the
+  party the game sets up on the field, so co-op and a domain's trial
+  characters change nothing. Needs the tracker of 2026-10-30 or later (an
+  older one ignores them).
+
 ## 1.17.0
 
 - New `gi_collections.quests`: every quest the game lists at login, finished

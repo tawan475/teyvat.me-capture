@@ -461,6 +461,8 @@ export interface GoodXDelta {
  *   achievements.<id>                                 finish time (0 = done, time unknown); del
  *   anecdotes.<id>                                    {state, finishCount}; del
  *   gi_anecdotes.unlockedAreas|reward|wish            that value; del
+ *   gi_tasks.<part>                                   that part whole; del
+ *   gi_wardrobe.teams|currentTeam                     the saved teams whole / the slot in use; del
  * Unknown paths are ignored, never an error.
  */
 export type DeltaChange =

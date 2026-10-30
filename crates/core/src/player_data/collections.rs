@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 use teyvatme_protocol::{
     AranaraState, ArchiveTab, AvatarWardrobe, DefeatCount, EndingState, EventInfo, Handbook,
     HandbookProgress, HandbookState, HangoutChapter, HomeComfort, MusicSong, ParentQuests,
-    RecordsMessage, SignIn, TcgChallenges, TcgCollection, WeaponSkin,
+    RecordsMessage, SavedTeam, SignIn, TcgChallenges, TcgCollection, WeaponSkin,
 };
 
 use super::PlayerData;
@@ -488,6 +488,62 @@ impl PlayerData {
             CollectionPart::SignIns(found) => state.sign_ins = Some(found),
             CollectionPart::Quests(found) => state.quests = Some(found),
         }
+    }
+
+    /// Saved teams edited mid-session (`AvatarTeamUpdateNotify`): believed
+    /// only once the login's wardrobe is held and when every guid is one of
+    /// the account's characters (the message's shape is a common one).
+    /// Returns how many teams changed.
+    pub fn apply_team_update(&mut self, teams: &BTreeMap<u32, SavedTeam>) -> usize {
+        let held = |guid: &u64| self.character_key_by_guid(*guid).is_some();
+        if self.collections.wardrobe.is_none()
+            || !teams
+                .values()
+                .all(|team| team.avatar_guids.iter().all(held))
+        {
+            return 0;
+        }
+        let Some(wardrobe) = self.collections.wardrobe.as_mut() else {
+            return 0;
+        };
+        let mut changed = 0;
+        for (slot, team) in teams {
+            if wardrobe.teams.get(slot) != Some(team) {
+                wardrobe.teams.insert(*slot, team.clone());
+                changed += 1;
+            }
+        }
+        changed
+    }
+
+    /// The team in use, from the party on the field (`SceneTeamUpdateNotify`,
+    /// sent when a team is chosen): the one saved team whose characters are
+    /// exactly the party, in order. A party with anyone else on the field
+    /// (co-op, a domain's trial characters), or that no saved team or more
+    /// than one holds, changes nothing. Returns the slot when it changed.
+    pub fn apply_party(&mut self, party: &[Vec<u64>]) -> Option<u32> {
+        let mut mine = Vec::with_capacity(party.len());
+        for guids in party {
+            let mut held = guids
+                .iter()
+                .filter(|guid| self.character_key_by_guid(**guid).is_some());
+            match (held.next(), held.next()) {
+                (Some(guid), None) => mine.push(*guid),
+                _ => return None,
+            }
+        }
+        let wardrobe = self.collections.wardrobe.as_mut()?;
+        let mut slots = wardrobe
+            .teams
+            .iter()
+            .filter(|(_, team)| !mine.is_empty() && team.avatar_guids == mine)
+            .map(|(slot, _)| *slot);
+        let slot = slots.next()?;
+        if slots.next().is_some() || wardrobe.current_team == Some(slot) {
+            return None;
+        }
+        wardrobe.current_team = Some(slot);
+        Some(slot)
     }
 
     /// `gi_collections`, or `None` when none of it was captured.

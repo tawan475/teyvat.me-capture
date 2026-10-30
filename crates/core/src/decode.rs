@@ -17,8 +17,9 @@ use std::time::{Duration, Instant};
 
 use teyvatme_protocol::{
     CommandMatch, GameCommand, GamePacket, GameSniffer, KeyState, avatar_wardrobe,
-    classify_command, classify_union, flat_message, matches_records_message, matches_scene_request,
-    player_nickname, union_commands,
+    classify_command, classify_union, flat_message, matches_avatar_team_update,
+    matches_records_message, matches_scene_request, matches_scene_team_update, player_nickname,
+    union_commands,
 };
 use tokio::sync::mpsc;
 
@@ -162,6 +163,8 @@ impl DataReplacement {
                         | CommandMatch::CommissionProgress(_)
                         | CommandMatch::ResinSpent(_)
                         | CommandMatch::Records(_)
+                        | CommandMatch::TeamUpdate(_)
+                        | CommandMatch::Party(_)
                 )
         });
         self.verdict(key, replaces)
@@ -259,7 +262,17 @@ pub fn classify_commands(commands: &[GameCommand]) -> Vec<(u16, CommandMatch)> {
                     .map(|found| (command.command_id, found))
                     .collect(),
                 Some(found) => vec![(command.command_id, found)],
-                None if union_commands(command).is_some() => classify_union(command),
+                // Both readings: an edited team (a slot and its team) is
+                // also the shape of the game's bundle of small notifies (an
+                // id and a body). The team is believed against the held
+                // characters; the bundle's commands are read as ever.
+                None if union_commands(command).is_some() => {
+                    let mut found = classify_union(command);
+                    if let Some(teams) = matches_avatar_team_update(&command.proto_data) {
+                        found.push((command.command_id, CommandMatch::TeamUpdate(teams)));
+                    }
+                    found
+                }
                 // Both readings: a lone packed list (the Serenitea Pot's
                 // music) also passes as a nested message for the character
                 // updates. Each is recognised in `apply_commands` against
@@ -268,6 +281,11 @@ pub fn classify_commands(commands: &[GameCommand]) -> Vec<(u16, CommandMatch)> {
                     .map(CommandMatch::Flat)
                     .into_iter()
                     .chain(matches_records_message(&command.proto_data).map(CommandMatch::Records))
+                    .chain(
+                        matches_avatar_team_update(&command.proto_data)
+                            .map(CommandMatch::TeamUpdate),
+                    )
+                    .chain(matches_scene_team_update(&command.proto_data).map(CommandMatch::Party))
                     .map(|found| (command.command_id, found))
                     .collect(),
             }
@@ -506,6 +524,22 @@ pub fn apply_commands(
                 tracing::info!(chapters = found.len(), "Found the Hangout Events");
                 player_data.process_collection(CollectionPart::Hangouts(found));
                 applied.routine = true;
+            }
+            CommandMatch::TeamUpdate(teams) => {
+                // Only the held characters can say (never log the names).
+                let changed = player_data.apply_team_update(&teams);
+                if changed > 0 {
+                    tracing::info!(changed, "Found a saved team edited");
+                    applied.routine = true;
+                    applied.live_updates += changed;
+                }
+            }
+            CommandMatch::Party(party) => {
+                if let Some(slot) = player_data.apply_party(&party) {
+                    tracing::info!(slot, "Found the team in use");
+                    applied.routine = true;
+                    applied.live_updates += 1;
+                }
             }
             CommandMatch::Wardrobe(found) => {
                 tracing::info!("Found the wardrobe");
@@ -817,6 +851,48 @@ mod tests {
 
     use super::test_support::*;
     use super::*;
+
+    #[test]
+    fn an_edited_team_is_read_though_it_looks_like_a_bundle() {
+        // 7.1's AvatarTeamUpdateNotify: {2: {1: slot, 2: {12: packed guids}}},
+        // which is also the bundle's shape (an id and a body per entry).
+        fn varint(mut value: u64, out: &mut Vec<u8>) {
+            while value >= 0x80 {
+                out.push((value as u8) | 0x80);
+                value >>= 7;
+            }
+            out.push(value as u8);
+        }
+        fn bytes(tag: u64, payload: &[u8]) -> Vec<u8> {
+            let mut out = Vec::new();
+            varint((tag << 3) | 2, &mut out);
+            varint(payload.len() as u64, &mut out);
+            out.extend_from_slice(payload);
+            out
+        }
+        let mut guids = Vec::new();
+        for n in 1..=4 {
+            varint((812_345_678u64 << 32) + n, &mut guids);
+        }
+        let entry = [vec![0x08, 5], bytes(2, &bytes(12, &guids))].concat();
+        let payload = bytes(2, &entry);
+        let command = GameCommand {
+            command_id: 25632,
+            header_len: 0,
+            data_len: payload.len() as u32,
+            proto_header: Vec::new(),
+            proto_data: payload,
+            sent: false,
+        };
+        let found = classify_commands(&[command]);
+        assert!(
+            found
+                .iter()
+                .any(|(_, found)| matches!(found, CommandMatch::TeamUpdate(teams) if teams.contains_key(&5))),
+            "{:?}",
+            found.iter().map(|(_, f)| f.kind()).collect::<Vec<_>>()
+        );
+    }
 
     #[test]
     fn a_session_reset_reaches_the_monitor_before_the_packet_that_caused_it() {
