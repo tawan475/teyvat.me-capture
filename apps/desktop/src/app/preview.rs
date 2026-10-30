@@ -161,6 +161,7 @@ impl TeyvatmeApp {
                 commissions: Some(crate::good::GiCommissions {
                     finished: 4,
                     total: 4,
+                    claimed: None,
                 }),
                 expeditions: Some(
                     [40, 95, 180, 300, 600]

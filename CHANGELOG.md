@@ -2,6 +2,20 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.16.0
+
+- Live sync: the planner's routine goes to the tracker as it changes: the
+  commissions, the expeditions, the realm currency, the Welkin Moon, the
+  weekly boss discounts, the bosses' respawns and the rest of `gi_tasks`.
+  Only the resin clock did; the rest waited for the next login. Needs the
+  tracker of 2026-10-30 or later (an older one ignores them).
+- Commissions are read as they are finished, not only from the login's
+  list, with whether Katheryne's reward was taken (`gi_tasks.commissions.claimed`).
+  The message is learned in game: once it has agreed with the commission
+  list three times, which happens within a few scene loads.
+- New `gi_tasks.resinSpent`: the Original Resin spent today, as the game
+  counts it (shown on the tracker's planner).
+
 ## 1.15.5
 
 - Live sync: friendship goes to the tracker as it changes. A domain, a

@@ -300,6 +300,7 @@ mod tests {
             commissions: Some(GiCommissions {
                 finished: 4,
                 total: 4,
+                claimed: None,
             }),
             expeditions: Some(vec![
                 GiExpedition {

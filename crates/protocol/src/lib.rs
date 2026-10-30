@@ -102,11 +102,13 @@ use crate::kcp::{KcpSniffer, SegmentHead, segment_head};
 use crate::oodle::TcpDecoder;
 pub use crate::records::{Record, RecordsMessage, matches_records_message};
 pub use crate::routine::{
-    ABYSS_FLOOR_IDS, ABYSS_STARS_PER_FLOOR, AbyssPeriod, DAILY_TASK_IDS, DailyCommissions,
-    EXPEDITION_HOURS, EXPEDITION_IDS, Expedition, HomeResources, MAX_ABYSS_FLOORS, MAX_DAILY_TASKS,
-    MAX_EXPEDITION_STATE, MAX_REALM_CURRENCY, MAX_RESIN, MAX_WELKIN_DAYS, ResinClock,
-    matches_avatar_expedition_notify, matches_daily_task_notify, matches_home_resource_notify,
+    ABYSS_FLOOR_IDS, ABYSS_STARS_PER_FLOOR, AbyssPeriod, COMMISSION_REWARD_IDS, CommissionProgress,
+    DAILY_TASK_IDS, DailyCommissions, EXPEDITION_HOURS, EXPEDITION_IDS, Expedition, HomeResources,
+    MAX_ABYSS_FLOORS, MAX_DAILY_TASKS, MAX_EXPEDITION_STATE, MAX_REALM_CURRENCY, MAX_RESIN,
+    MAX_RESIN_SPENT, MAX_WELKIN_DAYS, ResinClock, WeekResin, matches_avatar_expedition_notify,
+    matches_daily_task_data_notify, matches_daily_task_notify, matches_home_resource_notify,
     matches_recharge_data_notify, matches_resin_change_notify, matches_tower_all_data_rsp,
+    matches_week_active_notify,
 };
 pub use crate::unk_util::{
     Achievement, AchievementMatchError, matches_achievement_all_data_notify,
@@ -1538,6 +1540,12 @@ pub enum CommandMatch {
     ClientVersion(String),
     /// Today's Daily Commissions: see [`matches_daily_task_packet`].
     Commissions(DailyCommissions),
+    /// The day's commission count and Katheryne's reward *candidate*: see
+    /// [`matches_daily_task_data_notify`]; the caller believes it only with
+    /// the reward id it learned.
+    CommissionProgress(CommissionProgress),
+    /// The Original Resin spent today: see [`matches_week_active_notify`].
+    ResinSpent(WeekResin),
     /// The Spiral Abyss period now running: see [`matches_tower_packet`].
     Abyss(AbyssPeriod),
     /// Every character's expedition: see [`matches_expedition_packet`].
@@ -1623,6 +1631,8 @@ impl CommandMatch {
             Self::GachaInfo(_) => "banner list",
             Self::ClientVersion(_) => "client version",
             Self::Commissions(_) => "commissions",
+            Self::CommissionProgress(_) => "commission progress",
+            Self::ResinSpent(_) => "resin spent",
             Self::Abyss(_) => "abyss",
             Self::Expeditions(_) => "expeditions",
             Self::HomeResources(_) => "realm currency",
@@ -1758,7 +1768,13 @@ pub fn classify_union(game_command: &GameCommand) -> Vec<(u16, CommandMatch)> {
                         Some(updates) => CommandMatch::AchievementUpdates(updates),
                         None => match matches_fetter_notify(&inner.proto_data) {
                             Some(fetters) => CommandMatch::Fetters(fetters),
-                            None => CommandMatch::Flat(flat_message(inner)?),
+                            None => match matches_week_active_notify(&inner.proto_data) {
+                                Some(spent) => CommandMatch::ResinSpent(spent),
+                                None => match matches_daily_task_data_notify(&inner.proto_data) {
+                                    Some(found) => CommandMatch::CommissionProgress(found),
+                                    None => CommandMatch::Flat(flat_message(inner)?),
+                                },
+                            },
                         },
                     },
                 },
@@ -1814,6 +1830,9 @@ pub fn classify_command(game_command: &GameCommand) -> Option<CommandMatch> {
     }
     if let Some(clock) = matches_resin_change_notify(&game_command.proto_data) {
         claims.push(CommandMatch::ResinClock(clock));
+    }
+    if let Some(spent) = matches_week_active_notify(&game_command.proto_data) {
+        claims.push(CommandMatch::ResinSpent(spent));
     }
     if let Some(items) = matches_item_change_packet(game_command) {
         claims.push(CommandMatch::ChangedItems(items));
@@ -1883,6 +1902,13 @@ pub fn classify_command(game_command: &GameCommand) -> Option<CommandMatch> {
     // explain is not a delete notify.
     if let Some(guids) = matches_item_del_packet(game_command) {
         claims.push(CommandMatch::DeletedItems(guids));
+    }
+    // A candidate whose shape a dozen messages share: only what nothing else
+    // explains.
+    if claims.is_empty()
+        && let Some(found) = matches_daily_task_data_notify(&game_command.proto_data)
+    {
+        claims.push(CommandMatch::CommissionProgress(found));
     }
 
     if claims.len() > 1 {

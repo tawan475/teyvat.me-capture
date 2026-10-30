@@ -76,6 +76,11 @@ fn main() {
         let game_data =
             teyvatme_game_data::AnimeGameData::new_from_reader(file).expect("parse the game data");
         let mut data = PlayerData::new(game_data);
+        // The file has no times: everything is read as arriving now.
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |since| since.as_secs());
+        data.set_clock(now);
         // Live updates applied after the first full roster, by kind.
         let mut live: BTreeMap<String, usize> = BTreeMap::new();
         for command in &commands {
