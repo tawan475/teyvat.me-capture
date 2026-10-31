@@ -2,6 +2,24 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.17.4
+
+- Teyvat.me knows you're playing: while the game runs, the app tells
+  teyvat.me (signed in, or with an import key), which shows "Playing now on
+  <this PC>" with two buttons: Sync wishes and Send a capture. The app acts
+  on them within a minute. Phone alerts from teyvat.me hold off while you
+  play.
+- From your plan: the home screen shows today's farm from your teyvat.me
+  Planner (domains, bosses, what's missing and for whom), refreshed every
+  10 minutes. Open the Planner on teyvat.me once to publish it.
+- The resin notification can follow teyvat.me: set an amount (and resin
+  full) for this device in teyvat.me's Settings › Devices, and the app uses
+  it in place of its own setting.
+- Fixed: on some accounts Paimon's Bargains was never read. Their shop
+  carries one more small number beside the bought counts (on a goods that
+  can be bought once), and Teyvat.me gave up rather than guess which one
+  counts. Now the count on the Fates decides.
+
 ## 1.17.3
 
 - Fixed: started while Genshin was already past its first login (in the
@@ -18,10 +36,6 @@ Each release's section is its GitHub release notes (`.github/workflows/release.y
   one. On Android times follow the phone's 24-hour setting.
 - Finding a session key is faster: each candidate key is checked with a
   quarter of the work it took before.
-- Fixed: on some accounts Paimon's Bargains was never read. Their shop
-  carries one more small number beside the bought counts (on a goods that
-  can be bought once), and Teyvat.me gave up rather than guess which one
-  counts. Now the count on the Fates decides.
 
 ## 1.17.2
 

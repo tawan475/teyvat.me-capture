@@ -306,7 +306,7 @@ impl TeyvatmeApp {
         if cfg!(windows) {
             overline(ui, tr("Notifications"));
             // Set on the tracker for this device: shown, edited there.
-            let remote = self.state_rx.borrow().tracker_alerts;
+            let remote = self.saved_state.tracker_alerts;
             if let Some(alerts) = remote {
                 self.tracker_alert_row(ui, alerts);
                 return;
