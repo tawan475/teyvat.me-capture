@@ -239,13 +239,11 @@
     <!-- Updates -->
     <string name="section_updates">업데이트</string>
     <string name="update_auto">자동 업데이트</string>
-    <string name="update_auto_line">GitHub의 새 릴리스, 체크섬으로 확인</string>
+    <string name="update_auto_line">새 릴리스는 자동으로 내려받습니다(체크섬으로 확인). 설치는 \'지금 설치\'를 누르세요</string>
     <string name="update_check">업데이트 확인</string>
     <string name="update_checking">확인 중…</string>
     <string name="update_up_to_date">최신 버전 · %s</string>
     <string name="update_ready">업데이트 %s 준비됨</string>
-    <string name="update_waits_capture">캡처가 중지되면 설치</string>
-    <string name="update_waits_app">앱을 나가면 설치</string>
     <string name="update_install_now">지금 설치</string>
     <string name="update_tap_to_install">탭하여 설치</string>
     <string name="update_downloading">다운로드 중 %1$s · %2$d%%</string>

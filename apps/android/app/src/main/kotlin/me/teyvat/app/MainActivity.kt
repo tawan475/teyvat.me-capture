@@ -166,7 +166,6 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
     override fun onPause() {
         super.onPause()
         Updater.foreground = false
-        updater.installWhenFree()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -304,13 +303,13 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
             when (screen) {
                 Screen.Welcome -> WelcomeScreen(bottomOnly) { push(Screen.SetUp) }
                 Screen.SetUp -> SetUpScreen(bottomOnly, settings, folder, notificationsGranted, backgroundAllowed, this)
-                Screen.Home -> HomeContent(hero, summary, settings, capture.startingSince, folder, trackerView, update, vpn != VpnState.Off, backgroundAllowed, crashed, this, padding)
+                Screen.Home -> HomeContent(hero, summary, settings, capture.startingSince, folder, trackerView, update, backgroundAllowed, crashed, this, padding)
                 Screen.Settings -> SettingsScreen(padding, settings, trackerView, update, backgroundAllowed, this)
                 Screen.ExportSettings -> ExportSettingsScreen(padding, settings, folder, this)
                 Screen.Teyvat -> TeyvatScreen(padding, trackerView, summary.captured, settings, this)
                 Screen.Activity -> ActivityScreen(padding, summary.events)
                 Screen.About -> AboutScreen(padding, BuildConfig.VERSION_NAME, gameDataLabel(summary), ::openUrl, {
-                    me.teyvat.app.ui.UpdateBannerFor(update, vpn != VpnState.Off, this, Modifier.padding(horizontal = 16.dp), details = false)
+                    me.teyvat.app.ui.UpdateBannerFor(update, this, Modifier.padding(horizontal = 16.dp), details = false)
                 }) { push(Screen.Thanks) }
                 Screen.Thanks -> ThanksScreen(padding) { push(Screen.Licences) }
                 Screen.Licences -> LicencesScreen(padding, ::openUrl) { push(Screen.Notices) }

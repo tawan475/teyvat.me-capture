@@ -239,13 +239,11 @@
     <!-- Updates -->
     <string name="section_updates">Güncellemeler</string>
     <string name="update_auto">Otomatik güncelle</string>
-    <string name="update_auto_line">GitHub\'daki yeni sürümler, sağlama toplamlarıyla doğrulanır</string>
+    <string name="update_auto_line">Yeni sürümler kendiliğinden indirilir (sağlama toplamıyla denetlenir); yüklemek için Şimdi yükle\'ye dokunun</string>
     <string name="update_check">Güncellemeleri denetle</string>
     <string name="update_checking">Denetleniyor…</string>
     <string name="update_up_to_date">Güncel · %s</string>
     <string name="update_ready">%s güncellemesi hazır</string>
-    <string name="update_waits_capture">Tarama durunca yüklenir</string>
-    <string name="update_waits_app">Uygulamadan çıkınca yüklenir</string>
     <string name="update_install_now">Şimdi yükle</string>
     <string name="update_tap_to_install">Yüklemek için dokun</string>
     <string name="update_downloading">%1$s indiriliyor · %2$d%%</string>

@@ -2,6 +2,14 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.17.5
+
+- Android: an update never installs on its own any more. New releases
+  still download by themselves (with "Update automatically" on), and the
+  home screen says one is ready; it installs only when you open the app and
+  tap Install now. Installing in the background made Play Protect's app scan
+  pop up out of nowhere.
+
 ## 1.17.4
 
 - Teyvat.me knows you're playing: while the game runs, the app tells
