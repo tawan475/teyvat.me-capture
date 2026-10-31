@@ -2,6 +2,11 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.17.6
+
+- The "From your plan" card on the home screen is gone, on desktop and
+  Android: teyvat.me no longer publishes the plan.
+
 ## 1.17.5
 
 - Android: an update never installs on its own any more. New releases
