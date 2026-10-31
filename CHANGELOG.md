@@ -18,6 +18,10 @@ Each release's section is its GitHub release notes (`.github/workflows/release.y
   one. On Android times follow the phone's 24-hour setting.
 - Finding a session key is faster: each candidate key is checked with a
   quarter of the work it took before.
+- Fixed: on some accounts Paimon's Bargains was never read. Their shop
+  carries one more small number beside the bought counts (on a goods that
+  can be bought once), and Teyvat.me gave up rather than guess which one
+  counts. Now the count on the Fates decides.
 
 ## 1.17.2
 

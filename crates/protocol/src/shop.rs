@@ -219,7 +219,7 @@ struct Layout {
     id: u32,
     limit: u32,
     /// `None` until something was bought this month (an unbought goods
-    /// carries no count).
+    /// carries no count), or while no Fate tells it from another field.
     bought: Option<u32>,
 }
 
@@ -272,17 +272,15 @@ fn id_field(goods: &[ShopEntry]) -> Option<u32> {
     }
 }
 
-/// The field counting what was bought, given the limit's: present on some
-/// goods but not all, and wherever present a count from 1 to that goods'
-/// limit; a field that is 1 on nearly every goods is a flag. `Some(None)`
-/// when no field is one (nothing bought), `None` when several are.
-fn bought_field(goods: &[ShopEntry], skip: &[u32], limit: u32) -> Option<Option<u32>> {
+/// The fields that could count what was bought, given the limit's: present
+/// on some goods but not all, and wherever present a count from 1 to that
+/// goods' limit; a field that is 1 on nearly every goods is a flag.
+fn bought_fields(goods: &[ShopEntry], skip: &[u32], limit: u32) -> Vec<u32> {
     let tags: BTreeSet<u32> = goods
         .iter()
         .flat_map(|g| g.varints.keys().copied())
         .collect();
-    let found: Vec<u32> = tags
-        .into_iter()
+    tags.into_iter()
         .filter(|tag| !skip.contains(tag))
         .filter(|tag| {
             let with: Vec<&ShopEntry> = goods
@@ -302,12 +300,7 @@ fn bought_field(goods: &[ShopEntry], skip: &[u32], limit: u32) -> Option<Option<
                 && with.iter().all(|g| g.varints[tag] == 1);
             counts && !flag
         })
-        .collect();
-    match found.as_slice() {
-        [] => Some(None),
-        [tag] => Some(Some(*tag)),
-        _ => None,
-    }
+        .collect()
 }
 
 /// Paimon's Bargains, if `goods` (see [`matches_shop_goods`]) are its: both
@@ -367,7 +360,26 @@ pub fn read_bargains(goods: &[ShopEntry]) -> Option<Bargains> {
     let [limit] = limits.as_slice() else {
         return None;
     };
-    let bought = bought_field(goods, &[id, *limit], *limit)?;
+    // The bought count. Another small field can fit too (7.1: a 1 on a
+    // limit-1 goods only some accounts have); then the one on the Fates
+    // decides, and when none is on them they bought none, but whether
+    // anything else was is not known, so nothing is said.
+    let candidates = bought_fields(goods, &[id, *limit], *limit);
+    let on_fates: Vec<u32> = candidates
+        .iter()
+        .copied()
+        .filter(|tag| {
+            goods
+                .iter()
+                .any(|g| fate_of(g, item, cost).is_some() && g.varints.contains_key(tag))
+        })
+        .collect();
+    let bought = match (candidates.as_slice(), on_fates.as_slice()) {
+        ([], _) => None,
+        ([tag], _) | (_, [tag]) => Some(*tag),
+        (_, []) => None,
+        _ => return None,
+    };
     let layout = Layout {
         item,
         cost,
@@ -630,6 +642,48 @@ mod tests {
         );
         assert_eq!(matches_shop_goods(&entity), None);
         assert_eq!(matches_shop_purchase(&entity), None);
+    }
+
+    /// A limit-1 goods for Starglitter with a 1 on field 7 beside its limit,
+    /// as some 7.1 accounts' shops carry it.
+    fn flagged_goods() -> Vec<u8> {
+        let mut out = goods(102005, 1020, Some((221, 34)), 0, 1);
+        out.extend(v(7, 1));
+        out
+    }
+
+    #[test]
+    fn a_field_beside_the_count_is_told_apart_by_the_fates() {
+        let mut list = bargains(&[(102501, 5), (102502, 5), (102602, 20)]);
+        list.push(flagged_goods());
+        let found = read_bargains(&matches_shop_goods(&shop_rsp(&list)).unwrap()).unwrap();
+        assert!(found.bought_any);
+        let stardust: Vec<(u32, u32)> = found
+            .fates
+            .iter()
+            .filter(|f| f.currency == MASTERLESS_STARDUST)
+            .map(|f| (f.item, f.bought))
+            .collect();
+        assert_eq!(stardust, vec![(INTERTWINED_FATE, 5), (ACQUAINT_FATE, 5)]);
+    }
+
+    #[test]
+    fn with_no_fate_bought_the_fates_are_read_and_the_rest_left_unsaid() {
+        let mut list = bargains(&[(102602, 7)]);
+        list.push(flagged_goods());
+        let mut found = read_bargains(&matches_shop_goods(&shop_rsp(&list)).unwrap()).unwrap();
+        assert!(!found.bought_any);
+        assert!(found.fates.iter().all(|f| f.bought == 0));
+        // A purchase still teaches the count.
+        let buy = [
+            b(5, &goods(102502, 224, Some((222, 75)), 1, 5)),
+            v(15, 1001),
+            v(7, 1),
+        ]
+        .concat();
+        assert!(found.apply_purchase(&matches_shop_purchase(&buy).unwrap()));
+        let fate = found.fates.iter().find(|f| f.goods_id == 102502).unwrap();
+        assert_eq!(fate.bought, 1);
     }
 
     #[test]
