@@ -785,15 +785,6 @@ pub struct TeyvatmeApp {
     /// The folder of the last manual save, for "Open export folder".
     last_save_folder: Option<PathBuf>,
     started_at: Instant,
-    /// The home screen was in sight last frame (its coming into sight reads
-    /// the tracker's plan again).
-    home_in_sight: bool,
-    /// "From your plan"'s lines, built once per plan and language.
-    plan_lines: Option<(
-        Arc<crate::link::TodayDigest>,
-        crate::i18n::Lang,
-        today::PlanLines,
-    )>,
 }
 
 /// A native file dialog the UI asked for.
@@ -1482,8 +1473,6 @@ impl TeyvatmeApp {
             preview_click_at: None,
             last_save_folder: None,
             started_at: Instant::now(),
-            home_in_sight: false,
-            plan_lines: None,
             monitor_cancel_token: cancel_token,
             monitor_handle: Some(monitor_handle),
             install_lock,

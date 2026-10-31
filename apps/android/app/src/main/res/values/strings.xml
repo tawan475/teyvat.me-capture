@@ -389,12 +389,6 @@
     <string name="resin_alert_title">Resin %1$d/%2$d</string>
     <string name="resin_alert_full">Resin is full</string>
     <string name="resin_alert_full_at">Full at %s</string>
-    <string name="plan_title">From your plan</string>
-    <string name="plan_of">from your plan of %s</string>
-    <string name="plan_nothing">Nothing to farm today</string>
-    <string name="plan_none_hint">Open the Planner on %s to see your plan here</string>
-    <string name="plan_runs">%d runs</string>
-    <string name="plan_runs_up_to">up to %d runs</string>
     <string name="alert_off">Off</string>
     <string name="resin_alert_set_on">Set on %s</string>
 </resources>

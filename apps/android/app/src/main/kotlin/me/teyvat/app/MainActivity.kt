@@ -185,7 +185,6 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
         notificationsGranted = notificationsAllowed()
         backgroundAllowed = Battery.unrestricted(this)
         crashed = crashFile().let { it.exists() && it.lastModified() > getSharedPreferences("settings", MODE_PRIVATE).getLong("crash_dismissed", 0) }
-        if (stack.lastOrNull() == Screen.Home) tracker.todayShown()
         capture.refresh()
         // The upload target is changed on the website: read it again on return.
         if (System.currentTimeMillis() - whoAt > 10_000) {
@@ -236,10 +235,7 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
         val importKey by tracker.importKey.collectAsState()
         val lastLive by tracker.lastLive.collectAsState()
         val signInUrl by tracker.signInUrl.collectAsState()
-        val plan by tracker.plan.collectAsState()
         val trackerAlerts by tracker.alerts.collectAsState()
-        // Today (on Home) came into sight: its plan is read again.
-        androidx.compose.runtime.LaunchedEffect(screen) { if (screen == Screen.Home) tracker.todayShown() }
         // whoami every 5 min too (the desktop's), not only on resume: the
         // upload target may change on the website while the app is open.
         androidx.compose.runtime.LaunchedEffect(Unit) {
@@ -251,7 +247,7 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
         val trackerView = TrackerView(
             trackerState, lastUpload, uploading, settings.trackerUpload, settings.sendWishes, settings.liveSync,
             revoked = revoked, capturedUid = summary.player?.uid, key = importKey, api = Links.trackerApi,
-            lastLive = lastLive, signInUrl = signInUrl, plan = plan, alerts = trackerAlerts,
+            lastLive = lastLive, signInUrl = signInUrl, alerts = trackerAlerts,
         )
         val update by updater.state.collectAsState()
         Scaffold(

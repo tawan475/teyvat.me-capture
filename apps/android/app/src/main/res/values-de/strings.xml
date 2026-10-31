@@ -384,12 +384,6 @@
     <string name="resin_alert_title">Harz %1$d/%2$d</string>
     <string name="resin_alert_full">Das Harz ist voll</string>
     <string name="resin_alert_full_at">Voll um %s</string>
-    <string name="plan_title">Aus deinem Plan</string>
-    <string name="plan_of">aus deinem Plan vom %s</string>
-    <string name="plan_nothing">Heute nichts zu farmen</string>
-    <string name="plan_none_hint">Öffne den Planer auf %s, um deinen Plan hier zu sehen</string>
-    <string name="plan_runs">%d Läufe</string>
-    <string name="plan_runs_up_to">bis zu %d Läufe</string>
     <string name="alert_off">Aus</string>
     <string name="resin_alert_set_on">Auf %s festlegen</string>
 </resources>

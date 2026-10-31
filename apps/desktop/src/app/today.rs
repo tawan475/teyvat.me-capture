@@ -2,15 +2,13 @@
 // Copyright (c) 2026 tawan475
 
 //! The Today card's figures (spec §4.2b), from the capture's `gi_tasks`:
-//! what each mini stat shows at a given moment, and the lines of "From your
-//! plan" (the farm plan the tracker's Planner published). Pure, so the
-//! clocks can be tested; the cards themselves are in `home.rs`.
+//! what each mini stat shows at a given moment. Pure, so the clocks can be
+//! tested; the card itself is in `home.rs`.
 
 use chrono::{DateTime, Datelike, Local, TimeZone};
 
 use crate::good::{GiAbyss, GiExpedition, GiResin, GiTasks};
 use crate::i18n::{tr, trf};
-use crate::link::TodayDigest;
 
 /// Original Resin's cap (7.1).
 pub(super) const RESIN_CAP: u32 = 200;
@@ -211,117 +209,6 @@ fn group(n: u32) -> String {
     crate::ui::widgets::group_thousands(n as usize)
 }
 
-/// "From your plan", as drawn: every line built once per plan (and
-/// language), not every frame.
-#[derive(Clone, Debug, PartialEq)]
-pub(super) struct PlanLines {
-    /// The Genshin account it is for, on the tracker.
-    pub account: Option<String>,
-    /// "from your plan of Fri", shown once that game day is over.
-    pub old_line: Option<String>,
-    pub sections: Vec<PlanSectionLines>,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub(super) struct PlanSectionLines {
-    pub label: String,
-    /// The resin a run costs, as the Planner labels it ("20"); may be empty.
-    pub resin: String,
-    pub cards: Vec<PlanCardLines>,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub(super) struct PlanCardLines {
-    pub name: String,
-    pub detail: String,
-    /// "6 runs · 120": the runs (at most, when an upper bound) and resin.
-    pub cost: String,
-    /// "Teachings of Freedom ×9, …": what is still missing.
-    pub items: String,
-    /// Who needs it: "Venti, Sucrose".
-    pub who: String,
-    /// The two above as the card's one line under its name.
-    pub needs: String,
-}
-
-impl PlanLines {
-    pub(super) fn of(digest: &TodayDigest) -> Self {
-        let sections = digest
-            .sections
-            .iter()
-            .map(|section| PlanSectionLines {
-                label: section.label.clone(),
-                resin: section.resin.clone(),
-                cards: section
-                    .cards
-                    .iter()
-                    .map(|card| {
-                        let runs = card.runs.map(|runs| {
-                            if card.upper_bound {
-                                trf("up to {0} runs", &[&runs])
-                            } else {
-                                trf("{0} runs", &[&runs])
-                            }
-                        });
-                        let resin = card
-                            .resin
-                            .map(|resin| format!("{} {}", group(resin), tr("Resin")));
-                        let cost = [runs, resin]
-                            .into_iter()
-                            .flatten()
-                            .collect::<Vec<_>>()
-                            .join(" · ");
-                        let items = card
-                            .items
-                            .iter()
-                            .filter(|item| !item.name.is_empty())
-                            .map(|item| match item.missing {
-                                Some(missing) => format!("{} ×{}", item.name, group(missing)),
-                                None => item.name.clone(),
-                            })
-                            .collect::<Vec<_>>()
-                            .join(", ");
-                        let who = card.who.join(", ");
-                        let needs = [items.as_str(), who.as_str()]
-                            .into_iter()
-                            .filter(|part| !part.is_empty())
-                            .collect::<Vec<_>>()
-                            .join(" · ");
-                        PlanCardLines {
-                            name: card.name.clone(),
-                            detail: card.detail.clone(),
-                            cost,
-                            items,
-                            who,
-                            needs,
-                        }
-                    })
-                    .collect(),
-            })
-            .collect();
-        Self {
-            account: digest
-                .account
-                .as_ref()
-                .map(|account| account.name.clone())
-                .filter(|name| !name.is_empty()),
-            old_line: digest
-                .weekday
-                .and_then(sunday_first)
-                .map(|day| trf("from your plan of {0}", &[&weekday(day)])),
-            sections,
-        }
-    }
-}
-
-/// A weekday counted from Sunday (0), as the tracker counts them.
-fn sunday_first(day: u32) -> Option<chrono::Weekday> {
-    use chrono::Weekday::*;
-    [Sun, Mon, Tue, Wed, Thu, Fri, Sat]
-        .get(day as usize)
-        .copied()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -466,48 +353,6 @@ mod tests {
             expeditions(Some(&[]), now).value,
             Some(("None".to_owned(), None))
         );
-    }
-
-    #[test]
-    fn the_plans_lines_are_built_from_the_digest() {
-        let digest: TodayDigest = serde_json::from_str(
-            r#"{"v": 1, "account": {"id": 1, "name": "Main"}, "weekday": 5,
-                "sections": [{"key": "domain", "resin": "20", "label": "Domains", "cards": [
-                  {"name": "Cecilia Garden", "detail": "Freedom", "runs": 6, "resin": 120,
-                   "upperBound": false,
-                   "items": [{"key": "TeachingsOfFreedom", "name": "Teachings of Freedom", "missing": 9},
-                             {"key": "GuideToFreedom", "name": "Guide to Freedom", "missing": 1200}],
-                   "who": ["Venti", "Sucrose"]},
-                  {"name": "Stormterror", "runs": 2, "upperBound": true, "items": [{"name": "Dvalin's Plume"}]}
-                ]}]}"#,
-        )
-        .unwrap();
-        let lines = PlanLines::of(&digest);
-        assert_eq!(lines.account.as_deref(), Some("Main"));
-        assert_eq!(lines.old_line.as_deref(), Some("from your plan of Fri"));
-        let section = &lines.sections[0];
-        assert_eq!(
-            (section.label.as_str(), section.resin.as_str()),
-            ("Domains", "20")
-        );
-        let [garden, boss] = &section.cards[..] else {
-            panic!("two cards");
-        };
-        assert_eq!(garden.cost, "6 runs · 120 Resin");
-        assert_eq!(
-            garden.items,
-            "Teachings of Freedom ×9, Guide to Freedom ×1,200"
-        );
-        assert_eq!(garden.who, "Venti, Sucrose");
-        assert_eq!(
-            garden.needs,
-            "Teachings of Freedom ×9, Guide to Freedom ×1,200 · Venti, Sucrose"
-        );
-        assert_eq!(boss.cost, "up to 2 runs");
-        assert_eq!(boss.items, "Dvalin's Plume");
-        assert_eq!(boss.detail, "");
-        // No weekday: never "from your plan of".
-        assert_eq!(PlanLines::of(&TodayDigest::default()).old_line, None);
     }
 
     #[test]

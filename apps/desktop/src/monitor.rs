@@ -32,10 +32,7 @@ pub(crate) use crate::decode::{
 };
 use crate::game_watch::{self, GameStatus, GameWatch, SystemProcessDetector};
 use crate::i18n::{tr, trf};
-use crate::link::{
-    Alerts, AlertsAnswer, Command, Heartbeat, PlanState, PresenceOutcome, PresenceState,
-    TodayOutcome, TodayPoll,
-};
+use crate::link::{Alerts, AlertsAnswer, Command, Heartbeat, PresenceOutcome, PresenceState};
 use crate::live::{Action, BatchAnswer, ImportAnswer, LiveSync, Reason};
 use crate::player_data::{ExportReport, ExportSettings, PlayerData};
 use crate::signin::{AuthStatus, TrackerAuth, UploadCredential};
@@ -202,15 +199,6 @@ impl AppStateManager {
         let _ = self.state_tx.send(self.app_state.clone());
     }
 
-    /// Publish what the tracker's plan is now, and only a change.
-    pub fn update_plan(&mut self, plan: PlanState) {
-        if self.app_state.plan == plan {
-            return;
-        }
-        self.app_state.plan = plan;
-        let _ = self.state_tx.send(self.app_state.clone());
-    }
-
     /// Publish the tracker's alert settings (the UI keeps them in
     /// `app.ron`), and only a change.
     pub fn update_tracker_alerts(&mut self, alerts: Option<Alerts>) {
@@ -297,7 +285,7 @@ enum LiveEvent {
 /// Whole-request timeout for one batch of live changes.
 const LIVE_BATCH_TIMEOUT: Duration = Duration::from_secs(60);
 
-/// Whole-request timeout for a presence heartbeat or a plan read.
+/// Whole-request timeout for a presence heartbeat.
 const LINK_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// The presence heartbeat's `platform`.
@@ -309,11 +297,10 @@ const PLATFORM: &str = if cfg!(windows) {
     "linux"
 };
 
-/// What a presence or plan request reports back to the monitor.
+/// What a link request reports back to the monitor.
 #[derive(Debug)]
 enum LinkEvent {
     Presence(PresenceOutcome),
-    Today(TodayOutcome),
 }
 
 /// What the tracker hears about the game: closed, running (nothing decodes
@@ -759,10 +746,9 @@ pub struct Monitor {
     live_tx: mpsc::UnboundedSender<LiveEvent>,
     live_rx: mpsc::UnboundedReceiver<LiveEvent>,
 
-    /// The tracker link beyond uploads (`link.rs`): presence heartbeats and
-    /// plan reads, while a credential is set ([`Self::linked`]).
+    /// The tracker link beyond uploads (`link.rs`): presence heartbeats,
+    /// while a credential is set ([`Self::linked`]).
     presence: Heartbeat,
-    today: TodayPoll,
     /// A credential is set (the sign-in, else a verified import key), and
     /// this is not a replay.
     linked: bool,
@@ -878,7 +864,6 @@ impl Monitor {
             live_tx,
             live_rx,
             presence: Heartbeat::new(),
-            today: TodayPoll::new(),
             linked: false,
             link_tx,
             link_rx,
@@ -1131,7 +1116,6 @@ impl Monitor {
             Message::Tracker(request) => {
                 self.tracker_auth.handle(self.http.clone(), request);
             }
-            Message::TodayShown => self.today.opened(now_ms()),
             _ => (),
         }
     }
@@ -2229,9 +2213,8 @@ impl Monitor {
         )
     }
 
-    /// Follow the credential: a new link sends the state and reads the plan
-    /// at once; without one nothing is sent and the plan goes. Signing out
-    /// drops the tracker's alert settings.
+    /// Follow the credential: a new link sends the state at once; without
+    /// one nothing is sent. Signing out drops the tracker's alert settings.
     fn link_check(&mut self) {
         let state = self.upload_state();
         let linked = uploads_allowed(&self.capture_source)
@@ -2251,26 +2234,18 @@ impl Monitor {
         }
         self.linked = linked;
         self.presence.reset();
-        self.today.reset();
-        if !linked {
-            self.app_state.update_plan(PlanState::None);
-            self.ctx.request_repaint();
-        }
     }
 
-    /// When a heartbeat or a plan read is next due, in Unix ms.
+    /// When a heartbeat is next due, in Unix ms.
     fn link_next_ms(&self) -> Option<u64> {
         if !self.linked {
             return None;
         }
         let (state, uid) = self.presence_now();
-        [self.presence.due_at(state, uid), self.today.due_at(uid)]
-            .into_iter()
-            .flatten()
-            .min()
+        self.presence.due_at(state, uid)
     }
 
-    /// Send what is due: a heartbeat, a plan read.
+    /// Send a heartbeat when one is due.
     fn link_tick(&mut self) {
         if !self.linked {
             return;
@@ -2292,26 +2267,11 @@ impl Monitor {
                 crate::link::presence_body(presence, uid, env!("CARGO_PKG_VERSION"), PLATFORM);
             self.spawn_link_request(
                 &state.tracker_api_url,
-                credential.clone(),
+                credential,
                 reqwest::Method::POST,
                 crate::link::PRESENCE_PATH.to_owned(),
                 Some(body),
                 |status, body| LinkEvent::Presence(PresenceOutcome::of(status, body)),
-            );
-        }
-        if self.today.due_at(uid).is_some_and(|at| at <= now) {
-            self.today.sending(uid, now);
-            let path = match uid {
-                Some(uid) => format!("{}?uid={uid}", crate::link::TODAY_PATH),
-                None => crate::link::TODAY_PATH.to_owned(),
-            };
-            self.spawn_link_request(
-                &state.tracker_api_url,
-                credential,
-                reqwest::Method::GET,
-                path,
-                None,
-                |status, body| LinkEvent::Today(TodayOutcome::of(status, body)),
             );
         }
     }
@@ -2371,24 +2331,6 @@ impl Monitor {
                         Command::Snapshot => self.snapshot_asked(),
                     }
                 }
-            }
-            LinkEvent::Today(outcome) => {
-                self.today.answered(&outcome);
-                if !self.linked {
-                    return;
-                }
-                let plan = match outcome {
-                    TodayOutcome::Plan(digest) => PlanState::Plan(std::sync::Arc::new(digest)),
-                    TodayOutcome::NoPlan => PlanState::NoPlan,
-                    TodayOutcome::Gone => {
-                        tracing::info!("the tracker has no plan route");
-                        PlanState::None
-                    }
-                    // Kept as shown; read again at the next tick.
-                    TodayOutcome::Retry => return,
-                };
-                self.app_state.update_plan(plan);
-                self.ctx.request_repaint();
             }
         }
     }
@@ -3365,16 +3307,13 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn presence_and_the_plan_go_to_their_routes_with_the_key() {
+    fn presence_goes_to_its_route_with_the_key() {
         use crate::wish_history::test_server::{Reply, TestServer};
 
-        let replies = std::sync::Arc::new(std::sync::Mutex::new(vec![
-            Reply::json(404, r#"{"error":{"code":"no_plan","message":"No plan"}}"#),
-            Reply::json(
-                200,
-                r#"{"next":15,"commands":[{"id":"k3f9","kind":"snapshot"}],"alerts":null}"#,
-            ),
-        ]));
+        let replies = std::sync::Arc::new(std::sync::Mutex::new(vec![Reply::json(
+            200,
+            r#"{"next":15,"commands":[{"id":"k3f9","kind":"snapshot"}],"alerts":null}"#,
+        )]));
         let server = {
             let replies = replies.clone();
             TestServer::start(move |_| replies.lock().unwrap().pop().unwrap())
@@ -3413,25 +3352,12 @@ pub(crate) mod tests {
         assert_eq!(answer.next_secs, 15);
         assert_eq!(answer.commands, [Command::Snapshot]);
         assert_eq!(answer.alerts, AlertsAnswer::Unset);
-        let (status, answer) = runtime.block_on(link_request(
-            &client,
-            &auth,
-            &server.base,
-            key(),
-            reqwest::Method::GET,
-            "irminsul/today?uid=812345678",
-            None,
-        ));
-        assert_eq!(TodayOutcome::of(status, &answer), TodayOutcome::NoPlan);
 
         let requests = server.requests();
         assert_eq!(requests[0].method, "POST");
         assert!(requests[0].path.ends_with("/irminsul/presence"));
         assert_eq!(requests[0].header("x-import-key"), Some("gdt_uk_test"));
         assert_eq!(requests[0].body, body);
-        assert_eq!(requests[1].method, "GET");
-        assert!(requests[1].path.ends_with("/irminsul/today"));
-        assert_eq!(requests[1].param("uid"), Some("812345678"));
         // Nothing listens here: no answer, tried again at the next tick.
         let (status, _) = runtime.block_on(link_request(
             &client,

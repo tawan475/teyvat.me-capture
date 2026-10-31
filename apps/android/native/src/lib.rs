@@ -1140,66 +1140,10 @@ pub extern "system" fn Java_me_teyvat_app_NativeBridge_presenceAnswered(
     java_result(&env, Some(answer))
 }
 
-/// `NativeBridge.todayDue(uid, nowMs)`: whether the tracker's plan is read
-/// now; when true, the app reads it.
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_me_teyvat_app_NativeBridge_todayDue(
-    _env: JNIEnv,
-    _class: JClass,
-    uid: jni::sys::jlong,
-    now_ms: jni::sys::jlong,
-) -> jboolean {
-    u8::from(link::today_due(uid, u64::try_from(now_ms).unwrap_or(0)))
-}
-
-/// `NativeBridge.todayOpened(nowMs)`: the Today screen opened (the plan is
-/// read again, at most once a minute).
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_me_teyvat_app_NativeBridge_todayOpened(
-    _env: JNIEnv,
-    _class: JClass,
-    now_ms: jni::sys::jlong,
-) {
-    link::today_opened(u64::try_from(now_ms).unwrap_or(0));
-}
-
-/// `NativeBridge.todayAnswered(status, body)`: the plan read's answer as
-/// `{"kind": "plan" | "noPlan" | "gone" | "retry", "plan"?: {...}}`.
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_me_teyvat_app_NativeBridge_todayAnswered(
-    mut env: JNIEnv,
-    _class: JClass,
-    status: jint,
-    body: JString,
-) -> jstring {
-    let body = java_string(&mut env, &body).unwrap_or_default();
-    java_result(&env, Some(link::today_answered(status, &body)))
-}
-
 /// `NativeBridge.linkReset()`: the tracker link is gone or new.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_me_teyvat_app_NativeBridge_linkReset(_env: JNIEnv, _class: JClass) {
     link::reset();
-}
-
-/// `NativeBridge.planIsOld(weekday, at, uid, nowMs)`: whether a plan made
-/// for `weekday` (< 0: unknown), published at `at`, is from a game day that
-/// is over on `uid`'s server.
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_me_teyvat_app_NativeBridge_planIsOld(
-    _env: JNIEnv,
-    _class: JClass,
-    weekday: jint,
-    at: jni::sys::jlong,
-    uid: jni::sys::jlong,
-    now_ms: jni::sys::jlong,
-) -> jboolean {
-    u8::from(link::plan_is_old(
-        weekday,
-        at,
-        uid,
-        u64::try_from(now_ms).unwrap_or(0),
-    ))
 }
 
 /// `NativeBridge.syncWishesNow()`: the website's "Sync wishes": this login's
