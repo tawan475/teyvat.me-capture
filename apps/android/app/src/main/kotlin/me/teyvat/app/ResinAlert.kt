@@ -12,32 +12,39 @@ import android.content.Context
 import android.content.Intent
 
 /**
- * The resin alert (Settings, off by default): one notification when the
- * capture's resin clock reaches the threshold. An alarm, so it comes with
- * the app closed too; set again whenever the clock or the setting changes
+ * The resin alert (Settings, off by default): a notification when the
+ * capture's resin clock reaches the threshold. While the tracker holds
+ * alert settings for this device ([trackerAlerts]: signed in) they decide
+ * instead: its amount and/or full. An alarm, so it comes with the app
+ * closed too; set again whenever the clock or the setting changes
  * (TeyvatApp rereads the capture on a settings change), and never twice for
- * the same clock and threshold (kept across restarts, since an alarm set in
- * the past fires at once).
+ * the same clock and amount (kept across restarts, since an alarm set in
+ * the past fires at once). One alarm at a time: the next amount's.
  */
-class ResinAlert(private val context: Context, private val prefs: Prefs) {
+class ResinAlert(private val context: Context, private val prefs: Prefs, private val trackerAlerts: () -> TrackerAlerts?) {
     /** What this process last scheduled; unset at first, so the first tick also cancels an earlier process's alarm. */
     private var scheduled: String? = UNSET
 
     fun tick(summary: Summary) {
         val settings = prefs.value
         val today = summary.today
-        val target = settings.resinAlertAt.coerceIn(1, Today.RESIN_MAX)
-        val at = if (settings.resinAlert && today != null) reaches(today, target) else null
-        val key = at?.let { "${today?.resin}:${today?.resinNextAt}:$target" }
+        val targets = trackerAlerts()?.targets()
+            ?: listOfNotNull(settings.resinAlertAt.coerceIn(1, Today.RESIN_MAX).takeIf { settings.resinAlert })
+        // The highest amount already sent on this clock.
+        val clock = "${today?.resin}:${today?.resinNextAt}"
+        val done = sent(context)?.takeIf { it.substringBeforeLast(':') == clock }?.substringAfterLast(':')?.toIntOrNull() ?: 0
+        val next = if (today == null) null else targets.filter { it > done }.firstNotNullOfOrNull { t -> reaches(today, t)?.let { t to it } }
+        val target = next?.first ?: 0
+        val key = next?.let { "$clock:${it.first}" }
         if (key == scheduled) return
         scheduled = key
         val alarms = context.getSystemService(AlarmManager::class.java)
         val pending = pendingIntent(context, target, today?.resinFullAt())
-        if (key == null || key == sent(context)) {
+        if (next == null) {
             alarms.cancel(pending)
             return
         }
-        alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at * 1000, pending)
+        alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, next.second * 1000, pending)
         context.getSharedPreferences(STORE, Context.MODE_PRIVATE).edit().putString(PENDING, key).apply()
     }
 

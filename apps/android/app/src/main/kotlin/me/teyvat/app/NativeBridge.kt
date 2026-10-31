@@ -89,4 +89,31 @@ object NativeBridge {
 
     /** A batch finished: its HTTP status (0: no answer, -1: signed out) and body. */
     external fun batchAnswered(status: Int, body: String)
+
+    /**
+     * Whether a presence heartbeat for [state] (`stopped`, `running`,
+     * `decoding`) and [uid] (-1: unknown) goes now; true counts it as sent.
+     */
+    external fun presenceDue(state: String, uid: Long, nowMs: Long): Boolean
+
+    /** The heartbeat's answer (status 0: none): `{"gone": true}` or `{"commands": [...], "alerts"?: {...} | null}`. */
+    external fun presenceAnswered(status: Int, body: String, nowMs: Long): String
+
+    /** Whether the tracker's plan is read now for [uid] (-1: unknown); true counts it as sent. */
+    external fun todayDue(uid: Long, nowMs: Long): Boolean
+
+    /** The Today screen opened: the plan is read again, at most once a minute. */
+    external fun todayOpened(nowMs: Long)
+
+    /** The plan read's answer: `{"kind": "plan" | "noPlan" | "gone" | "retry", "plan"?: {...}}`. */
+    external fun todayAnswered(status: Int, body: String): String
+
+    /** The tracker link is gone (signed out, no key) or new. */
+    external fun linkReset()
+
+    /** Whether a plan made for [weekday] (-1: unknown), published at [at], is from a game day that is over on [uid]'s server. */
+    external fun planIsOld(weekday: Int, at: Long, uid: Long, nowMs: Long): Boolean
+
+    /** The website's "Sync wishes": this login's wish key syncs now; false without one. */
+    external fun syncWishesNow(): Boolean
 }

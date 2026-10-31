@@ -40,20 +40,22 @@ class TeyvatApp : Application() {
         prefs = Prefs(this)
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
         autoExport = AutoExporter(this, prefs, scope)
-        resinAlert = ResinAlert(this, prefs)
         tracker = Tracker(this, prefs, scope)
+        resinAlert = ResinAlert(this, prefs) { tracker.alerts.value }
         WishTrackerBridge.tracker = tracker
-        capture = Capture(scope) { summary ->
+        capture = Capture(scope) { vpn, summary ->
             autoExport.tick(summary)
-            tracker.tick(summary)
+            tracker.tick(vpn, summary)
             resinAlert.tick(summary)
         }
         // A changed resin alert reschedules at once: the capture's own reads may
         // be hours away (game closed), and the old alarm would fire at the old level.
+        // The tracker's settings for this device count the same.
         scope.launch {
             prefs.settings.map { it.resinAlert to it.resinAlertAt }.distinctUntilChanged().drop(1)
                 .collect { capture.refresh() }
         }
+        scope.launch { tracker.alerts.drop(1).collect { capture.refresh() } }
         updater = Updater(this, prefs, scope) { capture.vpn.value != VpnState.Off }
         // The Quick Settings tile follows capture, however it was started or stopped.
         scope.launch { capture.vpn.collect { CaptureTile.update(this@TeyvatApp) } }
