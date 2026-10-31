@@ -32,9 +32,13 @@ pub(crate) use crate::decode::{
 };
 use crate::game_watch::{self, GameStatus, GameWatch, SystemProcessDetector};
 use crate::i18n::{tr, trf};
+use crate::link::{
+    Alerts, AlertsAnswer, Command, Heartbeat, PlanState, PresenceOutcome, PresenceState,
+    TodayOutcome, TodayPoll,
+};
 use crate::live::{Action, BatchAnswer, ImportAnswer, LiveSync, Reason};
 use crate::player_data::{ExportReport, ExportSettings, PlayerData};
-use crate::signin::{TrackerAuth, UploadCredential};
+use crate::signin::{AuthStatus, TrackerAuth, UploadCredential};
 use crate::{AppState, DataUpdated, Message, State};
 
 /// How long the automation trigger waits after the last new data before it
@@ -198,6 +202,25 @@ impl AppStateManager {
         let _ = self.state_tx.send(self.app_state.clone());
     }
 
+    /// Publish what the tracker's plan is now, and only a change.
+    pub fn update_plan(&mut self, plan: PlanState) {
+        if self.app_state.plan == plan {
+            return;
+        }
+        self.app_state.plan = plan;
+        let _ = self.state_tx.send(self.app_state.clone());
+    }
+
+    /// Publish the tracker's alert settings (the UI keeps them in
+    /// `app.ron`), and only a change.
+    pub fn update_tracker_alerts(&mut self, alerts: Option<Alerts>) {
+        if self.app_state.tracker_alerts == alerts {
+            return;
+        }
+        self.app_state.tracker_alerts = alerts;
+        let _ = self.state_tx.send(self.app_state.clone());
+    }
+
     pub fn update_game_status(&mut self, game_status: GameStatus) {
         if self.app_state.game_status == game_status {
             return;
@@ -254,6 +277,9 @@ enum UploadReport {
     /// A snapshot live sync asked for (a collapse, a logout, a resync):
     /// toasted only when it fails; live sync retries it itself.
     Quiet,
+    /// A snapshot the website asked for ("Send a capture"): toasted, never
+    /// retried (the website can ask again).
+    Asked,
 }
 
 /// What a tracker request reports back to the monitor's live sync.
@@ -270,6 +296,39 @@ enum LiveEvent {
 
 /// Whole-request timeout for one batch of live changes.
 const LIVE_BATCH_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// Whole-request timeout for a presence heartbeat or a plan read.
+const LINK_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// The presence heartbeat's `platform`.
+const PLATFORM: &str = if cfg!(windows) {
+    "windows"
+} else if cfg!(target_os = "macos") {
+    "macos"
+} else {
+    "linux"
+};
+
+/// What a presence or plan request reports back to the monitor.
+#[derive(Debug)]
+enum LinkEvent {
+    Presence(PresenceOutcome),
+    Today(TodayOutcome),
+}
+
+/// What the tracker hears about the game: closed, running (nothing decodes
+/// yet, or the launch was missed) or decoding.
+fn presence_state(status: GameStatus) -> PresenceState {
+    match status {
+        GameStatus::NotRunning => PresenceState::Stopped,
+        GameStatus::Decoding => PresenceState::Decoding,
+        GameStatus::LaunchCaptured
+        | GameStatus::CaptureOff
+        | GameStatus::AwaitingLogin
+        | GameStatus::LaunchMissed(_)
+        | GameStatus::KeyLost => PresenceState::Running,
+    }
+}
 
 /// The time live sync runs on: Unix milliseconds.
 fn now_ms() -> u64 {
@@ -668,7 +727,8 @@ pub struct Monitor {
     /// export settings (see `note_capture_settling`).
     settle_pending_since: Option<Instant>,
     settle_armed_at: Option<Instant>,
-    /// The resin clock and threshold the resin alert was last sent for.
+    /// The resin clock and the highest amount the resin alert was last sent
+    /// for on it.
     resin_alerted: Option<(crate::good::GiResin, u32)>,
     automation_pending_since: Option<Instant>,
     /// When the pending countdown began (`automation_pending_since` moves on
@@ -698,6 +758,19 @@ pub struct Monitor {
     live: LiveSync,
     live_tx: mpsc::UnboundedSender<LiveEvent>,
     live_rx: mpsc::UnboundedReceiver<LiveEvent>,
+
+    /// The tracker link beyond uploads (`link.rs`): presence heartbeats and
+    /// plan reads, while a credential is set ([`Self::linked`]).
+    presence: Heartbeat,
+    today: TodayPoll,
+    /// A credential is set (the sign-in, else a verified import key), and
+    /// this is not a replay.
+    linked: bool,
+    link_tx: mpsc::UnboundedSender<LinkEvent>,
+    link_rx: mpsc::UnboundedReceiver<LinkEvent>,
+    /// This device's alert settings on the tracker; while held, the resin
+    /// alert follows them instead of the local setting.
+    tracker_alerts: Option<Alerts>,
 }
 
 impl Monitor {
@@ -723,6 +796,7 @@ impl Monitor {
         let (decoded_tx, decoded_rx) = mpsc::unbounded_channel();
         let (automation_retry_tx, automation_retry_rx) = mpsc::unbounded_channel();
         let (live_tx, live_rx) = mpsc::unbounded_channel();
+        let (link_tx, link_rx) = mpsc::unbounded_channel();
         let sniffer = spawn_sniffer_thread(sniffer, decoded_tx)?;
 
         // One client for the whole process: clones share its connection pool,
@@ -754,6 +828,10 @@ impl Monitor {
         // several seconds from answering with a burst of back-to-back scans.
         let mut game_poll = tokio::time::interval(GAME_POLL_INTERVAL);
         game_poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
+        // The last run's alert settings, until the tracker answers.
+        let tracker_alerts = saved_state_rx.borrow().tracker_alerts;
+        app_state.update_tracker_alerts(tracker_alerts);
 
         Ok(Self {
             app_state,
@@ -799,6 +877,12 @@ impl Monitor {
             live: LiveSync::new(),
             live_tx,
             live_rx,
+            presence: Heartbeat::new(),
+            today: TodayPoll::new(),
+            linked: false,
+            link_tx,
+            link_rx,
+            tracker_alerts,
         })
     }
 
@@ -832,6 +916,7 @@ impl Monitor {
         // uploads again then, not only at the next new data.
         let mut auth_rx = self.tracker_auth.status();
         let mut settings_rx = self.saved_state_rx.clone();
+        self.link_check();
 
         loop {
             // Checked before the `select!` rather than only inside it. On the
@@ -892,6 +977,16 @@ impl Monitor {
                 }
             };
 
+            let link_at = self.link_next_ms();
+            let link_fut = async move {
+                match link_at {
+                    Some(at) => {
+                        tokio::time::sleep(Duration::from_millis(at.saturating_sub(now_ms()))).await
+                    }
+                    None => std::future::pending::<()>().await,
+                }
+            };
+
             #[rustfmt::skip]
             tokio::select! {
                 _ = self.cancel_token.cancelled() => {
@@ -908,7 +1003,14 @@ impl Monitor {
                 _ = live_fut => {
                     self.live_tick();
                 }
+                _ = link_fut => {
+                    self.link_tick();
+                }
+                Some(event) = self.link_rx.recv() => {
+                    self.handle_link_event(event);
+                }
                 Ok(()) = auth_rx.changed() => {
+                    self.link_check();
                     if self.app_state.app_state.updated.items_updated.is_some()
                         || self.app_state.app_state.updated.characters_updated.is_some()
                     {
@@ -921,8 +1023,11 @@ impl Monitor {
                 _ = resin_fut => {
                     self.fire_resin_alert();
                 }
-                // A settings change can turn the resin alert on or move it.
-                Ok(()) = settings_rx.changed() => {}
+                // A settings change can turn the resin alert on or move it,
+                // or link a tracker (a verified key).
+                Ok(()) = settings_rx.changed() => {
+                    self.link_check();
+                }
                 Some(event) = self.packet_rx.recv() => {
                     self.handle_capture_event(event);
                 }
@@ -1026,6 +1131,7 @@ impl Monitor {
             Message::Tracker(request) => {
                 self.tracker_auth.handle(self.http.clone(), request);
             }
+            Message::TodayShown => self.today.opened(now_ms()),
             _ => (),
         }
     }
@@ -1582,46 +1688,52 @@ impl Monitor {
         }
     }
 
-    /// When the resin alert is due (unix seconds), or `None`: off, no resin
-    /// clock, or already sent for this clock and threshold. Never during a
-    /// replay.
-    fn resin_alert_time(&self) -> Option<u64> {
+    /// The amounts the resin alert goes at: the tracker's settings for this
+    /// device while held, else the local setting.
+    fn resin_targets(&self) -> [Option<u32>; 2] {
+        if let Some(alerts) = self.tracker_alerts {
+            return alerts.resin_targets();
+        }
+        let state = self.saved_state_rx.borrow();
+        [
+            state
+                .resin_alert
+                .then_some(state.resin_alert_at.clamp(1, RESIN_CAP)),
+            None,
+        ]
+    }
+
+    /// When the next resin alert is due (unix seconds) and its amount, or
+    /// `None`: off, no resin clock, or every amount already sent for this
+    /// clock. Never during a replay.
+    fn resin_alert_due(&self) -> Option<(u64, u32)> {
         if !uploads_allowed(&self.capture_source) {
             return None;
         }
-        let target = {
-            let state = self.saved_state_rx.borrow();
-            state
-                .resin_alert
-                .then_some(state.resin_alert_at.clamp(1, RESIN_CAP))?
-        };
         let resin = self.app_state.app_state.tasks.as_ref()?.resin?;
-        if self.resin_alerted == Some((resin, target)) {
-            return None;
-        }
-        resin_reaches(resin, target)
+        next_resin_alert(resin, self.resin_targets(), self.resin_alerted)
+    }
+
+    fn resin_alert_time(&self) -> Option<u64> {
+        self.resin_alert_due().map(|(at, _)| at)
     }
 
     /// Send the resin alert: "Resin 160/200 · Full at 14:32".
     fn fire_resin_alert(&mut self) {
-        let Some(at) = self.resin_alert_time() else {
+        let Some((at, target)) = self.resin_alert_due() else {
             return;
         };
         let now = chrono::Utc::now().timestamp().max(0) as u64;
         if at > now {
             return;
         }
-        let (Some(resin), target) = (
-            self.app_state
-                .app_state
-                .tasks
-                .as_ref()
-                .and_then(|t| t.resin),
-            self.saved_state_rx
-                .borrow()
-                .resin_alert_at
-                .clamp(1, RESIN_CAP),
-        ) else {
+        let Some(resin) = self
+            .app_state
+            .app_state
+            .tasks
+            .as_ref()
+            .and_then(|t| t.resin)
+        else {
             return;
         };
         self.resin_alerted = Some((resin, target));
@@ -1934,6 +2046,17 @@ impl Monitor {
                         }
                     };
                 }
+                UploadReport::Asked => {
+                    let _ = toast_tx.send(match result {
+                        Ok(()) => {
+                            Event::ok(Topic::Destination, trf("Snapshot stored on {0}", &[&host]))
+                        }
+                        Err(e) => Event::error(
+                            Topic::Destination,
+                            trf("{0} upload failed · {1}", &[&host, &e]),
+                        ),
+                    });
+                }
                 UploadReport::Quiet => {
                     let _ = toast_tx.send(
                         match result {
@@ -2096,6 +2219,277 @@ impl Monitor {
     }
 }
 
+impl Monitor {
+    /// What the next heartbeat says: the game's state and the account's UID.
+    fn presence_now(&self) -> (PresenceState, Option<u32>) {
+        let app_state = &self.app_state.app_state;
+        (
+            presence_state(app_state.game_status),
+            app_state.player.as_ref().and_then(|player| player.uid),
+        )
+    }
+
+    /// Follow the credential: a new link sends the state and reads the plan
+    /// at once; without one nothing is sent and the plan goes. Signing out
+    /// drops the tracker's alert settings.
+    fn link_check(&mut self) {
+        let state = self.upload_state();
+        let linked = uploads_allowed(&self.capture_source)
+            && crate::app::upload_credential(&state).is_some();
+        if matches!(
+            *self.tracker_auth.status().borrow(),
+            AuthStatus::SignedOut { .. }
+        ) && self.tracker_alerts.is_some()
+        {
+            tracing::info!("signed out: the resin alert follows the local setting again");
+            self.tracker_alerts = None;
+            self.app_state.update_tracker_alerts(None);
+            self.ctx.request_repaint();
+        }
+        if linked == self.linked {
+            return;
+        }
+        self.linked = linked;
+        self.presence.reset();
+        self.today.reset();
+        if !linked {
+            self.app_state.update_plan(PlanState::None);
+            self.ctx.request_repaint();
+        }
+    }
+
+    /// When a heartbeat or a plan read is next due, in Unix ms.
+    fn link_next_ms(&self) -> Option<u64> {
+        if !self.linked {
+            return None;
+        }
+        let (state, uid) = self.presence_now();
+        [self.presence.due_at(state, uid), self.today.due_at(uid)]
+            .into_iter()
+            .flatten()
+            .min()
+    }
+
+    /// Send what is due: a heartbeat, a plan read.
+    fn link_tick(&mut self) {
+        if !self.linked {
+            return;
+        }
+        let state = self.upload_state();
+        let Some(credential) = crate::app::upload_credential(&state) else {
+            return;
+        };
+        let now = now_ms();
+        let (presence, uid) = self.presence_now();
+        if self
+            .presence
+            .due_at(presence, uid)
+            .is_some_and(|at| at <= now)
+        {
+            self.presence.sending(presence, uid, now);
+            tracing::debug!(state = presence.as_str(), "presence heartbeat");
+            let body =
+                crate::link::presence_body(presence, uid, env!("CARGO_PKG_VERSION"), PLATFORM);
+            self.spawn_link_request(
+                &state.tracker_api_url,
+                credential.clone(),
+                reqwest::Method::POST,
+                crate::link::PRESENCE_PATH.to_owned(),
+                Some(body),
+                |status, body| LinkEvent::Presence(PresenceOutcome::of(status, body)),
+            );
+        }
+        if self.today.due_at(uid).is_some_and(|at| at <= now) {
+            self.today.sending(uid, now);
+            let path = match uid {
+                Some(uid) => format!("{}?uid={uid}", crate::link::TODAY_PATH),
+                None => crate::link::TODAY_PATH.to_owned(),
+            };
+            self.spawn_link_request(
+                &state.tracker_api_url,
+                credential,
+                reqwest::Method::GET,
+                path,
+                None,
+                |status, body| LinkEvent::Today(TodayOutcome::of(status, body)),
+            );
+        }
+    }
+
+    /// One request of the link, in the background; `event` turns its answer
+    /// (status 0: none) into what comes back on `link_tx`.
+    fn spawn_link_request(
+        &self,
+        api: &str,
+        credential: UploadCredential,
+        method: reqwest::Method,
+        path: String,
+        body: Option<String>,
+        event: fn(u16, &str) -> LinkEvent,
+    ) {
+        let client = self.http.clone();
+        let auth = self.tracker_auth.clone();
+        let link_tx = self.link_tx.clone();
+        let ctx = self.ctx.clone();
+        let api = api.to_owned();
+        tokio::spawn(async move {
+            let (status, answer) =
+                link_request(&client, &auth, &api, credential, method, &path, body).await;
+            let _ = link_tx.send(event(status, &answer));
+            ctx.request_repaint();
+        });
+    }
+
+    fn handle_link_event(&mut self, event: LinkEvent) {
+        let now = now_ms();
+        match event {
+            LinkEvent::Presence(outcome) => {
+                self.presence.answered(&outcome, now);
+                let answer = match outcome {
+                    PresenceOutcome::Answered(answer) => answer,
+                    PresenceOutcome::Gone => {
+                        tracing::info!("the tracker has no presence route; presence is off");
+                        return;
+                    }
+                    PresenceOutcome::Retry => return,
+                };
+                let alerts = match answer.alerts {
+                    AlertsAnswer::Absent => self.tracker_alerts,
+                    AlertsAnswer::Unset => None,
+                    AlertsAnswer::Set(alerts) => Some(alerts),
+                };
+                if alerts != self.tracker_alerts && self.linked {
+                    tracing::info!(?alerts, "the tracker's alert settings for this device");
+                    self.tracker_alerts = alerts;
+                    self.app_state.update_tracker_alerts(alerts);
+                    self.ctx.request_repaint();
+                }
+                for command in answer.commands {
+                    tracing::info!(?command, "the tracker asked for something");
+                    match command {
+                        Command::Wishes => self.sync_wishes_asked(),
+                        Command::Snapshot => self.snapshot_asked(),
+                    }
+                }
+            }
+            LinkEvent::Today(outcome) => {
+                self.today.answered(&outcome);
+                if !self.linked {
+                    return;
+                }
+                let plan = match outcome {
+                    TodayOutcome::Plan(digest) => PlanState::Plan(std::sync::Arc::new(digest)),
+                    TodayOutcome::NoPlan => PlanState::NoPlan,
+                    TodayOutcome::Gone => {
+                        tracing::info!("the tracker has no plan route");
+                        PlanState::None
+                    }
+                    // Kept as shown; read again at the next tick.
+                    TodayOutcome::Retry => return,
+                };
+                self.app_state.update_plan(plan);
+                self.ctx.request_repaint();
+            }
+        }
+    }
+
+    /// The website's "Sync wishes": this login's wish key syncs now, when
+    /// there is one.
+    fn sync_wishes_asked(&self) {
+        let synced = self.wish_hub.as_ref().is_some_and(|hub| hub.sync_now());
+        if !synced {
+            tracing::info!("no wish key this login; the wish sync asked for is skipped");
+        }
+    }
+
+    /// The website's "Send a capture": the whole account now (reason
+    /// `manual`), when there is data.
+    fn snapshot_asked(&mut self) {
+        let updated = &self.app_state.app_state.updated;
+        if updated.items_updated.is_none() || updated.characters_updated.is_none() {
+            tracing::info!("nothing captured; the snapshot asked for is skipped");
+            return;
+        }
+        let state = self.upload_state();
+        let Some(credential) = crate::app::upload_credential(&state) else {
+            return;
+        };
+        let (json, report, ticket) = self.live_snapshot_export(Reason::Manual);
+        self.report_export_gaps(&report);
+        let _ = self.toast_tx.send(Event::info(
+            Topic::Destination,
+            trf(
+                "Uploading to {0} · {1}",
+                &[
+                    &destination_host(&state),
+                    &crate::app::counts_line(&report.counts()),
+                ],
+            ),
+        ));
+        self.spawn_tracker_upload(credential, json, UploadReport::Asked, Some(ticket));
+    }
+}
+
+/// One link request with the upload credential: its status (0: no answer,
+/// or signed out) and body.
+async fn link_request(
+    client: &reqwest::Client,
+    auth: &TrackerAuth,
+    api: &str,
+    credential: UploadCredential,
+    method: reqwest::Method,
+    path: &str,
+    body: Option<String>,
+) -> (u16, String) {
+    let url = |base: &str| format!("{}/{path}", base.trim_end_matches('/'));
+    let build = |builder: reqwest::RequestBuilder| {
+        let builder = builder.timeout(LINK_TIMEOUT);
+        match &body {
+            Some(body) => builder
+                .header(reqwest::header::CONTENT_TYPE, "application/json")
+                .body(body.clone()),
+            None => builder,
+        }
+    };
+    let response = match credential {
+        UploadCredential::ImportKey { key, .. } => build(
+            client
+                .request(method.clone(), url(api))
+                .header("x-import-key", key),
+        )
+        .send()
+        .await
+        .map_err(|e| {
+            tracing::debug!("link request failed: {}", e.without_url());
+            (0, String::new())
+        }),
+        UploadCredential::SignedIn { base } => auth
+            .send_signed_in(client, &base, |token| {
+                build(
+                    client
+                        .request(method.clone(), url(&base))
+                        .bearer_auth(token),
+                )
+            })
+            .await
+            .map_err(|error| match error {
+                // A 401 the sign-in's own retry could not cure.
+                crate::signin::AuthError::Http { status, body } => (status.as_u16(), body),
+                other => {
+                    tracing::debug!("link request not sent: {other}");
+                    (0, String::new())
+                }
+            }),
+    };
+    match response {
+        Ok(response) => {
+            let status = response.status().as_u16();
+            (status, response.text().await.unwrap_or_default())
+        }
+        Err(answer) => answer,
+    }
+}
+
 /// Send one batch with an import key, and read the answer.
 pub(crate) async fn send_live_batch_with_key(
     client: &reqwest::Client,
@@ -2224,6 +2618,22 @@ fn resin_reaches(resin: crate::good::GiResin, target: u32) -> Option<u64> {
         return None;
     }
     Some(u64::from(resin.next_at) + u64::from(target - resin.value - 1) * RESIN_SECS)
+}
+
+/// The next resin alert on `resin`'s clock, given the amounts to alert at
+/// (lowest first) and the highest amount already sent on that clock: when it
+/// is due (unix seconds), and its amount. Amounts the clock already had at
+/// the capture are skipped.
+fn next_resin_alert(
+    resin: crate::good::GiResin,
+    targets: [Option<u32>; 2],
+    alerted: Option<(crate::good::GiResin, u32)>,
+) -> Option<(u64, u32)> {
+    targets
+        .into_iter()
+        .flatten()
+        .filter(|target| !alerted.is_some_and(|(clock, sent)| clock == resin && *target <= sent))
+        .find_map(|target| resin_reaches(resin, target).map(|at| (at, target)))
 }
 
 /// Only clears the signature it was given. A newer export may already have
@@ -2512,6 +2922,67 @@ pub(crate) mod tests {
         assert_eq!(resin_reaches(resin, 150), None);
         assert_eq!(resin_reaches(resin, 120), None);
         assert_eq!(resin_reaches(resin, 201), None);
+    }
+
+    #[test]
+    fn resin_alerts_go_once_per_amount_and_clock() {
+        let resin = crate::good::GiResin {
+            value: 150,
+            next_at: 1_000,
+        };
+        let both = [Some(160), Some(200)];
+        assert_eq!(
+            next_resin_alert(resin, both, None),
+            Some((1_000 + 9 * 480, 160))
+        );
+        // 160 sent on this clock: full is next, then nothing.
+        assert_eq!(
+            next_resin_alert(resin, both, Some((resin, 160))),
+            Some((1_000 + 49 * 480, 200))
+        );
+        assert_eq!(next_resin_alert(resin, both, Some((resin, 200))), None);
+        // A new clock (a new capture) starts over.
+        let later = crate::good::GiResin {
+            value: 120,
+            next_at: 9_000,
+        };
+        assert_eq!(
+            next_resin_alert(later, both, Some((resin, 200))),
+            Some((9_000 + 39 * 480, 160))
+        );
+        // An amount the capture already had is skipped.
+        assert_eq!(
+            next_resin_alert(resin, [Some(140), Some(200)], None),
+            Some((1_000 + 49 * 480, 200))
+        );
+        assert_eq!(next_resin_alert(resin, [None, None], None), None);
+    }
+
+    #[test]
+    fn the_tracker_hears_closed_running_or_decoding() {
+        use crate::game_watch::MissedLaunch;
+        assert_eq!(
+            presence_state(GameStatus::NotRunning),
+            PresenceState::Stopped
+        );
+        assert_eq!(
+            presence_state(GameStatus::Decoding),
+            PresenceState::Decoding
+        );
+        for running in [
+            GameStatus::LaunchCaptured,
+            GameStatus::CaptureOff,
+            GameStatus::AwaitingLogin,
+            GameStatus::LaunchMissed(MissedLaunch::AlreadyRunning),
+            GameStatus::LaunchMissed(MissedLaunch::CaptureStopped),
+            GameStatus::KeyLost,
+        ] {
+            assert_eq!(
+                presence_state(running),
+                PresenceState::Running,
+                "{running:?}"
+            );
+        }
     }
 
     #[test]
@@ -2891,6 +3362,87 @@ pub(crate) mod tests {
 
         assert!(!release_signature(&mut last, stale));
         assert_eq!(last, Some(newer));
+    }
+
+    #[test]
+    fn presence_and_the_plan_go_to_their_routes_with_the_key() {
+        use crate::wish_history::test_server::{Reply, TestServer};
+
+        let replies = std::sync::Arc::new(std::sync::Mutex::new(vec![
+            Reply::json(404, r#"{"error":{"code":"no_plan","message":"No plan"}}"#),
+            Reply::json(
+                200,
+                r#"{"next":15,"commands":[{"id":"k3f9","kind":"snapshot"}],"alerts":null}"#,
+            ),
+        ]));
+        let server = {
+            let replies = replies.clone();
+            TestServer::start(move |_| replies.lock().unwrap().pop().unwrap())
+        };
+        let auth = TrackerAuth::new(
+            &server.base,
+            std::sync::Arc::new(crate::signin::MemoryStore::default()),
+            "TEST-PC".to_owned(),
+            std::sync::Arc::new(|_| {}),
+            std::sync::Arc::new(|| {}),
+        );
+        let client = crate::http_client_builder().build().unwrap();
+        let key = || UploadCredential::ImportKey {
+            url: import_url(&server.base),
+            key: "gdt_uk_test".to_owned(),
+        };
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let body = crate::link::presence_body(
+            PresenceState::Running,
+            Some(812_345_678),
+            "1.0.0",
+            PLATFORM,
+        );
+        let (status, answer) = runtime.block_on(link_request(
+            &client,
+            &auth,
+            &server.base,
+            key(),
+            reqwest::Method::POST,
+            crate::link::PRESENCE_PATH,
+            Some(body.clone()),
+        ));
+        let PresenceOutcome::Answered(answer) = PresenceOutcome::of(status, &answer) else {
+            panic!("not answered: {status}");
+        };
+        assert_eq!(answer.next_secs, 15);
+        assert_eq!(answer.commands, [Command::Snapshot]);
+        assert_eq!(answer.alerts, AlertsAnswer::Unset);
+        let (status, answer) = runtime.block_on(link_request(
+            &client,
+            &auth,
+            &server.base,
+            key(),
+            reqwest::Method::GET,
+            "irminsul/today?uid=812345678",
+            None,
+        ));
+        assert_eq!(TodayOutcome::of(status, &answer), TodayOutcome::NoPlan);
+
+        let requests = server.requests();
+        assert_eq!(requests[0].method, "POST");
+        assert!(requests[0].path.ends_with("/irminsul/presence"));
+        assert_eq!(requests[0].header("x-import-key"), Some("gdt_uk_test"));
+        assert_eq!(requests[0].body, body);
+        assert_eq!(requests[1].method, "GET");
+        assert!(requests[1].path.ends_with("/irminsul/today"));
+        assert_eq!(requests[1].param("uid"), Some("812345678"));
+        // Nothing listens here: no answer, tried again at the next tick.
+        let (status, _) = runtime.block_on(link_request(
+            &client,
+            &auth,
+            "http://127.0.0.1:9",
+            key(),
+            reqwest::Method::POST,
+            crate::link::PRESENCE_PATH,
+            Some(body),
+        ));
+        assert_eq!(PresenceOutcome::of(status, ""), PresenceOutcome::Retry);
     }
 
     #[test]

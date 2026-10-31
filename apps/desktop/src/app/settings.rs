@@ -305,6 +305,12 @@ impl TeyvatmeApp {
         // Windows only: nothing shows notifications elsewhere yet.
         if cfg!(windows) {
             overline(ui, tr("Notifications"));
+            // Set on the tracker for this device: shown, edited there.
+            let remote = self.state_rx.borrow().tracker_alerts;
+            if let Some(alerts) = remote {
+                self.tracker_alert_row(ui, alerts);
+                return;
+            }
             card_frame(ui).show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 switch_row(
@@ -337,6 +343,65 @@ impl TeyvatmeApp {
                     );
                 });
             });
+        }
+    }
+
+    /// The resin alert while the tracker's settings for this device hold:
+    /// what they are, and "Set on teyvat.me" to its Devices page.
+    fn tracker_alert_row(&mut self, ui: &mut Ui, alerts: crate::link::Alerts) {
+        let pal = widgets::p(ui);
+        let host = self.tracker_host();
+        let mut parts = Vec::new();
+        if let Some(at) = alerts.resin {
+            parts.push(trf(
+                "Resin {0}/{1}",
+                &[
+                    &at.clamp(1, crate::link::RESIN_CAP),
+                    &crate::link::RESIN_CAP,
+                ],
+            ));
+        }
+        if alerts.resin_full {
+            parts.push(tr("Resin is full").to_owned());
+        }
+        let summary = if parts.is_empty() {
+            tr("Off").to_owned()
+        } else {
+            parts.join(" · ")
+        };
+        let config = match &*self.auth_status_rx.borrow() {
+            AuthStatus::SignedIn {
+                whoami: Some(whoami),
+                ..
+            } => whoami.config_url.clone(),
+            _ => None,
+        };
+        let mut open = false;
+        card_frame(ui).show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            list_row(
+                ui,
+                None,
+                title_text(tr("Resin alert"), pal.tx),
+                Some(secondary_text(summary, pal.tx2)),
+                |ui| {
+                    open = button(
+                        ui,
+                        ButtonKind::Secondary,
+                        Some(icons::external_link()),
+                        &trf("Set on {0}", &[&host]),
+                        false,
+                    )
+                    .on_hover_text(trf("This device's alerts are set on {0}", &[&host]))
+                    .clicked();
+                },
+            );
+        });
+        if open {
+            let url = config
+                .or_else(|| self.dashboard_url())
+                .unwrap_or_else(|| self.tracker_site());
+            ui.ctx().open_url(egui::OpenUrl::new_tab(url));
         }
     }
 

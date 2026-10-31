@@ -180,6 +180,11 @@ pub struct SavedAppState {
     pub resin_alert: bool,
     #[serde(default = "default_resin_alert_at")]
     pub resin_alert_at: u32,
+    /// This device's alert settings on the tracker (the last presence
+    /// answer's), so the resin alert follows them offline too. Replaces
+    /// `resin_alert`/`resin_alert_at` while held; dropped on sign-out.
+    #[serde(default)]
+    pub tracker_alerts: Option<teyvatme_core::link::Alerts>,
 }
 
 /// The resin alert's threshold until one is picked (the user's choice).
@@ -326,6 +331,7 @@ impl Default for SavedAppState {
             send_wishes: true,
             resin_alert: false,
             resin_alert_at: default_resin_alert_at(),
+            tracker_alerts: None,
         }
     }
 }
@@ -779,6 +785,15 @@ pub struct TeyvatmeApp {
     /// The folder of the last manual save, for "Open export folder".
     last_save_folder: Option<PathBuf>,
     started_at: Instant,
+    /// The home screen was in sight last frame (its coming into sight reads
+    /// the tracker's plan again).
+    home_in_sight: bool,
+    /// "From your plan"'s lines, built once per plan and language.
+    plan_lines: Option<(
+        Arc<crate::link::TodayDigest>,
+        crate::i18n::Lang,
+        today::PlanLines,
+    )>,
 }
 
 /// A native file dialog the UI asked for.
@@ -1467,6 +1482,8 @@ impl TeyvatmeApp {
             preview_click_at: None,
             last_save_folder: None,
             started_at: Instant::now(),
+            home_in_sight: false,
+            plan_lines: None,
             monitor_cancel_token: cancel_token,
             monitor_handle: Some(monitor_handle),
             install_lock,
@@ -1523,6 +1540,9 @@ impl Drop for TeyvatmeApp {
 impl eframe::App for TeyvatmeApp {
     /// Called by the framework to save state before shutdown.
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        // Held by the monitor; kept here (a window in the tray draws no frame
+        // that would copy them).
+        self.saved_state.tracker_alerts = self.state_rx.borrow().tracker_alerts;
         eframe::set_value(storage, eframe::APP_KEY, &self.saved_state);
         self.keep_window_record(storage);
     }
