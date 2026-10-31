@@ -239,13 +239,11 @@
     <!-- Updates -->
     <string name="section_updates">更新</string>
     <string name="update_auto">自動更新</string>
-    <string name="update_auto_line">來自 GitHub 的新版本，已核對總和檢查碼</string>
+    <string name="update_auto_line">新版本會自動下載（經校驗和核對），點「立即安裝」才會安裝</string>
     <string name="update_check">檢查更新</string>
     <string name="update_checking">正在檢查…</string>
     <string name="update_up_to_date">已是最新版本 · %s</string>
     <string name="update_ready">更新 %s 已就緒</string>
-    <string name="update_waits_capture">擷取停止後安裝</string>
-    <string name="update_waits_app">離開應用程式後安裝</string>
     <string name="update_install_now">立即安裝</string>
     <string name="update_tap_to_install">輕觸即可安裝</string>
     <string name="update_downloading">正在下載 %1$s · %2$d%%</string>

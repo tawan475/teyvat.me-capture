@@ -167,7 +167,6 @@ fun HomeContent(
     folderLabel: String,
     tracker: TrackerView,
     update: UpdateState,
-    capturing: Boolean,
     backgroundAllowed: Boolean,
     crashed: Boolean,
     actions: HomeActions,
@@ -184,7 +183,7 @@ fun HomeContent(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             if (crashed) item { CrashCard(actions) }
-            if (update.shown()) item { UpdateBannerFor(update, capturing, actions) }
+            if (update.shown()) item { UpdateBannerFor(update, actions) }
             item { StatusStrip(hero, summary, startingSince, now, actions) }
             if (!backgroundAllowed) item { BackgroundCard(actions) }
             if (wide) {
@@ -1010,7 +1009,7 @@ fun UpdateState.shown() = when (this) {
  * "Update <v>" / "You have <current>", and the one thing to do about it.
  */
 @Composable
-fun UpdateBannerFor(update: UpdateState, capturing: Boolean, actions: HomeActions, modifier: Modifier = Modifier, details: Boolean = true) {
+fun UpdateBannerFor(update: UpdateState, actions: HomeActions, modifier: Modifier = Modifier, details: Boolean = true) {
     val current = stringResource(R.string.update_you_have, BuildConfig.VERSION_NAME)
     val detailsLabel = if (details) stringResource(R.string.details) else null
     when (update) {
@@ -1021,11 +1020,7 @@ fun UpdateBannerFor(update: UpdateState, capturing: Boolean, actions: HomeAction
         )
         is UpdateState.Ready -> UpdateBanner(
             stringResource(R.string.update_banner_title, update.version),
-            if (update.silent) {
-                stringResource(if (capturing) R.string.update_waits_capture else R.string.update_waits_app)
-            } else {
-                current
-            },
+            current,
             modifier, action = stringResource(R.string.update_install_now), onAction = actions::updateInstallNow,
         )
         // Android's Update screen is open or was left: Install now shows it again.

@@ -239,13 +239,11 @@
     <!-- Updates -->
     <string name="section_updates">Обновления</string>
     <string name="update_auto">Обновлять автоматически</string>
-    <string name="update_auto_line">Новые релизы с GitHub, проверенные по контрольным суммам</string>
+    <string name="update_auto_line">Новые версии скачиваются сами (с проверкой контрольных сумм); чтобы установить, нажмите «Установить сейчас»</string>
     <string name="update_check">Проверить обновления</string>
     <string name="update_checking">Проверка…</string>
     <string name="update_up_to_date">Последняя версия · %s</string>
     <string name="update_ready">Обновление %s готово</string>
-    <string name="update_waits_capture">Установится после остановки захвата</string>
-    <string name="update_waits_app">Установится, когда вы выйдете из приложения</string>
     <string name="update_install_now">Установить сейчас</string>
     <string name="update_tap_to_install">Нажмите, чтобы установить</string>
     <string name="update_downloading">Загрузка %1$s · %2$d%%</string>

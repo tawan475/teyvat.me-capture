@@ -239,13 +239,11 @@
     <!-- Updates -->
     <string name="section_updates">Cập nhật</string>
     <string name="update_auto">Tự động cập nhật</string>
-    <string name="update_auto_line">Bản phát hành mới từ GitHub, đã đối chiếu checksum</string>
+    <string name="update_auto_line">Bản mới tự tải về (kiểm tra bằng checksum); chạm Cài đặt ngay để cài đặt</string>
     <string name="update_check">Kiểm tra cập nhật</string>
     <string name="update_checking">Đang kiểm tra…</string>
     <string name="update_up_to_date">Đã là bản mới nhất · %s</string>
     <string name="update_ready">Bản cập nhật %s đã sẵn sàng</string>
-    <string name="update_waits_capture">Cài đặt khi dừng ghi</string>
-    <string name="update_waits_app">Cài đặt khi bạn rời ứng dụng</string>
     <string name="update_install_now">Cài đặt ngay</string>
     <string name="update_tap_to_install">Chạm để cài đặt</string>
     <string name="update_downloading">Đang tải xuống %1$s · %2$d%%</string>

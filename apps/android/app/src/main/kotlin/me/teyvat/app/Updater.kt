@@ -33,11 +33,11 @@ sealed class UpdateState {
     data object Checking : UpdateState()
     data class Downloading(val version: String, val percent: Int) : UpdateState()
     /**
-     * Downloaded and checked. `silent`: Android installs it without asking
-     * (this app installed the running version), so it goes in once capture is
-     * off and the app is off screen; otherwise only on Install now.
+     * Downloaded and checked; it goes in only when the user taps Install now
+     * (an install started in the background had Play Protect's scan pop up
+     * over whatever the user was doing).
      */
-    data class Ready(val version: String, val silent: Boolean = false) : UpdateState()
+    data class Ready(val version: String) : UpdateState()
     /** A session is being written, or Android is installing it after its Update screen's tap. */
     data class Installing(val version: String) : UpdateState()
     /**
@@ -54,16 +54,16 @@ sealed class UpdateState {
 /**
  * The desktop's updater for the phone: the newest GitHub release's
  * `teyvatme-android.apk`, checked against its `SHA256SUMS.txt`, installed
- * with Android's PackageInstaller. On Android 12+ an update this app
- * installs needs no tap once the app installed itself before; otherwise
- * Android shows its one-tap Update screen. A running capture is never cut:
- * a ready update waits until capture stops.
+ * with Android's PackageInstaller. Checking and downloading run on their
+ * own (when updating automatically is on); installing only ever starts from
+ * Install now, with the app open. On Android 12+ an update this app installs
+ * needs no further tap once the app installed itself before; otherwise
+ * Android shows its one-tap Update screen.
  */
 class Updater(
     private val context: Context,
     private val prefs: Prefs,
     private val scope: CoroutineScope,
-    private val capturing: () -> Boolean,
 ) {
     private val stateFlow = MutableStateFlow<UpdateState>(UpdateState.Idle)
     val state: StateFlow<UpdateState> = stateFlow.asStateFlow()
@@ -154,58 +154,8 @@ class Updater(
             NativeBridge.note("error", context.getString(R.string.update_failed, e.message ?: ""))
             return
         }
-        stateFlow.value = UpdateState.Ready(release.version, installsSilently())
+        stateFlow.value = UpdateState.Ready(release.version)
         NativeBridge.note("info", context.getString(R.string.update_ready, release.version))
-        installWhenFree()
-    }
-
-    /**
-     * Whether Android installs an update from this app without asking: from
-     * Android 12, when this app installed the version that runs (after its
-     * first self-update). A copy installed from the browser or a file manager
-     * needs a tap every time, and a background app may not show that screen.
-     */
-    private fun installsSilently(): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return false
-        return runCatching {
-            context.packageManager.getInstallSourceInfo(context.packageName).installingPackageName == context.packageName
-        }.getOrDefault(false)
-    }
-
-    /**
-     * Installs a ready update when nothing is cut by it: capture off and the
-     * app not on screen (installing ends this process). Otherwise the card's
-     * Install now does it, and [onCaptureStopped] / the app leaving the
-     * screen try again. An update Android would ask about can't be asked from
-     * the background, so then a notification says it is ready instead.
-     */
-    fun installWhenFree() {
-        val ready = stateFlow.value as? UpdateState.Ready ?: return
-        if (!prefs.value.autoUpdate || capturing() || foreground) return
-        if (ready.silent) install(ready.version) else notifyReady(ready.version)
-    }
-
-    private var notifiedVersion: String? = null
-
-    /** "Update ready, tap to install": opens the app, which installs it. Once per version. */
-    private fun notifyReady(version: String) {
-        if (notifiedVersion == version) return
-        notifiedVersion = version
-        GameVpnService.createChannels(context)
-        val open = Intent(context, MainActivity::class.java)
-            .setAction(MainActivity.ACTION_INSTALL_UPDATE)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-        val tap = PendingIntent.getActivity(
-            context, NOTIFICATION_UPDATE, open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-        )
-        val note = android.app.Notification.Builder(context, "alerts")
-            .setSmallIcon(R.drawable.ic_capture)
-            .setContentTitle(context.getString(R.string.update_ready, version))
-            .setContentText(context.getString(R.string.update_tap_to_install))
-            .setContentIntent(tap)
-            .setAutoCancel(true)
-            .build()
-        runCatching { context.getSystemService(android.app.NotificationManager::class.java).notify(NOTIFICATION_UPDATE, note) }
     }
 
     /**
@@ -236,12 +186,9 @@ class Updater(
         if (!sessionAlive(session)) {
             session = -1
             confirmIntent = null
-            stateFlow.value = UpdateState.Ready(version, installsSilently())
+            stateFlow.value = UpdateState.Ready(version)
         }
     }
-
-    /** Capture just stopped: a waiting update goes in now. */
-    fun onCaptureStopped() = installWhenFree()
 
     /** Install now (the card's button), even while capturing. */
     fun installNow() {
@@ -351,7 +298,7 @@ class Updater(
                 }
                 // Cancelled on Android's screen: keep it ready for Install now.
                 stateFlow.value = if (status == PackageInstaller.STATUS_FAILURE_ABORTED && version != null) {
-                    UpdateState.Ready(version, installsSilently())
+                    UpdateState.Ready(version)
                 } else {
                     UpdateState.Failed(version, message)
                 }

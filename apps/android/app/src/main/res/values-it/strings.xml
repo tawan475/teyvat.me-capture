@@ -239,13 +239,11 @@
     <!-- Updates -->
     <string name="section_updates">Aggiornamenti</string>
     <string name="update_auto">Aggiorna automaticamente</string>
-    <string name="update_auto_line">Nuove versioni da GitHub, verificate con i checksum</string>
+    <string name="update_auto_line">Le nuove versioni si scaricano da sole (verificate con i checksum); tocca Installa ora per installare</string>
     <string name="update_check">Cerca aggiornamenti</string>
     <string name="update_checking">Ricerca…</string>
     <string name="update_up_to_date">Aggiornata · %s</string>
     <string name="update_ready">Aggiornamento %s pronto</string>
-    <string name="update_waits_capture">Si installa quando la cattura si interrompe</string>
-    <string name="update_waits_app">Si installa quando esci dall\'app</string>
     <string name="update_install_now">Installa ora</string>
     <string name="update_tap_to_install">Tocca per installare</string>
     <string name="update_downloading">Download di %1$s · %2$d%%</string>

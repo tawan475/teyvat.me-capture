@@ -56,7 +56,7 @@ class TeyvatApp : Application() {
                 .collect { capture.refresh() }
         }
         scope.launch { tracker.alerts.drop(1).collect { capture.refresh() } }
-        updater = Updater(this, prefs, scope) { capture.vpn.value != VpnState.Off }
+        updater = Updater(this, prefs, scope)
         // The Quick Settings tile follows capture, however it was started or stopped.
         scope.launch { capture.vpn.collect { CaptureTile.update(this@TeyvatApp) } }
     }
