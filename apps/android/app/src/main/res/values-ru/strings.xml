@@ -390,4 +390,12 @@
     <string name="resin_alert_title">Смола %1$d/%2$d</string>
     <string name="resin_alert_full">Смола заполнена</string>
     <string name="resin_alert_full_at">Полная в %s</string>
+    <string name="plan_title">Из вашего плана</string>
+    <string name="plan_of">из плана на %s</string>
+    <string name="plan_nothing">Сегодня фармить нечего</string>
+    <string name="plan_none_hint">Откройте Планировщик на %s, чтобы видеть план здесь</string>
+    <string name="plan_runs">забегов: %d</string>
+    <string name="plan_runs_up_to">забегов: до %d</string>
+    <string name="alert_off">Выкл.</string>
+    <string name="resin_alert_set_on">Настроить на %s</string>
 </resources>

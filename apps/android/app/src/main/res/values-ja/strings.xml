@@ -384,4 +384,12 @@
     <string name="resin_alert_title">天然樹脂 %1$d/%2$d</string>
     <string name="resin_alert_full">天然樹脂が満タンです</string>
     <string name="resin_alert_full_at">%s に満タン</string>
+    <string name="plan_title">あなたのプランから</string>
+    <string name="plan_of">%sのプラン</string>
+    <string name="plan_nothing">今日は周回するものなし</string>
+    <string name="plan_none_hint">%s でプランナーを開くと、ここにプランが表示されます</string>
+    <string name="plan_runs">%d 回</string>
+    <string name="plan_runs_up_to">最大 %d 回</string>
+    <string name="alert_off">オフ</string>
+    <string name="resin_alert_set_on">%s で設定</string>
 </resources>

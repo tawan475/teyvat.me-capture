@@ -54,6 +54,9 @@ import me.teyvat.app.BuildConfig
 import me.teyvat.app.Hero
 import me.teyvat.app.LiveResult
 import me.teyvat.app.Links
+import me.teyvat.app.NativeBridge
+import me.teyvat.app.Plan
+import me.teyvat.app.PlanView
 import me.teyvat.app.R
 import me.teyvat.app.Settings
 import me.teyvat.app.Summary
@@ -69,6 +72,8 @@ import me.teyvat.app.hhmm
 import me.teyvat.app.line
 import me.teyvat.app.title
 import java.text.SimpleDateFormat
+import java.time.DayOfWeek
+import java.time.format.TextStyle
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
@@ -126,6 +131,10 @@ data class TrackerView(
     val lastLive: LiveResult? = null,
     /** The sign-in page while the browser is open on it. */
     val signInUrl: String? = null,
+    /** The tracker's farm plan, for "From your plan". */
+    val plan: PlanView = PlanView.None,
+    /** This device's alert settings on the tracker, while held. */
+    val alerts: me.teyvat.app.TrackerAlerts? = null,
 ) {
     /** Signed in, or a verified import key: uploads can go. */
     val canUpload get() = state is TrackerState.SignedIn || key.verified
@@ -185,6 +194,7 @@ fun HomeContent(
                         { m: Modifier -> TodayCard(summary, now, m) },
                     )
                 }
+                if (tracker.plan != PlanView.None) item { PlanCard(tracker, summary.player?.uid, now, actions) }
                 item {
                     SideBySide(
                         { m: Modifier -> ExportCard(summary, settings, folderLabel, actions, m) },
@@ -194,6 +204,7 @@ fun HomeContent(
             } else {
                 item { TravelerCard(summary, now) }
                 item { TodayCard(summary, now) }
+                if (tracker.plan != PlanView.None) item { PlanCard(tracker, summary.player?.uid, now, actions) }
                 item { ExportCard(summary, settings, folderLabel, actions) }
                 item { WishCard(summary.wish, tracker, settings, actions) }
             }
@@ -482,6 +493,106 @@ private fun TodayCard(summary: Summary, now: Long, modifier: Modifier = Modifier
                     }
                 }
             }
+        }
+    }
+}
+
+// -- From your plan ----------------------------------------------------------
+
+/**
+ * "From your plan" (the desktop's): the farm plan the tracker's Planner
+ * published, a line or two per card; a hint when it has published none.
+ */
+@Composable
+private fun PlanCard(tracker: TrackerView, uid: Long?, now: Long, actions: HomeActions) {
+    when (val plan = tracker.plan) {
+        PlanView.None -> {}
+        PlanView.NoPlan -> NoPlanHint(tracker, actions)
+        is PlanView.Ready -> PlanContent(plan.plan, uid, now)
+    }
+}
+
+@Composable
+private fun PlanContent(plan: Plan, uid: Long?, now: Long) {
+    val locale = LocalContext.current.resources.configuration.locales[0]
+    val scheme = MaterialTheme.colorScheme
+    // Once a minute is enough to see the server's game day end.
+    val old = remember(plan, uid, now / 60_000) { NativeBridge.planIsOld(plan.weekday ?: -1, plan.at, uid ?: -1L, now) }
+    val weekday = plan.weekday?.takeIf { it in 0..6 }
+    val oldLine = if (old && weekday != null) {
+        stringResource(R.string.plan_of, DayOfWeek.of(if (weekday == 0) 7 else weekday).getDisplayName(TextStyle.SHORT, locale))
+    } else {
+        null
+    }
+    val resinWord = stringResource(R.string.resin)
+    TmCard {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            CardTitle(stringResource(R.string.plan_title), plan.account, oldLine)
+            val sections = plan.sections.filter { it.cards.isNotEmpty() }
+            if (sections.isEmpty()) {
+                Text(stringResource(R.string.plan_nothing), style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant)
+            }
+            for (section in sections) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(section.label, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant, maxLines = 1)
+                        if (section.resin.isNotEmpty()) {
+                            Spacer(Modifier.width(6.dp))
+                            TmIcon(R.drawable.ic_droplet, null, size = 12.dp, tint = scheme.outline)
+                            Spacer(Modifier.width(2.dp))
+                            Text(section.resin, style = MaterialTheme.typography.labelMedium, color = scheme.outline)
+                        }
+                    }
+                    for (card in section.cards) PlanCardRow(card, resinWord)
+                }
+            }
+        }
+    }
+}
+
+/** One place to farm: name · detail with its runs and resin, then what is missing and who needs it. */
+@Composable
+private fun PlanCardRow(card: me.teyvat.app.PlanCard, resinWord: String) {
+    val scheme = MaterialTheme.colorScheme
+    val runs = card.runs?.let { stringResource(if (card.upperBound) R.string.plan_runs_up_to else R.string.plan_runs, it) }
+    val cost = listOfNotNull(runs, card.resin?.let { grouped(it) + " " + resinWord }).joinToString(" · ")
+    val items = card.items.filter { it.name.isNotEmpty() }
+        .joinToString(", ") { item -> item.missing?.let { item.name + " ×" + grouped(it) } ?: item.name }
+    val needs = listOf(items, card.who.joinToString(", ")).filter { it.isNotEmpty() }.joinToString(" · ")
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                listOf(card.name, card.detail).filter { it.isNotEmpty() }.joinToString(" · "),
+                style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            if (cost.isNotEmpty()) {
+                Spacer(Modifier.width(8.dp))
+                Text(cost, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant, maxLines = 1)
+            }
+        }
+        if (needs.isNotEmpty()) {
+            Text(needs, style = MaterialTheme.typography.bodySmall, color = scheme.outline, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+/** Linked, but the Planner has published no plan: one line to it. */
+@Composable
+private fun NoPlanHint(tracker: TrackerView, actions: HomeActions) {
+    val link = (tracker.state as? TrackerState.SignedIn)?.who?.dashboardUrl?.takeIf { it.startsWith("http") } ?: Links.trackerSite
+    TmCard {
+        Row(
+            Modifier.fillMaxWidth().clickable(role = Role.Button) { actions.openUrl(link) }.padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TmIcon(R.drawable.ic_list_checks, null, size = 18.dp)
+            Spacer(Modifier.width(10.dp))
+            Text(
+                stringResource(R.string.plan_none_hint, Links.trackerHost), style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f),
+            )
+            TmIcon(R.drawable.ic_external_link, null, size = 16.dp)
         }
     }
 }

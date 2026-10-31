@@ -209,6 +209,7 @@ impl TeyvatmeApp {
                 state.game_status = GameStatus::Decoding;
                 self.decoding_since = Some(chrono::Local::now() - chrono::TimeDelta::minutes(3));
                 captured(&mut state);
+                linked_state(&mut state);
                 self.preview_linked();
             }
             "done" => {
@@ -216,6 +217,7 @@ impl TeyvatmeApp {
                 state.capture_done = true;
                 self.decoding_since = Some(chrono::Local::now() - chrono::TimeDelta::minutes(3));
                 captured(&mut state);
+                linked_state(&mut state);
                 self.preview_linked();
             }
             "toasts" => {
@@ -253,6 +255,7 @@ impl TeyvatmeApp {
             page if page.starts_with("settings-") => {
                 state.game_status = GameStatus::Decoding;
                 captured(&mut state);
+                linked_state(&mut state);
                 self.view = View::Settings(match &page["settings-".len()..] {
                     "export" => Page::Export,
                     "destinations" => Page::Destinations,
@@ -302,3 +305,30 @@ impl TeyvatmeApp {
         }
     }
 }
+
+/// What a linked tracker gives `full` and `done`: a made-up farm plan and
+/// this device's alerts.
+fn linked_state(state: &mut AppState) {
+    use teyvatme_core::link::{Alerts, PlanState, TodayDigest};
+    let plan: TodayDigest = serde_json::from_str(PREVIEW_PLAN).expect("preview plan");
+    state.plan = PlanState::Plan(std::sync::Arc::new(plan));
+    state.tracker_alerts = Some(Alerts {
+        resin: Some(160),
+        resin_full: true,
+    });
+}
+
+const PREVIEW_PLAN: &str = r#"{
+  "v": 1, "lang": "en", "weekday": 6, "at": 1760000000000,
+  "account": { "id": 1, "name": "Main" },
+  "sections": [
+    { "key": "domain", "resin": "20", "label": "Domains", "cards": [
+      { "name": "Cecilia Garden", "detail": "Freedom", "runs": 6, "resin": 120, "upperBound": false,
+        "items": [{ "key": "GuideToFreedom", "name": "Guide to Freedom", "missing": 9 }],
+        "who": ["Venti", "Sucrose"] } ] },
+    { "key": "boss", "resin": "40", "label": "Bosses", "cards": [
+      { "name": "Hydro Hypostasis", "detail": "", "runs": 4, "resin": 160, "upperBound": true,
+        "items": [{ "key": "CleansingHeart", "name": "Cleansing Heart", "missing": 12 }],
+        "who": ["Mona"] } ] }
+  ]
+}"#;

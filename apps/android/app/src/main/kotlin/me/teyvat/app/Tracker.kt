@@ -123,6 +123,16 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
     private val signInUrlFlow = MutableStateFlow<String?>(null)
     /** The sign-in page while the browser is open on it, for Copy link. */
     val signInUrl: StateFlow<String?> = signInUrlFlow.asStateFlow()
+    private val planFlow = MutableStateFlow<PlanView>(PlanView.None)
+    /** The farm plan the tracker's Planner published, for "From your plan". */
+    val plan: StateFlow<PlanView> = planFlow.asStateFlow()
+    private val alertsFlow = MutableStateFlow<TrackerAlerts?>(null)
+    /**
+     * This device's alert settings on the tracker (the last presence
+     * answer's, kept for offline use); while held, the resin alert follows
+     * them instead of Settings. Gone on sign-out.
+     */
+    val alerts: StateFlow<TrackerAlerts?> = alertsFlow.asStateFlow()
 
     private val lock = Mutex()
     private var access: String? = null
@@ -141,6 +151,7 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
             }
             keyFlow.value = ImportKey(key, account = account)
         }
+        alertsFlow.value = store.getString("alerts", null)?.let { runCatching { TrackerAlerts.parse(JSONObject(it)) }.getOrNull() }
         store.getString("last_upload", null)?.let { json ->
             runCatching {
                 val o = JSONObject(json)
@@ -342,7 +353,8 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
     private fun forget(revoked: Boolean = false) {
         access = null
         accessUntil = 0
-        store.edit().remove("refresh").remove("whoami").putBoolean("revoked", revoked).apply()
+        alertsFlow.value = null
+        store.edit().remove("refresh").remove("whoami").remove("alerts").putBoolean("revoked", revoked).apply()
         stateFlow.value = TrackerState.SignedOut
         revokedFlow.value = revoked
     }
@@ -362,7 +374,9 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
      * change (in live mode only at login and world changes: batches carry
      * the rest). Then live sync sends what it decided (`teyvatme_core::live`).
      */
-    fun tick(summary: Summary) {
+    fun tick(vpn: VpnState, summary: Summary) {
+        lastSummary = summary
+        linkTick(vpn, summary)
         val settings = prefs.value
         val uploadsOn = canUpload() && settings.trackerUpload
         val live = uploadsOn && settings.liveSync
@@ -514,6 +528,103 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
                 NativeBridge.note("ok", context.getString(R.string.live_changes_sent, grouped(changes), Links.trackerHost))
             }
         }
+    }
+
+    // -- presence and the plan (the tracker's capture-link contract) -------------
+
+    /** The last summary read, for a snapshot the website asks for. */
+    private var lastSummary: Summary? = null
+    /** A credential was there at the last tick. */
+    private var linked = false
+
+    /**
+     * The desktop's link: a presence heartbeat at every change and every
+     * `next` s while the game is not stopped, and the plan read after a
+     * link, every 10 min and when Today opens (`teyvatme_core::link`
+     * decides when; nothing at all without a sign-in or a verified key).
+     */
+    private fun linkTick(vpn: VpnState, summary: Summary) {
+        val now = canUpload()
+        if (now != linked) {
+            linked = now
+            NativeBridge.linkReset()
+            if (!now) planFlow.value = PlanView.None
+        }
+        if (!linked) return
+        val at = System.currentTimeMillis()
+        val uid = summary.player?.uid ?: -1L
+        val state = presenceState(vpn, summary)
+        if (NativeBridge.presenceDue(state, uid, at)) sendPresence(state, uid)
+        if (NativeBridge.todayDue(uid, at)) readToday(uid)
+    }
+
+    /** The Today screen opened: its plan is read again (at most once a minute). */
+    fun todayShown() = NativeBridge.todayOpened(System.currentTimeMillis())
+
+    private fun sendPresence(state: String, uid: Long) {
+        val body = JSONObject()
+            .put("v", 1)
+            .put("state", state)
+            .put("uid", if (uid > 0) uid else JSONObject.NULL)
+            .put("app", BuildConfig.VERSION_NAME)
+            .put("platform", "android")
+            .toString()
+        scope.launch {
+            val (status, text) = withContext(Dispatchers.IO) { linkCall("POST", "${Links.trackerApi}/irminsul/presence", body) }
+            val answer = json(NativeBridge.presenceAnswered(status, text, System.currentTimeMillis()))
+            if (!linked) return@launch
+            if (answer.has("alerts")) setAlerts(TrackerAlerts.parse(answer.optJSONObject("alerts")))
+            val commands = answer.optJSONArray("commands") ?: return@launch
+            for (i in 0 until commands.length()) {
+                when (commands.optString(i)) {
+                    "wishes" -> if (!NativeBridge.syncWishesNow()) Log.i(TAG, "no wish key this login; the sync asked for is skipped")
+                    "snapshot" -> snapshotAsked()
+                }
+            }
+        }
+    }
+
+    private fun setAlerts(alerts: TrackerAlerts?) {
+        if (alerts == alertsFlow.value) return
+        alertsFlow.value = alerts
+        store.edit().putString("alerts", alerts?.toJson()).apply()
+    }
+
+    /** The website's "Send a capture": the whole account now (reason `manual`), when there is data. */
+    private fun snapshotAsked() {
+        val summary = lastSummary ?: return
+        if (summary.updatedCharacters == null || summary.updatedItems == null) {
+            Log.i(TAG, "nothing captured; the snapshot asked for is skipped")
+            return
+        }
+        uploadNow(summary)
+    }
+
+    private fun readToday(uid: Long) {
+        val url = "${Links.trackerApi}/irminsul/today" + if (uid > 0) "?uid=$uid" else ""
+        scope.launch {
+            val (status, text) = withContext(Dispatchers.IO) { linkCall("GET", url, "") }
+            val answer = json(NativeBridge.todayAnswered(status, text))
+            if (!linked) return@launch
+            when (answer.optString("kind")) {
+                "plan" -> answer.optJSONObject("plan")?.let { planFlow.value = PlanView.Ready(Plan.parse(it)) }
+                "noPlan" -> planFlow.value = PlanView.NoPlan
+                "gone" -> planFlow.value = PlanView.None
+                // retry: kept as shown.
+            }
+        }
+    }
+
+    /** One link request: its status (0: no answer or signed out) and body. Never toasts. */
+    private suspend fun linkCall(method: String, url: String, body: String): Pair<Int, String> = try {
+        200 to withCredential { credential -> rawCall(method, url, body, credential) }
+    } catch (e: SignedOut) {
+        0 to ""
+    } catch (e: HttpError) {
+        if (e.status == 401 && e.code == "session_revoked") forget(revoked = true)
+        e.status to e.body
+    } catch (e: IOException) {
+        0 to ""
     }
 
     private fun uploadError(e: Throwable): String = when (e) {

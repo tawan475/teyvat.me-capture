@@ -234,6 +234,23 @@ impl WishHub {
         }
     }
 
+    /// Sync every banner now (the website's "Sync wishes"), when this
+    /// login holds a fresh key whose UID is known; `false` otherwise. The
+    /// sync's own pacing still applies (two full syncs are at least
+    /// `MIN_RESYNC` apart).
+    pub fn sync_now(&self) -> bool {
+        let ready = self
+            .key_tx
+            .borrow()
+            .as_ref()
+            .is_some_and(|key| key.is_fresh(Instant::now()) && key.uid().is_some());
+        if ready {
+            tracing::info!("wish: a sync was asked for");
+            let _ = self.trigger_tx.send(Trigger::NewKey);
+        }
+        ready
+    }
+
     /// Hand `events` on; `uid` is the account's, when captured (for the
     /// link's `region`, and the key's account).
     pub fn forward(&self, events: Vec<WishEvent>, uid: Option<u32>) {
@@ -475,6 +492,27 @@ mod tests {
 
         hub.forward(vec![WishEvent::Key(authkey("webview_gacha", "CCCC"))], UID);
         assert_eq!(triggers.try_recv(), Ok(Trigger::NewKey));
+    }
+
+    #[test]
+    fn a_sync_asked_for_needs_this_logins_key_and_its_uid() {
+        let (hub, _key_rx, mut triggers) = hub();
+        assert!(!hub.sync_now(), "no key");
+        assert!(triggers.try_recv().is_err());
+
+        // A key whose account is not known yet waits.
+        hub.forward(vec![WishEvent::Key(authkey("webview_gacha", "GGGG"))], None);
+        assert!(!hub.sync_now());
+        assert!(triggers.try_recv().is_err());
+
+        hub.note_uid(UID);
+        assert_eq!(triggers.try_recv(), Ok(Trigger::NewKey));
+        assert!(hub.sync_now());
+        assert_eq!(triggers.try_recv(), Ok(Trigger::NewKey));
+
+        hub.new_login();
+        assert_eq!(triggers.try_recv(), Ok(Trigger::Cleared));
+        assert!(!hub.sync_now(), "the key went with the login");
     }
 
     #[test]

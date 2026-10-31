@@ -276,7 +276,7 @@ fun hero(vpn: VpnState, summary: Summary): Hero = when (vpn) {
  * shows it. [onRefresh] sees every read (the auto-export), without being a
  * watcher that would keep the polling alive.
  */
-class Capture(private val scope: CoroutineScope, private val onRefresh: (Summary) -> Unit) {
+class Capture(private val scope: CoroutineScope, private val onRefresh: (VpnState, Summary) -> Unit) {
     val vpn = MutableStateFlow(VpnState.Off)
     /** When the tunnel last began (re)starting, for Starting's Open Activity. */
     var startingSince = 0L
@@ -307,7 +307,7 @@ class Capture(private val scope: CoroutineScope, private val onRefresh: (Summary
     fun refresh() {
         val summary = Summary.parse(NativeBridge.summary())
         summaryState.value = summary
-        onRefresh(summary)
+        onRefresh(vpn.value, summary)
     }
 
     private suspend fun poll() {

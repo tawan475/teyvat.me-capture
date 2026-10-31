@@ -388,4 +388,12 @@
     <string name="resin_alert_title">Résine %1$d/%2$d</string>
     <string name="resin_alert_full">La résine est pleine</string>
     <string name="resin_alert_full_at">Pleine à %s</string>
+    <string name="plan_title">D’après votre plan</string>
+    <string name="plan_of">de votre plan du %s</string>
+    <string name="plan_nothing">Rien à farmer aujourd’hui</string>
+    <string name="plan_none_hint">Ouvrez le Planificateur sur %s pour voir votre plan ici</string>
+    <string name="plan_runs">%d passages</string>
+    <string name="plan_runs_up_to">jusqu’à %d passages</string>
+    <string name="alert_off">Désactivée</string>
+    <string name="resin_alert_set_on">Régler sur %s</string>
 </resources>

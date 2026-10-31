@@ -113,13 +113,19 @@ fun SettingsScreen(
             actions::setTileOpensGame, icon = R.drawable.ic_gamepad,
         )
         CardDivider()
-        SwitchRow(
-            stringResource(R.string.resin_alert), stringResource(R.string.resin_alert_line), settings.resinAlert,
-            actions::setResinAlert, icon = R.drawable.ic_droplet,
-        )
-        if (settings.resinAlert) {
-            CardDivider()
-            ResinAlertAt(settings.resinAlertAt, actions)
+        val trackerAlerts = tracker.alerts
+        if (trackerAlerts != null) {
+            // Set on the tracker for this device: shown here, edited there.
+            TrackerAlertRow(trackerAlerts, tracker, actions)
+        } else {
+            SwitchRow(
+                stringResource(R.string.resin_alert), stringResource(R.string.resin_alert_line), settings.resinAlert,
+                actions::setResinAlert, icon = R.drawable.ic_droplet,
+            )
+            if (settings.resinAlert) {
+                CardDivider()
+                ResinAlertAt(settings.resinAlertAt, actions)
+            }
         }
         CardDivider()
         ListRow(
@@ -206,6 +212,25 @@ fun SettingsScreen(
         ListRow("Discord", stringResource(R.string.discord_line), R.drawable.ic_discord, onClick = { actions.openUrl(Links.DISCORD) }) { External() }
         CardDivider()
         ListRow(stringResource(R.string.about), me.teyvat.app.BuildConfig.VERSION_NAME, R.drawable.ic_info, onClick = actions::openAbout) { Chevron() }
+    }
+}
+
+/** The resin alert while the tracker holds this device's settings: what they are, and "Set on teyvat.me". */
+@Composable
+private fun TrackerAlertRow(alerts: me.teyvat.app.TrackerAlerts, tracker: TrackerView, actions: SettingsActions) {
+    val max = me.teyvat.app.Today.RESIN_MAX
+    val parts = listOfNotNull(
+        alerts.resin?.let { stringResource(R.string.resin_alert_title, it.coerceIn(1, max), max) },
+        if (alerts.resinFull) stringResource(R.string.resin_alert_full) else null,
+    )
+    val summary = parts.joinToString(" · ").ifEmpty { stringResource(R.string.alert_off) }
+    val config = (tracker.state as? me.teyvat.app.TrackerState.SignedIn)?.who?.configUrl?.takeIf { it.startsWith("http") }
+        ?: Links.trackerSite
+    ListRow(stringResource(R.string.resin_alert), summary, R.drawable.ic_droplet, onClick = { actions.openUrl(config) }) {
+        TmButton(
+            stringResource(R.string.resin_alert_set_on, Links.trackerHost), { actions.openUrl(config) },
+            kind = ButtonKind.Text, trailingIcon = R.drawable.ic_external_link,
+        )
     }
 }
 

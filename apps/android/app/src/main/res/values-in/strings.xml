@@ -384,4 +384,12 @@
     <string name="resin_alert_title">Resin %1$d/%2$d</string>
     <string name="resin_alert_full">Resin sudah penuh</string>
     <string name="resin_alert_full_at">Penuh pukul %s</string>
+    <string name="plan_title">Dari rencanamu</string>
+    <string name="plan_of">dari rencanamu hari %s</string>
+    <string name="plan_nothing">Tidak ada yang perlu di-farm hari ini</string>
+    <string name="plan_none_hint">Buka Perencana di %s untuk melihat rencanamu di sini</string>
+    <string name="plan_runs">%d kali</string>
+    <string name="plan_runs_up_to">hingga %d kali</string>
+    <string name="alert_off">Mati</string>
+    <string name="resin_alert_set_on">Atur di %s</string>
 </resources>

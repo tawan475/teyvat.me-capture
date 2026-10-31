@@ -53,6 +53,7 @@ use tokio::net::{TcpStream, UdpSocket};
 use tokio::sync::{mpsc, oneshot, watch};
 
 mod decoder;
+mod link;
 mod logging;
 mod wish;
 mod wish_sync;
@@ -1102,6 +1103,113 @@ pub extern "system" fn Java_me_teyvat_app_NativeBridge_wishHistory(
     _class: JClass,
 ) -> jstring {
     java_result(&env, decoder::get().wishes.take())
+}
+
+/// `NativeBridge.presenceDue(state, uid, nowMs)`: whether a presence
+/// heartbeat for `state` (`stopped`, `running`, `decoding`) and `uid` (≤ 0:
+/// unknown) goes now; when true, the app sends it.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_me_teyvat_app_NativeBridge_presenceDue(
+    mut env: JNIEnv,
+    _class: JClass,
+    state: JString,
+    uid: jni::sys::jlong,
+    now_ms: jni::sys::jlong,
+) -> jboolean {
+    let state = java_string(&mut env, &state).unwrap_or_default();
+    u8::from(link::presence_due(
+        &state,
+        uid,
+        u64::try_from(now_ms).unwrap_or(0),
+    ))
+}
+
+/// `NativeBridge.presenceAnswered(status, body, nowMs)`: the heartbeat's
+/// answer (status 0: none) as `{"gone": true}` or `{"commands": [...],
+/// "alerts"?: {...} | null}`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_me_teyvat_app_NativeBridge_presenceAnswered(
+    mut env: JNIEnv,
+    _class: JClass,
+    status: jint,
+    body: JString,
+    now_ms: jni::sys::jlong,
+) -> jstring {
+    let body = java_string(&mut env, &body).unwrap_or_default();
+    let answer = link::presence_answered(status, &body, u64::try_from(now_ms).unwrap_or(0));
+    java_result(&env, Some(answer))
+}
+
+/// `NativeBridge.todayDue(uid, nowMs)`: whether the tracker's plan is read
+/// now; when true, the app reads it.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_me_teyvat_app_NativeBridge_todayDue(
+    _env: JNIEnv,
+    _class: JClass,
+    uid: jni::sys::jlong,
+    now_ms: jni::sys::jlong,
+) -> jboolean {
+    u8::from(link::today_due(uid, u64::try_from(now_ms).unwrap_or(0)))
+}
+
+/// `NativeBridge.todayOpened(nowMs)`: the Today screen opened (the plan is
+/// read again, at most once a minute).
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_me_teyvat_app_NativeBridge_todayOpened(
+    _env: JNIEnv,
+    _class: JClass,
+    now_ms: jni::sys::jlong,
+) {
+    link::today_opened(u64::try_from(now_ms).unwrap_or(0));
+}
+
+/// `NativeBridge.todayAnswered(status, body)`: the plan read's answer as
+/// `{"kind": "plan" | "noPlan" | "gone" | "retry", "plan"?: {...}}`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_me_teyvat_app_NativeBridge_todayAnswered(
+    mut env: JNIEnv,
+    _class: JClass,
+    status: jint,
+    body: JString,
+) -> jstring {
+    let body = java_string(&mut env, &body).unwrap_or_default();
+    java_result(&env, Some(link::today_answered(status, &body)))
+}
+
+/// `NativeBridge.linkReset()`: the tracker link is gone or new.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_me_teyvat_app_NativeBridge_linkReset(_env: JNIEnv, _class: JClass) {
+    link::reset();
+}
+
+/// `NativeBridge.planIsOld(weekday, at, uid, nowMs)`: whether a plan made
+/// for `weekday` (< 0: unknown), published at `at`, is from a game day that
+/// is over on `uid`'s server.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_me_teyvat_app_NativeBridge_planIsOld(
+    _env: JNIEnv,
+    _class: JClass,
+    weekday: jint,
+    at: jni::sys::jlong,
+    uid: jni::sys::jlong,
+    now_ms: jni::sys::jlong,
+) -> jboolean {
+    u8::from(link::plan_is_old(
+        weekday,
+        at,
+        uid,
+        u64::try_from(now_ms).unwrap_or(0),
+    ))
+}
+
+/// `NativeBridge.syncWishesNow()`: the website's "Sync wishes": this login's
+/// wish key syncs now; false without one.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_me_teyvat_app_NativeBridge_syncWishesNow(
+    _env: JNIEnv,
+    _class: JClass,
+) -> jboolean {
+    u8::from(decoder::get().wishes.hub().sync_now())
 }
 
 #[cfg(test)]
