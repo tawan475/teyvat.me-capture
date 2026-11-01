@@ -484,6 +484,7 @@ fn spawn_sniffer_thread(
                             sent_conv = ?sniffer.bound_conversation(PacketDirection::Sent),
                             recv_conv = ?sniffer.bound_conversation(PacketDirection::Received),
                             last_decode_secs = ?line.last_decode_age.map(|age| age.as_secs()),
+                            etw_lost = ?capture::etw_losses(),
                             "capture stats (last minute)"
                         );
                     }

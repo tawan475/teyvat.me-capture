@@ -10,6 +10,10 @@ Changes from upstream:
   (UDP receive offload, Windows 11 24H2) loses a third of the game's traffic.
 - The ETW path's shutdown hook no longer unloads the pktmon driver: that
   stopped capture for every other program using pktmon.
+- The ETW path passes bare IP packets on (`PacketPayload::IP`) instead of
+  dropping every packet that isn't an Ethernet frame: some PCs report game
+  packets at some layers only that way.
+- `etw_session_losses()` reads the ETW session's lost event and buffer counts.
 - `install_shutdown_hook` keeps the latest backend's hook, not the first.
 - `extern "stdcall"` is `extern "system"` (the same on 64-bit Windows;
   Rust is phasing the first out).

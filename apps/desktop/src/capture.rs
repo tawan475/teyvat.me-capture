@@ -32,6 +32,15 @@ pub static DUPLICATES_DROPPED: AtomicU64 = AtomicU64::new(0);
 /// included.
 pub static MERGED_DATAGRAMS_SEEN: AtomicBool = AtomicBool::new(false);
 
+/// Events and buffers pktmon's ETW session has lost so far (compatible
+/// capture), for the stats line; `None` when that session isn't running.
+pub fn etw_losses() -> Option<(u32, u32)> {
+    #[cfg(windows)]
+    return pktmon::etw_session_losses();
+    #[cfg(not(windows))]
+    None
+}
+
 /// The largest IP packet a game server's datagram arrives in on its own. Its
 /// KCP packets stay well under this (~1,230 bytes); anything bigger came in
 /// one piece only because this PC merged several datagrams into it (UDP

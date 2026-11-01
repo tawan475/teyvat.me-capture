@@ -2,6 +2,15 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.17.10
+
+- Compatible capture keeps more of the game's data: on some PCs Windows
+  reports part of the game's packets in a form compatible capture used to
+  throw away, so logins still came through with gaps (the key read, but
+  characters, inventory or achievements missing). They are kept now.
+- The log's capture stats line says how many packets Windows' capture lost,
+  if any, so the next report shows it.
+
 ## 1.17.9
 
 - Fixed: on some PCs the app couldn't read the login ("Session key not
