@@ -1,0 +1,37 @@
+# emmachase's pktmon 0.6.2 (MIT, see LICENSE), copied in so the app can pick
+# the capture path and so it never unloads the system's pktmon driver.
+# What changed from upstream is listed in VENDORED.md.
+# Its own workspace: kept out of the app's (no clippy/test gate on upstream
+# code), and cargo must not look for one further up.
+[workspace]
+
+[package]
+name = "pktmon"
+version = "0.6.2"
+description = "A library for capturing network packets on Windows using the PktMon service"
+license = "MIT"
+authors = ["emmachase <me@its-em.ma>"]
+repository = "https://github.com/emmachase/pktmon"
+edition = "2024"
+publish = false
+
+[dependencies]
+cidr = "0.2.3"
+log = "0.4.25"
+futures = { version = "0.3.31", optional = true }
+tokio = { version = "1.45.0", features = ["full"], optional = true }
+windows = { version = "0.48", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_Services",
+    "Win32_Storage_FileSystem",
+    "Win32_System_IO",
+    "Win32_System_Time",
+    "Win32_System_Console",
+    "Win32_System_Diagnostics_Etw",
+    "Win32_System_LibraryLoader",
+] }
+async-stream = "0.3.6"
+
+[features]
+tokio = ["dep:futures", "dep:tokio"]

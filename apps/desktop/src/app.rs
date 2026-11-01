@@ -116,6 +116,11 @@ pub struct SavedAppState {
     #[serde(default)]
     pub save_result_folder: Option<PathBuf>,
     pub log_raw_packets: bool,
+    /// Capture through pktmon's ETW path instead of its real-time stream
+    /// (Windows). Turned on by itself on a PC that merges the game's packets,
+    /// whose merged packets the stream drops; Settings › Diagnostics.
+    #[serde(default)]
+    pub compatible_capture: bool,
     #[serde(default)]
     pub tracing_level: TracingLevel,
     /// A non-expiring bearer credential for this account's snapshot writes,
@@ -316,6 +321,7 @@ impl Default for SavedAppState {
             save_result_to_file: false,
             save_result_folder: None,
             log_raw_packets: false,
+            compatible_capture: false,
             tracing_level: Default::default(),
             tracker_import_key: String::new(),
             tracker_api_url: default_tracker_url(),
@@ -651,6 +657,10 @@ pub struct TeyvatmeApp {
     wishes: crate::wish_history::WishView,
     log_packets_tx: watch::Sender<bool>,
     saved_state_tx: watch::Sender<SavedAppState>,
+    /// The monitor's capture mode as last copied into the settings: only a
+    /// change from it is saved, so the Diagnostics switch isn't overwritten by
+    /// the old value before the monitor follows it.
+    seen_compatible_capture: Option<bool>,
     tracing_reload_handle: ReloadHandle,
     toast_rx: crate::activity::Receiver,
 
@@ -1420,6 +1430,7 @@ impl TeyvatmeApp {
             memory_release_status: GameStatus::default(),
             log_packets_tx,
             saved_state_tx,
+            seen_compatible_capture: None,
             tracing_reload_handle,
             toast_rx,
             toasts,

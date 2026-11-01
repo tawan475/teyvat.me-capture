@@ -210,6 +210,14 @@ impl AppStateManager {
 
     /// Publish the tracker's alert settings (the UI keeps them in
     /// `app.ron`), and only a change.
+    pub fn update_compatible_capture(&mut self, compatible: bool) {
+        if self.app_state.compatible_capture == Some(compatible) {
+            return;
+        }
+        self.app_state.compatible_capture = Some(compatible);
+        let _ = self.state_tx.send(self.app_state.clone());
+    }
+
     pub fn update_tracker_alerts(&mut self, alerts: Option<Alerts>) {
         if self.app_state.tracker_alerts == alerts {
             return;
@@ -733,6 +741,13 @@ pub struct Monitor {
     packet_rx: mpsc::UnboundedReceiver<CaptureEvent>,
     capture_backend: BackendType,
     capture_source: CaptureSource,
+    /// Capture through pktmon's ETW path instead of its real-time stream; see
+    /// `capture::MERGED_DATAGRAMS_SEEN`.
+    compatible_capture: bool,
+    /// The setting's value as last seen in the saved settings. Only a change
+    /// there is the user's choice: until the app has saved what this monitor
+    /// switched to by itself, the old value is still in them.
+    saved_compatible_capture: bool,
 
     /// Did Teyvat.me watch the current game session start? Without that, the
     /// handshake -- and so the session key -- was missed and nothing will ever
@@ -867,6 +882,8 @@ impl Monitor {
         // The last run's alert settings, until the tracker answers.
         let tracker_alerts = saved_state_rx.borrow().tracker_alerts;
         app_state.update_tracker_alerts(tracker_alerts);
+        let compatible_capture = saved_state_rx.borrow().compatible_capture;
+        app_state.update_compatible_capture(compatible_capture);
 
         Ok(Self {
             app_state,
@@ -884,6 +901,8 @@ impl Monitor {
             packet_rx,
             capture_backend,
             capture_source,
+            compatible_capture,
+            saved_compatible_capture: compatible_capture,
             capture_retry_at: None,
             capture_failures: 0,
             capture_silence: CaptureSilence::default(),
@@ -1062,6 +1081,7 @@ impl Monitor {
                 // or link a tracker (a verified key).
                 Ok(()) = settings_rx.changed() => {
                     self.link_check();
+                    self.follow_capture_setting().await;
                 }
                 Ok(()) = self.log_packet_rx.changed() => {
                     self.sync_packet_log();
@@ -1077,6 +1097,7 @@ impl Monitor {
                 }
                 _ = self.game_poll.tick() => {
                     self.poll_game_status();
+                    self.switch_on_merged_datagrams().await;
                     self.supervise_capture().await;
                     self.watch_capture_silence().await;
                 }
@@ -1186,6 +1207,7 @@ impl Monitor {
             self.packet_tx.clone(),
             self.capture_backend,
             self.capture_source.clone(),
+            self.compatible_capture,
         ));
         self.capture_cancel_token = Some(cancel_token);
         self.capture_handle = Some(capture_handle);
@@ -1243,6 +1265,50 @@ impl Monitor {
             "no packets captured for a minute while the game is running; restarting capture"
         );
         self.start_capture().await;
+    }
+
+    /// Move capture to pktmon's ETW path once this PC is seen merging the
+    /// game's packets, and remember that for next time.
+    ///
+    /// The login it was seen in has usually lost pieces already (the merged
+    /// packets over 9000 bytes never arrived), so the toast says how to get it
+    /// back. Every later login on this PC is read from the start.
+    async fn switch_on_merged_datagrams(&mut self) {
+        if !capture::MERGED_DATAGRAMS_SEEN.swap(false, Ordering::Relaxed) || self.compatible_capture
+        {
+            return;
+        }
+        tracing::warn!("switching capture to pktmon's ETW path for this PC");
+        let _ = self.toast_tx.send(Event::warn(
+            Topic::Capture,
+            tr("This PC merges the game's packets, so capture switched to compatible mode. If this login isn't read, return to the title screen and enter again."),
+        ));
+        self.set_compatible_capture(true).await;
+    }
+
+    /// Follow the Diagnostics switch.
+    async fn follow_capture_setting(&mut self) {
+        let saved = self.saved_state_rx.borrow().compatible_capture;
+        if saved == self.saved_compatible_capture {
+            return;
+        }
+        self.saved_compatible_capture = saved;
+        if saved != self.compatible_capture {
+            tracing::info!(compatible = saved, "capture mode changed in the settings");
+            self.set_compatible_capture(saved).await;
+        }
+    }
+
+    async fn set_compatible_capture(&mut self, compatible: bool) {
+        self.compatible_capture = compatible;
+        self.app_state.update_compatible_capture(compatible);
+        #[cfg(windows)]
+        let pktmon = self.capture_backend == BackendType::Pktmon;
+        #[cfg(not(windows))]
+        let pktmon = false;
+        if pktmon && self.capture_handle.is_some() {
+            self.start_capture().await;
+        }
     }
 
     /// Cancel the capture task *and wait for it to finish*.
@@ -2854,8 +2920,9 @@ async fn capture_task(
     packet_tx: mpsc::UnboundedSender<CaptureEvent>,
     backend: BackendType,
     capture_source: capture::CaptureSource,
+    compatible: bool,
 ) -> Result<()> {
-    let mut capture = match create_capture(backend, capture_source) {
+    let mut capture = match create_capture(backend, capture_source, compatible) {
         Ok(capture) => capture,
         Err(e) => {
             // Reported through the channel rather than out of the task: the

@@ -44,6 +44,13 @@ by Erik Gilling, vendored at revision `dfc03cdb` and changed since. Same
 licence and copyright notice as irminsul above (Copyright (c) 2025 Erik
 Gilling).
 
+## pktmon
+
+`crates/pktmon` is [pktmon](https://github.com/emmachase/pktmon) 0.6.2 by
+emmachase, vendored and changed (`crates/pktmon/VENDORED.md`). MIT; its
+licence and copyright notice are in `crates/pktmon/LICENSE` (Copyright (c)
+2025 emmachase).
+
 ## auto-artifactarium and reliquary
 
 `crates/protocol` started as auto-artifactarium

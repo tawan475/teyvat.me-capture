@@ -197,6 +197,9 @@ pub struct AppState {
     /// answer (or the last run's, kept in `app.ron`); they replace the local
     /// resin alert setting while held.
     tracker_alerts: Option<link::Alerts>,
+    /// Whether capture reads pktmon's ETW path (`SavedAppState::compatible_capture`)
+    /// as the monitor last set it; `None` until the monitor starts.
+    compatible_capture: Option<bool>,
 }
 
 impl AppState {
@@ -214,6 +217,7 @@ impl AppState {
             anecdotes: None,
             capture_done: false,
             tracker_alerts: None,
+            compatible_capture: None,
         }
     }
 }
