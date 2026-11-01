@@ -168,6 +168,7 @@
   "Live sync · {0} changes sent to {1}": "Sincronización en vivo · {0} cambios enviados a {1}",
   "Log folder": "Carpeta de registros",
   "Log raw packets": "Registrar paquetes sin procesar",
+  "Raw packet folder": "Carpeta de paquetes sin procesar",
   "Logging level": "Nivel de registro",
   "Login detected · reading your data": "Inicio de sesión detectado · leyendo tus datos",
   "Login detected · {0}": "Inicio de sesión detectado · {0}",

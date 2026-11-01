@@ -168,6 +168,7 @@
   "Live sync · {0} changes sent to {1}": "Canlı eşitleme · gönderilen değişiklik: {0} → {1}",
   "Log folder": "Günlük klasörü",
   "Log raw packets": "Ham paketleri günlüğe yaz",
+  "Raw packet folder": "Ham paket klasörü",
   "Logging level": "Günlük düzeyi",
   "Login detected · reading your data": "Giriş algılandı · verilerin okunuyor",
   "Login detected · {0}": "Giriş algılandı · {0}",

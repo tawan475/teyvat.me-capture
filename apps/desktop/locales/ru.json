@@ -168,6 +168,7 @@
   "Live sync · {0} changes sent to {1}": "Живая синхронизация · изменений отправлено на {1}: {0}",
   "Log folder": "Папка логов",
   "Log raw packets": "Записывать сырые пакеты",
+  "Raw packet folder": "Папка сырых пакетов",
   "Logging level": "Уровень логирования",
   "Login detected · reading your data": "Вход обнаружен · чтение данных",
   "Login detected · {0}": "Вход обнаружен · {0}",

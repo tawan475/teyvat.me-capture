@@ -168,6 +168,7 @@
   "Live sync · {0} changes sent to {1}": "ライブ同期 · {1} に {0} 件の変更を送信",
   "Log folder": "ログフォルダ",
   "Log raw packets": "生パケットを記録",
+  "Raw packet folder": "生パケットのフォルダ",
   "Logging level": "ログレベル",
   "Login detected · reading your data": "ログインを検出 · データを読み取り中",
   "Login detected · {0}": "ログインを検出 · {0}",

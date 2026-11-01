@@ -168,6 +168,7 @@
   "Live sync · {0} changes sent to {1}": "실시간 동기화 · {1}에 변경 {0}건 전송됨",
   "Log folder": "로그 폴더",
   "Log raw packets": "원시 패킷 기록",
+  "Raw packet folder": "원시 패킷 폴더",
   "Logging level": "로그 수준",
   "Login detected · reading your data": "로그인 감지됨 · 데이터 읽는 중",
   "Login detected · {0}": "로그인 감지됨 · {0}",

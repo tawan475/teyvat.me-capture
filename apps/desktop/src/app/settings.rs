@@ -993,6 +993,31 @@ impl TeyvatmeApp {
             {
                 let _ = self.log_packets_tx.send(self.saved_state.log_raw_packets);
             }
+            if self.saved_state.log_raw_packets {
+                divider(ui);
+                let mut open = false;
+                list_row(
+                    ui,
+                    None,
+                    title_text(tr("Raw packet folder"), pal.tx),
+                    None,
+                    |ui| {
+                        open = button(
+                            ui,
+                            ButtonKind::Secondary,
+                            Some(icons::folder_open()),
+                            tr("Open"),
+                            false,
+                        )
+                        .clicked();
+                    },
+                );
+                if open {
+                    std::thread::spawn(|| {
+                        let _ = crate::open_packet_log_dir();
+                    });
+                }
+            }
             divider(ui);
             let mut open = false;
             list_row(ui, None, title_text(tr("Log folder"), pal.tx), None, |ui| {

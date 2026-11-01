@@ -122,6 +122,15 @@ fn destination_host(state: &crate::app::SavedAppState) -> String {
     crate::signin::host_of(&state.tracker_api_url).unwrap_or_else(|| tr("the tracker").to_string())
 }
 
+/// Now, in nanoseconds since the unix epoch: what `pcapng.rs` declares
+/// (`if_tsresol = 9`) for its frame times.
+fn now_ns() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|since_epoch| since_epoch.as_nanos() as u64)
+        .unwrap_or_default()
+}
+
 /// A path's file name, for the activity line.
 fn file_name(path: &std::path::Path) -> String {
     path.file_name()
@@ -508,17 +517,27 @@ fn encode_packet_log_record(command: &GameCommand) -> Vec<u8> {
 
 /// The raw packet log written while the "Log raw packets" power tool is on.
 ///
-/// One appended-to file per session. This used to be one *file per command*,
-/// each preceded by a known-folder lookup and a `create_dir_all`, on the
-/// monitor's hot loop -- 4 KiB of NTFS allocation per decrypted command.
+/// Two appended-to files per session, named by the same stamp: `<stamp>.bin`,
+/// the decrypted commands, and `<stamp>.pcapng`, every captured frame before
+/// decryption. The commands alone were empty for exactly the logins that most
+/// needed a look -- a session key that was never found decrypts nothing -- and
+/// the frames are what `--replay-export` reads to find out why.
 ///
-/// The directory is pruned to [`PACKET_LOG_RETENTION`] files when a session
-/// first opens one; `main.rs::rotate_logs` cannot do it, because it only sweeps
+/// Both files are opened the moment the switch turns on, not at the first
+/// decrypted command: with nothing decrypting, the folder never appeared and
+/// people were told to send files that did not exist. Turning it off closes
+/// them; turning it on again starts a new pair.
+///
+/// The directory is pruned to [`PACKET_LOG_RETENTION`] sessions as a pair
+/// opens; `main.rs::rotate_logs` cannot do it, because it only sweeps
 /// `log_dir()` and this tree lives under `storage_dir(APP_ID)`.
 struct PacketLog {
     /// `None` when the storage directory could not be resolved at all.
     dir: Option<PathBuf>,
-    writer: Option<BufWriter<std::fs::File>>,
+    /// The decrypted commands; `None` while logging is off.
+    commands: Option<BufWriter<std::fs::File>>,
+    /// The captured frames; `None` while logging is off.
+    frames: Option<crate::pcapng::PcapngWriter>,
 }
 
 impl PacketLog {
@@ -530,21 +549,52 @@ impl PacketLog {
     }
 
     fn with_dir(dir: Option<PathBuf>) -> Self {
-        Self { dir, writer: None }
+        Self {
+            dir,
+            commands: None,
+            frames: None,
+        }
+    }
+
+    fn is_on(&self) -> bool {
+        self.commands.is_some()
+    }
+
+    /// Open this session's files (`on`) or close them.
+    fn set_on(&mut self, on: bool) -> Result<()> {
+        if !on {
+            self.commands = None;
+            self.frames = None;
+            return Ok(());
+        }
+        if self.is_on() {
+            return Ok(());
+        }
+
+        let dir = self.dir.as_ref().context("Storage dir not found")?;
+        std::fs::create_dir_all(dir).with_context(|| format!("can't create directory {dir:?}"))?;
+        // Room is made *before* the new files exist, so the ones about to be
+        // written can never be the files that get deleted.
+        for extension in PACKET_LOG_EXTENSIONS {
+            prune_packet_logs(dir, extension, PACKET_LOG_RETENTION.saturating_sub(1));
+        }
+        let stamp = Local::now().format("%Y-%m-%d_%H-%M-%S%.3f");
+        let path = dir.join(format!("{stamp}.bin"));
+        let commands =
+            std::fs::File::create(&path).with_context(|| format!("can't create file {path:?}"))?;
+        let path = dir.join(format!("{stamp}.pcapng"));
+        let frames = crate::pcapng::PcapngWriter::new(path.clone())
+            .with_context(|| format!("can't create file {path:?}"))?;
+        self.commands = Some(BufWriter::new(commands));
+        self.frames = Some(frames);
+        Ok(())
     }
 
     fn append(&mut self, command: &GameCommand) -> Result<()> {
-        let record = encode_packet_log_record(command);
-
-        let writer = match self.writer {
-            Some(ref mut writer) => writer,
-            None => {
-                let file = self.open_file()?;
-                self.writer.insert(BufWriter::new(file))
-            }
+        let Some(writer) = self.commands.as_mut() else {
+            return Ok(());
         };
-
-        writer.write_all(&record)?;
+        writer.write_all(&encode_packet_log_record(command))?;
         // Buffered writing still beats the file-per-command this replaced by a
         // long way, but the log is only ever read after something went wrong,
         // so it must not lose its tail to a crash.
@@ -552,21 +602,20 @@ impl PacketLog {
         Ok(())
     }
 
-    fn open_file(&self) -> Result<std::fs::File> {
-        let dir = self.dir.as_ref().context("Storage dir not found")?;
-        std::fs::create_dir_all(dir).with_context(|| format!("can't create directory {dir:?}"))?;
-        // Room is made *before* the new file exists, so the one about to be
-        // written can never be the file that gets deleted.
-        prune_packet_logs(dir, PACKET_LOG_RETENTION.saturating_sub(1));
-        let path = dir.join(format!(
-            "{}.bin",
-            Local::now().format("%Y-%m-%d_%H-%M-%S%.3f")
-        ));
-        std::fs::File::create(&path).with_context(|| format!("can't create file {path:?}"))
+    /// Record one captured frame, `timestamp_ns` after the unix epoch.
+    fn append_frame(&mut self, timestamp_ns: u64, frame: &[u8]) -> Result<()> {
+        if let Some(writer) = self.frames.as_mut() {
+            writer.write_packet(timestamp_ns, frame)?;
+        }
+        Ok(())
     }
 }
 
-/// Delete all but the newest `keep` `*.bin` files in the packet-log directory.
+/// The two files a packet log session writes.
+const PACKET_LOG_EXTENSIONS: [&str; 2] = ["bin", "pcapng"];
+
+/// Delete all but the newest `keep` `*.<extension>` files in the packet-log
+/// directory.
 ///
 /// Ordered by file *name*, not by mtime: the names are fixed-width
 /// `%Y-%m-%d_%H-%M-%S%.3f` stamps, so lexicographic order is chronological
@@ -575,7 +624,7 @@ impl PacketLog {
 ///
 /// Every failure here is ignored on purpose. Failing to tidy up is not a reason
 /// to refuse to log.
-fn prune_packet_logs(dir: &std::path::Path, keep: usize) {
+fn prune_packet_logs(dir: &std::path::Path, extension: &str, keep: usize) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
@@ -583,7 +632,7 @@ fn prune_packet_logs(dir: &std::path::Path, keep: usize) {
     let mut logs: Vec<PathBuf> = entries
         .flatten()
         .map(|entry| entry.path())
-        .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("bin"))
+        .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some(extension))
         .collect();
 
     if logs.len() <= keep {
@@ -902,6 +951,7 @@ impl Monitor {
         let mut auth_rx = self.tracker_auth.status();
         let mut settings_rx = self.saved_state_rx.clone();
         self.link_check();
+        self.sync_packet_log();
 
         loop {
             // Checked before the `select!` rather than only inside it. On the
@@ -1012,6 +1062,9 @@ impl Monitor {
                 // or link a tracker (a verified key).
                 Ok(()) = settings_rx.changed() => {
                     self.link_check();
+                }
+                Ok(()) = self.log_packet_rx.changed() => {
+                    self.sync_packet_log();
                 }
                 Some(event) = self.packet_rx.recv() => {
                     self.handle_capture_event(event);
@@ -1356,13 +1409,12 @@ impl Monitor {
     fn handle_packet(&mut self, packet: Vec<u8>) {
         #[cfg(debug_assertions)]
         if let Some(writer) = self.pcapng.as_mut() {
-            // Nanoseconds: `pcapng.rs` declares `if_tsresol = 9` in the
-            // interface description block.
-            let ts = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|since_epoch| since_epoch.as_nanos() as u64)
-                .unwrap_or_default();
-            let _ = writer.write_packet(ts, &packet);
+            let _ = writer.write_packet(now_ns(), &packet);
+        }
+        if self.packet_log.is_on()
+            && let Err(e) = self.packet_log.append_frame(now_ns(), &packet)
+        {
+            tracing::info!("error logging a captured frame {e}");
         }
 
         // Game traffic: for a game that was already open, starts the clock on
@@ -1462,8 +1514,7 @@ impl Monitor {
             }
         }
 
-        let log_packets = *self.log_packet_rx.borrow_and_update();
-        if log_packets {
+        if self.packet_log.is_on() {
             for command in &commands {
                 let _span = tracing::info_span!("command", id = command.command_id).entered();
                 // The wish history key is a password: never on disk.
@@ -2215,6 +2266,15 @@ impl Monitor {
 
     /// Follow the credential: a new link sends the state at once; without
     /// one nothing is sent. Signing out drops the tracker's alert settings.
+    /// Open or close the raw packet log to match the switch, at once: the
+    /// folder and the session's files exist as soon as it is on.
+    fn sync_packet_log(&mut self) {
+        let on = *self.log_packet_rx.borrow_and_update();
+        if let Err(e) = self.packet_log.set_on(on) {
+            tracing::warn!("can't start the raw packet log: {e:#}");
+        }
+    }
+
     fn link_check(&mut self) {
         let state = self.upload_state();
         let linked = uploads_allowed(&self.capture_source)
@@ -3128,27 +3188,84 @@ pub(crate) mod tests {
         assert_eq!(&record[10..11], &[7]);
     }
 
+    /// The names in `dir` ending in `.<extension>`, sorted.
+    fn names_with(dir: &std::path::Path, extension: &str) -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(dir)
+            .unwrap()
+            .flatten()
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.ends_with(&format!(".{extension}")))
+            .collect();
+        names.sort();
+        names
+    }
+
     #[test]
     fn the_packet_log_appends_to_one_file_per_session() {
         let dir = tempfile::tempdir().unwrap();
         let mut log = PacketLog::with_dir(Some(dir.path().to_path_buf()));
+        log.set_on(true).unwrap();
 
         log.append(&command(1, &[], &[7])).unwrap();
         log.append(&command(2, &[], &[8, 8])).unwrap();
 
-        let files: Vec<_> = std::fs::read_dir(dir.path()).unwrap().flatten().collect();
-        assert_eq!(files.len(), 1, "one file per session, not per command");
+        let bins = names_with(dir.path(), "bin");
+        assert_eq!(bins.len(), 1, "one file per session, not per command");
 
-        let written = std::fs::read(files[0].path()).unwrap();
+        let written = std::fs::read(dir.path().join(&bins[0])).unwrap();
         assert_eq!(written.len(), (10 + 1) + (10 + 2));
         assert_eq!(&written[0..2], &1u16.to_le_bytes());
         assert_eq!(&written[11..13], &2u16.to_le_bytes());
     }
 
     #[test]
+    fn turning_the_packet_log_on_makes_its_folder_and_files_at_once() {
+        // People were asked for files that did not exist: with no login
+        // decrypting, nothing was ever written, so nothing was ever created.
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join("packet_log");
+        let mut log = PacketLog::with_dir(Some(dir.clone()));
+        log.set_on(true).unwrap();
+
+        let bins = names_with(&dir, "bin");
+        let frames = names_with(&dir, "pcapng");
+        assert_eq!((bins.len(), frames.len()), (1, 1));
+        assert_eq!(
+            bins[0].trim_end_matches(".bin"),
+            frames[0].trim_end_matches(".pcapng"),
+            "one session, one stamp"
+        );
+
+        // The frames before decryption, readable by the replay tool.
+        log.append_frame(1_700_000_000_000_000_000, &[0xAB; 60])
+            .unwrap();
+        let recording = std::fs::read(dir.join(&frames[0])).unwrap();
+        assert_eq!(&recording[0..4], &0x0a0d0d0a_u32.to_le_bytes());
+        assert!(recording.windows(60).any(|window| window == [0xAB; 60]));
+    }
+
+    #[test]
+    fn the_packet_log_writes_nothing_while_off() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut log = PacketLog::with_dir(Some(dir.path().to_path_buf()));
+        log.append(&command(1, &[], &[7])).unwrap();
+        log.append_frame(1, &[1, 2, 3]).unwrap();
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+
+        log.set_on(true).unwrap();
+        log.set_on(false).unwrap();
+        assert!(!log.is_on());
+        log.append(&command(1, &[], &[7])).unwrap();
+        let bins = names_with(dir.path(), "bin");
+        assert_eq!(std::fs::read(dir.path().join(&bins[0])).unwrap().len(), 0);
+    }
+
+    #[test]
     fn the_packet_log_reports_an_unusable_directory_instead_of_panicking() {
         let mut log = PacketLog::with_dir(None);
-        assert!(log.append(&command(1, &[], &[7])).is_err());
+        assert!(log.set_on(true).is_err());
+        assert!(!log.is_on());
+        assert!(log.append(&command(1, &[], &[7])).is_ok());
     }
 
     // -- capture watchdog --------------------------------------------------------
@@ -3243,35 +3360,36 @@ pub(crate) mod tests {
     fn the_packet_log_prunes_old_sessions_when_it_opens_a_new_one() {
         let dir = tempfile::tempdir().unwrap();
         for second in 0..10 {
-            std::fs::write(
-                dir.path()
-                    .join(format!("2024-01-01_00-00-{second:02}.000.bin")),
-                b"old",
-            )
-            .unwrap();
+            for extension in PACKET_LOG_EXTENSIONS {
+                std::fs::write(
+                    dir.path()
+                        .join(format!("2024-01-01_00-00-{second:02}.000.{extension}")),
+                    b"old",
+                )
+                .unwrap();
+            }
         }
         // Anything that is not a packet log is none of the pruner's business.
         std::fs::write(dir.path().join("notes.txt"), b"keep me").unwrap();
 
         let mut log = PacketLog::with_dir(Some(dir.path().to_path_buf()));
-        log.append(&command(1, &[], &[7])).unwrap();
-        // Pruning happens when the session's file is opened, not per record.
+        log.set_on(true).unwrap();
+        // Pruning happens when the session's files are opened, not per record.
         log.append(&command(2, &[], &[8])).unwrap();
 
-        let mut names: Vec<String> = std::fs::read_dir(dir.path())
-            .unwrap()
-            .flatten()
-            .map(|entry| entry.file_name().to_string_lossy().into_owned())
-            .filter(|name| name.ends_with(".bin"))
-            .collect();
-        names.sort();
-
-        assert_eq!(names.len(), PACKET_LOG_RETENTION, "kept {names:?}");
-        assert_eq!(names[0], "2024-01-01_00-00-05.000.bin", "oldest kept");
-        assert!(
-            !names.contains(&"2024-01-01_00-00-04.000.bin".to_string()),
-            "the oldest sessions should be gone"
-        );
+        for extension in PACKET_LOG_EXTENSIONS {
+            let names = names_with(dir.path(), extension);
+            assert_eq!(names.len(), PACKET_LOG_RETENTION, "kept {names:?}");
+            assert_eq!(
+                names[0],
+                format!("2024-01-01_00-00-05.000.{extension}"),
+                "oldest kept"
+            );
+            assert!(
+                !names.contains(&format!("2024-01-01_00-00-04.000.{extension}")),
+                "the oldest sessions should be gone"
+            );
+        }
         assert!(dir.path().join("notes.txt").exists());
     }
 

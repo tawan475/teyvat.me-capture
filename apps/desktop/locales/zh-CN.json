@@ -168,6 +168,7 @@
   "Live sync · {0} changes sent to {1}": "实时同步 · 已向 {1} 发送 {0} 项变化",
   "Log folder": "日志文件夹",
   "Log raw packets": "记录原始数据包",
+  "Raw packet folder": "原始数据包文件夹",
   "Logging level": "日志级别",
   "Login detected · reading your data": "已检测到登录 · 正在读取你的数据",
   "Login detected · {0}": "已检测到登录 · {0}",

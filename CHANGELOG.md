@@ -2,6 +2,17 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.17.7
+
+- Fixed: on Linux and macOS, Teyvat.me closed at once instead of showing
+  the "Packet capture needs permission" window ("semibold" is not bound
+  to any fonts). Thanks to @MRDGH2821 for the report and the fix.
+- "Log raw packets" (Settings → Diagnostics) now also records the game's
+  traffic as it arrives, before decryption, so a login the app couldn't
+  read ("Session key not found") can still be looked at. The folder and the
+  session's files appear as soon as you turn it on, and a "Raw packet
+  folder" row opens it.
+
 ## 1.17.6
 
 - Fixed: picking characters for the Imaginarium Theater (or any mode that

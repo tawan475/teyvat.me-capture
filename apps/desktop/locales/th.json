@@ -168,6 +168,7 @@
   "Live sync · {0} changes sent to {1}": "ซิงก์สด · ส่งการเปลี่ยนแปลง {0} รายการไปที่ {1} แล้ว",
   "Log folder": "โฟลเดอร์ล็อก",
   "Log raw packets": "บันทึกแพ็กเก็ตดิบ",
+  "Raw packet folder": "โฟลเดอร์แพ็กเก็ตดิบ",
   "Logging level": "ระดับล็อก",
   "Login detected · reading your data": "ตรวจพบการเข้าสู่ระบบ · กำลังอ่านข้อมูลของคุณ",
   "Login detected · {0}": "ตรวจพบการเข้าสู่ระบบ · {0}",

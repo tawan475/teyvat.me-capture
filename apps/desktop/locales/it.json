@@ -168,6 +168,7 @@
   "Live sync · {0} changes sent to {1}": "Sincronizzazione live · {0} modifiche inviate a {1}",
   "Log folder": "Cartella dei log",
   "Log raw packets": "Registra i pacchetti grezzi",
+  "Raw packet folder": "Cartella dei pacchetti grezzi",
   "Logging level": "Livello di log",
   "Login detected · reading your data": "Accesso rilevato · lettura dei tuoi dati",
   "Login detected · {0}": "Accesso rilevato · {0}",

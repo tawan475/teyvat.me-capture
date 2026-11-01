@@ -168,6 +168,7 @@
   "Live sync · {0} changes sent to {1}": "Sinkronisasi live · {0} perubahan dikirim ke {1}",
   "Log folder": "Folder log",
   "Log raw packets": "Catat paket mentah",
+  "Raw packet folder": "Folder paket mentah",
   "Logging level": "Tingkat log",
   "Login detected · reading your data": "Login terdeteksi · membaca datamu",
   "Login detected · {0}": "Login terdeteksi · {0}",

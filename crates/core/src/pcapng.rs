@@ -1,19 +1,16 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 tawan475
 
-//! The pcapng file debug builds record every captured frame to. Compiled for
-//! tests too, so `recording.rs` can check it reads back what this writes in
-//! release-mode test runs as well.
+//! The pcapng file every captured frame is recorded to: always in debug builds,
+//! and beside the raw packet log while "Log raw packets" is on (the frames
+//! before decryption, so a login whose key was never found can still be
+//! replayed with `--replay-export`).
 
-#[cfg(any(debug_assertions, test))]
 use std::fs::File;
-#[cfg(any(debug_assertions, test))]
 use std::io::Write;
-#[cfg(any(debug_assertions, test))]
 use std::path::PathBuf;
 
 /// pcapng option code for `if_tsresol` (interface timestamp resolution).
-#[cfg(any(debug_assertions, test))]
 const OPT_IF_TSRESOL: u16 = 9;
 
 /// `if_tsresol` value for nanosecond timestamps.
@@ -22,16 +19,13 @@ const OPT_IF_TSRESOL: u16 = 9;
 /// remaining bits are the negative exponent. `9` therefore means 10^-9 s.
 /// Without this option the pcapng default is 10^-6 s, so a reader would divide
 /// our nanosecond timestamps by a million and place every frame in 1970.
-#[cfg(any(debug_assertions, test))]
 const IF_TSRESOL_NANOSECONDS: u8 = 9;
 
-#[cfg(any(debug_assertions, test))]
 pub struct PcapngWriter {
     file: File,
     packet_count: u32,
 }
 
-#[cfg(any(debug_assertions, test))]
 impl PcapngWriter {
     pub fn new(path: PathBuf) -> std::io::Result<Self> {
         let file = File::create(path)?;
