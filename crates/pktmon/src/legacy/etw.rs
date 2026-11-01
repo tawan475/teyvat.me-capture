@@ -12,9 +12,9 @@ use windows::Win32::Foundation::{
 use windows::Win32::System::Diagnostics::Etw::{
     CONTROLTRACE_HANDLE, CloseTrace, ControlTraceA, EVENT_CONTROL_CODE_DISABLE_PROVIDER,
     EVENT_CONTROL_CODE_ENABLE_PROVIDER, EVENT_RECORD, EVENT_TRACE_CONTROL_FLUSH,
-    EVENT_TRACE_CONTROL_STOP, EVENT_TRACE_INDEPENDENT_SESSION_MODE, EVENT_TRACE_LOGFILEA,
-    EVENT_TRACE_PROPERTIES, EVENT_TRACE_REAL_TIME_MODE, EnableTraceEx2, OpenTraceA,
-    PROCESS_TRACE_MODE_EVENT_RECORD, PROCESS_TRACE_MODE_REAL_TIME, PROCESSTRACE_HANDLE,
+    EVENT_TRACE_CONTROL_QUERY, EVENT_TRACE_CONTROL_STOP, EVENT_TRACE_INDEPENDENT_SESSION_MODE,
+    EVENT_TRACE_LOGFILEA, EVENT_TRACE_PROPERTIES, EVENT_TRACE_REAL_TIME_MODE, EnableTraceEx2,
+    OpenTraceA, PROCESS_TRACE_MODE_EVENT_RECORD, PROCESS_TRACE_MODE_REAL_TIME, PROCESSTRACE_HANDLE,
     PROPERTY_DATA_DESCRIPTOR, ProcessTrace, StartTraceA, TRACE_LEVEL_INFORMATION, TdhGetProperty,
     WNODE_FLAG_TRACED_GUID,
 };
@@ -88,6 +88,25 @@ impl Default for SessionProperties {
 
         session
     }
+}
+
+/// Events and real-time buffers this crate's ETW session has lost so far, or
+/// `None` when it isn't running. A lost event is a packet nobody will see:
+/// the session's buffers filled faster than the consumer emptied them.
+pub fn session_losses() -> Option<(u32, u32)> {
+    let mut session = SessionProperties::default();
+    let error = unsafe {
+        ControlTraceA(
+            CONTROLTRACE_HANDLE::default(),
+            LOGGER_NAME,
+            &mut session.properties,
+            EVENT_TRACE_CONTROL_QUERY,
+        )
+    };
+    (error == NO_ERROR).then_some((
+        session.properties.EventsLost,
+        session.properties.RealTimeBuffersLost,
+    ))
 }
 
 #[derive(Default)]
@@ -345,10 +364,10 @@ impl EtwConsumer {
                     }
                 };
 
-                if packet_type != 1 {
-                    debug!("Received non-ethernet packet of type: {:?}", packet_type);
-                    return;
-                }
+                // Upstream dropped everything but Ethernet frames. Some PCs
+                // report a packet at some layers only as a bare IP packet, and
+                // dropping those lost game data on the ETW path that the
+                // real-time stream (which passes them on) had kept.
 
                 let original_payload_size =
                     match get_event_property_value_u32(event_record, w!("LoggedPayloadSize")) {
@@ -388,6 +407,7 @@ impl EtwConsumer {
                             payload: match packet_type {
                                 1 => PacketPayload::Ethernet(payload),
                                 2 => PacketPayload::WiFi(payload),
+                                3 => PacketPayload::IP(payload),
                                 _ => PacketPayload::Unknown(payload),
                             },
                         }) {

@@ -15,7 +15,7 @@ mod c_filter;
 mod driver;
 mod etw;
 
-pub use etw::EtlConsumer;
+pub use etw::{EtlConsumer, session_losses};
 
 pub struct LegacyBackend {
     driver: Driver,

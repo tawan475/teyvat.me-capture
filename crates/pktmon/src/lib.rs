@@ -59,6 +59,7 @@ use std::sync::mpsc::{RecvError, RecvTimeoutError, TryRecvError};
 use std::time::Duration;
 
 use filter::PktMonFilter;
+pub use legacy::session_losses as etw_session_losses;
 use legacy::{EtlConsumer, LegacyBackend};
 use log::{debug, info};
 use realtime::RealTimeBackend;
