@@ -5,8 +5,10 @@
 //!
 //! Plan: the tracker's `docs/plans/live-sync.md` (§4.3 sending rules, §6
 //! irminsul, §13 the contract as built). The game sends the whole account at
-//! login and at every world change; each of those is a snapshot, as before,
-//! tagged with `gi_capture`. In between, this sends batches of changes
+//! login and at every world change; the login's is a snapshot tagged with
+//! `gi_capture`, and so is a world change's while no journal is open (with
+//! one open, the world change's differences go as a batch). In between, this
+//! sends batches of changes
 //! (`delta.rs`) to `POST /irminsul/changes`, adaptively in time and amount,
 //! and nothing at all while nothing changes.
 //!
@@ -291,12 +293,17 @@ impl LiveSync {
     }
 
     /// The game sent the whole inventory: a login (the first of a
-    /// connection) or a world change.
+    /// connection) or a world change. A world change while the tracker
+    /// follows a journal uploads nothing of its own: whatever it changed goes
+    /// in the next batch, like any change (a ~1 MB snapshot per teleport into
+    /// a domain was most of the tracker's CPU time).
     pub fn note_full_send(&mut self) {
         match &mut self.login {
             Some(login) => {
                 login.world += 1;
-                self.wanted = Some(Reason::World);
+                if self.journal.is_none() {
+                    self.wanted = Some(Reason::World);
+                }
             }
             None => {
                 self.login = Some(Login {
@@ -973,23 +980,14 @@ mod tests {
             }),
             0,
         );
-        // Two world changes in the same connection.
+        // Two world changes in the same connection: no snapshot while the
+        // journal is open (their changes go as batches), but counted.
         for world in [2, 3] {
             live.note_full_send();
-            assert_eq!(live.automation_reason(true, 1), Some(Reason::World));
+            assert_eq!(live.automation_reason(true, 1), None);
             let capture = live.capture(Reason::World).unwrap();
             assert_eq!((capture.reason.as_str(), capture.world), ("world", world));
             assert_eq!(capture.session, login.session);
-            let ticket = live.snapshot_started(Reason::World, keyed(&good(world)));
-            live.snapshot_answered(
-                ticket,
-                Some(ImportAnswer {
-                    base: Some(format!("k{world}")),
-                    watching: false,
-                }),
-                0,
-            );
-            assert_eq!(live.automation_reason(true, 1), None);
         }
         // A batch, then the tracker asks for a collapse.
         live.note_change(5);
@@ -1036,6 +1034,17 @@ mod tests {
         let next = live.capture(Reason::Login).unwrap();
         assert_ne!(next.session, login.session);
         assert_eq!(next.world, 1);
+    }
+
+    #[test]
+    fn a_world_change_without_a_journal_is_a_snapshot() {
+        let mut live = LiveSync::new();
+        live.note_full_send();
+        let ticket = live.snapshot_started(Reason::Login, keyed(&good(1)));
+        // Live sync off for the account: no journal.
+        live.snapshot_answered(ticket, Some(ImportAnswer::default()), 0);
+        live.note_full_send();
+        assert_eq!(live.automation_reason(true, 1), Some(Reason::World));
     }
 
     #[test]
