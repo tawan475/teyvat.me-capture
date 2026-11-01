@@ -123,9 +123,6 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
     private val signInUrlFlow = MutableStateFlow<String?>(null)
     /** The sign-in page while the browser is open on it, for Copy link. */
     val signInUrl: StateFlow<String?> = signInUrlFlow.asStateFlow()
-    private val planFlow = MutableStateFlow<PlanView>(PlanView.None)
-    /** The farm plan the tracker's Planner published, for "From your plan". */
-    val plan: StateFlow<PlanView> = planFlow.asStateFlow()
     private val alertsFlow = MutableStateFlow<TrackerAlerts?>(null)
     /**
      * This device's alert settings on the tracker (the last presence
@@ -530,7 +527,7 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
         }
     }
 
-    // -- presence and the plan (the tracker's capture-link contract) -------------
+    // -- presence (the tracker's capture-link contract) ---------------------------
 
     /** The last summary read, for a snapshot the website asks for. */
     private var lastSummary: Summary? = null
@@ -539,8 +536,7 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
 
     /**
      * The desktop's link: a presence heartbeat at every change and every
-     * `next` s while the game is not stopped, and the plan read after a
-     * link, every 10 min and when Today opens (`teyvatme_core::link`
+     * `next` s while the game is not stopped (`teyvatme_core::link`
      * decides when; nothing at all without a sign-in or a verified key).
      */
     private fun linkTick(vpn: VpnState, summary: Summary) {
@@ -548,18 +544,13 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
         if (now != linked) {
             linked = now
             NativeBridge.linkReset()
-            if (!now) planFlow.value = PlanView.None
         }
         if (!linked) return
         val at = System.currentTimeMillis()
         val uid = summary.player?.uid ?: -1L
         val state = presenceState(vpn, summary)
         if (NativeBridge.presenceDue(state, uid, at)) sendPresence(state, uid)
-        if (NativeBridge.todayDue(uid, at)) readToday(uid)
     }
-
-    /** The Today screen opened: its plan is read again (at most once a minute). */
-    fun todayShown() = NativeBridge.todayOpened(System.currentTimeMillis())
 
     private fun sendPresence(state: String, uid: Long) {
         val body = JSONObject()
@@ -598,21 +589,6 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
             return
         }
         uploadNow(summary)
-    }
-
-    private fun readToday(uid: Long) {
-        val url = "${Links.trackerApi}/irminsul/today" + if (uid > 0) "?uid=$uid" else ""
-        scope.launch {
-            val (status, text) = withContext(Dispatchers.IO) { linkCall("GET", url, "") }
-            val answer = json(NativeBridge.todayAnswered(status, text))
-            if (!linked) return@launch
-            when (answer.optString("kind")) {
-                "plan" -> answer.optJSONObject("plan")?.let { planFlow.value = PlanView.Ready(Plan.parse(it)) }
-                "noPlan" -> planFlow.value = PlanView.NoPlan
-                "gone" -> planFlow.value = PlanView.None
-                // retry: kept as shown.
-            }
-        }
     }
 
     /** One link request: its status (0: no answer or signed out) and body. Never toasts. */

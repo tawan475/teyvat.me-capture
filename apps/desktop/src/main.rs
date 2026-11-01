@@ -133,9 +133,6 @@ pub enum Message {
     /// Something for the tracker sign-in (`signin.rs`): sign in or out, a
     /// whoami refresh, an address change. Answered through its status.
     Tracker(signin::TrackerRequest),
-    /// The home screen (and its Today card) came into sight: the tracker's
-    /// plan is read again, at most once a minute.
-    TodayShown,
     /// Terminate the running game, from the "game already running" modal.
     ///
     /// Handled in `monitor.rs` rather than in the UI because the process
@@ -198,9 +195,6 @@ pub struct AppState {
     /// Whether this login's data has all arrived and gone quiet: the status
     /// reads "Capture done" instead of "Data decrypting".
     capture_done: bool,
-    /// The farm plan the tracker's Planner published, for the home screen
-    /// ("From your plan"); nothing while not linked to a tracker.
-    plan: link::PlanState,
     /// This device's alert settings on the tracker, from the last presence
     /// answer (or the last run's, kept in `app.ron`); they replace the local
     /// resin alert setting while held.
@@ -221,7 +215,6 @@ impl AppState {
             tasks_at: None,
             anecdotes: None,
             capture_done: false,
-            plan: link::PlanState::None,
             tracker_alerts: None,
         }
     }

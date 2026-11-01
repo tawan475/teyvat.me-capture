@@ -384,12 +384,6 @@
     <string name="resin_alert_title">Reçine %1$d/%2$d</string>
     <string name="resin_alert_full">Reçine dolu</string>
     <string name="resin_alert_full_at">%s itibarıyla dolu</string>
-    <string name="plan_title">Planından</string>
-    <string name="plan_of">%s planından</string>
-    <string name="plan_nothing">Bugün kasılacak bir şey yok</string>
-    <string name="plan_none_hint">Planını burada görmek için %s üzerinde Planlayıcı\'yı aç</string>
-    <string name="plan_runs">%d kez</string>
-    <string name="plan_runs_up_to">en fazla %d kez</string>
     <string name="alert_off">Kapalı</string>
     <string name="resin_alert_set_on">%s üzerinde ayarla</string>
 </resources>

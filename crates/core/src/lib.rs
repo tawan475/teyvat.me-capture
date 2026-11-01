@@ -7,7 +7,7 @@
 //! ([`good`]), the live-sync deltas and policy ([`delta`], [`live`]), and the
 //! capture recordings ([`pcapng`] writes them, [`recording`] reads them),
 //! wish history from the game's own key ([`wish`]), and the tracker link's
-//! presence heartbeat and farm plan ([`link`]).
+//! presence heartbeat ([`link`]).
 //!
 //! Nothing here captures packets, draws UI or talks to the tracker; those
 //! stay with each app (the wish history API is called through the app's own

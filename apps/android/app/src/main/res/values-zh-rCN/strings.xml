@@ -382,12 +382,6 @@
     <string name="resin_alert_title">原粹树脂 %1$d/%2$d</string>
     <string name="resin_alert_full">原粹树脂已回满</string>
     <string name="resin_alert_full_at">%s 回满</string>
-    <string name="plan_title">来自你的规划</string>
-    <string name="plan_of">来自%s的规划</string>
-    <string name="plan_nothing">今天没有要刷的</string>
-    <string name="plan_none_hint">在 %s 打开规划，即可在这里看到你的规划</string>
-    <string name="plan_runs">%d 次</string>
-    <string name="plan_runs_up_to">最多 %d 次</string>
     <string name="alert_off">关</string>
     <string name="resin_alert_set_on">在 %s 设置</string>
 </resources>

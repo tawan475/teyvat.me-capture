@@ -382,12 +382,6 @@
     <string name="resin_alert_title">퓨어 레진 %1$d/%2$d</string>
     <string name="resin_alert_full">퓨어 레진이 가득 찼습니다</string>
     <string name="resin_alert_full_at">%s에 가득 참</string>
-    <string name="plan_title">내 플랜에서</string>
-    <string name="plan_of">%s의 플랜</string>
-    <string name="plan_nothing">오늘 파밍할 것 없음</string>
-    <string name="plan_none_hint">%s에서 플래너를 열면 여기에 플랜이 표시됩니다</string>
-    <string name="plan_runs">%d회</string>
-    <string name="plan_runs_up_to">최대 %d회</string>
     <string name="alert_off">끔</string>
     <string name="resin_alert_set_on">%s에서 설정</string>
 </resources>

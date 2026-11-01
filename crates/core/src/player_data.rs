@@ -1117,30 +1117,46 @@ impl PlayerData {
         // held it at login. Avatars the packet does not mention keep their
         // mapping: avatar packets have no minimum roster size, so a partial
         // notify must not wipe everyone else's equipment.
-        let updated: HashSet<u32> = avatars.iter().map(|avatar| avatar.avatar_id).collect();
+        //
+        // The roster can list a character twice: the owned (formal, type 1)
+        // avatar and a mirror copy (type 3) under the same avatar id. Seen on
+        // 7.1 for Varka, Vesna and the Traveler (108 entries, 104 ids).
+        // Characters are keyed by avatar id, so whichever came last won, and a
+        // mirror replacing the owned avatar dropped the character from the
+        // export. The owned one always wins. The Imaginarium Theater lends
+        // type 3 copies of owned characters too, alone (7.1: a six-avatar
+        // lineup on command 28207, then one `AvatarAddNotify` per pick), so
+        // copies are skipped *before* the equip map is touched: clearing it
+        // first stripped each picked character's weapon and artifacts from the
+        // export until the next login.
+        let owned: HashSet<u32> = self
+            .characters
+            .values()
+            .chain(avatars)
+            .filter(|avatar| avatar.avatar_type == AVATAR_TYPE_FORMAL)
+            .map(|avatar| avatar.avatar_id)
+            .collect();
+        let taken: Vec<&AvatarInfo> = avatars
+            .iter()
+            .filter(|avatar| {
+                let copy =
+                    avatar.avatar_type != AVATAR_TYPE_FORMAL && owned.contains(&avatar.avatar_id);
+                if copy {
+                    tracing::debug!(
+                        avatar_id = avatar.avatar_id,
+                        avatar_type = avatar.avatar_type,
+                        "keeping the owned avatar over a non-formal copy"
+                    );
+                }
+                !copy
+            })
+            .collect();
+
+        let updated: HashSet<u32> = taken.iter().map(|avatar| avatar.avatar_id).collect();
         self.character_equip_guid_map
             .retain(|_, avatar_id| !updated.contains(avatar_id));
 
-        for avatar in avatars {
-            // The roster can list a character twice: the owned (formal, type
-            // 1) avatar and a mirror copy (type 3) under the same avatar id.
-            // Seen on 7.1 for Varka, Vesna and the Traveler (108 entries, 104
-            // ids). Characters are keyed by avatar id, so whichever came last
-            // won, and a mirror replacing the owned avatar dropped the
-            // character from the export. The owned one always wins.
-            if avatar.avatar_type != AVATAR_TYPE_FORMAL
-                && self
-                    .characters
-                    .get(&avatar.avatar_id)
-                    .is_some_and(|kept| kept.avatar_type == AVATAR_TYPE_FORMAL)
-            {
-                tracing::debug!(
-                    avatar_id = avatar.avatar_id,
-                    avatar_type = avatar.avatar_type,
-                    "keeping the owned avatar over a non-formal copy"
-                );
-                continue;
-            }
+        for avatar in taken {
             for guid in &avatar.equip_guid_list {
                 self.character_equip_guid_map
                     .insert(*guid, avatar.avatar_id);
@@ -2990,6 +3006,33 @@ mod tests {
         data.process_characters(&[avatar(10000022, &[3])]);
         assert_eq!(data.character_equip_guid_map.get(&2), None);
         // ... and an avatar the packet never mentions keeps its equipment.
+        assert_eq!(data.character_equip_guid_map.get(&1), Some(&10000021));
+    }
+
+    #[test]
+    fn a_trial_copy_leaves_the_owned_characters_gear_alone() {
+        // The Imaginarium Theater's copy of an owned character (7.1: a
+        // lineup reply, AvatarAddNotify) arrives alone. It used to clear the
+        // owned avatar's equip map before being skipped, so the export lost
+        // that character's weapon and artifacts for the rest of the session.
+        let trial = |avatar_id, equips: &[u64]| {
+            let mut copy = avatar(avatar_id, equips);
+            copy.avatar_type = 3;
+            copy
+        };
+        let mut data = player_data();
+        data.process_characters(&[avatar(10000021, &[1, 2]), avatar(10000022, &[3])]);
+        data.process_characters(&[trial(10000021, &[]), trial(10000022, &[90])]);
+        assert_eq!(data.character_equip_guid_map.get(&1), Some(&10000021));
+        assert_eq!(data.character_equip_guid_map.get(&2), Some(&10000021));
+        assert_eq!(data.character_equip_guid_map.get(&3), Some(&10000022));
+        assert_eq!(data.character_equip_guid_map.get(&90), None);
+        assert_eq!(data.characters[&10000021].avatar_type, 1);
+
+        // A copy listed before its owned avatar in one roster maps nothing.
+        let mut data = player_data();
+        data.process_characters(&[trial(10000021, &[90]), avatar(10000021, &[1])]);
+        assert_eq!(data.character_equip_guid_map.get(&90), None);
         assert_eq!(data.character_equip_guid_map.get(&1), Some(&10000021));
     }
 

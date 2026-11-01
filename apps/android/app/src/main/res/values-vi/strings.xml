@@ -382,12 +382,6 @@
     <string name="resin_alert_title">Nhựa %1$d/%2$d</string>
     <string name="resin_alert_full">Nhựa đã đầy</string>
     <string name="resin_alert_full_at">Đầy lúc %s</string>
-    <string name="plan_title">Từ kế hoạch của bạn</string>
-    <string name="plan_of">từ kế hoạch ngày %s</string>
-    <string name="plan_nothing">Hôm nay không có gì cần cày</string>
-    <string name="plan_none_hint">Mở Kế hoạch trên %s để xem kế hoạch của bạn tại đây</string>
-    <string name="plan_runs">%d lượt</string>
-    <string name="plan_runs_up_to">tối đa %d lượt</string>
     <string name="alert_off">Tắt</string>
     <string name="resin_alert_set_on">Đặt trên %s</string>
 </resources>

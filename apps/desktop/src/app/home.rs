@@ -8,7 +8,6 @@
 //! only the account line, six counts and today's routine (the rest is the
 //! tracker's job).
 
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use chrono::Local;
@@ -20,7 +19,6 @@ use super::{OptimizerExportTarget, Page, TeyvatmeApp, TrackerSignIn, today};
 use crate::AppState;
 use crate::game_watch::{GameStatus, MissedLaunch};
 use crate::i18n::{tr, trf};
-use crate::link::PlanState;
 use crate::signin::{AuthStatus, TrackerRequest};
 use crate::ui::icons;
 use crate::ui::theme::Palette;
@@ -73,7 +71,6 @@ impl TeyvatmeApp {
                             |app, ui, stretch| app.traveler_card(ui, app_state, stretch),
                             |app, ui, stretch| app.today_card(ui, app_state, stretch),
                         );
-                        self.plan_card(ui, app_state);
                         self.pair(
                             ui,
                             "export-wishes",
@@ -684,133 +681,6 @@ impl TeyvatmeApp {
             },
         )
         .response
-    }
-
-    /// "From your plan": the farm plan the tracker's Planner published, a
-    /// line or two per card. Nothing while not linked to a tracker; a hint
-    /// when the Planner has published nothing.
-    fn plan_card(&mut self, ui: &mut Ui, app_state: &AppState) {
-        let digest = match &app_state.plan {
-            PlanState::None => return,
-            PlanState::NoPlan => {
-                self.no_plan_hint(ui);
-                return;
-            }
-            PlanState::Plan(digest) => digest,
-        };
-        let lang = crate::i18n::current();
-        let held = self
-            .plan_lines
-            .as_ref()
-            .is_some_and(|(plan, plan_lang, _)| Arc::ptr_eq(plan, digest) && *plan_lang == lang);
-        if !held {
-            self.plan_lines = Some((Arc::clone(digest), lang, today::PlanLines::of(digest)));
-        }
-        let Some((_, _, lines)) = &self.plan_lines else {
-            return;
-        };
-        let uid = app_state.player.as_ref().and_then(|player| player.uid);
-        let now = chrono::Utc::now().timestamp_millis().max(0) as u64;
-        let old = crate::link::plan_is_old(digest, uid, now);
-        // "from your plan of …" turns up when the server's game day ends.
-        if let Some(wait) = uid.and_then(|uid| crate::link::ms_to_next_game_day(uid, now)) {
-            ui.ctx()
-                .request_repaint_after(Duration::from_millis(wait.saturating_add(1_000)));
-        }
-        let pal = widgets::p(ui);
-        card(
-            ui,
-            tr("From your plan"),
-            lines.account.as_deref(),
-            |ui| {
-                if old && let Some(old_line) = &lines.old_line {
-                    ui.label(small_text(old_line, pal.tx3));
-                }
-            },
-            |ui| {
-                ui.spacing_mut().item_spacing.y = 2.0;
-                if lines
-                    .sections
-                    .iter()
-                    .all(|section| section.cards.is_empty())
-                {
-                    ui.label(secondary_text(tr("Nothing to farm today"), pal.tx2));
-                    return;
-                }
-                let width = ui.available_width();
-                let mut first = true;
-                for section in lines.sections.iter().filter(|s| !s.cards.is_empty()) {
-                    if !first {
-                        ui.add_space(6.0);
-                    }
-                    first = false;
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 4.0;
-                        line(ui, small_text(&section.label, pal.tx2));
-                        if !section.resin.is_empty() {
-                            ui.add(icons::image(icons::droplet(), 12.0, pal.tx3));
-                            ui.label(small_text(&section.resin, pal.tx3));
-                        }
-                    });
-                    for card in &section.cards {
-                        ui.allocate_ui_with_layout(
-                            vec2(width, 20.0),
-                            Layout::right_to_left(Align::Center),
-                            |ui| {
-                                ui.spacing_mut().item_spacing.x = 6.0;
-                                if !card.cost.is_empty() {
-                                    ui.label(small_text(&card.cost, pal.tx2));
-                                }
-                                ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
-                                    let name = line(ui, title_text(&card.name, pal.tx));
-                                    if !card.needs.is_empty() {
-                                        name.on_hover_text(&card.needs);
-                                    }
-                                    if !card.detail.is_empty() {
-                                        line(ui, secondary_text(&card.detail, pal.tx2));
-                                    }
-                                });
-                            },
-                        );
-                        if !card.needs.is_empty() {
-                            line(ui, small_text(&card.needs, pal.tx3));
-                        }
-                    }
-                }
-            },
-        );
-    }
-
-    /// Linked, but the Planner has published no plan: one line to it.
-    fn no_plan_hint(&mut self, ui: &mut Ui) {
-        let pal = widgets::p(ui);
-        let host = self.tracker_host();
-        let mut open = false;
-        widgets::card_frame(ui)
-            .inner_margin(Margin::symmetric(16, 10))
-            .show(ui, |ui| {
-                ui.set_width(ui.available_width());
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 8.0;
-                    ui.add(icons::image(icons::list_checks(), 16.0, pal.tx3));
-                    let hint = ui.add(
-                        egui::Label::new(secondary_text(
-                            trf("Open the Planner on {0} to see your plan here", &[&host]),
-                            pal.ac_tx,
-                        ))
-                        .truncate()
-                        .sense(egui::Sense::click()),
-                    );
-                    open = hint
-                        .on_hover_cursor(egui::CursorIcon::PointingHand)
-                        .on_hover_text(trf("Open {0}", &[&host]))
-                        .clicked();
-                });
-            });
-        if open {
-            let url = self.dashboard_url().unwrap_or_else(|| self.tracker_site());
-            ui.ctx().open_url(egui::OpenUrl::new_tab(url));
-        }
     }
 
     fn wish_card(&mut self, ui: &mut Ui, app_state: &AppState, stretch: f32) -> Response {

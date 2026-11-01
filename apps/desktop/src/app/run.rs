@@ -70,7 +70,6 @@ impl TeyvatmeApp {
         // Nothing is drawn out of sight: eframe keeps running frames for a
         // minimized window, and anything animating would keep it at full rate.
         if out_of_sight {
-            self.home_in_sight = false;
             self.toasts.clear();
             let _ = self.saved_state_tx.send(self.saved_state.clone());
             // The tooltip's "12 min ago" moves on by itself: a frame a minute.
@@ -119,13 +118,6 @@ impl TeyvatmeApp {
         if self.saved_state.tracker_alerts != app_state.tracker_alerts {
             self.saved_state.tracker_alerts = app_state.tracker_alerts;
         }
-        // The home screen came into sight: its plan is read again (the
-        // monitor holds that to once a minute).
-        let home = self.view == View::Main && matches!(app_state.state, State::Main);
-        if home && !self.home_in_sight {
-            let _ = self.ui_message_tx.send(Message::TodayShown);
-        }
-        self.home_in_sight = home;
 
         self.activity_anchor = None;
 

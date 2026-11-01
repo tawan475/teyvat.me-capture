@@ -382,12 +382,6 @@
     <string name="resin_alert_title">Resin %1$d/%2$d</string>
     <string name="resin_alert_full">Resin เต็มแล้ว</string>
     <string name="resin_alert_full_at">เต็มเวลา %s</string>
-    <string name="plan_title">จากแผนของคุณ</string>
-    <string name="plan_of">จากแผนของวัน%s</string>
-    <string name="plan_nothing">วันนี้ไม่มีอะไรต้องฟาร์ม</string>
-    <string name="plan_none_hint">เปิดแพลนเนอร์บน %s เพื่อดูแผนของคุณที่นี่</string>
-    <string name="plan_runs">%d รอบ</string>
-    <string name="plan_runs_up_to">สูงสุด %d รอบ</string>
     <string name="alert_off">ปิด</string>
     <string name="resin_alert_set_on">ตั้งค่าบน %s</string>
 </resources>
