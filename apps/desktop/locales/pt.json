@@ -168,6 +168,7 @@
   "Live sync · {0} changes sent to {1}": "Sincronização ao vivo · {0} mudanças enviadas ao {1}",
   "Log folder": "Pasta de logs",
   "Log raw packets": "Registrar pacotes brutos",
+  "Raw packet folder": "Pasta de pacotes brutos",
   "Logging level": "Nível de log",
   "Login detected · reading your data": "Login detectado · lendo seus dados",
   "Login detected · {0}": "Login detectado · {0}",

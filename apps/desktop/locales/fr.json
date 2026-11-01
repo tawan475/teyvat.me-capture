@@ -168,6 +168,7 @@
   "Live sync · {0} changes sent to {1}": "Synchro en direct · {0} changements envoyés à {1}",
   "Log folder": "Dossier des journaux",
   "Log raw packets": "Journaliser les paquets bruts",
+  "Raw packet folder": "Dossier des paquets bruts",
   "Logging level": "Niveau de journalisation",
   "Login detected · reading your data": "Connexion détectée · lecture de vos données",
   "Login detected · {0}": "Connexion détectée · {0}",

@@ -168,6 +168,7 @@
   "Live sync · {0} changes sent to {1}": "Đồng bộ trực tiếp · đã gửi {0} thay đổi tới {1}",
   "Log folder": "Thư mục log",
   "Log raw packets": "Ghi log gói tin thô",
+  "Raw packet folder": "Thư mục gói tin thô",
   "Logging level": "Mức log",
   "Login detected · reading your data": "Đã thấy đăng nhập · đang đọc dữ liệu",
   "Login detected · {0}": "Đã thấy đăng nhập · {0}",

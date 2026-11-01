@@ -15,8 +15,6 @@ use clap::Parser;
 use serde::{Deserialize, Serialize};
 // The platform-free modules live in crates/core (shared with the
 // Android app); imported here so `crate::good` and the rest resolve as before.
-// Only debug builds record a pcapng.
-#[cfg(debug_assertions)]
 use teyvatme_core::pcapng;
 use teyvatme_core::{decode, delta, good, link, live, player_data, recording};
 use tokio::sync::oneshot;
@@ -728,6 +726,15 @@ fn packet_log_dir() -> Result<PathBuf> {
     Ok(dir)
 }
 
+/// Opened from Diagnostics while "Log raw packets" is on. Made first, so the
+/// button works even in the moment before the monitor opens the session.
+fn open_packet_log_dir() -> Result<()> {
+    let dir = packet_log_dir()?;
+    std::fs::create_dir_all(&dir)?;
+    open::that(dir)?;
+    Ok(())
+}
+
 fn open_log_dir() -> Result<()> {
     let dir = log_dir()?;
     open::that(dir)?;
@@ -840,6 +847,7 @@ fn rotate_logs(log_dir: &Path, log_suffix: &str) -> Option<PathBuf> {
     // session has not been created yet, so nothing in flight can be caught.
     if let Ok(packet_log_dir) = packet_log_dir() {
         prune_rotated(&packet_log_dir, "bin");
+        prune_rotated(&packet_log_dir, "pcapng");
     }
 
     // Both the pcapng writer (monitor.rs) and its rotation are debug-only, so a
