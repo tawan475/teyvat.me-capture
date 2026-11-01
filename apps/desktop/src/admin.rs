@@ -222,6 +222,11 @@ fn show_packet_capture_permissions_missing_dialog() {
             egui_extras::install_image_loaders(ctx);
             crate::ui::theme::install(ctx, lang);
             themed = true;
+            // The fonts apply from the next frame: text in "semibold" now
+            // panics ("not bound to any fonts", issue #44). Draw nothing
+            // this frame and ask for the next one at once.
+            ctx.request_repaint();
+            return;
         }
         let pal = crate::ui::theme::palette(ctx);
         egui::CentralPanel::default()
