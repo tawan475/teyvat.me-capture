@@ -4,6 +4,11 @@ Each release's section is its GitHub release notes (`.github/workflows/release.y
 
 ## 1.17.6
 
+- Fixed: picking characters for the Imaginarium Theater (or any mode that
+  lends you copies of your own characters) took those characters' weapons
+  and artifacts out of the capture until the next login, so teyvat.me
+  showed them with no gear. Log in again after updating and the next
+  capture puts it all back.
 - The "From your plan" card on the home screen is gone, on desktop and
   Android: teyvat.me no longer publishes the plan.
 
