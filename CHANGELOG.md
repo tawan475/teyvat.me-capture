@@ -2,6 +2,13 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.17.8
+
+- Lighter on the tracker: with live sync on, entering or leaving a domain,
+  the Serenitea Pot or any other world no longer uploads your whole account
+  (about 1 MB each time); what changed goes with the next small update
+  instead. Logins still upload the whole account, as before.
+
 ## 1.17.7
 
 - Fixed: on Linux and macOS, Teyvat.me closed at once instead of showing
