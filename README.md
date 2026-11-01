@@ -1,13 +1,13 @@
 <p align="center">
   <a href="https://github.com/tawan475/teyvat.me-capture/releases/latest">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://gi-cdn.475.dev/readme/banner-dark.webp">
-      <img alt="Teyvat.me Capture: capture your Genshin account while you play. Windows, Linux, macOS and Android." src="https://gi-cdn.475.dev/readme/banner-light.webp" width="100%">
+      <source media="(prefers-color-scheme: dark)" srcset="https://gi-cdn.ley-courier.workers.dev/readme/banner-dark.webp">
+      <img alt="Teyvat.me Capture: capture your Genshin account while you play. Windows, Linux, macOS and Android." src="https://gi-cdn.ley-courier.workers.dev/readme/banner-light.webp" width="100%">
     </picture>
   </a>
 </p>
 
-# <img alt="" src="https://gi-cdn.475.dev/readme/icon.webp" width="36" align="top"> Teyvat.me Capture
+# <img alt="" src="https://gi-cdn.ley-courier.workers.dev/readme/icon.webp" width="36" align="top"> Teyvat.me Capture
 
 <p align="center">
   <a href="https://github.com/tawan475/teyvat.me-capture/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/tawan475/teyvat.me-capture?label=release&color=6366f1"></a>
@@ -18,8 +18,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/tawan475/teyvat.me-capture/releases/latest"><img alt="Download" src="https://gi-cdn.475.dev/readme/btn-download.webp" height="44"></a>&nbsp;
-  <a href="https://teyvat.me"><img alt="teyvat.me" src="https://gi-cdn.475.dev/readme/btn-teyvatme.webp" height="44"></a>
+  <a href="https://github.com/tawan475/teyvat.me-capture/releases/latest"><img alt="Download" src="https://gi-cdn.ley-courier.workers.dev/readme/btn-download.webp" height="44"></a>&nbsp;
+  <a href="https://teyvat.me"><img alt="teyvat.me" src="https://gi-cdn.ley-courier.workers.dev/readme/btn-teyvatme.webp" height="44"></a>
 </p>
 
 > [!NOTE]
@@ -39,16 +39,16 @@ Optimizer and most other tools read it. No account or sign-in needed;
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://gi-cdn.475.dev/readme/app-dark.webp">
-    <img alt="Teyvat.me Capture after a capture: account counts, today's resin and tasks, export and wish history" src="https://gi-cdn.475.dev/readme/app-light.webp" width="100%">
+    <source media="(prefers-color-scheme: dark)" srcset="https://gi-cdn.ley-courier.workers.dev/readme/app-dark.webp">
+    <img alt="Teyvat.me Capture after a capture: account counts, today's resin and tasks, export and wish history" src="https://gi-cdn.ley-courier.workers.dev/readme/app-light.webp" width="100%">
   </picture>
 </p>
 
 ## How it works
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://gi-cdn.475.dev/readme/steps-dark.webp">
-  <img alt="1. Start the app before Genshin. 2. Enter the world: the status turns to Data decrypting. 3. Save GOOD JSON, copy the wish URL, or send it to teyvat.me." src="https://gi-cdn.475.dev/readme/steps-light.webp" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://gi-cdn.ley-courier.workers.dev/readme/steps-dark.webp">
+  <img alt="1. Start the app before Genshin. 2. Enter the world: the status turns to Data decrypting. 3. Save GOOD JSON, copy the wish URL, or send it to teyvat.me." src="https://gi-cdn.ley-courier.workers.dev/readme/steps-light.webp" width="100%">
 </picture>
 
 <details>
@@ -78,8 +78,8 @@ Like every tool of this kind, it is used at your own risk.
 ## What it does
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://gi-cdn.475.dev/readme/features-dark.webp">
-  <img alt="Reads the game's traffic · GOOD JSON export · Wish history · Today at a glance · Live sync · Only reads" src="https://gi-cdn.475.dev/readme/features-light.webp" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://gi-cdn.ley-courier.workers.dev/readme/features-dark.webp">
+  <img alt="Reads the game's traffic · GOOD JSON export · Wish history · Today at a glance · Live sync · Only reads" src="https://gi-cdn.ley-courier.workers.dev/readme/features-light.webp" width="100%">
 </picture>
 
 ## Download
