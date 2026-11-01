@@ -222,6 +222,7 @@ fn show_packet_capture_permissions_missing_dialog() {
             egui_extras::install_image_loaders(ctx);
             crate::ui::theme::install(ctx, lang);
             themed = true;
+            return;
         }
         let pal = crate::ui::theme::palette(ctx);
         egui::CentralPanel::default()
