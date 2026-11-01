@@ -11,10 +11,13 @@ use async_trait::async_trait;
 use futures::StreamExt;
 use futures::stream::FusedStream;
 use pktmon::filter::{PktMonFilter, TransportProtocol};
-use pktmon::{Capture, Packet, PacketPayload};
+use pktmon::{Capture, CapturePath, Packet, PacketPayload};
 
 use crate::capture::dedupe::{DEDUPE_CAPACITY, DEDUPE_WINDOW, Deduper};
-use crate::capture::{CaptureBackend, CaptureError, DUPLICATES_DROPPED, PORT_RANGE, Result};
+use crate::capture::{
+    CaptureBackend, CaptureError, DUPLICATES_DROPPED, MERGED_DATAGRAMS_SEEN, PORT_RANGE, Result,
+    is_merged_datagram,
+};
 
 /// Length of an Ethernet II header (destination MAC, source MAC, ethertype).
 const ETHERNET_HEADER_LEN: usize = 14;
@@ -50,11 +53,32 @@ pub struct PktmonBackend {
     /// pktmon reports each datagram once per point of the stack it passes;
     /// only the first copy is passed on.
     dedupe: Deduper,
+    /// Watching for merged datagrams: on the real-time stream, until the first.
+    watch_merging: bool,
 }
 
 impl PktmonBackend {
-    pub fn new() -> Result<Self> {
-        let mut capture = Capture::new().map_err(|e| CaptureError::Capture {
+    /// `compatible` reads pktmon's ETW path; otherwise its real-time stream,
+    /// which drops packets over 9000 bytes (see `MERGED_DATAGRAMS_SEEN`).
+    ///
+    /// The ETW path is one capture for the whole system: starting it stops any
+    /// capture another program had running on it (the `pktmon` command, other
+    /// tools), so the game is always captured. The stream gives each program a
+    /// session of its own. Neither ever unloads the pktmon driver.
+    pub fn new(compatible: bool) -> Result<Self> {
+        let path = if compatible {
+            CapturePath::Etw
+        } else {
+            CapturePath::Auto
+        };
+        tracing::info!(?path, "starting pktmon");
+        // Debug builds: `TEYVATME_FAKE_MERGED` acts as if this PC merged the
+        // game's packets, to test the switch on one that doesn't.
+        #[cfg(debug_assertions)]
+        if !compatible && std::env::var_os("TEYVATME_FAKE_MERGED").is_some() {
+            MERGED_DATAGRAMS_SEEN.store(true, Ordering::Relaxed);
+        }
+        let mut capture = Capture::with_path(path).map_err(|e| CaptureError::Capture {
             has_captured: false,
             error: e.into(),
         })?;
@@ -93,6 +117,7 @@ impl PktmonBackend {
             stream: Box::new(stream.boxed().fuse()),
             warned_payload_kinds: HashSet::new(),
             dedupe: Deduper::new(DEDUPE_CAPACITY, DEDUPE_WINDOW),
+            watch_merging: !compatible,
         })
     }
 
@@ -198,6 +223,14 @@ impl CaptureBackend for PktmonBackend {
             if self.dedupe.is_duplicate(&frame, Instant::now()) {
                 DUPLICATES_DROPPED.fetch_add(1, Ordering::Relaxed);
                 continue;
+            }
+            if self.watch_merging && is_merged_datagram(&frame) {
+                self.watch_merging = false;
+                tracing::warn!(
+                    len = frame.len(),
+                    "this PC merges the game's incoming packets (UDP receive offload); pktmon's                      real-time stream drops the merged ones over 9000 bytes"
+                );
+                MERGED_DATAGRAMS_SEEN.store(true, Ordering::Relaxed);
             }
             return Ok(frame);
         }

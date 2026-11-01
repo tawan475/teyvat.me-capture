@@ -2,6 +2,17 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.17.9
+
+- Fixed: on some PCs the app couldn't read the login ("Session key not
+  found"), or read only part of the account. Windows 11 can merge incoming
+  game packets into bigger ones, and the packet capture Windows gives apps
+  drops any packet over 9,000 bytes, so up to a third of the game's data
+  never arrived. When the app sees merged packets it now switches to
+  Windows' older capture path, which keeps them, and remembers that for
+  this PC. The first time, return to the title screen and enter again.
+  Settings → Diagnostics has the switch ("Compatible capture").
+
 ## 1.17.8
 
 - Lighter on the tracker: with live sync on, entering or leaving a domain,

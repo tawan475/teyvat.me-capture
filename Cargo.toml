@@ -10,7 +10,7 @@
 # its own workspace: it only builds for Android targets.
 members = ["apps/desktop", "crates/core", "crates/game-data", "crates/protocol"]
 default-members = ["apps/desktop"]
-exclude = ["apps/android/native"]
+exclude = ["apps/android/native", "crates/pktmon"]
 resolver = "3"
 
 # `build.rs` writes the game data blob that the desktop app's monitor embeds,

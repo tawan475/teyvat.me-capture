@@ -118,6 +118,14 @@ impl TeyvatmeApp {
         if self.saved_state.tracker_alerts != app_state.tracker_alerts {
             self.saved_state.tracker_alerts = app_state.tracker_alerts;
         }
+        // Capture switched to compatible mode by itself (or followed the
+        // switch): kept for the next start.
+        if app_state.compatible_capture != self.seen_compatible_capture {
+            self.seen_compatible_capture = app_state.compatible_capture;
+            if let Some(compatible) = app_state.compatible_capture {
+                self.saved_state.compatible_capture = compatible;
+            }
+        }
 
         self.activity_anchor = None;
 

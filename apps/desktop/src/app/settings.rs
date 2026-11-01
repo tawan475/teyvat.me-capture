@@ -1018,6 +1018,18 @@ impl TeyvatmeApp {
                     });
                 }
             }
+            #[cfg(windows)]
+            {
+                divider(ui);
+                switch_row(
+                    ui,
+                    tr("Compatible capture"),
+                    None,
+                    &mut self.saved_state.compatible_capture,
+                    true,
+                )
+                .on_hover_text(tr("Reads packets through Windows' older pktmon path, which keeps packets the newer one drops. Turns on by itself on a PC that merges the game's packets; up to a second slower."));
+            }
             divider(ui);
             let mut open = false;
             list_row(ui, None, title_text(tr("Log folder"), pal.tx), None, |ui| {

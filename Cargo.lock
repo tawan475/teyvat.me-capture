@@ -4210,8 +4210,6 @@ checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
 [[package]]
 name = "pktmon"
 version = "0.6.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "138ba8229225b0334707e461dee957b8bbb0ca61c9be21d773991443e4364a08"
 dependencies = [
  "async-stream",
  "cidr",
@@ -5778,7 +5776,7 @@ dependencies = [
 
 [[package]]
 name = "teyvatme"
-version = "1.17.8"
+version = "1.17.9"
 dependencies = [
  "anyhow",
  "async-trait",
