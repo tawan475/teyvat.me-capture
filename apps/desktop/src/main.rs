@@ -506,6 +506,13 @@ fn main() -> eframe::Result {
     let instance = single_instance::SingleInstance::new(lock).unwrap();
     let irminsul_instance = single_instance::SingleInstance::new(irminsul_lock).unwrap();
     if !instance.is_single() {
+        // Launched again while running: the user wants the window, not a
+        // second copy. Hand the running one the request and go.
+        #[cfg(windows)]
+        if app::wake_running_instance() {
+            eprintln!("Teyvat.me is already running; its window was brought to the front.");
+            std::process::exit(0);
+        }
         eprintln!("Another instance of Teyvat.me is already running.");
         std::process::exit(1);
     }

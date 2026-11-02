@@ -32,6 +32,13 @@ impl TeyvatmeApp {
         // window minimizes (see `install_minimize_hook`).
         #[cfg(windows)]
         self.tray_minimize_hook(ctx);
+        // The exe was launched again: that means "show me the app", whether
+        // the window is minimized, in the tray or behind something.
+        #[cfg(windows)]
+        if super::WAKE_ASKED.swap(false, Ordering::Relaxed) {
+            tracing::info!("a second launch asked for the window; bringing it to the front");
+            super::restore_window(ctx);
+        }
         let minimized = ctx.input(|i| i.viewport().minimized) == Some(true);
         // Windows: minimized some other way (Win+M). It stays on the taskbar,
         // since hiding a minimized window makes eframe spin a core.

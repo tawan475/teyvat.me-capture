@@ -2,6 +2,11 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.17.12
+
+- Opening Teyvat.me while it is already running brings its window to the
+  front, out of the tray or the taskbar, instead of doing nothing.
+
 ## 1.17.11
 
 - Compatible capture now reads the game's packets through a raw socket
