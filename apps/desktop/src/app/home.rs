@@ -1384,19 +1384,15 @@ impl Avatar {
     }
 }
 
-/// The region a UID's first digit names.
+/// The server a UID is on, named for people (the region is read by
+/// `region_for_uid`: the digits before the account number, read whole).
 pub(super) fn server_of(uid: u32) -> Option<&'static str> {
-    let mut first = uid;
-    while first >= 10 {
-        first /= 10;
-    }
-    match (uid >= 100_000_000, first) {
-        (true, 6) => Some(tr("America")),
-        (true, 7) => Some(tr("Europe")),
-        (true, 8) => Some(tr("Asia")),
-        (true, 9) => Some("TW · HK · MO"),
-        (true, 1 | 2 | 3 | 5) => Some(tr("China")),
-        _ => None,
+    match teyvatme_core::wish::hub::region_for_uid(uid)? {
+        "os_usa" => Some(tr("America")),
+        "os_euro" => Some(tr("Europe")),
+        "os_asia" => Some(tr("Asia")),
+        "os_cht" => Some("TW · HK · MO"),
+        _ => Some(tr("China")),
     }
 }
 
@@ -1434,6 +1430,10 @@ mod tests {
         assert_eq!(server_of(712_345_678), Some("Europe"));
         assert_eq!(server_of(912_345_678), Some("TW · HK · MO"));
         assert_eq!(server_of(12_345), None);
+        // Ten-digit UIDs: 18… is Asia, not China.
+        assert_eq!(server_of(1_812_345_678), Some("Asia"));
+        assert_eq!(server_of(1_612_345_678), Some("America"));
+        assert_eq!(server_of(1_512_345_678), Some("China"));
     }
 
     #[test]

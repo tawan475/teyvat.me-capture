@@ -6,6 +6,8 @@ Each release's section is its GitHub release notes (`.github/workflows/release.y
 
 - Opening Teyvat.me while it is already running brings its window to the
   front, out of the tray or the taskbar, instead of doing nothing.
+- A ten-digit UID (18…, 16…) showed its server as China; it is read from the
+  digits before the account number now, so 18… is Asia again.
 
 ## 1.17.11
 

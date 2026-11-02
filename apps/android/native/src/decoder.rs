@@ -439,22 +439,15 @@ impl State {
     }
 }
 
-/// The server a UID is on, by its region digit (as the desktop's
-/// `region_for_uid`).
+/// The server a UID is on, named for people (the region is read by
+/// `region_for_uid`, shared with the desktop).
 fn server_of(uid: u32) -> Option<&'static str> {
-    let digits = uid.to_string();
-    let first = match digits.len() {
-        9 => digits.as_bytes()[0],
-        10 if digits.starts_with('1') => digits.as_bytes()[1],
-        _ => return None,
-    };
-    match (digits.len(), first) {
-        (_, b'6') => Some("America"),
-        (_, b'7') => Some("Europe"),
-        (_, b'8') => Some("Asia"),
-        (_, b'9') => Some("TW, HK, MO"),
-        (9, b'1' | b'2' | b'3' | b'5') => Some("China"),
-        _ => None,
+    match teyvatme_core::wish::hub::region_for_uid(uid)? {
+        "os_usa" => Some("America"),
+        "os_euro" => Some("Europe"),
+        "os_asia" => Some("Asia"),
+        "os_cht" => Some("TW, HK, MO"),
+        _ => Some("China"),
     }
 }
 
@@ -973,6 +966,7 @@ mod tests {
         assert_eq!(server_of(812_345_678), Some("Asia"));
         assert_eq!(server_of(612_345_678), Some("America"));
         assert_eq!(server_of(1_812_345_678), Some("Asia"));
+        assert_eq!(server_of(1_512_345_678), Some("China"));
         assert_eq!(server_of(12_345), None);
     }
 
