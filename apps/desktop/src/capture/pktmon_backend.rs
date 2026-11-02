@@ -107,6 +107,31 @@ impl PktmonBackend {
             .add_filter(filter)
             .map_err(|e| CaptureError::Filter(e.into()))?;
 
+        // What pktmon can capture on, once per start: on one PC it delivered
+        // only the client's sends, as bare IP packets, and nothing in the
+        // log said which adapters its hook was on.
+        match capture.data_sources() {
+            Ok(sources) => {
+                // Adapters and the components pktmon can capture on now;
+                // the rest (unbound filters) would be most of the list.
+                for source in sources
+                    .into_iter()
+                    .filter(|source| source.present || source.network_interface)
+                {
+                    tracing::info!(
+                        id = source.id,
+                        parent = source.parent_id,
+                        present = source.present,
+                        interface = source.network_interface,
+                        name = %source.name,
+                        description = %source.description,
+                        "pktmon data source"
+                    );
+                }
+            }
+            Err(e) => tracing::info!("pktmon data sources not listed: {e}"),
+        }
+
         // `stream()` starts the pktmon session, so it fails when the session
         // cannot be started. Report that as a capture error instead of
         // panicking inside whatever task owns this backend.

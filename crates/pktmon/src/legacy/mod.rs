@@ -128,6 +128,10 @@ impl CaptureBackend for LegacyBackend {
         Ok(())
     }
 
+    fn data_sources(&self) -> io::Result<Vec<crate::DataSource>> {
+        Ok(Vec::new())
+    }
+
     /// Get the next packet from the capture.
     ///
     /// Returns an error if the capture isn't running.

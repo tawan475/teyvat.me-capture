@@ -11,6 +11,12 @@ use tracing::{Level, debug, info, instrument, span, trace, warn};
 
 use crate::bytes_as_hex;
 
+/// Segments the reassembler skipped (see [`SEGMENTS_DROPPED`]'s readers): a
+/// process-wide count for the stats line. One PC's server ACKs all carried a
+/// `ts` past what the `kcp` crate can subtract, which made 141,000 warning
+/// lines of one evening's log; the ACKs carry no data, so a count is enough.
+pub static SEGMENTS_DROPPED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 pub(crate) struct KcpSniffer {
     pub(crate) conv_id: u32,
     /// The reassembler. Its output is where it "sends" the ACK it answers
@@ -178,7 +184,10 @@ impl KcpSniffer {
 
         match self.kcp.input(&segments) {
             Ok(size) => trace!(size, "input successful"),
-            Err(e) => warn!("could not input to kcp: {e}"),
+            Err(e) => {
+                SEGMENTS_DROPPED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                debug!("could not input to kcp: {e}");
+            }
         }
 
         let mut recv = Vec::new();
@@ -417,7 +426,8 @@ fn reformat_kcp_segments(data: &[u8]) -> Vec<u8> {
         // compared, so bounding it there would drop game data for nothing.
         let ts_overflows = cmd == KCP_CMD_ACK && ts >= MAX_TIMEDIFF_OPERAND;
         if frg > MAX_FRAGMENT_INDEX || sn >= MAX_TIMEDIFF_OPERAND || ts_overflows {
-            warn!(
+            SEGMENTS_DROPPED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            debug!(
                 offset = i,
                 cmd, frg, ts, sn, "dropping a kcp segment the reassembler cannot process"
             );

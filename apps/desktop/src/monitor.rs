@@ -28,7 +28,8 @@ use crate::capture::{self, BackendType, CaptureSource, create_capture};
 // still reach it through here.
 pub(crate) use crate::decode::{
     AppliedData, DataReplacement, DataVerdict, KeyReport, STATS_INTERVAL, SnifferEvent,
-    SnifferStats, apply_commands, changes_in, classify_commands, decode_one_packet, full_send_in,
+    SnifferStats, apply_commands, changes_in, classify_commands, decode_one_packet,
+    frame_direction, full_send_in,
 };
 use crate::game_watch::{self, GameStatus, GameWatch, SystemProcessDetector};
 use crate::i18n::{tr, trf};
@@ -449,7 +450,13 @@ fn spawn_sniffer_thread(
                 let wait = next_report.saturating_duration_since(Instant::now());
                 match packet_rx.recv_timeout(wait) {
                     Ok(packet) => {
-                        stats.note_frame(thread_queued.load(Ordering::Relaxed));
+                        stats.note_frame(
+                            thread_queued.load(Ordering::Relaxed),
+                            frame_direction(
+                                &packet,
+                                [capture::PORT_RANGE.0, capture::PORT_RANGE.1],
+                            ),
+                        );
                         let started = thread_game_started.load(Ordering::Relaxed);
                         sniffer.set_game_started_ms((started != 0).then_some(started));
                         let delivered = decode_one_packet(
@@ -476,7 +483,11 @@ fn spawn_sniffer_thread(
                     if let Some(line) = stats.report(duplicates, now) {
                         tracing::info!(
                             frames = line.frames,
+                            sent = line.sent,
+                            received = line.received,
                             duplicates_dropped = line.duplicates,
+                            kcp_dropped =
+                                teyvatme_protocol::KCP_SEGMENTS_DROPPED.load(Ordering::Relaxed),
                             max_queue = line.max_queue,
                             commands_since_reset = line.commands_since_reset,
                             key = ?sniffer.key_state(),

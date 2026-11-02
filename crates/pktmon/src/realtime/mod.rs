@@ -1,6 +1,5 @@
 use std::alloc::Layout;
-use std::ffi::{OsString, c_void};
-use std::os::windows::ffi::OsStringExt;
+use std::ffi::c_void;
 use std::ptr::slice_from_raw_parts;
 use std::sync::mpsc;
 use std::time::Duration;
@@ -259,13 +258,14 @@ impl RealTimeBackend {
         })
     }
 
-    // TODO: Expose this in the API, allow for filtering components
-    #[allow(dead_code)]
-    fn list_data_sources(
-        &self,
-    ) -> std::io::Result<Vec<c_api::PacketMonitorDataSourceSpecification>> {
-        let mut bytes_needed = 0;
-
+    /// The data sources pktmon enumerates. The API fills one buffer with a
+    /// count, an array of pointers and the entries those point at (all
+    /// inside the buffer); it is read field by field with bounds checks,
+    /// because reading it through a `&PacketMonitorDataSourceList` whose
+    /// pointer array is declared one entry long was undefined behaviour,
+    /// and release builds crashed inside ntdll at start.
+    fn list_data_sources(&self) -> std::io::Result<Vec<crate::DataSource>> {
+        let mut bytes_needed = 0u32;
         (self.api.enum_data_sources)(
             self.handle,
             c_api::PacketMonitorDataSourceKind::PacketMonitorDataSourceKindAll,
@@ -275,82 +275,41 @@ impl RealTimeBackend {
             std::ptr::null_mut(),
         )
         .ok()?;
-
-        let align = std::mem::align_of::<PacketMonitorDataSourceList>();
-        let layout = Layout::from_size_align(bytes_needed as usize, align).unwrap();
-        let buffer: *mut PacketMonitorDataSourceList =
-            unsafe { std::alloc::alloc_zeroed(layout).cast() };
-
-        trace!("Bytes needed: {}, align: {}", bytes_needed, align);
-
-        (self.api.enum_data_sources)(
+        let capacity = bytes_needed as usize;
+        if capacity < std::mem::size_of::<PacketMonitorDataSourceList>() {
+            return Ok(Vec::new());
+        }
+        let layout = Layout::from_size_align(
+            capacity,
+            std::mem::align_of::<PacketMonitorDataSourceList>(),
+        )
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        // SAFETY: the layout has a non-zero size.
+        let buffer = unsafe { std::alloc::alloc_zeroed(layout) };
+        if buffer.is_null() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::OutOfMemory,
+                "data source list",
+            ));
+        }
+        let filled = (self.api.enum_data_sources)(
             self.handle,
             c_api::PacketMonitorDataSourceKind::PacketMonitorDataSourceKindAll,
             true,
             bytes_needed,
             &mut bytes_needed,
-            buffer,
+            buffer.cast(),
         )
-        .ok()?;
-
-        let buf_as_slice = slice_from_raw_parts(buffer as *const u8, bytes_needed as usize);
-        let mut vec = Vec::<u8>::new();
-        vec.extend_from_slice(unsafe { &*buf_as_slice });
-        trace!(
-            "Buffer hexdump: {:?}",
-            vec.iter()
-                .map(|b| format!("{:02x}", b))
-                .collect::<Vec<String>>()
-                .join(" ")
-        );
-
-        let mut result_vec = Vec::<c_api::PacketMonitorDataSourceSpecification>::new();
-
-        unsafe {
-            let data_sources = &*buffer;
-
-            trace!("Data sources: {:?}", data_sources);
-
-            for i in 0..data_sources.num_data_sources {
-                let data_source = {
-                    let ptrptr = data_sources.data_sources.as_ptr();
-                    &**(ptrptr.add(i as usize))
-                };
-
-                let name = OsString::from_wide(
-                    &data_source.name[..data_source
-                        .name
-                        .iter()
-                        .position(|&c| c == 0)
-                        .unwrap_or(data_source.name.len())],
-                );
-                let description = OsString::from_wide(
-                    &data_source.description[..data_source
-                        .description
-                        .iter()
-                        .position(|&c| c == 0)
-                        .unwrap_or(data_source.description.len())],
-                );
-
-                trace!(
-                    "Data source: {:?} - {:?} - id: {} - secondary_id: {} - parent_id: {} - is_present: {}",
-                    name,
-                    description,
-                    data_source.id,
-                    data_source.secondary_id,
-                    data_source.parent_id,
-                    data_source.is_present
-                );
-
-                result_vec.push(data_source.clone());
-            }
+        .ok();
+        let sources = match filled {
+            // SAFETY: `buffer` holds `capacity` initialised bytes the API filled.
+            Ok(()) => unsafe { read_data_sources(buffer, capacity) },
+            Err(_) => Vec::new(),
         };
-
-        unsafe {
-            std::alloc::dealloc(buffer.cast(), layout);
-        }
-
-        Ok(result_vec)
+        // SAFETY: allocated above with this layout, and nothing points into it any more.
+        unsafe { std::alloc::dealloc(buffer, layout) };
+        filled?;
+        Ok(sources)
     }
 }
 
@@ -393,6 +352,10 @@ impl CaptureBackend for RealTimeBackend {
         Ok(())
     }
 
+    fn data_sources(&self) -> std::io::Result<Vec<crate::DataSource>> {
+        self.list_data_sources()
+    }
+
     fn next_packet(&self) -> Result<Packet, mpsc::RecvError> {
         debug!("Receiving packet");
         self.receiver.recv()
@@ -417,4 +380,86 @@ impl Drop for RealTimeBackend {
     fn drop(&mut self) {
         self.unload().unwrap();
     }
+}
+
+/// Read `T` at `at` in `buffer` (`len` bytes), unaligned; `None` past its end.
+///
+/// # Safety
+/// `buffer` must point at `len` initialised bytes, and `T` must be valid for
+/// any bit pattern (integers and arrays of them).
+unsafe fn read_at<T: Copy>(buffer: *const u8, len: usize, at: usize) -> Option<T> {
+    let end = at.checked_add(std::mem::size_of::<T>())?;
+    (end <= len).then(|| unsafe { buffer.add(at).cast::<T>().read_unaligned() })
+}
+
+/// The data sources in the buffer `PacketMonitorEnumDataSources` filled.
+///
+/// # Safety
+/// `buffer` must point at `len` initialised bytes.
+unsafe fn read_data_sources(buffer: *const u8, len: usize) -> Vec<crate::DataSource> {
+    use c_api::PacketMonitorDataSourceSpecification as Spec;
+    let base = buffer as usize;
+    let count: u32 = unsafe {
+        read_at(
+            buffer,
+            len,
+            std::mem::offset_of!(PacketMonitorDataSourceList, num_data_sources),
+        )
+    }
+    .unwrap_or(0);
+    let pointers = std::mem::offset_of!(PacketMonitorDataSourceList, data_sources);
+    let mut sources = Vec::with_capacity(count as usize);
+    for i in 0..count as usize {
+        let Some(pointer) = i
+            .checked_mul(std::mem::size_of::<usize>())
+            .and_then(|offset| unsafe { read_at::<usize>(buffer, len, pointers + offset) })
+        else {
+            break;
+        };
+        // Each entry is inside the buffer; anything else is a layout mismatch.
+        let Some(at) = pointer.checked_sub(base) else {
+            break;
+        };
+        let field = |offset: usize| at.checked_add(offset);
+        let (
+            Some(kind),
+            Some(name),
+            Some(description),
+            Some(id),
+            Some(parent_id),
+            Some(is_present),
+        ) = (
+            field(std::mem::offset_of!(Spec, kind))
+                .and_then(|at| unsafe { read_at::<u32>(buffer, len, at) }),
+            field(std::mem::offset_of!(Spec, name))
+                .and_then(|at| unsafe { read_at::<[u16; 64]>(buffer, len, at) }),
+            field(std::mem::offset_of!(Spec, description))
+                .and_then(|at| unsafe { read_at::<[u16; 128]>(buffer, len, at) }),
+            field(std::mem::offset_of!(Spec, id))
+                .and_then(|at| unsafe { read_at::<u32>(buffer, len, at) }),
+            field(std::mem::offset_of!(Spec, parent_id))
+                .and_then(|at| unsafe { read_at::<u32>(buffer, len, at) }),
+            field(std::mem::offset_of!(Spec, is_present))
+                .and_then(|at| unsafe { read_at::<u32>(buffer, len, at) }),
+        )
+        else {
+            break;
+        };
+        let text = |chars: &[u16]| {
+            String::from_utf16_lossy(
+                &chars[..chars.iter().position(|&c| c == 0).unwrap_or(chars.len())],
+            )
+        };
+        sources.push(crate::DataSource {
+            id,
+            parent_id,
+            name: text(&name),
+            description: text(&description),
+            present: is_present != 0,
+            network_interface: kind
+                == c_api::PacketMonitorDataSourceKind::PacketMonitorDataSourceKindNetworkInterface
+                    as u32,
+        });
+    }
+    sources
 }

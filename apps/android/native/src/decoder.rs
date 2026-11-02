@@ -760,7 +760,10 @@ fn run(rx: mpsc::Receiver<Input>, state: Arc<Mutex<State>>, wishes: &Wishes) {
                 let Some(frame) = recording::as_ethernet(LINKTYPE_RAW, data) else {
                     continue;
                 };
-                stats.note_frame(1);
+                stats.note_frame(
+                    1,
+                    decode::frame_direction(&frame, [crate::GAME_PORTS.0, crate::GAME_PORTS.1]),
+                );
                 decode::decode_one_packet(
                     &mut sniffer,
                     &mut generation,

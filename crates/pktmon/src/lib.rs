@@ -115,11 +115,26 @@ pub struct Packet {
     pub payload: PacketPayload,
 }
 
+/// One of pktmon's data sources: a network interface, or a component on one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DataSource {
+    pub id: u32,
+    pub parent_id: u32,
+    pub name: String,
+    pub description: String,
+    /// Whether pktmon can capture on it right now.
+    pub present: bool,
+    pub network_interface: bool,
+}
+
 pub(crate) trait CaptureBackend: Debug + Send {
     fn start(&mut self) -> io::Result<()>;
     fn stop(&mut self) -> io::Result<()>;
     fn unload(&mut self) -> io::Result<()>;
     fn add_filter(&mut self, filter: PktMonFilter) -> io::Result<()>;
+    /// The data sources pktmon knows (the real-time path only; the ETW path
+    /// answers an empty list).
+    fn data_sources(&self) -> io::Result<Vec<DataSource>>;
     fn next_packet(&self) -> Result<Packet, RecvError>;
     fn next_packet_timeout(&self, timeout: Duration) -> Result<Packet, RecvTimeoutError>;
     fn try_next_packet(&self) -> Result<Packet, TryRecvError>;
@@ -158,6 +173,10 @@ impl CaptureBackend for DispatchCaptureBackend {
 
     fn add_filter(&mut self, filter: PktMonFilter) -> io::Result<()> {
         dispatch!(self, add_filter(filter))
+    }
+
+    fn data_sources(&self) -> io::Result<Vec<DataSource>> {
+        dispatch!(self, data_sources())
     }
 
     fn next_packet(&self) -> Result<Packet, RecvError> {
@@ -292,6 +311,13 @@ impl Capture {
             backend,
             running: false,
         })
+    }
+
+    /// The data sources pktmon found: every network interface and the
+    /// components stacked on it (the real-time path; the ETW path answers
+    /// an empty list).
+    pub fn data_sources(&self) -> io::Result<Vec<DataSource>> {
+        self.backend.data_sources()
     }
 
     /// Start the capture.

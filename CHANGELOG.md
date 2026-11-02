@@ -8,6 +8,13 @@ Each release's section is its GitHub release notes (`.github/workflows/release.y
   front, out of the tray or the taskbar, instead of doing nothing.
 - A ten-digit UID (18…, 16…) showed its server as China; it is read from the
   digits before the account number now, so 18… is Asia again.
+- Live sync no longer rebuilds the export several times a second while a lone
+  change waits its two minutes; it looks again every 15 s, or when new data
+  arrives.
+- The log no longer gets a line per server ACK the KCP reassembler skips
+  (141,000 lines in one evening); the stats line counts them (`kcp_dropped`),
+  shows frames per direction (`sent`/`received`), and Windows' packet monitor
+  lists the adapters and components it found at start.
 
 ## 1.17.11
 

@@ -270,6 +270,12 @@ pub struct LiveSync {
     watching: bool,
     retry_at_ms: u64,
     backoff_ms: u64,
+    /// A look (`tick`) that found the pending changes not worth a batch yet
+    /// waits until this before looking again. Building the export is the
+    /// expensive part of a look, and looking every time the monitor woke
+    /// rebuilt it three times a second for a minute at a time while a lone
+    /// change waited. New data brings the next look forward.
+    recheck_at_ms: u64,
     /// Snapshot mode until this UTC day is over (the daily batch limit).
     off_day: Option<u64>,
 }
@@ -318,6 +324,7 @@ impl LiveSync {
     /// Some account data changed (`count` entries, an estimate).
     pub fn note_change(&mut self, count: usize) {
         self.pending = self.pending.saturating_add(count.max(1));
+        self.recheck_at_ms = 0;
     }
 
     /// The game connection ended (a logout, the game closing, a reconnect).
@@ -475,6 +482,7 @@ impl LiveSync {
         Some(
             (self.last_sent_ms + BATCH_SPACING_MS)
                 .max(self.retry_at_ms)
+                .max(self.recheck_at_ms)
                 .max(now_ms),
         )
     }
@@ -508,7 +516,7 @@ impl LiveSync {
             return Action::Nothing;
         }
         let since = now_ms.saturating_sub(self.last_sent_ms);
-        if self.pending < BIG_BATCH && since < BATCH_SPACING_MS {
+        if self.pending < BIG_BATCH && (since < BATCH_SPACING_MS || now_ms < self.recheck_at_ms) {
             return Action::Nothing;
         }
         let Some((good, keyed)) = export() else {
@@ -526,6 +534,9 @@ impl LiveSync {
             || since >= LONE_CHANGE_MS
             || delta::is_important(&changes, &keyed);
         if !due {
+            // Look again in a spacing, or when the lone-change wait is up.
+            self.recheck_at_ms =
+                (now_ms + BATCH_SPACING_MS).min(self.last_sent_ms + LONE_CHANGE_MS);
             return Action::Nothing;
         }
         let Some(uid) = good.gi_player.as_ref().and_then(|player| player.uid) else {
@@ -761,6 +772,27 @@ mod tests {
         live.note_change(1);
         assert_eq!(live.tick(true, 20_000, export(good(101))), Action::Nothing);
         assert_eq!(live.tick(true, 119_999, export(good(101))), Action::Nothing);
+        let batch = sent(live.tick(true, 120_000, export(good(101))));
+        assert_eq!(batch.changes.len(), 1);
+    }
+
+    #[test]
+    fn an_undue_change_is_looked_at_once_per_spacing() {
+        let mut live = live_at(0);
+        live.note_change(1);
+        assert_eq!(live.tick(true, 20_000, export(good(101))), Action::Nothing);
+        // Not due yet: the next look waits a spacing, instead of the monitor
+        // waking at once and rebuilding the export until the change is due.
+        assert_eq!(live.next_tick_ms(true, 20_000), Some(35_000));
+        assert_eq!(
+            live.tick(true, 25_000, || panic!("no export before the next look")),
+            Action::Nothing
+        );
+        // New data is looked at now.
+        live.note_change(1);
+        assert_eq!(live.next_tick_ms(true, 25_000), Some(25_000));
+        assert_eq!(live.tick(true, 25_000, export(good(101))), Action::Nothing);
+        assert_eq!(live.next_tick_ms(true, 25_000), Some(40_000));
         let batch = sent(live.tick(true, 120_000, export(good(101))));
         assert_eq!(batch.changes.len(), 1);
     }

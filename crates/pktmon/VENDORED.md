@@ -14,6 +14,12 @@ Changes from upstream:
   dropping every packet that isn't an Ethernet frame: some PCs report game
   packets at some layers only that way.
 - `etw_session_losses()` reads the ETW session's lost event and buffer counts.
+- `Capture::data_sources()` lists the data sources the real-time API
+  enumerates, so the log can show which adapters and components pktmon could
+  capture on. The crate's unused `list_data_sources` read the API's buffer
+  through a `&PacketMonitorDataSourceList` whose pointer array is declared
+  one entry long (undefined behaviour; release builds crashed in ntdll), so
+  it reads the buffer field by field with bounds checks now.
 - `install_shutdown_hook` keeps the latest backend's hook, not the first.
 - `extern "stdcall"` is `extern "system"` (the same on 64-bit Windows;
   Rust is phasing the first out).

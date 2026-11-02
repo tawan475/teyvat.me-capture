@@ -156,6 +156,8 @@ mod shop;
 mod test_support;
 mod unk_util;
 
+pub use kcp::SEGMENTS_DROPPED as KCP_SEGMENTS_DROPPED;
+
 const PORTS: [u16; 2] = [22101, 22102];
 
 /// Consecutive messages a live session key may fail to decrypt before the key is
