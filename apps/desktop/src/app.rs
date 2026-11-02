@@ -116,9 +116,10 @@ pub struct SavedAppState {
     #[serde(default)]
     pub save_result_folder: Option<PathBuf>,
     pub log_raw_packets: bool,
-    /// Capture through pktmon's ETW path instead of its real-time stream
-    /// (Windows). Turned on by itself on a PC that merges the game's packets,
-    /// whose merged packets the stream drops; Settings › Diagnostics.
+    /// Capture through raw sockets instead of pktmon's real-time stream
+    /// (Windows; `capture/raw_backend.rs`). Turned on by itself on a PC that
+    /// merges the game's packets, whose merged packets the stream drops;
+    /// Settings › Diagnostics.
     #[serde(default)]
     pub compatible_capture: bool,
     #[serde(default)]

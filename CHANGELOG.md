@@ -2,6 +2,16 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.17.11
+
+- Compatible capture now reads the game's packets through a raw socket
+  (what RawCap uses) instead of Windows' packet monitor. On a PC that merges
+  the game's incoming packets, the packet monitor's older path still lost
+  3-6% of them in ways it never reported, so logins came through with gaps
+  (the key read, characters or inventory missing). Windows hands the raw
+  socket every packet once and whole. If no raw socket can be opened, the
+  older path is used as before.
+
 ## 1.17.10
 
 - Compatible capture keeps more of the game's data: on some PCs Windows
