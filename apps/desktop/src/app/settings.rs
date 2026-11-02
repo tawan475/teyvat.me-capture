@@ -1028,7 +1028,7 @@ impl TeyvatmeApp {
                     &mut self.saved_state.compatible_capture,
                     true,
                 )
-                .on_hover_text(tr("Reads packets through Windows' older pktmon path, which keeps packets the newer one drops. Turns on by itself on a PC that merges the game's packets; up to a second slower."));
+                .on_hover_text(tr("Captures through a raw socket instead of Windows' packet monitor, which drops the packets some network cards merge. Turns on by itself on a PC that merges the game's packets."));
             }
             divider(ui);
             let mut open = false;

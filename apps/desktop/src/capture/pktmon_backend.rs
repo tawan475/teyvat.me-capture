@@ -59,7 +59,9 @@ pub struct PktmonBackend {
 
 impl PktmonBackend {
     /// `compatible` reads pktmon's ETW path; otherwise its real-time stream,
-    /// which drops packets over 9000 bytes (see `MERGED_DATAGRAMS_SEEN`).
+    /// which drops packets over 9000 bytes (see `MERGED_DATAGRAMS_SEEN`). The
+    /// ETW path is only the fallback behind `raw_backend` now: on the PC that
+    /// merges packets it still lost 3-6% of the game's pieces, unreported.
     ///
     /// The ETW path is one capture for the whole system: starting it stops any
     /// capture another program had running on it (the `pktmon` command, other
@@ -168,7 +170,7 @@ fn to_ethernet_frame(payload: PacketPayload) -> (Vec<u8>, Option<PayloadNote>) {
 /// ethertype comes from the IP version nibble. Returns `None` when the buffer
 /// does not start with a plausible IPv4 or IPv6 header, in which case the
 /// caller should leave the bytes alone rather than corrupt them further.
-fn wrap_ip_in_ethernet(ip: &[u8]) -> Option<Vec<u8>> {
+pub(super) fn wrap_ip_in_ethernet(ip: &[u8]) -> Option<Vec<u8>> {
     let ethertype = match ip.first()? >> 4 {
         4 => ETHERTYPE_IPV4,
         6 => ETHERTYPE_IPV6,

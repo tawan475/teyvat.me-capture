@@ -10,6 +10,8 @@ mod dedupe;
 mod pcap_backend;
 #[cfg(windows)]
 mod pktmon_backend;
+#[cfg(windows)]
+mod raw_backend;
 
 use std::fmt::{Debug, Display};
 use std::path::PathBuf;
@@ -144,8 +146,10 @@ pub const DEFAULT_CAPTURE_BACKEND_TYPE: BackendType = BackendType::Pktmon;
 #[cfg(not(windows))]
 pub const DEFAULT_CAPTURE_BACKEND_TYPE: BackendType = BackendType::Pcap;
 
-/// `compatible` picks pktmon's ETW path over its real-time stream (Windows);
-/// see [`MERGED_DATAGRAMS_SEEN`].
+/// `compatible` (Windows) captures through raw sockets in receive-all mode
+/// instead of pktmon's real-time stream, which drops merged packets; see
+/// [`MERGED_DATAGRAMS_SEEN`]. pktmon's ETW path is the fallback when no
+/// receive-all socket can be opened.
 #[cfg_attr(not(windows), allow(unused_variables))]
 pub fn create_capture(
     backend: BackendType,
@@ -155,9 +159,18 @@ pub fn create_capture(
     match backend {
         #[cfg(windows)]
         BackendType::Pktmon => match capture_source {
-            CaptureSource::Device(None) => {
-                Ok(Box::new(pktmon_backend::PktmonBackend::new(compatible)?))
+            CaptureSource::Device(None) if compatible => {
+                match raw_backend::RawSocketBackend::new() {
+                    Ok(backend) => Ok(Box::new(backend)),
+                    Err(e) => {
+                        tracing::warn!(
+                            "raw socket capture unavailable, using pktmon's ETW path: {e}"
+                        );
+                        Ok(Box::new(pktmon_backend::PktmonBackend::new(true)?))
+                    }
+                }
             }
+            CaptureSource::Device(None) => Ok(Box::new(pktmon_backend::PktmonBackend::new(false)?)),
             _ => Err(CaptureError::Capture {
                 has_captured: false,
                 error: anyhow::anyhow!("Savefiles are only supported for the pcap backend"),
