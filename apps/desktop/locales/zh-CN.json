@@ -408,6 +408,7 @@
   "Windows asks every time Teyvat.me starts": "每次启动 Teyvat.me 时 Windows 都会询问",
   "Windows lets only administrators read network packets": "Windows 只允许管理员读取网络数据包",
   "Windows lets only admins read network packets": "Windows 仅允许管理员读取网络数据包",
+  "Windows' packet monitor showed none of the game server's packets on this PC, so capture switched to compatible mode. Return to the title screen and enter again to read this login.": "这台电脑上 Windows 的数据包监视器没有显示任何来自游戏服务器的数据包，抓取已切换到兼容模式。请返回标题画面并重新进入，以读取本次登录。",
   "Wish URL copied": "已复制祈愿 URL",
   "Wish history": "祈愿记录",
   "Wish history not saved · {0}": "祈愿记录未保存 · {0}",

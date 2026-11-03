@@ -408,6 +408,7 @@
   "Windows asks every time Teyvat.me starts": "Windows спрашивает при каждом запуске Teyvat.me",
   "Windows lets only administrators read network packets": "Windows разрешает читать сетевые пакеты только администраторам",
   "Windows lets only admins read network packets": "Windows разрешает читать сетевые пакеты только администраторам",
+  "Windows' packet monitor showed none of the game server's packets on this PC, so capture switched to compatible mode. Return to the title screen and enter again to read this login.": "Монитор пакетов Windows не показал на этом ПК ни одного пакета игрового сервера, поэтому захват переключён в совместимый режим. Вернитесь на титульный экран и войдите снова, чтобы этот вход прочитался.",
   "Wish URL copied": "Ссылка на молитвы скопирована",
   "Wish history": "История молитв",
   "Wish history not saved · {0}": "История молитв не сохранена · {0}",

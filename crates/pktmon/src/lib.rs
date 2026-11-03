@@ -135,6 +135,10 @@ pub(crate) trait CaptureBackend: Debug + Send {
     /// The data sources pktmon knows (the real-time path only; the ETW path
     /// answers an empty list).
     fn data_sources(&self) -> io::Result<Vec<DataSource>>;
+    /// Narrow the capture to the data sources with these ids (pktmon's
+    /// `--comp`); a session none were added to captures on all of them.
+    /// Answers how many were added (the ETW path adds none).
+    fn add_data_sources(&mut self, ids: &[u32]) -> io::Result<usize>;
     fn next_packet(&self) -> Result<Packet, RecvError>;
     fn next_packet_timeout(&self, timeout: Duration) -> Result<Packet, RecvTimeoutError>;
     fn try_next_packet(&self) -> Result<Packet, TryRecvError>;
@@ -177,6 +181,10 @@ impl CaptureBackend for DispatchCaptureBackend {
 
     fn data_sources(&self) -> io::Result<Vec<DataSource>> {
         dispatch!(self, data_sources())
+    }
+
+    fn add_data_sources(&mut self, ids: &[u32]) -> io::Result<usize> {
+        dispatch!(self, add_data_sources(ids))
     }
 
     fn next_packet(&self) -> Result<Packet, RecvError> {
@@ -318,6 +326,14 @@ impl Capture {
     /// an empty list).
     pub fn data_sources(&self) -> io::Result<Vec<DataSource>> {
         self.backend.data_sources()
+    }
+
+    /// Capture only on the data sources with these ids (from
+    /// [`Capture::data_sources`]), like pktmon's `--comp`: a session this
+    /// was never called on captures on all of them. Answers how many were
+    /// added (the ETW path adds none). Before or after `start`.
+    pub fn add_data_sources(&mut self, ids: &[u32]) -> io::Result<usize> {
+        self.backend.add_data_sources(ids)
     }
 
     /// Start the capture.

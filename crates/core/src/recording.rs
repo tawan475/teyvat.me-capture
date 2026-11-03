@@ -655,6 +655,36 @@ mod tests {
     }
 
     #[test]
+    fn frames_from_several_pktmon_components_read_back_in_order() {
+        // The packet log names an interface per component (`if_name`, which
+        // this reader ignores); every one is Ethernet.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("components.pcapng");
+        let mut writer = crate::pcapng::PcapngWriter::new(path.clone()).unwrap();
+        writer.write_packet_from(1, Some(13), &[1]).unwrap();
+        writer.write_packet_from(2, None, &[2]).unwrap();
+        writer.write_packet_from(3, Some(39), &[3]).unwrap();
+        writer.write_packet_from(4, Some(13), &[4]).unwrap();
+        drop(writer);
+
+        let (frames, truncated) = read_all(&std::fs::read(&path).unwrap());
+        assert!(!truncated);
+        let seen: Vec<(Option<u64>, u16, u8)> = frames
+            .iter()
+            .map(|frame| (frame.timestamp_ns, frame.link_type, frame.data[0]))
+            .collect();
+        assert_eq!(
+            seen,
+            [
+                (Some(1), 1, 1),
+                (Some(2), 1, 2),
+                (Some(3), 1, 3),
+                (Some(4), 1, 4)
+            ]
+        );
+    }
+
+    #[test]
     fn a_recording_still_being_written_ends_at_its_last_whole_block() {
         let mut bytes = section_header(false);
         bytes.extend(interface(1, &[(OPT_IF_TSRESOL, &[9])], false));

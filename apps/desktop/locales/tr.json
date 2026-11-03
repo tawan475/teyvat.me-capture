@@ -408,6 +408,7 @@
   "Windows asks every time Teyvat.me starts": "Windows, Teyvat.me her başladığında sorar",
   "Windows lets only administrators read network packets": "Windows ağ paketlerini yalnızca yöneticilerin okumasına izin verir",
   "Windows lets only admins read network packets": "Windows ağ paketlerini yalnızca yöneticilerin okumasına izin verir",
+  "Windows' packet monitor showed none of the game server's packets on this PC, so capture switched to compatible mode. Return to the title screen and enter again to read this login.": "Windows paket izleyicisi bu PC'de oyun sunucusundan hiç paket göstermedi, bu yüzden yakalama uyumlu moda geçti. Bu girişin okunması için başlık ekranına dön ve yeniden gir.",
   "Wish URL copied": "Dilek URL'si kopyalandı",
   "Wish history": "Dilek geçmişi",
   "Wish history not saved · {0}": "Dilek geçmişi kaydedilmedi · {0}",

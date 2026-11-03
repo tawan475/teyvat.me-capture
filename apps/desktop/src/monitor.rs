@@ -23,7 +23,7 @@ use tokio::task::{JoinError, JoinHandle};
 use tokio_util::sync::CancellationToken;
 
 use crate::activity::{Event, Topic};
-use crate::capture::{self, BackendType, CaptureSource, create_capture};
+use crate::capture::{self, BackendType, CaptureSource, CapturedFrame, create_capture};
 // The decode layer moved to teyvatme-core; the replay and this module's tests
 // still reach it through here.
 pub(crate) use crate::decode::{
@@ -406,7 +406,7 @@ impl AutomationPlan {
 /// entirely inside the task, so spawning proves nothing.
 enum CaptureEvent {
     Started,
-    Packet(Vec<u8>),
+    Packet(CapturedFrame),
     Failed(anyhow::Error),
 }
 
@@ -444,6 +444,13 @@ fn spawn_sniffer_thread(
             let mut last_generation = sniffer.session_generation();
             let mut stats = SnifferStats::default();
             let mut next_report = Instant::now() + STATS_INTERVAL;
+            // Debug builds: `TEYVATME_FAKE_ONE_WAY` acts as if a login went by
+            // with the server's side missing, to test the switch on a PC whose
+            // capture is fine.
+            #[cfg(debug_assertions)]
+            if std::env::var_os("TEYVATME_FAKE_ONE_WAY").is_some() {
+                capture::ONE_WAY_CAPTURE_SEEN.store(true, Ordering::Relaxed);
+            }
             loop {
                 // Woken at least once per interval, so the stats line keeps its
                 // schedule when no packet arrives.
@@ -469,6 +476,16 @@ fn spawn_sniffer_thread(
                         thread_queued.fetch_sub(1, Ordering::Relaxed);
                         if !delivered {
                             break;
+                        }
+                        if stats.one_way_login(sniffer.key_recovery_failed()) {
+                            let (sent, received) = stats.frames_since_reset();
+                            tracing::warn!(
+                                sent,
+                                received,
+                                "the capture showed only this PC's sends for a whole login; the \
+                                 server's token response, which carries the key, never came"
+                            );
+                            capture::ONE_WAY_CAPTURE_SEEN.store(true, Ordering::Relaxed);
                         }
                     }
                     Err(blocking_mpsc::RecvTimeoutError::Timeout) => {}
@@ -622,10 +639,12 @@ impl PacketLog {
         Ok(())
     }
 
-    /// Record one captured frame, `timestamp_ns` after the unix epoch.
-    fn append_frame(&mut self, timestamp_ns: u64, frame: &[u8]) -> Result<()> {
+    /// Record one captured frame, `timestamp_ns` after the unix epoch, from
+    /// `source` (the pktmon component that delivered it, if known: the file
+    /// gets an interface per source, so a log shows where each frame was seen).
+    fn append_frame(&mut self, timestamp_ns: u64, source: Option<u16>, frame: &[u8]) -> Result<()> {
         if let Some(writer) = self.frames.as_mut() {
-            writer.write_packet(timestamp_ns, frame)?;
+            writer.write_packet_from(timestamp_ns, source, frame)?;
         }
         Ok(())
     }
@@ -1110,6 +1129,7 @@ impl Monitor {
                 _ = self.game_poll.tick() => {
                     self.poll_game_status();
                     self.switch_on_merged_datagrams().await;
+                    self.switch_on_one_way_capture().await;
                     self.supervise_capture().await;
                     self.watch_capture_silence().await;
                 }
@@ -1294,6 +1314,28 @@ impl Monitor {
         let _ = self.toast_tx.send(Event::warn(
             Topic::Capture,
             tr("This PC merges the game's packets, so capture switched to compatible mode. If this login isn't read, return to the title screen and enter again."),
+        ));
+        self.set_compatible_capture(true).await;
+    }
+
+    /// Move capture to compatible mode once a login went by with the server's
+    /// side missing entirely (`capture::ONE_WAY_CAPTURE_SEEN`): Windows'
+    /// packet monitor on one Wi-Fi PC delivered only the client's sends, and a
+    /// raw socket there delivered the server's. Like the merged-datagram
+    /// switch, the login it was seen in is lost; the toast says how to get it
+    /// back, and every later login on this PC is read from the start.
+    async fn switch_on_one_way_capture(&mut self) {
+        if !capture::ONE_WAY_CAPTURE_SEEN.swap(false, Ordering::Relaxed) || self.compatible_capture
+        {
+            return;
+        }
+        tracing::warn!(
+            "switching capture to compatible mode: the packet monitor showed none of the server's \
+             packets"
+        );
+        let _ = self.toast_tx.send(Event::warn(
+            Topic::Capture,
+            tr("Windows' packet monitor showed none of the game server's packets on this PC, so capture switched to compatible mode. Return to the title screen and enter again to read this login."),
         ));
         self.set_compatible_capture(true).await;
     }
@@ -1484,13 +1526,17 @@ impl Monitor {
     }
 
     /// Hand a captured frame to the sniffer thread.
-    fn handle_packet(&mut self, packet: Vec<u8>) {
+    fn handle_packet(&mut self, frame: CapturedFrame) {
+        let CapturedFrame {
+            data: packet,
+            source,
+        } = frame;
         #[cfg(debug_assertions)]
         if let Some(writer) = self.pcapng.as_mut() {
-            let _ = writer.write_packet(now_ns(), &packet);
+            let _ = writer.write_packet_from(now_ns(), source, &packet);
         }
         if self.packet_log.is_on()
-            && let Err(e) = self.packet_log.append_frame(now_ns(), &packet)
+            && let Err(e) = self.packet_log.append_frame(now_ns(), source, &packet)
         {
             tracing::info!("error logging a captured frame {e}");
         }
@@ -3316,7 +3362,7 @@ pub(crate) mod tests {
         );
 
         // The frames before decryption, readable by the replay tool.
-        log.append_frame(1_700_000_000_000_000_000, &[0xAB; 60])
+        log.append_frame(1_700_000_000_000_000_000, Some(13), &[0xAB; 60])
             .unwrap();
         let recording = std::fs::read(dir.join(&frames[0])).unwrap();
         assert_eq!(&recording[0..4], &0x0a0d0d0a_u32.to_le_bytes());
@@ -3328,7 +3374,7 @@ pub(crate) mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut log = PacketLog::with_dir(Some(dir.path().to_path_buf()));
         log.append(&command(1, &[], &[7])).unwrap();
-        log.append_frame(1, &[1, 2, 3]).unwrap();
+        log.append_frame(1, None, &[1, 2, 3]).unwrap();
         assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
 
         log.set_on(true).unwrap();

@@ -15,6 +15,14 @@ Each release's section is its GitHub release notes (`.github/workflows/release.y
   (141,000 lines in one evening); the stats line counts them (`kcp_dropped`),
   shows frames per direction (`sent`/`received`), and Windows' packet monitor
   lists the adapters and components it found at start.
+- Wi-Fi: the packet monitor's own copies of a Wi-Fi adapter's packets are
+  802.11 frames, which were thrown away; they are read now, so an incoming
+  packet no longer depends on the one component that reports it as Ethernet.
+- When a login goes by with none of the game server's packets seen (one PC's
+  packet monitor delivered only the client's sends), capture switches to
+  compatible mode by itself and says so; the next login is read.
+- The log starts with the Windows edition and build, and the raw packet log
+  names which packet monitor component delivered each frame.
 
 ## 1.17.11
 

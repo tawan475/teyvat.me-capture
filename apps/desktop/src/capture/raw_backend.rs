@@ -37,7 +37,9 @@ use windows::Win32::Networking::WinSock::{
 
 use crate::capture::dedupe::{DEDUPE_CAPACITY, DEDUPE_WINDOW, Deduper};
 use crate::capture::pktmon_backend::wrap_ip_in_ethernet;
-use crate::capture::{CaptureBackend, CaptureError, DUPLICATES_DROPPED, PORT_RANGE, Result};
+use crate::capture::{
+    CaptureBackend, CaptureError, CapturedFrame, DUPLICATES_DROPPED, PORT_RANGE, Result,
+};
 
 /// Per socket. The game's login sends ~4 MB in a second and the stack copies
 /// every packet on the interface here, a download included.
@@ -252,7 +254,7 @@ fn interface_addresses() -> std::io::Result<Vec<(String, Ipv4Addr)>> {
 
 #[async_trait]
 impl CaptureBackend for RawSocketBackend {
-    async fn next_packet(&mut self) -> Result<Vec<u8>> {
+    async fn next_packet(&mut self) -> Result<CapturedFrame> {
         loop {
             let Some(frame) = self.rx.recv().await else {
                 return Err(CaptureError::CaptureClosed);
@@ -264,7 +266,7 @@ impl CaptureBackend for RawSocketBackend {
                 DUPLICATES_DROPPED.fetch_add(1, Ordering::Relaxed);
                 continue;
             }
-            return Ok(frame);
+            return Ok(CapturedFrame::plain(frame));
         }
     }
 }

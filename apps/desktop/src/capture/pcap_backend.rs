@@ -13,7 +13,9 @@ use async_trait::async_trait;
 use pcap::{Activated, Active, BreakLoop, Capture, ConnectionStatus, Device, Offline, Savefile};
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
-use crate::capture::{CaptureBackend, CaptureError, CaptureSource, PORT_RANGE, Result};
+use crate::capture::{
+    CaptureBackend, CaptureError, CaptureSource, CapturedFrame, PORT_RANGE, Result,
+};
 
 /// How long a blocking read waits before returning `TimeoutExpired`. This is
 /// what gives each packet loop a chance to notice the stop flag; without it a
@@ -606,9 +608,9 @@ fn savefile_path_for_generation(root: &Path, generation: u32) -> PathBuf {
 
 #[async_trait]
 impl CaptureBackend for PcapBackend {
-    async fn next_packet(&mut self) -> Result<Vec<u8>> {
+    async fn next_packet(&mut self) -> Result<CapturedFrame> {
         match self.packet_rx.recv().await {
-            Some(Ok(packet)) => Ok(packet),
+            Some(Ok(packet)) => Ok(CapturedFrame::plain(packet)),
             Some(Err(err)) => Err(err),
             None => Err(CaptureError::CaptureClosed),
         }

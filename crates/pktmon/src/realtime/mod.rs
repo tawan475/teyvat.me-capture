@@ -4,7 +4,10 @@ use std::ptr::slice_from_raw_parts;
 use std::sync::mpsc;
 use std::time::Duration;
 
-use c_api::{PacketMonitorDataSourceList, PacketMonitorPacketType};
+use c_api::{
+    PacketMonitorDataSourceList, PacketMonitorDataSourceSpecification as Spec,
+    PacketMonitorPacketType,
+};
 use log::{debug, error, info, trace, warn};
 use windows::w;
 
@@ -258,13 +261,50 @@ impl RealTimeBackend {
         })
     }
 
-    /// The data sources pktmon enumerates. The API fills one buffer with a
+    /// The data sources pktmon enumerates.
+    fn list_data_sources(&self) -> std::io::Result<Vec<crate::DataSource>> {
+        // SAFETY: the buffer holds `len` initialised bytes the API filled.
+        self.with_data_source_buffer(Vec::new(), |buffer, len| unsafe {
+            read_data_sources(buffer, len)
+        })
+    }
+
+    /// Narrow the session to the data sources with these ids (pktmon's
+    /// `--comp`); each spec is passed to the API as it lies in the
+    /// enumeration buffer. Answers how many the API accepted.
+    fn add_session_data_sources(&self, ids: &[u32]) -> std::io::Result<usize> {
+        self.with_data_source_buffer(0, |buffer, len| {
+            let mut added = 0;
+            // SAFETY: the buffer holds `len` initialised bytes the API filled,
+            // and every entry `data_source_entries` answers is a whole spec in it.
+            for at in unsafe { data_source_entries(buffer, len) } {
+                let id =
+                    unsafe { read_at::<u32>(buffer, len, at + std::mem::offset_of!(Spec, id)) };
+                let Some(id) = id.filter(|id| ids.contains(id)) else {
+                    continue;
+                };
+                let spec = unsafe { buffer.add(at) }.cast::<Spec>();
+                match (self.api.add_single_data_source_to_session)(self.session, spec).ok() {
+                    Ok(()) => added += 1,
+                    Err(e) => warn!("pktmon refused data source {id}: {e}"),
+                }
+            }
+            added
+        })
+    }
+
+    /// Runs `read` over the buffer `PacketMonitorEnumDataSources` fills: a
     /// count, an array of pointers and the entries those point at (all
-    /// inside the buffer); it is read field by field with bounds checks,
+    /// inside the buffer). It is read field by field with bounds checks,
     /// because reading it through a `&PacketMonitorDataSourceList` whose
     /// pointer array is declared one entry long was undefined behaviour,
-    /// and release builds crashed inside ntdll at start.
-    fn list_data_sources(&self) -> std::io::Result<Vec<crate::DataSource>> {
+    /// and release builds crashed inside ntdll at start. `empty` is the
+    /// answer when pktmon lists nothing.
+    fn with_data_source_buffer<T>(
+        &self,
+        empty: T,
+        read: impl FnOnce(*const u8, usize) -> T,
+    ) -> std::io::Result<T> {
         let mut bytes_needed = 0u32;
         (self.api.enum_data_sources)(
             self.handle,
@@ -277,7 +317,7 @@ impl RealTimeBackend {
         .ok()?;
         let capacity = bytes_needed as usize;
         if capacity < std::mem::size_of::<PacketMonitorDataSourceList>() {
-            return Ok(Vec::new());
+            return Ok(empty);
         }
         let layout = Layout::from_size_align(
             capacity,
@@ -301,15 +341,11 @@ impl RealTimeBackend {
             buffer.cast(),
         )
         .ok();
-        let sources = match filled {
-            // SAFETY: `buffer` holds `capacity` initialised bytes the API filled.
-            Ok(()) => unsafe { read_data_sources(buffer, capacity) },
-            Err(_) => Vec::new(),
-        };
+        // `buffer` holds `capacity` initialised bytes the API filled.
+        let value = filled.map(|()| read(buffer, capacity));
         // SAFETY: allocated above with this layout, and nothing points into it any more.
         unsafe { std::alloc::dealloc(buffer, layout) };
-        filled?;
-        Ok(sources)
+        Ok(value?)
     }
 }
 
@@ -356,6 +392,10 @@ impl CaptureBackend for RealTimeBackend {
         self.list_data_sources()
     }
 
+    fn add_data_sources(&mut self, ids: &[u32]) -> std::io::Result<usize> {
+        self.add_session_data_sources(ids)
+    }
+
     fn next_packet(&self) -> Result<Packet, mpsc::RecvError> {
         debug!("Receiving packet");
         self.receiver.recv()
@@ -392,12 +432,13 @@ unsafe fn read_at<T: Copy>(buffer: *const u8, len: usize, at: usize) -> Option<T
     (end <= len).then(|| unsafe { buffer.add(at).cast::<T>().read_unaligned() })
 }
 
-/// The data sources in the buffer `PacketMonitorEnumDataSources` filled.
+/// The offset in the buffer `PacketMonitorEnumDataSources` filled of every
+/// entry that lies whole inside it (an entry outside is a layout mismatch,
+/// and ends the list).
 ///
 /// # Safety
 /// `buffer` must point at `len` initialised bytes.
-unsafe fn read_data_sources(buffer: *const u8, len: usize) -> Vec<crate::DataSource> {
-    use c_api::PacketMonitorDataSourceSpecification as Spec;
+unsafe fn data_source_entries(buffer: *const u8, len: usize) -> Vec<usize> {
     let base = buffer as usize;
     let count: u32 = unsafe {
         read_at(
@@ -408,7 +449,7 @@ unsafe fn read_data_sources(buffer: *const u8, len: usize) -> Vec<crate::DataSou
     }
     .unwrap_or(0);
     let pointers = std::mem::offset_of!(PacketMonitorDataSourceList, data_sources);
-    let mut sources = Vec::with_capacity(count as usize);
+    let mut entries = Vec::with_capacity(count as usize);
     for i in 0..count as usize {
         let Some(pointer) = i
             .checked_mul(std::mem::size_of::<usize>())
@@ -416,50 +457,53 @@ unsafe fn read_data_sources(buffer: *const u8, len: usize) -> Vec<crate::DataSou
         else {
             break;
         };
-        // Each entry is inside the buffer; anything else is a layout mismatch.
-        let Some(at) = pointer.checked_sub(base) else {
+        let Some(at) = pointer.checked_sub(base).filter(|at| {
+            at.checked_add(std::mem::size_of::<Spec>())
+                .is_some_and(|end| end <= len)
+        }) else {
             break;
         };
-        let field = |offset: usize| at.checked_add(offset);
-        let (
-            Some(kind),
-            Some(name),
-            Some(description),
-            Some(id),
-            Some(parent_id),
-            Some(is_present),
-        ) = (
-            field(std::mem::offset_of!(Spec, kind))
-                .and_then(|at| unsafe { read_at::<u32>(buffer, len, at) }),
-            field(std::mem::offset_of!(Spec, name))
-                .and_then(|at| unsafe { read_at::<[u16; 64]>(buffer, len, at) }),
-            field(std::mem::offset_of!(Spec, description))
-                .and_then(|at| unsafe { read_at::<[u16; 128]>(buffer, len, at) }),
-            field(std::mem::offset_of!(Spec, id))
-                .and_then(|at| unsafe { read_at::<u32>(buffer, len, at) }),
-            field(std::mem::offset_of!(Spec, parent_id))
-                .and_then(|at| unsafe { read_at::<u32>(buffer, len, at) }),
-            field(std::mem::offset_of!(Spec, is_present))
-                .and_then(|at| unsafe { read_at::<u32>(buffer, len, at) }),
-        )
-        else {
-            break;
-        };
-        let text = |chars: &[u16]| {
-            String::from_utf16_lossy(
-                &chars[..chars.iter().position(|&c| c == 0).unwrap_or(chars.len())],
-            )
-        };
-        sources.push(crate::DataSource {
-            id,
-            parent_id,
-            name: text(&name),
-            description: text(&description),
-            present: is_present != 0,
-            network_interface: kind
-                == c_api::PacketMonitorDataSourceKind::PacketMonitorDataSourceKindNetworkInterface
-                    as u32,
-        });
+        entries.push(at);
     }
-    sources
+    entries
+}
+
+/// The data sources in the buffer `PacketMonitorEnumDataSources` filled.
+///
+/// # Safety
+/// `buffer` must point at `len` initialised bytes.
+unsafe fn read_data_sources(buffer: *const u8, len: usize) -> Vec<crate::DataSource> {
+    let text = |chars: &[u16]| {
+        String::from_utf16_lossy(
+            &chars[..chars.iter().position(|&c| c == 0).unwrap_or(chars.len())],
+        )
+    };
+    // SAFETY: every entry lies whole inside the buffer, so each field read
+    // is in bounds; the fields are integers or arrays of them.
+    unsafe { data_source_entries(buffer, len) }
+        .into_iter()
+        .map(|at| {
+            let read = |offset: usize| unsafe { read_at::<u32>(buffer, len, at + offset) };
+            let kind = read(std::mem::offset_of!(Spec, kind)).unwrap_or(0);
+            let id = read(std::mem::offset_of!(Spec, id)).unwrap_or(0);
+            let parent_id = read(std::mem::offset_of!(Spec, parent_id)).unwrap_or(0);
+            let is_present = read(std::mem::offset_of!(Spec, is_present)).unwrap_or(0);
+            let name: [u16; 64] =
+                unsafe { read_at(buffer, len, at + std::mem::offset_of!(Spec, name)) }
+                    .unwrap_or([0; 64]);
+            let description: [u16; 128] =
+                unsafe { read_at(buffer, len, at + std::mem::offset_of!(Spec, description)) }
+                    .unwrap_or([0; 128]);
+            crate::DataSource {
+                id,
+                parent_id,
+                name: text(&name),
+                description: text(&description),
+                present: is_present != 0,
+                network_interface: kind
+                    == c_api::PacketMonitorDataSourceKind::PacketMonitorDataSourceKindNetworkInterface
+                        as u32,
+            }
+        })
+        .collect()
 }

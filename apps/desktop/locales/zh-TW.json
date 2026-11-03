@@ -408,6 +408,7 @@
   "Windows asks every time Teyvat.me starts": "每次啟動 Teyvat.me 時 Windows 都會詢問",
   "Windows lets only administrators read network packets": "Windows 只允許系統管理員讀取網路封包",
   "Windows lets only admins read network packets": "Windows 僅允許系統管理員讀取網路封包",
+  "Windows' packet monitor showed none of the game server's packets on this PC, so capture switched to compatible mode. Return to the title screen and enter again to read this login.": "這台電腦上 Windows 的封包監視器沒有顯示任何來自遊戲伺服器的封包，擷取已切換為相容模式。請返回標題畫面並重新進入，以讀取這次登入。",
   "Wish URL copied": "已複製祈願 URL",
   "Wish history": "祈願紀錄",
   "Wish history not saved · {0}": "祈願紀錄未儲存 · {0}",

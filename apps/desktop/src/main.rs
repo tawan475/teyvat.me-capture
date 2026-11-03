@@ -900,6 +900,13 @@ fn tracing_init() -> Result<(
         .init();
     crash::install(&dir);
     tracing::info!("Tracing initialized and logging to file.");
+    // Which Windows this is: capture behaves differently per build (what the
+    // packet monitor delivers on Wi-Fi differed between two PCs, 2026-11-03).
+    tracing::info!(
+        os = sysinfo::System::long_os_version().unwrap_or_default(),
+        build = sysinfo::System::kernel_version().unwrap_or_default(),
+        "running on"
+    );
     let notice = crash::report_previous_run(&previous_run, rotated_log.as_deref());
 
     Ok((guard, ReloadHandle(reload_handle), notice))

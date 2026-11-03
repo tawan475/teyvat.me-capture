@@ -20,6 +20,11 @@ Changes from upstream:
   through a `&PacketMonitorDataSourceList` whose pointer array is declared
   one entry long (undefined behaviour; release builds crashed in ntdll), so
   it reads the buffer field by field with bounds checks now.
+- `Capture::add_data_sources(ids)` narrows a session to those data sources
+  (`PacketMonitorAddSingleDataSourceToSession`, pktmon's `--comp`; a session
+  with none added captures on all of them). The app does not call it: on a
+  Wi-Fi adapter the adapters-only session delivers 802.11 frames inbound and
+  nothing outbound (measured 2026-11-03). Kept for diagnosis.
 - `install_shutdown_hook` keeps the latest backend's hook, not the first.
 - `extern "stdcall"` is `extern "system"` (the same on 64-bit Windows;
   Rust is phasing the first out).

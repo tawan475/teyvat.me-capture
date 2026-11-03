@@ -132,6 +132,10 @@ impl CaptureBackend for LegacyBackend {
         Ok(Vec::new())
     }
 
+    fn add_data_sources(&mut self, _ids: &[u32]) -> io::Result<usize> {
+        Ok(0)
+    }
+
     /// Get the next packet from the capture.
     ///
     /// Returns an error if the capture isn't running.

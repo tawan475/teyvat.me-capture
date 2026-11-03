@@ -675,6 +675,12 @@ pub fn changes_in(classified: &[(u16, CommandMatch)]) -> usize {
 /// How often the sniffer thread logs what it has been doing.
 pub const STATS_INTERVAL: Duration = Duration::from_secs(60);
 
+/// Client frames a connection must have shown, with none from the server,
+/// before its failed login counts as a one-way capture
+/// ([`SnifferStats::one_way_login`]). A login exchange sends a few dozen; a
+/// handful could be a forged handshake or a game closed at the title screen.
+pub const ONE_WAY_MIN_SENT: u64 = 10;
+
 /// What the sniffer thread did, for one INFO line a minute.
 ///
 /// The log of 2026-10-04 had nothing to show for the hour and three quarters
@@ -690,6 +696,12 @@ pub struct SnifferStats {
     /// client's sends; a line with both counts shows that at a glance.
     sent: u64,
     received: u64,
+    /// The same two counts since the last session reset, for
+    /// [`SnifferStats::one_way_login`].
+    sent_since_reset: u64,
+    received_since_reset: u64,
+    /// Whether this connection was already reported as one-way.
+    one_way_reported: bool,
     /// Frames the interval before, so going quiet is reported once.
     previous_frames: u64,
     /// Deepest the queue to this thread got this interval.
@@ -720,11 +732,41 @@ impl SnifferStats {
     pub fn note_frame(&mut self, queued: usize, direction: Option<PacketDirection>) {
         self.frames += 1;
         match direction {
-            Some(PacketDirection::Sent) => self.sent += 1,
-            Some(PacketDirection::Received) => self.received += 1,
+            Some(PacketDirection::Sent) => {
+                self.sent += 1;
+                self.sent_since_reset += 1;
+            }
+            Some(PacketDirection::Received) => {
+                self.received += 1;
+                self.received_since_reset += 1;
+            }
             None => {}
         }
         self.max_queue = self.max_queue.max(queued);
+    }
+
+    /// Whether the capture is delivering only the client's sends: the login's
+    /// key was given up on (`key_failed`, [`GameSniffer::key_recovery_failed`])
+    /// while this connection has shown [`ONE_WAY_MIN_SENT`] frames to the
+    /// server and none from it. The server's token response is what carries
+    /// the key, so such a capture can never read a login; one PC's packet
+    /// monitor delivered exactly that (2026-11-02), and a raw socket there
+    /// delivered the server's side. Said once per connection.
+    pub fn one_way_login(&mut self, key_failed: bool) -> bool {
+        if self.one_way_reported
+            || !key_failed
+            || self.received_since_reset != 0
+            || self.sent_since_reset < ONE_WAY_MIN_SENT
+        {
+            return false;
+        }
+        self.one_way_reported = true;
+        true
+    }
+
+    /// Frames to the server and from it since the last session reset.
+    pub fn frames_since_reset(&self) -> (u64, u64) {
+        (self.sent_since_reset, self.received_since_reset)
     }
 
     pub fn note_commands(&mut self, count: usize, now: Instant) {
@@ -736,6 +778,9 @@ impl SnifferStats {
 
     pub fn note_reset(&mut self) {
         self.commands_since_reset = 0;
+        self.sent_since_reset = 0;
+        self.received_since_reset = 0;
+        self.one_way_reported = false;
     }
 
     /// The line for the interval ending `now`, given the process-wide count of
@@ -1120,6 +1165,55 @@ mod tests {
         stats.note_frame(1, None);
         let line = stats.report(0, Instant::now()).unwrap();
         assert_eq!((line.frames, line.sent, line.received), (4, 1, 2));
+    }
+
+    #[test]
+    fn a_failed_login_with_sends_only_is_one_way_once_per_connection() {
+        let mut stats = SnifferStats::default();
+        for _ in 0..ONE_WAY_MIN_SENT - 1 {
+            stats.note_frame(1, Some(PacketDirection::Sent));
+        }
+        assert!(!stats.one_way_login(true), "too few sends to judge");
+        stats.note_frame(1, Some(PacketDirection::Sent));
+        assert!(!stats.one_way_login(false), "the key is not given up yet");
+        assert!(stats.one_way_login(true));
+        assert!(!stats.one_way_login(true), "said once");
+        assert_eq!(stats.frames_since_reset(), (ONE_WAY_MIN_SENT, 0));
+
+        // A new connection is judged afresh.
+        stats.note_reset();
+        assert_eq!(stats.frames_since_reset(), (0, 0));
+        for _ in 0..ONE_WAY_MIN_SENT {
+            stats.note_frame(1, Some(PacketDirection::Sent));
+        }
+        assert!(stats.one_way_login(true));
+    }
+
+    #[test]
+    fn one_server_frame_means_the_capture_is_not_one_way() {
+        let mut stats = SnifferStats::default();
+        for _ in 0..ONE_WAY_MIN_SENT * 2 {
+            stats.note_frame(1, Some(PacketDirection::Sent));
+        }
+        stats.note_frame(1, Some(PacketDirection::Received));
+        // A frame on neither game port says nothing about direction.
+        stats.note_frame(1, None);
+        assert!(!stats.one_way_login(true));
+        // The minute's counts reset with the report; the connection's don't.
+        let _ = stats.report(0, Instant::now());
+        assert_eq!(stats.frames_since_reset(), (ONE_WAY_MIN_SENT * 2, 1));
+        assert!(!stats.one_way_login(true));
+    }
+
+    #[test]
+    fn a_receive_only_capture_is_never_one_way() {
+        // Raw sockets on one Wi-Fi delivered the server's side alone; that
+        // reads every login, so nothing must switch.
+        let mut stats = SnifferStats::default();
+        for _ in 0..ONE_WAY_MIN_SENT * 2 {
+            stats.note_frame(1, Some(PacketDirection::Received));
+        }
+        assert!(!stats.one_way_login(true));
     }
 
     #[test]
