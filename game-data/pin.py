@@ -77,6 +77,11 @@ EXCEL = [
     "PlayerLevelExcelConfigData",
     "MusicGameBookBeatmapExcelConfigData",
     "FlowerLandReputationTaskExcelConfigData",
+    # Endgame seasons: the Imaginarium Theater's schedules (id, start) and difficulty rows (id → level) and the
+    # Stygian Onslaught's schedules (id), which the progress messages are recognised and read against.
+    "RoleCombatScheduleExcelConfigData",
+    "RoleCombatDifficultyExcelConfigData",
+    "LeyLineChallengeExcelConfigData",
 ]
 TEXT_MAP = "TextMap/TextMap_MediumEN.json"
 WORLD_AREAS = "ExcelBinOutput/WorldAreaConfigData.json"

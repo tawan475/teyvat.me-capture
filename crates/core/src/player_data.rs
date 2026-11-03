@@ -27,6 +27,7 @@ mod avatar_change;
 mod collections;
 
 pub use collections::{CollectionPart, LoneList};
+mod endgame;
 mod exploration;
 
 pub use exploration::ExplorationPart;
@@ -749,6 +750,8 @@ pub struct PlayerData {
     collections: collections::CollectionsState,
     /// `gi_exploration`, as the exploration messages last said.
     exploration: exploration::ExplorationState,
+    /// `gi_endgame`: the Theater's season state and the Stygian records.
+    endgame: endgame::EndgameState,
     /// Not account data: kept by [`reset`](Self::reset).
     commission_reward: CommissionReward,
 }
@@ -786,6 +789,7 @@ impl PlayerData {
             spincrystals: None,
             collections: collections::CollectionsState::default(),
             exploration: exploration::ExplorationState::default(),
+            endgame: endgame::EndgameState::default(),
             commission_reward: CommissionReward::default(),
         }
     }
@@ -825,6 +829,7 @@ impl PlayerData {
         self.spincrystals = None;
         self.collections = collections::CollectionsState::default();
         self.exploration = exploration::ExplorationState::default();
+        self.endgame = endgame::EndgameState::default();
         self.character_equip_guid_map.clear();
     }
 
@@ -2063,6 +2068,7 @@ impl PlayerData {
             gi_miliastra: self.export_miliastra(),
             gi_wardrobe: self.export_wardrobe(),
             gi_exploration: self.export_exploration(),
+            gi_endgame: self.export_endgame(),
         };
 
         if settings.include_characters {
@@ -2755,6 +2761,8 @@ mod tests {
         id_tables: &'static str,
         /// The `exploration` object's inside; empty leaves it out.
         exploration: &'static str,
+        /// The `endgame` object's inside; empty leaves it out.
+        endgame: &'static str,
     }
 
     impl TestGameData {
@@ -2781,7 +2789,7 @@ mod tests {
                     "spincrystals": {{{}}},
                     "recipes": {{{}}},
                     "crafting": {{{}}},
-                    "id_tables": {{{}}}{}
+                    "id_tables": {{{}}}{}{}
                 }}"#,
                 self.affix_map,
                 self.artifact_map,
@@ -2799,6 +2807,11 @@ mod tests {
                     String::new()
                 } else {
                     format!(r#", "exploration": {{{}}}"#, self.exploration)
+                },
+                if self.endgame.is_empty() {
+                    String::new()
+                } else {
+                    format!(r#", "endgame": {{{}}}"#, self.endgame)
                 },
             );
             AnimeGameData::new_from_reader(json.as_bytes()).unwrap()
@@ -4987,6 +5000,149 @@ mod tests {
         );
         data.reset();
         assert!(data.is_empty());
+    }
+
+    // -- gi_endgame -------------------------------------------------------------------
+
+    const ENDGAME_DATA: &str = r#"
+        "theater_seasons": {
+            "31": {"begin": "2026-11-01 04:00:00", "difficulties": [125, 126, 127, 128, 129]},
+            "32": {"begin": "2026-12-01 04:00:00", "difficulties": [130, 131, 132, 133, 134]}
+        },
+        "theater_difficulties": {"125": 1, "126": 2, "127": 3, "128": 4, "129": 5, "130": 1, "134": 5},
+        "stygian_seasons": [5269012, 5269013]"#;
+
+    fn endgame_data() -> PlayerData {
+        PlayerData::new(
+            TestGameData {
+                character_map: r#""10000046": "Hu Tao", "10000005": "Traveler""#,
+                material_map: r#""104002": "Adventurer's Experience""#,
+                endgame: ENDGAME_DATA,
+                ..Default::default()
+            }
+            .build(),
+        )
+    }
+
+    #[test]
+    fn the_theater_season_is_the_one_opening_at_the_window_start() {
+        use teyvatme_protocol::TheaterDetail;
+        let mut data = endgame_data();
+        // Asia: 2026-11-01 04:00 UTC+8.
+        let detail = TheaterDetail {
+            start: 1_793_476_800,
+            end: 1_796_068_799,
+            small: vec![10, 25, 31, 2, 129],
+            lists: vec![vec![1, 2, 3, 4, 5, 6, 7], vec![1, 2], vec![3, 6, 9, 12]],
+        };
+        assert!(data.apply_theater(&detail));
+        let json = serde_json::to_value(data.export_at(&settings(), NOW_SECS * 1000).0).unwrap();
+        assert_eq!(
+            json["gi_endgame"],
+            serde_json::json!({"theater": {"season": 31, "difficulty": 129, "level": 5, "acts": 7}})
+        );
+
+        // America (UTC-5) opens the same season 13 hours later; no difficulty
+        // chosen yet and no acts: a season not entered.
+        let detail = TheaterDetail {
+            start: 1_793_476_800 + 13 * 3600,
+            end: 1_796_068_799 + 13 * 3600,
+            small: vec![24, 10, 31, 2],
+            lists: vec![],
+        };
+        assert!(data.apply_theater(&detail));
+        let json = serde_json::to_value(data.export_at(&settings(), NOW_SECS * 1000).0).unwrap();
+        assert_eq!(
+            json["gi_endgame"]["theater"],
+            serde_json::json!({"season": 31, "acts": 0})
+        );
+
+        // A window the data has no season for, or one that does not name its
+        // season, changes nothing.
+        let stranger = TheaterDetail {
+            start: 1_793_476_800 - 86_400 * 31,
+            end: 1_793_476_799,
+            small: vec![30, 129],
+            lists: vec![],
+        };
+        assert!(!data.apply_theater(&stranger));
+        let unnamed = TheaterDetail {
+            start: 1_793_476_800,
+            end: 1_796_068_799,
+            small: vec![10, 129],
+            lists: vec![],
+        };
+        assert!(!data.apply_theater(&unnamed));
+        data.reset();
+        assert!(data.export_endgame().is_none());
+    }
+
+    #[test]
+    fn stygian_records_keep_known_seasons_and_the_accounts_own_team() {
+        use teyvatme_protocol::{StygianFight, StygianRecord, StygianTeam};
+        let mut data = endgame_data();
+        let uid = 812_345_678u64;
+        let guid = |n: u64| (uid << 32) + n;
+        let mut hu_tao = avatar(10000046, &[]);
+        hu_tao.guid = guid(1);
+        data.process_characters(&[hu_tao]);
+        data.process_items(&[material_item(104_002, guid(2), 3)]);
+        assert_eq!(data.account_uid(), Some(uid as u32));
+
+        let record = |schedule: u32, teams: Vec<StygianTeam>| StygianRecord {
+            schedule,
+            difficulty: 6,
+            at_ms: 1_790_972_494_088,
+            fights: vec![
+                StygianFight {
+                    time: 51,
+                    finished: true,
+                    teams: teams.clone(),
+                },
+                StygianFight {
+                    time: 0,
+                    finished: false,
+                    teams,
+                },
+            ],
+        };
+        let mine = StygianTeam {
+            uid,
+            avatars: vec![10000046, 10000005, 10000999],
+        };
+        let friend = StygianTeam {
+            uid: 823_456_789,
+            avatars: vec![10000030],
+        };
+        let records = vec![
+            record(5_269_012, vec![mine.clone()]),
+            record(5_269_012, vec![friend.clone(), mine.clone()]),
+            // A season the data does not know: dropped.
+            record(5_269_099, vec![mine]),
+        ];
+        assert_eq!(data.apply_stygian_records(&records), 2);
+        let json = serde_json::to_value(data.export_at(&settings(), NOW_SECS * 1000).0).unwrap();
+        assert_eq!(
+            json["gi_endgame"]["stygian"],
+            serde_json::json!({"records": [
+                {"season": 5269012, "difficulty": 6, "at": 1790972494, "coop": false, "fights": [
+                    {"time": 51, "done": true, "team": ["HuTao", "Traveler"]},
+                    {"time": 0, "done": false, "team": ["HuTao", "Traveler"]}
+                ]},
+                {"season": 5269012, "difficulty": 6, "at": 1790972494, "coop": true, "fights": [
+                    {"time": 51, "done": true, "team": ["HuTao", "Traveler"]},
+                    {"time": 0, "done": false, "team": ["HuTao", "Traveler"]}
+                ]}
+            ]})
+        );
+        assert!(
+            !json["gi_endgame"]["stygian"]
+                .to_string()
+                .contains("823456789")
+        );
+        // Without an account (no inventory), nothing is believed.
+        let mut fresh = endgame_data();
+        assert_eq!(fresh.apply_stygian_records(&records), 0);
     }
 
     #[test]

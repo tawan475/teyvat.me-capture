@@ -167,6 +167,8 @@ impl DataReplacement {
                         | CommandMatch::Party(_)
                         | CommandMatch::Bargains(_)
                         | CommandMatch::ShopGoods(_)
+                        | CommandMatch::Theater(_)
+                        | CommandMatch::StygianRecords(_)
                 )
         });
         self.verdict(key, replaces)
@@ -544,6 +546,27 @@ pub fn apply_commands(
                     tracing::info!(goods = goods.len(), "Found a purchase in Paimon's Bargains");
                     applied.routine = true;
                     applied.live_updates += 1;
+                }
+            }
+            CommandMatch::Theater(detail) => {
+                // Only the game data's seasons can say.
+                if player_data.apply_theater(&detail) {
+                    tracing::info!(
+                        acts = detail.acts_cleared(),
+                        "Found the Theater's season state"
+                    );
+                    applied.routine = true;
+                }
+            }
+            CommandMatch::StygianRecords(records) => {
+                let kept = player_data.apply_stygian_records(&records);
+                if kept > 0 {
+                    tracing::info!(
+                        kept,
+                        of = records.len(),
+                        "Found the Stygian Onslaught records"
+                    );
+                    applied.routine = true;
                 }
             }
             CommandMatch::TeamUpdate(teams) => {

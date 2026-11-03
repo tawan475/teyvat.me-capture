@@ -23,6 +23,12 @@ Each release's section is its GitHub release notes (`.github/workflows/release.y
   compatible mode by itself and says so; the next login is read.
 - The log starts with the Windows edition and build, and the raw packet log
   names which packet monitor component delivered each frame.
+- New in the export: `gi_endgame`. The Imaginarium Theater season you are
+  in, the difficulty you picked and the acts you cleared (from the login),
+  and your Stygian Onslaught records (difficulty, time per boss, your own
+  team; read when you open its menu). A co-op record's other players are
+  never exported. The seasons come with the game data; a season newer than
+  the build is skipped until the next release.
 - Decoding a login takes about 40% less CPU: the message matchers read each
   payload in place instead of copying it into a field map two dozen times,
   and the account's UID is no longer recounted over the whole inventory for

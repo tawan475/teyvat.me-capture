@@ -97,6 +97,8 @@ export interface Leyline {
   gi_wardrobe?: GiWardrobe
   /** [shipped] Exploration: Statues, offerings, map points, exploration, reputation. */
   gi_exploration?: GiExploration
+  /** Endgame: the Imaginarium Theater's season state and the Stygian Onslaught's records. */
+  gi_endgame?: GiEndgame
   /** [shipped] How far each unfinished achievement is, by achievement id (those with a total). */
   gi_achievement_progress?: Record<IdKey, { progress: number; total: number }>
   /**
@@ -438,6 +440,52 @@ export interface GiExploration {
     IdKey,
     { state: 'notOpen' | 'locked' | 'open' | 'finished'; /** When it started (absent before). */ startedAt?: UnixSeconds }
   >
+}
+
+// ── gi_endgame ──────────────────────────────────────────────────────────────
+// Each part as the game last sent it: the Theater's state at every login (and when the
+// Theater is opened), the Stygian records when its menu is opened. Absent when not captured.
+
+export interface GiEndgame {
+  theater?: GiTheater
+  stygian?: GiStygian
+}
+
+export interface GiTheater {
+  /** The season running: RoleCombatScheduleExcelConfigData.scheduleId. */
+  season: GameId
+  /** The difficulty chosen this season (RoleCombatDifficultyExcelConfigData.difficultyId); absent until chosen. */
+  difficulty?: GameId
+  /** That row's difficultyLevel: 1 Easy, 2 Normal, 3 Hard, 4 Visionary, 5 Lunar Mode; absent when the game data lacks the row. */
+  level?: 1 | 2 | 3 | 4 | 5
+  /** Acts cleared this season (the game records them once the run is over; 0 before, and in a season not entered). */
+  acts: number
+}
+
+export interface GiStygian {
+  /** One per season played and run kind (solo, co-op), oldest first. */
+  records: GiStygianRecord[]
+}
+
+export interface GiStygianRecord {
+  /** LeyLineChallengeExcelConfigData.scheduleId. */
+  season: GameId
+  /** 1-6. */
+  difficulty: number
+  /** When the record was set. */
+  at: UnixSeconds
+  /** A co-op run: the other players are not in the export (their teams and UIDs are dropped). */
+  coop: boolean
+  /** The bosses, in the game's order. */
+  fights: GiStygianFight[]
+}
+
+export interface GiStygianFight {
+  /** Seconds; 0 when not finished. */
+  time: number
+  done: boolean
+  /** The account's own team, as GOOD character keys ("Traveler" for any Traveler). */
+  team: string[]
 }
 
 // ── gi_capture ──────────────────────────────────────────────────── [shipped]
