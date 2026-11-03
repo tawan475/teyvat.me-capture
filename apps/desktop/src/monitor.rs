@@ -404,10 +404,15 @@ impl AutomationPlan {
 /// [`CaptureEvent::Started`] exists so `capturing` can be set when the backend
 /// actually exists rather than when its task is spawned -- the failure path is
 /// entirely inside the task, so spawning proves nothing.
+///
+/// `Started` and `Failed` name the capture task they come from
+/// (`Monitor::capture_generation`): every task shares one channel, so a
+/// replaced task's report can be read after its replacement was spawned, and
+/// taken for the replacement's. Its frames are still read: the game sent them.
 enum CaptureEvent {
-    Started,
+    Started(u64),
     Packet(CapturedFrame),
-    Failed(anyhow::Error),
+    Failed(u64, anyhow::Error),
 }
 
 /// Handle to the thread that owns the [`GameSniffer`].
@@ -768,6 +773,9 @@ pub struct Monitor {
     cancel_token: CancellationToken,
     capture_cancel_token: Option<CancellationToken>,
     capture_handle: Option<JoinHandle<Result<()>>>,
+    /// Which capture task `capture_handle` is: counted up by every start, and
+    /// carried by the task's own `Started`/`Failed` reports.
+    capture_generation: u64,
     packet_tx: mpsc::UnboundedSender<CaptureEvent>,
     packet_rx: mpsc::UnboundedReceiver<CaptureEvent>,
     capture_backend: BackendType,
@@ -928,6 +936,7 @@ impl Monitor {
             cancel_token,
             capture_cancel_token: None,
             capture_handle: None,
+            capture_generation: 0,
             packet_tx,
             packet_rx,
             capture_backend,
@@ -1234,7 +1243,9 @@ impl Monitor {
         self.stop_capture().await;
 
         let cancel_token = CancellationToken::new();
+        self.capture_generation += 1;
         let capture_handle = tokio::spawn(capture_task(
+            self.capture_generation,
             cancel_token.clone(),
             self.packet_tx.clone(),
             self.capture_backend,
@@ -1244,7 +1255,14 @@ impl Monitor {
         self.capture_cancel_token = Some(cancel_token);
         self.capture_handle = Some(capture_handle);
         self.capture_silence.capture_started();
-        self.automation_cycle_started_at = Some(Instant::now());
+        // The automation cycle starts with the first capture, not with every
+        // backend restart (the silence watchdog's, a mode switch's): the data
+        // held through a restart is still this login's, and dating the cycle
+        // after it kept every automated snapshot waiting for a character
+        // list that only comes with the next login.
+        if self.automation_cycle_started_at.is_none() {
+            self.automation_cycle_started_at = Some(Instant::now());
+        }
         // Not `true`: everything that can fail -- no elevation, no such device,
         // an ETW session already owned by a previous process -- fails inside the
         // task, so a spawned task is not a running capture. The task says so
@@ -1306,7 +1324,9 @@ impl Monitor {
     /// packets over 9000 bytes never arrived), so the toast says how to get it
     /// back. Every later login on this PC is read from the start.
     async fn switch_on_merged_datagrams(&mut self) {
-        if !capture::MERGED_DATAGRAMS_SEEN.swap(false, Ordering::Relaxed) || self.compatible_capture
+        if !capture::MERGED_DATAGRAMS_SEEN.swap(false, Ordering::Relaxed)
+            || self.compatible_capture
+            || !self.uses_pktmon()
         {
             return;
         }
@@ -1325,7 +1345,9 @@ impl Monitor {
     /// switch, the login it was seen in is lost; the toast says how to get it
     /// back, and every later login on this PC is read from the start.
     async fn switch_on_one_way_capture(&mut self) {
-        if !capture::ONE_WAY_CAPTURE_SEEN.swap(false, Ordering::Relaxed) || self.compatible_capture
+        if !capture::ONE_WAY_CAPTURE_SEEN.swap(false, Ordering::Relaxed)
+            || self.compatible_capture
+            || !self.uses_pktmon()
         {
             return;
         }
@@ -1356,12 +1378,22 @@ impl Monitor {
     async fn set_compatible_capture(&mut self, compatible: bool) {
         self.compatible_capture = compatible;
         self.app_state.update_compatible_capture(compatible);
-        #[cfg(windows)]
-        let pktmon = self.capture_backend == BackendType::Pktmon;
-        #[cfg(not(windows))]
-        let pktmon = false;
-        if pktmon && self.capture_handle.is_some() {
+        if self.uses_pktmon() && self.capture_handle.is_some() {
             self.start_capture().await;
+        }
+    }
+
+    /// Whether the compatible-mode switch means anything here: it swaps
+    /// pktmon for raw sockets, so under `-b pcap` (and off Windows) there is
+    /// nothing to switch, and no toast to show.
+    fn uses_pktmon(&self) -> bool {
+        #[cfg(windows)]
+        {
+            self.capture_backend == BackendType::Pktmon
+        }
+        #[cfg(not(windows))]
+        {
+            false
         }
     }
 
@@ -1394,7 +1426,9 @@ impl Monitor {
             // that has since been stopped can still be queued behind its own
             // packets. Reporting that as "capturing" would put the lie the
             // status line used to tell straight back into it.
-            CaptureEvent::Started if self.capture_handle.is_some() => {
+            CaptureEvent::Started(generation)
+                if generation == self.capture_generation && self.capture_handle.is_some() =>
+            {
                 tracing::info!("capture backend is running");
                 // It came up, so the next failure starts its backoff from
                 // scratch rather than inheriting a long delay from an outage
@@ -1404,14 +1438,20 @@ impl Monitor {
                 self.set_capturing(true);
                 self.ctx.request_repaint();
             }
-            CaptureEvent::Started => {
+            CaptureEvent::Started(_) => {
                 tracing::debug!("ignoring a start report from a capture that already stopped");
             }
             CaptureEvent::Packet(packet) => {
                 self.capture_silence.note_frame(Instant::now());
                 self.handle_packet(packet);
             }
-            CaptureEvent::Failed(e) => {
+            // Dropping the live task's cancel token for a replaced task's
+            // failure left that task running beside its replacement: two
+            // backends, every datagram decoded twice.
+            CaptureEvent::Failed(generation, e) if generation != self.capture_generation => {
+                tracing::debug!("a replaced capture task reported its failure late: {e}");
+            }
+            CaptureEvent::Failed(_, e) => {
                 tracing::error!("Capture task encountered an error: {e}");
                 let _ = self.toast_tx.send(Event::error(
                     Topic::Capture,
@@ -1538,7 +1578,10 @@ impl Monitor {
         if self.packet_log.is_on()
             && let Err(e) = self.packet_log.append_frame(now_ns(), source, &packet)
         {
-            tracing::info!("error logging a captured frame {e}");
+            // Said once, and the log closed: a full disk fails every frame,
+            // thousands a minute during a login.
+            tracing::warn!("error logging a captured frame, closing the packet log: {e}");
+            let _ = self.packet_log.set_on(false);
         }
 
         // Game traffic: for a game that was already open, starts the clock on
@@ -2974,6 +3017,7 @@ pub fn embedded_game_data_sha() -> Option<&'static str> {
 }
 
 async fn capture_task(
+    generation: u64,
     cancel_token: CancellationToken,
     packet_tx: mpsc::UnboundedSender<CaptureEvent>,
     backend: BackendType,
@@ -2989,14 +3033,14 @@ async fn capture_task(
             // the most common first-run failure there is.
             let error = anyhow!("Error creating packet capture using {:?}: {e}", backend);
             tracing::error!("{error}");
-            let _ = packet_tx.send(CaptureEvent::Failed(error));
+            let _ = packet_tx.send(CaptureEvent::Failed(generation, error));
             return Ok(());
         }
     };
     tracing::info!("starting capture");
     // Only now is there a backend to capture with. The monitor sets `capturing`
     // from this, not from having spawned the task.
-    let _ = packet_tx.send(CaptureEvent::Started);
+    let _ = packet_tx.send(CaptureEvent::Started(generation));
 
     loop {
         let packet = tokio::select!(
@@ -3007,9 +3051,10 @@ async fn capture_task(
             Ok(packet) => packet,
             Err(e) => {
                 tracing::error!("Error receiving packet: {e}");
-                let _ = packet_tx.send(CaptureEvent::Failed(anyhow!(
-                    "Capture stream closed or errored: {e}"
-                )));
+                let _ = packet_tx.send(CaptureEvent::Failed(
+                    generation,
+                    anyhow!("Capture stream closed or errored: {e}"),
+                ));
                 break;
             }
         };

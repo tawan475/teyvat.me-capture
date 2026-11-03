@@ -316,6 +316,10 @@ const STALL_WARN_AFTER: u32 = 512;
 /// `IKCP_CMD_PUSH`, the command that carries data.
 const KCP_CMD_PUSH: u8 = 81;
 
+/// `IKCP_CMD_WINS`, the last command KCP knows (push 81, ack 82, wask 83,
+/// wins 84).
+const KCP_CMD_WINS: u8 = 84;
+
 /// The highest push sequence number in standard KCP segments produced by
 /// [`reformat_kcp_segments`].
 ///
@@ -425,7 +429,11 @@ fn reformat_kcp_segments(data: &[u8]) -> Vec<u8> {
         // Only an ACK's `ts` reaches `timediff`; a push's is stored and never
         // compared, so bounding it there would drop game data for nothing.
         let ts_overflows = cmd == KCP_CMD_ACK && ts >= MAX_TIMEDIFF_OPERAND;
-        if frg > MAX_FRAGMENT_INDEX || sn >= MAX_TIMEDIFF_OPERAND || ts_overflows {
+        // An unknown command makes the reassembler give up on the whole input,
+        // segments after it included; in a merged datagram that is dozens of
+        // pushes, which a listener can never ask for again.
+        let unknown_cmd = !(KCP_CMD_PUSH..=KCP_CMD_WINS).contains(&cmd);
+        if frg > MAX_FRAGMENT_INDEX || sn >= MAX_TIMEDIFF_OPERAND || ts_overflows || unknown_cmd {
             SEGMENTS_DROPPED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             debug!(
                 offset = i,
@@ -607,6 +615,32 @@ mod tests {
                 reformat_kcp_segments(&seg).len(),
                 KCP_OVERHEAD + 4,
                 "frg {frg} was dropped"
+            );
+        }
+    }
+
+    /// The reassembler stops at the first command it does not know, segments
+    /// after it included, so such a segment is skipped before it gets there.
+    #[test]
+    fn reformat_skips_a_segment_with_an_unknown_command() {
+        let mut data = game_segment(7, 0, &[0xAA; 3]);
+        let mut odd = game_segment(7, 1, &[0xCC; 2]);
+        odd[CMD_OFFSET] = 85;
+        data.extend(odd);
+        data.extend(game_segment(7, 2, &[0xBB; 4]));
+
+        let out = reformat_kcp_segments(&data);
+
+        assert_eq!(out.len(), 2 * KCP_OVERHEAD + 7);
+        assert_eq!(&out[KCP_OVERHEAD..KCP_OVERHEAD + 3], &[0xAA; 3]);
+        assert_eq!(&out[2 * KCP_OVERHEAD + 3..], &[0xBB; 4]);
+        for cmd in [KCP_CMD_PUSH, KCP_CMD_ACK, 83, KCP_CMD_WINS] {
+            let mut seg = game_segment(7, 0, &[0xAA; 4]);
+            seg[CMD_OFFSET] = cmd;
+            assert_eq!(
+                reformat_kcp_segments(&seg).len(),
+                KCP_OVERHEAD + 4,
+                "cmd {cmd}"
             );
         }
     }

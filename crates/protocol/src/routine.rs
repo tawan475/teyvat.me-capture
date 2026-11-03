@@ -21,11 +21,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::RangeInclusive;
 
-use protobuf::Message;
 use protobuf::UnknownValueRef::{Fixed32, Fixed64, LengthDelimited, Varint};
 
-use crate::r#gen::protos::Unk;
 use crate::unk_util::MIN_PLAUSIBLE_FINISH_TIMESTAMP;
+use crate::wire::{self, Value};
 
 /// Daily task (commission) ids. The 7.1 table runs 10100-49999; the block is
 /// left wide so a release cannot age it out.
@@ -134,20 +133,9 @@ fn is_timestamp(value: u64) -> bool {
     value >= MIN_PLAUSIBLE_FINISH_TIMESTAMP && value <= u64::from(u32::MAX)
 }
 
-/// One field value, borrowed from the parsed message.
-type Value<'a> = protobuf::UnknownValueRef<'a>;
-
-/// A parsed message's fields grouped by tag, in wire order within each tag.
-fn fields_by_tag(msg: &Unk) -> BTreeMap<u32, Vec<Value<'_>>> {
-    let mut fields: BTreeMap<u32, Vec<Value<'_>>> = BTreeMap::new();
-    for (tag, value) in msg.unknown_fields().iter() {
-        fields.entry(tag).or_default().push(value);
-    }
-    fields
-}
-
-fn parse(bytes: &[u8]) -> Option<Unk> {
-    Unk::parse_from_bytes(bytes).ok()
+/// A message's fields by tag, borrowed from `bytes`: see [`wire::fields`].
+fn parse(bytes: &[u8]) -> Option<wire::Fields<'_>> {
+    wire::fields(bytes)
 }
 
 fn as_varint(value: &Value<'_>) -> Option<u64> {
@@ -168,7 +156,7 @@ fn as_bytes<'a>(value: &Value<'a>) -> Option<&'a [u8]> {
 /// else or repeats a tag.
 fn varint_fields(bytes: &[u8]) -> Option<BTreeMap<u32, u64>> {
     let msg = parse(bytes)?;
-    let fields = fields_by_tag(&msg);
+    let fields = msg;
     let mut out = BTreeMap::new();
     for (tag, values) in fields {
         let [value] = values.as_slice() else {
@@ -228,7 +216,7 @@ fn all_distinct(values: &[u64]) -> bool {
 /// list is the city and the count is 0.
 pub fn matches_daily_task_notify(data: &[u8]) -> Option<DailyCommissions> {
     let msg = parse(data)?;
-    let fields = fields_by_tag(&msg);
+    let fields = msg;
     let mut list: Option<&Vec<Value>> = None;
     let mut numbers: Vec<u64> = Vec::new();
     for values in fields.values() {
@@ -309,7 +297,7 @@ fn floor_open_time(bytes: &[u8]) -> Option<(u64, u64)> {
 /// stars cannot be read unambiguously.
 fn floor_record(bytes: &[u8]) -> Option<(u64, u32)> {
     let msg = parse(bytes)?;
-    let fields = fields_by_tag(&msg);
+    let fields = msg;
     let mut floors = Vec::new();
     let mut maps = Vec::new();
     for values in fields.values() {
@@ -369,7 +357,7 @@ fn floor_record(bytes: &[u8]) -> Option<(u64, u32)> {
 /// floor never entered has no record and no stars.
 pub fn matches_tower_all_data_rsp(data: &[u8]) -> Option<AbyssPeriod> {
     let msg = parse(data)?;
-    let fields = fields_by_tag(&msg);
+    let fields = msg;
     let mut times: Vec<u64> = Vec::new();
     let mut open_maps: Vec<Vec<(u64, u64)>> = Vec::new();
     let mut record_lists: Vec<Vec<(u64, u32)>> = Vec::new();
@@ -451,7 +439,7 @@ struct ExpeditionInfo {
 /// at most one fixed32.
 fn expedition_entry(bytes: &[u8]) -> Option<ExpeditionInfo> {
     let msg = parse(bytes)?;
-    let fields = fields_by_tag(&msg);
+    let fields = msg;
     if fields.keys().any(|tag| *tag != 1 && *tag != 2) {
         return None;
     }
@@ -474,7 +462,7 @@ fn expedition_entry(bytes: &[u8]) -> Option<ExpeditionInfo> {
         return None;
     };
     let inner = parse(as_bytes(value)?)?;
-    for (tag, values) in fields_by_tag(&inner) {
+    for (tag, values) in inner {
         let [value] = values.as_slice() else {
             return None;
         };
@@ -509,7 +497,7 @@ fn expedition_entry(bytes: &[u8]) -> Option<ExpeditionInfo> {
 /// one role, and the message is not read.
 pub fn matches_avatar_expedition_notify(data: &[u8]) -> Option<Vec<Expedition>> {
     let msg = parse(data)?;
-    let fields = fields_by_tag(&msg);
+    let fields = msg;
     if fields.len() != 1 {
         return None;
     }
@@ -590,7 +578,7 @@ pub fn matches_avatar_expedition_notify(data: &[u8]) -> Option<Vec<Expedition>> 
 /// above the limit; a value of 0 is not on the wire.
 fn home_store(bytes: &[u8]) -> Option<(u32, u32)> {
     let msg = parse(bytes)?;
-    let fields = fields_by_tag(&msg);
+    let fields = msg;
     let mut varints = Vec::new();
     let mut fixed = 0;
     for values in fields.values() {
@@ -624,7 +612,7 @@ fn home_store(bytes: &[u8]) -> Option<(u32, u32)> {
 /// apart; equal limits are not read.
 pub fn matches_home_resource_notify(data: &[u8]) -> Option<HomeResources> {
     let msg = parse(data)?;
-    let fields = fields_by_tag(&msg);
+    let fields = msg;
     let stores = fields
         .values()
         .map(|values| match values.as_slice() {
@@ -656,7 +644,7 @@ pub fn matches_home_resource_notify(data: &[u8]) -> Option<HomeResources> {
 /// (`Tier_...`) -- next to at most one number, the days left (absent when 0).
 pub fn matches_recharge_data_notify(data: &[u8]) -> Option<u32> {
     let msg = parse(data)?;
-    let fields = fields_by_tag(&msg);
+    let fields = msg;
     let mut days: Option<u64> = None;
     let mut list: Option<&Vec<Value>> = None;
     for values in fields.values() {
@@ -680,7 +668,7 @@ pub fn matches_recharge_data_notify(data: &[u8]) -> Option<u32> {
     }
     for value in list {
         let msg = parse(as_bytes(value)?)?;
-        let entry = fields_by_tag(&msg);
+        let entry = msg;
         let texts = entry
             .values()
             .map(|values| match values.as_slice() {
@@ -728,7 +716,7 @@ pub fn matches_resin_change_notify(data: &[u8]) -> Option<ResinClock> {
     let msg = parse(data)?;
     let mut next_at = None;
     let mut values = Vec::new();
-    for values_of_tag in fields_by_tag(&msg).values() {
+    for values_of_tag in msg.values() {
         let [value] = values_of_tag.as_slice() else {
             return None;
         };
@@ -782,7 +770,7 @@ pub fn matches_daily_task_data_notify(data: &[u8]) -> Option<CommissionProgress>
     let mut reward_id = None;
     let mut counts = Vec::new();
     let mut lists = 0;
-    for values in fields_by_tag(&msg).values() {
+    for values in msg.values() {
         match values.first()? {
             Varint(_) => {
                 let [Varint(value)] = values.as_slice() else {
@@ -873,7 +861,7 @@ pub fn matches_week_active_notify(data: &[u8]) -> Option<WeekResin> {
     let msg = parse(data)?;
     let mut numbers = Vec::new();
     let mut lists = Vec::new();
-    for values in fields_by_tag(&msg).values() {
+    for values in msg.values() {
         let [value] = values.as_slice() else {
             return None;
         };

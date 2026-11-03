@@ -16,11 +16,16 @@
 //! One socket per IPv4 address of every interface that is up (the one the
 //! game uses is not known in advance; a VPN moves it), each read on its own
 //! thread with a 64 MB receive buffer: a login's burst is ~4 MB in a second.
+//! The interfaces are listed again every few seconds, so an address that
+//! appears later (Wi-Fi joining, a VPN coming up, DHCP renumbering) gets its
+//! socket too, and a reader that died is replaced; the first version listed
+//! them once, and a game started on a new address was never heard.
 
+use std::collections::HashSet;
 use std::mem::MaybeUninit;
 use std::net::{Ipv4Addr, SocketAddrV4};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
@@ -54,53 +59,66 @@ const READ_TIMEOUT: Duration = Duration::from_millis(250);
 /// Software loopback (`IF_TYPE_SOFTWARE_LOOPBACK`): nothing from the game.
 const IF_TYPE_SOFTWARE_LOOPBACK: u32 = 24;
 
+/// How often the interfaces are listed again for new addresses.
+const RESCAN_INTERVAL: Duration = Duration::from_secs(5);
+
 pub struct RawSocketBackend {
     rx: mpsc::UnboundedReceiver<Vec<u8>>,
-    /// Set on drop; the reader threads end at their next read timeout.
+    /// Set on drop; the reader and rescan threads end at their next wake.
     stop: Arc<AtomicBool>,
     dedupe: Deduper,
 }
 
+/// What the reader threads share: the addresses with a live reader (a
+/// reader removes itself when it ends, so a rescan reopens it), and the
+/// addresses that refused a socket (warned about once each).
+#[derive(Default)]
+struct Sockets {
+    live: HashSet<Ipv4Addr>,
+    refused: HashSet<Ipv4Addr>,
+}
+
 impl RawSocketBackend {
     pub fn new() -> Result<Self> {
-        let addresses = interface_addresses().map_err(|e| CaptureError::Capture {
-            has_captured: false,
-            error: anyhow::anyhow!("can't list the network interfaces: {e}"),
-        })?;
         let (tx, rx) = mpsc::unbounded_channel();
         let stop = Arc::new(AtomicBool::new(false));
-        let mut opened = 0;
-        let mut last_error = None;
-        for (name, address) in addresses {
-            match open_receive_all(address) {
-                Ok(socket) => {
-                    tracing::info!(interface = %name, %address, "raw capture socket open");
-                    opened += 1;
-                    let tx = tx.clone();
-                    let stop = stop.clone();
-                    std::thread::Builder::new()
-                        .name(format!("teyvatme-raw-{address}"))
-                        .spawn(move || read_loop(socket, tx, stop))
-                        .map_err(|e| CaptureError::Capture {
-                            has_captured: false,
-                            error: anyhow::anyhow!("can't start a capture thread: {e}"),
-                        })?;
-                }
-                Err(e) => {
-                    tracing::warn!(interface = %name, %address, "raw capture socket refused: {e}");
-                    last_error = Some(e);
-                }
-            }
-        }
+        let sockets = Arc::new(Mutex::new(Sockets::default()));
+
+        let opened = open_new_sockets(&sockets, &tx, &stop)
+            .inspect_err(|_| stop.store(true, Ordering::Relaxed))?;
         if opened == 0 {
+            stop.store(true, Ordering::Relaxed);
             return Err(CaptureError::Capture {
                 has_captured: false,
-                error: anyhow::anyhow!(
-                    "no interface accepted a receive-all socket{}",
-                    last_error.map(|e| format!(": {e}")).unwrap_or_default()
-                ),
+                error: anyhow::anyhow!("no interface accepted a receive-all socket"),
             });
         }
+
+        // The rescan thread holds a sender, so the channel (and the backend)
+        // stays open while every reader is gone: the next scan brings them
+        // back when an interface returns.
+        let rescan_stop = stop.clone();
+        std::thread::Builder::new()
+            .name("teyvatme-raw-rescan".to_string())
+            .spawn(move || {
+                while !rescan_stop.load(Ordering::Relaxed) {
+                    std::thread::sleep(RESCAN_INTERVAL);
+                    if rescan_stop.load(Ordering::Relaxed) {
+                        break;
+                    }
+                    if let Err(e) = open_new_sockets(&sockets, &tx, &rescan_stop) {
+                        tracing::warn!("raw capture could not look for new interfaces: {e}");
+                    }
+                }
+            })
+            .map_err(|e| {
+                stop.store(true, Ordering::Relaxed);
+                CaptureError::Capture {
+                    has_captured: false,
+                    error: anyhow::anyhow!("can't start the interface rescan thread: {e}"),
+                }
+            })?;
+
         Ok(Self {
             rx,
             stop,
@@ -113,6 +131,65 @@ impl Drop for RawSocketBackend {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
     }
+}
+
+/// Open a socket and start a reader for every address that is up and has no
+/// live reader; returns how many were opened this time.
+fn open_new_sockets(
+    sockets: &Arc<Mutex<Sockets>>,
+    tx: &mpsc::UnboundedSender<Vec<u8>>,
+    stop: &Arc<AtomicBool>,
+) -> Result<usize> {
+    let addresses = interface_addresses().map_err(|e| CaptureError::Capture {
+        has_captured: false,
+        error: anyhow::anyhow!("can't list the network interfaces: {e}"),
+    })?;
+    let mut opened = 0;
+    for (name, address) in addresses {
+        {
+            let state = sockets.lock().unwrap_or_else(|e| e.into_inner());
+            if state.live.contains(&address) {
+                continue;
+            }
+        }
+        match open_receive_all(address) {
+            Ok(socket) => {
+                tracing::info!(interface = %name, %address, "raw capture socket open");
+                let mut state = sockets.lock().unwrap_or_else(|e| e.into_inner());
+                state.live.insert(address);
+                state.refused.remove(&address);
+                drop(state);
+                let tx = tx.clone();
+                let stop = stop.clone();
+                let shared = sockets.clone();
+                let spawned = std::thread::Builder::new()
+                    .name(format!("teyvatme-raw-{address}"))
+                    .spawn(move || {
+                        read_loop(socket, tx, stop);
+                        let mut state = shared.lock().unwrap_or_else(|e| e.into_inner());
+                        state.live.remove(&address);
+                    });
+                match spawned {
+                    Ok(_) => opened += 1,
+                    Err(e) => {
+                        let mut state = sockets.lock().unwrap_or_else(|e| e.into_inner());
+                        state.live.remove(&address);
+                        return Err(CaptureError::Capture {
+                            has_captured: false,
+                            error: anyhow::anyhow!("can't start a capture thread: {e}"),
+                        });
+                    }
+                }
+            }
+            Err(e) => {
+                let mut state = sockets.lock().unwrap_or_else(|e| e.into_inner());
+                if state.refused.insert(address) {
+                    tracing::warn!(interface = %name, %address, "raw capture socket refused: {e}");
+                }
+            }
+        }
+    }
+    Ok(opened)
 }
 
 /// A raw IPv4 socket bound to `address`, receiving every packet on that
@@ -161,7 +238,9 @@ fn read_loop(socket: Socket, tx: mpsc::UnboundedSender<Vec<u8>>, stop: Arc<Atomi
                 continue;
             }
             Err(e) => {
-                tracing::warn!("raw capture socket read failed: {e}");
+                // The address may have gone with its interface; the rescan
+                // thread reopens it if it is still there.
+                tracing::warn!("raw capture socket read failed, closing it: {e}");
                 break;
             }
         };

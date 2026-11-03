@@ -3,6 +3,7 @@
 // Portions copyright (c) 2025 Erik Gilling and irminsul contributors
 // See THIRD_PARTY_NOTICES.md.
 
+use std::cell::Cell;
 use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::ops::RangeInclusive;
@@ -711,6 +712,11 @@ pub struct PlayerData {
     /// drops zero counts so the empty ones do not appear; a real Story Key
     /// count does.
     items: HashMap<(u32, u64), Item>,
+    /// [`account_uid`](Self::account_uid) as last read off `items`, until
+    /// they change: every unclaimed message asks for it (the character
+    /// updates are told apart by the account's guids), and reading it walks
+    /// the whole inventory. Cleared wherever `items` is written.
+    uid_cache: Cell<Option<Option<u32>>>,
     properties: HashMap<u32, u64>,
     /// The Travel Accounts book as the game last sent it in full. The game
     /// re-sends the whole book each time it is asked for it, so the newest
@@ -767,6 +773,7 @@ impl PlayerData {
             achievements: HashMap::new(),
             characters: HashMap::new(),
             items: HashMap::new(),
+            uid_cache: Cell::new(None),
             properties: HashMap::new(),
             anecdotes: None,
             routine: Routine::default(),
@@ -808,6 +815,7 @@ impl PlayerData {
         self.achievements.clear();
         self.characters.clear();
         self.items.clear();
+        self.uid_cache.set(None);
         self.properties.clear();
         self.anecdotes = None;
         self.routine = Routine::default();
@@ -1186,8 +1194,14 @@ impl PlayerData {
                 continue;
             }
 
-            if item.has_material() || item.has_equip() || item.has_furniture() {
-                self.items.insert((item.item_id, item.guid), item.clone());
+            if (item.has_material() || item.has_equip() || item.has_furniture())
+                && self
+                    .items
+                    .insert((item.item_id, item.guid), item.clone())
+                    .is_none()
+            {
+                // A new guid can change the vote; a replaced item's can't.
+                self.uid_cache.set(None);
             }
         }
     }
@@ -1245,6 +1259,9 @@ impl PlayerData {
         let before = self.items.len();
         self.items.retain(|(_, guid), _| !doomed.contains(guid));
         let removed = before - self.items.len();
+        if removed > 0 {
+            self.uid_cache.set(None);
+        }
 
         // Gear is unequipped before it can be destroyed, so this is normally
         // already empty of these guids -- but a stale mapping would attribute a
@@ -1621,7 +1638,33 @@ impl PlayerData {
 
     /// The account UID, read off the captured item guids.
     pub fn account_uid(&self) -> Option<u32> {
-        self.uid_check().uid
+        if let Some(uid) = self.uid_cache.get() {
+            #[cfg(test)]
+            assert_eq!(uid, self.item_uid().0, "the cached UID missed a change");
+            return uid;
+        }
+        let uid = self.item_uid().0;
+        self.uid_cache.set(Some(uid));
+        uid
+    }
+
+    /// The UID the item guids vote for (see [`uid_check`](Self::uid_check)),
+    /// with the votes by top half: the part of the check that decides.
+    fn item_uid(&self) -> (Option<u32>, BTreeMap<u64, usize>) {
+        let mut item_tops: BTreeMap<u64, usize> = BTreeMap::new();
+        for (_, guid) in self.items.keys() {
+            if *guid != 0 {
+                *item_tops.entry(guid >> 32).or_default() += 1;
+            }
+        }
+        let total: usize = item_tops.values().sum();
+        let uid = item_tops
+            .iter()
+            .filter(|(top, _)| **top != 0)
+            .max_by_key(|(_, n)| **n)
+            .filter(|(_, n)| (**n as f64) >= (total as f64) * UID_MAJORITY)
+            .and_then(|(top, _)| u32::try_from(*top).ok());
+        (uid, item_tops)
     }
 
     /// How the account UID is read off the captured item guids, with the
@@ -1635,12 +1678,7 @@ impl PlayerData {
     /// [`UID_MAJORITY`] of the items share; a real split claims nothing. Avatar
     /// guids are counted but don't vote: their field is unverified on 7.1.
     pub fn uid_check(&self) -> good::UidCheck {
-        let mut item_tops: BTreeMap<u64, usize> = BTreeMap::new();
-        for (_, guid) in self.items.keys() {
-            if *guid != 0 {
-                *item_tops.entry(guid >> 32).or_default() += 1;
-            }
-        }
+        let (uid, item_tops) = self.item_uid();
         let mut avatar_tops: BTreeMap<u64, usize> = BTreeMap::new();
         for avatar in self.characters.values() {
             *avatar_tops.entry(avatar.guid >> 32).or_default() += 1;
@@ -1659,9 +1697,6 @@ impl PlayerData {
             .max_by_key(|(_, n)| **n)
             .map(|(top, n)| (*top, *n));
         let agreeing = best.map_or(0, |(_, n)| n);
-        let uid = best
-            .filter(|(_, n)| (*n as f64) >= (total as f64) * UID_MAJORITY)
-            .and_then(|(top, _)| u32::try_from(top).ok());
         good::UidCheck {
             uid,
             agreeing,
@@ -4891,7 +4926,7 @@ mod tests {
         use teyvatme_protocol::{AvatarWardrobe, SavedTeam, WeaponSkin};
         let mut data = PlayerData::new(
             TestGameData {
-                character_map: r#""10000046": "Hu Tao", "10000005": "Traveler""#,
+                character_map: r#""10000046": "Hu Tao", "10000005": "Traveler", "10000007": "Traveler""#,
                 ..Default::default()
             }
             .build(),
@@ -4905,7 +4940,13 @@ mod tests {
         traveler.guid = guid(2);
         traveler.wearing_flycloak_id = 140_001;
         traveler.trace_effect_id = 215_001;
-        data.process_characters(&[hu_tao, traveler]);
+        // The other body wears the default glider and sits in no team: the
+        // body in a team speaks for "Traveler", whatever order the roster's
+        // map yields them in.
+        let mut twin = avatar(10000007, &[]);
+        twin.guid = guid(3);
+        twin.wearing_flycloak_id = 140_002;
+        data.process_characters(&[twin.clone(), hu_tao, traveler, twin]);
         data.process_collection(CollectionPart::Wardrobe(AvatarWardrobe {
             gliders: vec![140_001, 140_002],
             outfits: vec![204_601],

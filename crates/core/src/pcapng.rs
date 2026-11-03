@@ -89,7 +89,10 @@ impl PcapngWriter {
 
         block.extend_from_slice(&1_u16.to_le_bytes());
         block.extend_from_slice(&0_u16.to_le_bytes());
-        block.extend_from_slice(&65536_u32.to_le_bytes());
+        // snaplen 0 = no limit: a merged datagram from the raw-socket backend
+        // is an IP packet of up to 65,535 bytes plus its synthetic Ethernet
+        // header, more than the 65,536 this used to declare.
+        block.extend_from_slice(&0_u32.to_le_bytes());
 
         if let Some(name) = name {
             block.extend_from_slice(&OPT_IF_NAME.to_le_bytes());
@@ -193,7 +196,7 @@ mod tests {
         // Block type and linktype (LINKTYPE_ETHERNET) are unchanged.
         assert_eq!(u32::from_le_bytes(block[0..4].try_into().unwrap()), 1);
         assert_eq!(u16::from_le_bytes(block[8..10].try_into().unwrap()), 1);
-        assert_eq!(u32::from_le_bytes(block[12..16].try_into().unwrap()), 65536);
+        assert_eq!(u32::from_le_bytes(block[12..16].try_into().unwrap()), 0);
 
         // if_tsresol = 9 (10^-9 s) in a 1-byte value padded to 4 bytes.
         assert_eq!(u16::from_le_bytes(block[16..18].try_into().unwrap()), 9);

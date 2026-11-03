@@ -23,6 +23,26 @@ Each release's section is its GitHub release notes (`.github/workflows/release.y
   compatible mode by itself and says so; the next login is read.
 - The log starts with the Windows edition and build, and the raw packet log
   names which packet monitor component delivered each frame.
+- Decoding a login takes about 40% less CPU: the message matchers read each
+  payload in place instead of copying it into a field map two dozen times,
+  and the account's UID is no longer recounted over the whole inventory for
+  every message the matchers leave unclaimed.
+- Compatible capture now notices a network interface or address that
+  appears after it started (Wi-Fi joining, a VPN, a renumbering) and
+  listens on it too; a reader that fails is reopened. It used to list the
+  interfaces once, so a game started on a new one was never heard.
+- A capture backend restart (the silence watchdog's, a mode switch's) no
+  longer stops the automated snapshots for the rest of the login: they
+  waited for a character list that only comes with the next login.
+- A replaced capture task's late failure report no longer drops the running
+  task's stop handle, which left both running and decoded every packet
+  twice.
+- A KCP segment with an unknown command no longer costs the segments after
+  it in the same datagram; the packet log closes with one warning when it
+  can't be written instead of logging every frame; the compatible-mode
+  switch is not announced under `-b pcap`, where it changes nothing;
+  recordings declare no snapshot length cap, as a merged datagram can be
+  longer than the one they declared.
 
 ## 1.17.11
 

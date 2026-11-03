@@ -812,8 +812,16 @@ impl SnifferStats {
 /// the destination port is the server's for a send, the source port for a
 /// receive. `None` for anything else (not IPv4 UDP, or neither port).
 pub fn frame_direction(frame: &[u8], ports: [u16; 2]) -> Option<PacketDirection> {
-    let ip = frame.get(14..)?;
-    if frame.get(12..14)? != [0x08, 0x00] || ip.first()? >> 4 != 4 || *ip.get(9)? != 17 {
+    // One 802.1Q tag is skipped, as the parser and the deduper skip it: a
+    // capture whose kept copies carry one would otherwise count no receives,
+    // and a failed login on it would read as a one-way capture.
+    let ip_at = if frame.get(12..14)? == [0x81, 0x00] {
+        18
+    } else {
+        14
+    };
+    let ip = frame.get(ip_at..)?;
+    if frame.get(ip_at - 2..ip_at)? != [0x08, 0x00] || ip.first()? >> 4 != 4 || *ip.get(9)? != 17 {
         return None;
     }
     let header = usize::from(ip[0] & 0x0f) * 4;
@@ -1158,6 +1166,13 @@ mod tests {
         tcp[14 + 9] = 6;
         assert_eq!(frame_direction(&tcp, ports), None);
         assert_eq!(frame_direction(&[0u8; 20], ports), None);
+        // One 802.1Q tag before the IPv4 ethertype.
+        let mut tagged = udp_frame(22101, 51000);
+        tagged.splice(12..12, [0x81, 0x00, 0x00, 0x05]);
+        assert_eq!(
+            frame_direction(&tagged, ports),
+            Some(PacketDirection::Received)
+        );
         let mut stats = SnifferStats::default();
         stats.note_frame(1, Some(PacketDirection::Sent));
         stats.note_frame(1, Some(PacketDirection::Received));

@@ -155,6 +155,7 @@ mod shop;
 #[cfg(test)]
 mod test_support;
 mod unk_util;
+mod wire;
 
 pub use kcp::SEGMENTS_DROPPED as KCP_SEGMENTS_DROPPED;
 

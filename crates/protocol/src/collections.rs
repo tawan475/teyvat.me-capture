@@ -21,25 +21,13 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::RangeInclusive;
 
-use protobuf::Message;
-use protobuf::UnknownValueRef::{self, Fixed32, Fixed64, LengthDelimited, Varint};
+use protobuf::UnknownValueRef::{Fixed32, Fixed64, LengthDelimited, Varint};
 
-use crate::r#gen::protos::Unk;
+use crate::wire::{self, Value};
 
-/// One field value, borrowed from the parsed message.
-type Value<'a> = UnknownValueRef<'a>;
-
-fn parse(bytes: &[u8]) -> Option<Unk> {
-    Unk::parse_from_bytes(bytes).ok()
-}
-
-/// A parsed message's fields grouped by tag, in wire order within each tag.
-fn fields_by_tag(msg: &Unk) -> BTreeMap<u32, Vec<Value<'_>>> {
-    let mut fields: BTreeMap<u32, Vec<Value<'_>>> = BTreeMap::new();
-    for (tag, value) in msg.unknown_fields().iter() {
-        fields.entry(tag).or_default().push(value);
-    }
-    fields
+/// A message's fields by tag, borrowed from `bytes`: see [`wire::fields`].
+fn parse(bytes: &[u8]) -> Option<wire::Fields<'_>> {
+    wire::fields(bytes)
 }
 
 /// `bytes` as packed varints, or `None` if they are not exactly that.
@@ -105,7 +93,7 @@ struct Entry {
 fn entry(bytes: &[u8]) -> Option<Entry> {
     let msg = parse(bytes)?;
     let mut out = Entry::default();
-    for (tag, values) in fields_by_tag(&msg) {
+    for (tag, values) in msg {
         match values.first()? {
             Varint(_) if values.len() == 1 => {
                 out.varints.insert(tag, single_varint(&values)?);
@@ -232,7 +220,7 @@ const MIN_ARCHIVE_TABS: usize = 5;
 /// least `MIN_ARCHIVE_TABS` of them. Each tab's ids come back ascending.
 pub fn matches_codex_notify(data: &[u8]) -> Option<BTreeMap<ArchiveTab, Vec<u32>>> {
     let msg = parse(data)?;
-    for values in fields_by_tag(&msg).values() {
+    for values in msg.values() {
         if values.len() < MIN_ARCHIVE_TABS {
             continue;
         }
@@ -287,7 +275,7 @@ pub struct DefeatCount {
 pub fn matches_codex_kill_count(data: &[u8]) -> Option<BTreeMap<u32, DefeatCount>> {
     let msg = parse(data)?;
     let mut lists = Vec::new();
-    for values in fields_by_tag(&msg).values() {
+    for values in msg.values() {
         match values.as_slice() {
             [Varint(_)] => {}
             values => lists.push(numbers(values)?),
@@ -450,7 +438,7 @@ fn handbook_progress(entries: &[Entry], skip: &[u32]) -> Option<Vec<HandbookProg
 /// state (1-3), a total and a progress no larger than it.
 pub fn matches_investigation_notify(data: &[u8]) -> Option<Handbook> {
     let msg = parse(data)?;
-    let fields = fields_by_tag(&msg);
+    let fields = msg;
     let mut lists = Vec::new();
     for values in fields.values() {
         match values.first()? {
@@ -632,7 +620,7 @@ fn tcg_decks(list: &[Entry]) -> Option<BTreeMap<u32, TcgDeck>> {
 /// once), the proficiency the other.
 pub fn matches_tcg_notify(data: &[u8]) -> Option<TcgCollection> {
     let msg = parse(data)?;
-    let fields = fields_by_tag(&msg);
+    let fields = msg;
     let mut cards = None;
     let mut decks = None;
     let mut varints = Vec::new();
@@ -786,7 +774,7 @@ const MAX_ARANARA: usize = 500;
 /// least one suite holds a collection.
 pub fn matches_aranara_notify(data: &[u8]) -> Option<BTreeMap<u32, BTreeMap<u32, AranaraState>>> {
     let msg = parse(data)?;
-    let fields = fields_by_tag(&msg);
+    let fields = msg;
     if fields.len() != 1 {
         return None;
     }
@@ -854,7 +842,7 @@ pub struct WeaponSkin {
 /// avatar guids, beside at most a list of skin ids.
 pub fn matches_weapon_skin_notify(data: &[u8]) -> Option<Vec<WeaponSkin>> {
     let msg = parse(data)?;
-    let fields = fields_by_tag(&msg);
+    let fields = msg;
     let mut skins: Option<Vec<WeaponSkin>> = None;
     for values in fields.values() {
         let LengthDelimited(_) = values.first()? else {
@@ -991,7 +979,7 @@ pub fn avatar_wardrobe(data: &[u8]) -> Option<AvatarWardrobe> {
     let msg = parse(data)?;
     let mut out = AvatarWardrobe::default();
     let mut lone = Vec::new();
-    for values in fields_by_tag(&msg).values() {
+    for values in msg.values() {
         if let [Varint(value)] = values.as_slice() {
             lone.push(*value);
             continue;
@@ -1045,7 +1033,7 @@ pub fn matches_avatar_team_update(data: &[u8]) -> Option<BTreeMap<u32, SavedTeam
     let msg = parse(data)?;
     let mut teams = None;
     let mut guid_list = false;
-    for values in fields_by_tag(&msg).values() {
+    for values in msg.values() {
         let found: Option<BTreeMap<u32, SavedTeam>> = values
             .iter()
             .map(|value| match value {
@@ -1094,7 +1082,7 @@ pub fn matches_scene_team_update(data: &[u8]) -> Option<Vec<Vec<u64>>> {
     let msg = parse(data)?;
     let mut party = None;
     let mut flag = false;
-    for values in fields_by_tag(&msg).values() {
+    for values in msg.values() {
         match values.as_slice() {
             [Varint(v)] if *v <= 1 && !flag => flag = true,
             _ if party.is_none() && values.len() <= MAX_PARTY => {
@@ -1202,7 +1190,7 @@ fn chapter_pairs(chapter: u64, values: &[Vec<u8>]) -> Option<BTreeMap<u32, u64>>
 /// `None` when it cannot be.
 pub fn matches_coop_notify(data: &[u8]) -> Option<BTreeMap<u32, HangoutChapter>> {
     let msg = parse(data)?;
-    for values in fields_by_tag(&msg).values() {
+    for values in msg.values() {
         if values.len() < 2 || values.len() > MAX_HANGOUTS {
             continue;
         }
@@ -1384,7 +1372,7 @@ fn weekly_discounts(bytes: &[u8]) -> Option<WeeklyDiscounts> {
 /// week's resin discounts.
 pub fn matches_investigation_monster_rsp(data: &[u8]) -> Option<BossList> {
     let msg = parse(data)?;
-    for values in fields_by_tag(&msg).values() {
+    for values in msg.values() {
         if values.len() < 2 || values.len() > MAX_BOSSES {
             continue;
         }
@@ -1544,7 +1532,7 @@ fn event_watchers(values: &[Vec<u8>]) -> Option<BTreeMap<u32, EventWatcher>> {
 /// (a submessage per kind of event) are not read.
 pub fn matches_activity_info_rsp(data: &[u8]) -> Option<BTreeMap<u32, EventInfo>> {
     let msg = parse(data)?;
-    for values in fields_by_tag(&msg).values() {
+    for values in msg.values() {
         if values.is_empty() || values.len() > MAX_EVENTS {
             continue;
         }
@@ -1624,7 +1612,7 @@ pub struct HomeComfort {
 /// show.
 pub fn matches_home_comfort_notify(data: &[u8]) -> Option<BTreeMap<u32, HomeComfort>> {
     let msg = parse(data)?;
-    let fields = fields_by_tag(&msg);
+    let fields = msg;
     if fields.len() != 1 {
         return None;
     }
@@ -1723,7 +1711,7 @@ pub fn matches_tcg_challenges(data: &[u8]) -> Option<TcgChallenges> {
     let msg = parse(data)?;
     let mut levels = None;
     let mut bosses = None;
-    for values in fields_by_tag(&msg).values() {
+    for values in msg.values() {
         let LengthDelimited(_) = values.first()? else {
             return None;
         };
@@ -1759,7 +1747,7 @@ pub fn matches_tcg_challenges(data: &[u8]) -> Option<TcgChallenges> {
 /// ids unlocked with them.
 pub fn matches_tcg_tavern(data: &[u8]) -> Option<BTreeMap<u32, Vec<u32>>> {
     let msg = parse(data)?;
-    let fields = fields_by_tag(&msg);
+    let fields = msg;
     if fields.len() != 1 {
         return None;
     }
@@ -1795,7 +1783,7 @@ pub fn matches_music_game_notify(data: &[u8]) -> Option<BTreeMap<u32, MusicSong>
     let msg = parse(data)?;
     let mut songs = None;
     let mut settings = false;
-    for values in fields_by_tag(&msg).values() {
+    for values in msg.values() {
         match values.first()? {
             Varint(_) => {}
             Fixed32(_) | Fixed64(_) => return None,
@@ -1875,7 +1863,7 @@ pub fn matches_beyond_cosmetic_notify(data: &[u8]) -> Option<BTreeMap<u32, u32>>
     let msg = parse(data)?;
     let mut out = BTreeMap::new();
     let mut kinds = 0;
-    for values in fields_by_tag(&msg).values() {
+    for values in msg.values() {
         if values.len() < 2 {
             continue;
         }
@@ -1940,7 +1928,7 @@ pub struct SignIn {
 /// later than the days signed in), beside the calendar's days (submessages).
 pub fn matches_sign_in_rsp(data: &[u8]) -> Option<BTreeMap<u32, SignIn>> {
     let msg = parse(data)?;
-    for values in fields_by_tag(&msg).values() {
+    for values in msg.values() {
         let Some(list) = entries(values) else {
             continue;
         };
@@ -2023,7 +2011,7 @@ fn player_text(bytes: &[u8]) -> Option<String> {
 /// sent once (the property map's entries repeat one tag), 1-64 bytes.
 pub fn player_nickname(data: &[u8]) -> Option<String> {
     let msg = parse(data)?;
-    let texts: Vec<String> = fields_by_tag(&msg)
+    let texts: Vec<String> = msg
         .values()
         .filter_map(|values| match values.as_slice() {
             [LengthDelimited(bytes)] if (1..=64).contains(&bytes.len()) => player_text(bytes),
@@ -2071,7 +2059,7 @@ const UID_RANGE: RangeInclusive<u64> = 100_000_000..=4_294_967_295;
 fn profile_picture(bytes: &[u8]) -> Option<ProfilePicture> {
     let msg = parse(bytes)?;
     let mut out = ProfilePicture::default();
-    for values in fields_by_tag(&msg).values() {
+    for values in msg.values() {
         let value = single_varint(values)?;
         let slot = match value {
             1_000..=99_999 => &mut out.id,
@@ -2089,7 +2077,7 @@ fn profile_picture(bytes: &[u8]) -> Option<ProfilePicture> {
 
 fn birthday(bytes: &[u8]) -> Option<(u32, u32)> {
     let msg = parse(bytes)?;
-    let fields = fields_by_tag(&msg);
+    let fields = msg;
     let [month, day] = fields.values().collect::<Vec<_>>()[..] else {
         return None;
     };
@@ -2106,7 +2094,7 @@ fn birthday(bytes: &[u8]) -> Option<(u32, u32)> {
 pub fn matches_social_detail(data: &[u8]) -> Option<SocialProfile> {
     let msg = parse(data)?;
     let mut detail = None;
-    for values in fields_by_tag(&msg).values() {
+    for values in msg.values() {
         match values.as_slice() {
             [Varint(_)] => {}
             [LengthDelimited(bytes)] if detail.is_none() => detail = Some(*bytes),
@@ -2116,7 +2104,7 @@ pub fn matches_social_detail(data: &[u8]) -> Option<SocialProfile> {
     let msg = parse(detail?)?;
     let mut out = SocialProfile::default();
     let mut uid = None;
-    for values in fields_by_tag(&msg).values() {
+    for values in msg.values() {
         match values.as_slice() {
             [Varint(v)] if UID_RANGE.contains(v) => {
                 if uid.replace(*v as u32).is_some() {
@@ -2167,7 +2155,7 @@ pub struct SceneRequest {
 /// data's scenes.
 pub fn matches_scene_request(data: &[u8]) -> Option<SceneRequest> {
     let msg = parse(data)?;
-    let fields = fields_by_tag(&msg);
+    let fields = msg;
     if !(2..=3).contains(&fields.len()) {
         return None;
     }
