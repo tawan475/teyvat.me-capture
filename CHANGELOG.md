@@ -26,8 +26,9 @@ Each release's section is its GitHub release notes (`.github/workflows/release.y
 - New in the export: `gi_endgame`. The Imaginarium Theater season you are
   in, the difficulty you picked and the acts you cleared (from the login),
   and your Stygian Onslaught records (difficulty, time per boss, your own
-  team; read when you open its menu). A co-op record's other players are
-  never exported. The seasons come with the game data; a season newer than
+  team, and each fight's strongest single strike and highest total damage;
+  read when you open its menu). A co-op record's other players are never
+  exported. The seasons come with the game data; a season newer than
   the build is skipped until the next release.
 - Decoding a login takes about 40% less CPU: the message matchers read each
   payload in place instead of copying it into a field map two dozen times,

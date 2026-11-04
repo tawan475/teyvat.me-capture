@@ -128,6 +128,19 @@ impl PlayerData {
                 .fights
                 .iter()
                 .any(|f| f.teams.iter().any(|t| t.uid != u64::from(uid)));
+            let key_of = |id: u32| -> Option<String> {
+                self.game_data
+                    .get_character(id)
+                    .ok()
+                    .map(|name| good::to_good_key(name))
+                    .filter(|key| !key.is_empty())
+            };
+            let figure = |f: &Option<teyvatme_protocol::Figure>| {
+                f.as_ref().map(|f| good::GiFigure {
+                    value: f.value,
+                    by: f.by.and_then(key_of),
+                })
+            };
             let fights = record
                 .fights
                 .iter()
@@ -139,10 +152,10 @@ impl PlayerData {
                         .iter()
                         .filter(|t| t.uid == u64::from(uid))
                         .flat_map(|t| t.avatars.iter())
-                        .filter_map(|id| self.game_data.get_character(*id).ok())
-                        .map(|name| good::to_good_key(name))
-                        .filter(|key| !key.is_empty())
+                        .filter_map(|id| key_of(*id))
                         .collect(),
+                    strike: figure(&f.strike),
+                    damage: figure(&f.damage),
                 })
                 .collect();
             kept.insert(

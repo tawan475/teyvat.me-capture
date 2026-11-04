@@ -214,14 +214,31 @@ pub struct GiStygianRecord {
 }
 
 /// One boss fight of a record: its time in seconds (0 when not finished),
-/// whether it was finished, and the account's own team (GOOD character
-/// keys; a co-op run's other players are never exported).
+/// whether it was finished, the account's own team (GOOD character keys; a
+/// co-op run's other players are never exported), and the fight's figures
+/// when the game sent them.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GiStygianFight {
     pub time: u32,
     pub done: bool,
     pub team: Vec<String>,
+    /// The strongest single strike.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub strike: Option<GiFigure>,
+    /// The highest total damage dealt by one character.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub damage: Option<GiFigure>,
+}
+
+/// A figure and, when the game leaves no doubt which, the character it
+/// belongs to (GOOD key).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiFigure {
+    pub value: u64,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub by: Option<String>,
 }
 
 /// `gi_collections`: what the player has collected, each part as the game
@@ -1350,6 +1367,14 @@ mod tests {
                             time: 51,
                             done: true,
                             team: vec!["Alhaitham".to_string()],
+                            strike: Some(GiFigure {
+                                value: 367_183,
+                                by: Some("Alhaitham".to_string()),
+                            }),
+                            damage: Some(GiFigure {
+                                value: 15_616_746,
+                                by: None,
+                            }),
                         }],
                     }],
                 }),
@@ -1586,7 +1611,11 @@ mod tests {
                 "theater": { "season": 31, "difficulty": 129, "level": 5, "acts": 10 },
                 "stygian": { "records": [{
                     "season": 5269012, "difficulty": 6, "at": 1790972494, "coop": false,
-                    "fights": [{ "time": 51, "done": true, "team": ["Alhaitham"] }]
+                    "fights": [{
+                        "time": 51, "done": true, "team": ["Alhaitham"],
+                        "strike": { "value": 367183, "by": "Alhaitham" },
+                        "damage": { "value": 15616746 }
+                    }]
                 }] }
             })
         );

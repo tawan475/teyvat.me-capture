@@ -115,6 +115,24 @@ pub struct StygianFight {
     /// Each player's team: their UID and the avatar ids. In a solo run one
     /// team, the account's own.
     pub teams: Vec<StygianTeam>,
+    /// The strongest single strike of the fight, when its figures came.
+    pub strike: Option<Figure>,
+    /// The highest total damage dealt by one character.
+    pub damage: Option<Figure>,
+}
+
+/// A fight's figure: a value and, when the message leaves no doubt, the
+/// avatar it belongs to.
+///
+/// The figures come as two avatar ids and two numbers in one submessage.
+/// The numbers are told apart by value (one strike is never more than one
+/// character's total damage), the avatars are not: when the two differ,
+/// which goes with which is not on the wire in any form a reshuffled field
+/// number cannot swap, so `by` is given only when both name one character.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Figure {
+    pub value: u64,
+    pub by: Option<u32>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -299,25 +317,64 @@ fn stygian_team(bytes: &[u8]) -> Option<StygianTeam> {
     })
 }
 
-/// A fight's lone numbers by tag, and its teams.
+/// A fight's lone numbers by tag, its teams and its figures.
 struct FightRead {
     numbers: BTreeMap<u32, u64>,
     teams: Vec<StygianTeam>,
+    strike: Option<Figure>,
+    damage: Option<Figure>,
+}
+
+/// Read a fight's figures: a submessage of exactly four lone numbers, two
+/// avatar ids and two values, or `None` if `bytes` is not that (the
+/// equipment guid list and a team are the other submessages of a fight).
+fn fight_figures(bytes: &[u8]) -> Option<(Figure, Figure)> {
+    let fields = wire::fields(bytes)?;
+    let mut avatars = Vec::new();
+    let mut values = Vec::new();
+    for field in fields.values() {
+        match field.as_slice() {
+            [Varint(v)] if AVATAR_IDS.contains(v) => avatars.push(*v as u32),
+            [Varint(v)] if *v >= 1 => values.push(*v),
+            _ => return None,
+        }
+    }
+    if avatars.len() != 2 || values.len() != 2 {
+        return None;
+    }
+    values.sort_unstable();
+    let by = (avatars[0] == avatars[1]).then_some(avatars[0]);
+    Some((
+        Figure {
+            value: values[0],
+            by,
+        },
+        Figure {
+            value: values[1],
+            by,
+        },
+    ))
 }
 
 fn stygian_fight(bytes: &[u8]) -> Option<FightRead> {
     let fields = wire::fields(bytes)?;
     let mut numbers = BTreeMap::new();
     let mut teams = None;
+    let mut figures = None;
     for (tag, values) in &fields {
         match values.as_slice() {
             [Varint(v)] => {
                 numbers.insert(*tag, *v);
             }
             [Fixed32(_) | Fixed64(_)] => return None,
+            [LengthDelimited(one)] if fight_figures(one).is_some() => {
+                if figures.replace(fight_figures(one)?).is_some() {
+                    return None;
+                }
+            }
             values if values.iter().all(|v| matches!(v, LengthDelimited(_))) => {
-                // The teams, or the equipment guids / the boss' figures:
-                // the one list whose every entry reads as a team is the teams.
+                // The teams, or the equipment guids: the one list whose every
+                // entry reads as a team is the teams.
                 let read: Option<Vec<StygianTeam>> =
                     values.iter().map(|v| stygian_team(as_bytes(v)?)).collect();
                 if let Some(read) = read
@@ -330,9 +387,12 @@ fn stygian_fight(bytes: &[u8]) -> Option<FightRead> {
             _ => return None,
         }
     }
+    let (strike, damage) = figures.unzip();
     Some(FightRead {
         numbers,
         teams: teams?,
+        strike,
+        damage,
     })
 }
 
@@ -438,6 +498,8 @@ fn stygian_record(bytes: &[u8]) -> Option<StygianRecord> {
             time: time_tag.map_or(0, |tag| f.numbers.get(&tag).copied().unwrap_or(0) as u32),
             finished: f.numbers.get(finished_tag) == Some(&1),
             teams: f.teams,
+            strike: f.strike,
+            damage: f.damage,
         })
         .collect();
     Some(StygianRecord {
@@ -677,9 +739,13 @@ mod tests {
         if finished {
             field_varint(9, 1, &mut out);
         }
+        // The figures: strike by one avatar, total damage by another (the
+        // same one in the first fight of a record).
         let mut boss = Vec::new();
-        field_varint(1, 10000096, &mut boss);
-        field_varint(2, 367_183, &mut boss);
+        field_varint(4, 10000096, &mut boss);
+        field_varint(8, 367_183, &mut boss);
+        field_varint(10, 15_616_746, &mut boss);
+        field_varint(12, if index == 1 { 10000096 } else { 10000032 }, &mut boss);
         field_bytes(10, &boss, &mut out);
         field_varint(14, index, &mut out);
         for t in teams {
@@ -779,6 +845,29 @@ mod tests {
         assert_eq!(solo.fights.len(), 3);
         assert_eq!((solo.fights[0].time, solo.fights[0].finished), (51, true));
         assert_eq!((solo.fights[2].time, solo.fights[2].finished), (0, false));
+        // Figures: the smaller number is the strike; the avatar only when
+        // both figures name the same one.
+        assert_eq!(
+            solo.fights[0].strike,
+            Some(Figure {
+                value: 367_183,
+                by: Some(10000096)
+            })
+        );
+        assert_eq!(
+            solo.fights[0].damage,
+            Some(Figure {
+                value: 15_616_746,
+                by: Some(10000096)
+            })
+        );
+        assert_eq!(
+            solo.fights[1].damage,
+            Some(Figure {
+                value: 15_616_746,
+                by: None
+            })
+        );
         assert_eq!(solo.fights[1].teams[0].uid, ME);
         assert_eq!(solo.fights[1].teams[0].avatars, [10000030, 10000046]);
     }

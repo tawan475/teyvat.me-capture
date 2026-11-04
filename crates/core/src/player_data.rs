@@ -5079,7 +5079,7 @@ mod tests {
 
     #[test]
     fn stygian_records_keep_known_seasons_and_the_accounts_own_team() {
-        use teyvatme_protocol::{StygianFight, StygianRecord, StygianTeam};
+        use teyvatme_protocol::{Figure, StygianFight, StygianRecord, StygianTeam};
         let mut data = endgame_data();
         let uid = 812_345_678u64;
         let guid = |n: u64| (uid << 32) + n;
@@ -5098,11 +5098,20 @@ mod tests {
                     time: 51,
                     finished: true,
                     teams: teams.clone(),
+                    strike: Some(Figure {
+                        value: 367_183,
+                        by: Some(10000046),
+                    }),
+                    damage: Some(Figure {
+                        value: 15_616_746,
+                        by: None,
+                    }),
                 },
                 StygianFight {
                     time: 0,
                     finished: false,
                     teams,
+                    ..Default::default()
                 },
             ],
         };
@@ -5126,11 +5135,13 @@ mod tests {
             json["gi_endgame"]["stygian"],
             serde_json::json!({"records": [
                 {"season": 5269012, "difficulty": 6, "at": 1790972494, "coop": false, "fights": [
-                    {"time": 51, "done": true, "team": ["HuTao", "Traveler"]},
+                    {"time": 51, "done": true, "team": ["HuTao", "Traveler"],
+                     "strike": {"value": 367183, "by": "HuTao"}, "damage": {"value": 15616746}},
                     {"time": 0, "done": false, "team": ["HuTao", "Traveler"]}
                 ]},
                 {"season": 5269012, "difficulty": 6, "at": 1790972494, "coop": true, "fights": [
-                    {"time": 51, "done": true, "team": ["HuTao", "Traveler"]},
+                    {"time": 51, "done": true, "team": ["HuTao", "Traveler"],
+                     "strike": {"value": 367183, "by": "HuTao"}, "damage": {"value": 15616746}},
                     {"time": 0, "done": false, "team": ["HuTao", "Traveler"]}
                 ]}
             ]})

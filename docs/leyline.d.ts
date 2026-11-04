@@ -486,6 +486,16 @@ export interface GiStygianFight {
   done: boolean
   /** The account's own team, as GOOD character keys ("Traveler" for any Traveler). */
   team: string[]
+  /** The strongest single strike of the fight, when the game sent the figures. */
+  strike?: GiFigure
+  /** The highest total damage dealt by one character. */
+  damage?: GiFigure
+}
+
+export interface GiFigure {
+  value: number
+  /** The character (GOOD key); absent when the game names two characters for the fight's two figures and cannot say which is which. */
+  by?: string
 }
 
 // ── gi_capture ──────────────────────────────────────────────────── [shipped]

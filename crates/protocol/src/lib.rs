@@ -94,7 +94,7 @@ use crate::crypto::{
     LatePass, LateWindow, bruteforce, decrypt_command, guess, late_search, lookup_initial_key,
 };
 pub use crate::endgame::{
-    MAX_THEATER_ACTS, StygianFight, StygianRecord, StygianTeam, TheaterDetail,
+    Figure, MAX_THEATER_ACTS, StygianFight, StygianRecord, StygianTeam, TheaterDetail,
     matches_stygian_records, matches_theater_notify,
 };
 pub use crate::fetter::matches_fetter_notify;
