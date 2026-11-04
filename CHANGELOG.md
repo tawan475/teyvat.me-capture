@@ -30,6 +30,10 @@ Each release's section is its GitHub release notes (`.github/workflows/release.y
   read when you open its menu). A co-op record's other players are never
   exported. The seasons come with the game data; a season newer than
   the build is skipped until the next release.
+- Genshin 7.2: the Miliastra Wonderland cosmetics are read again. The game
+  now lists the emotes and poses beside them as entries instead of plain
+  numbers, which made the whole message unrecognisable to 1.17.11. Every
+  other part of a 7.2 login reads as before.
 - Decoding a login takes about 40% less CPU: the message matchers read each
   payload in place instead of copying it into a field map two dozen times,
   and the account's UID is no longer recounted over the whole inventory for

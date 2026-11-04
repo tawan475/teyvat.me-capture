@@ -1858,7 +1858,10 @@ const BEYOND_COSMETIC_IDS: RangeInclusive<u64> = 200_000..=999_999;
 /// obtained (0 when the game sent no time), from a `_BeyondCosmeticDataNotify`
 /// payload, or `None` if it is not one: at least two repeated fields of
 /// entries, each one cosmetic id (unique, `BEYOND_COSMETIC_IDS`) and maybe a
-/// time and a small flag, beside number lists (emotes, poses).
+/// time and a small flag, beside the emote and pose lists. Those came as
+/// number lists in 7.1 and as lists of entries of one small id in 7.2, so a
+/// repeated field whose entries are not cosmetics is passed over, not held
+/// against the message; a cosmetics list with a repeated id still refuses it.
 pub fn matches_beyond_cosmetic_notify(data: &[u8]) -> Option<BTreeMap<u32, u32>> {
     let msg = parse(data)?;
     let mut out = BTreeMap::new();
@@ -1873,10 +1876,9 @@ pub fn matches_beyond_cosmetic_notify(data: &[u8]) -> Option<BTreeMap<u32, u32>>
         let Some(list) = entries(values) else {
             continue;
         };
-        let mut found = BTreeMap::new();
-        let ok = list.iter().all(|e| {
+        let cosmetic = |e: &Entry| -> Option<(u32, u32)> {
             if e.fixed || !e.lists.is_empty() || !e.other.is_empty() || e.varints.len() > 3 {
-                return false;
+                return None;
             }
             let ids: Vec<u64> = e
                 .varints
@@ -1885,7 +1887,7 @@ pub fn matches_beyond_cosmetic_notify(data: &[u8]) -> Option<BTreeMap<u32, u32>>
                 .filter(|v| BEYOND_COSMETIC_IDS.contains(v))
                 .collect();
             let [id] = ids.as_slice() else {
-                return false;
+                return None;
             };
             let time = e
                 .varints
@@ -1894,11 +1896,18 @@ pub fn matches_beyond_cosmetic_notify(data: &[u8]) -> Option<BTreeMap<u32, u32>>
                 .find(|v| EXPIRY.contains(v))
                 .unwrap_or(0);
             if e.varints.values().any(|v| v != id && *v != time && *v > 10) {
-                return false;
+                return None;
             }
-            found.insert(*id as u32, time as u32).is_none()
-        });
-        if !ok {
+            Some((*id as u32, time as u32))
+        };
+        let Some(read) = list.iter().map(cosmetic).collect::<Option<Vec<_>>>() else {
+            continue;
+        };
+        let mut found = BTreeMap::new();
+        if !read
+            .into_iter()
+            .all(|(id, time)| found.insert(id, time).is_none())
+        {
             return None;
         }
         kinds += 1;
@@ -2961,6 +2970,21 @@ mod tests {
         let owned = matches_beyond_cosmetic_notify(&beyond).unwrap();
         assert_eq!(owned.len(), 4);
         assert_eq!(owned[&270_002], 1_790_000_100);
+        // 7.2 sends the emotes and poses as entries of one small id, and a
+        // list whose entries are a 1 and six-digit ids: passed over, the
+        // cosmetics still read.
+        let beyond72 = [
+            beyond.clone(),
+            b(15, &v(11, 1001)),
+            b(15, &v(11, 1002)),
+            b(1300, &v(2, 1)),
+            b(1300, &v(2, 611_000)),
+        ]
+        .concat();
+        assert_eq!(matches_beyond_cosmetic_notify(&beyond72).unwrap().len(), 4);
+        // A repeated cosmetic id is still some other message.
+        let twice = [beyond.clone(), cosmetic(5, 260_087, 0)].concat();
+        assert_eq!(matches_beyond_cosmetic_notify(&twice), None);
 
         let calendar = b(
             1,
