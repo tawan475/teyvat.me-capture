@@ -1200,6 +1200,40 @@ impl TeyvatmeApp {
                     },
                 );
             });
+        // How updates happen: by themselves, and the restart into one too
+        // (out of sight, with Genshin closed; see `app::restart_due`).
+        card_frame(ui).show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            let was_on = self.saved_state.auto_update;
+            switch_row(
+                ui,
+                tr("Install updates by itself"),
+                Some(secondary_text(
+                    tr("A new version is downloaded and installed while capture keeps running"),
+                    pal.tx2,
+                )),
+                &mut self.saved_state.auto_update,
+                true,
+            );
+            // Switched on with one waiting: that one goes now.
+            if self.saved_state.auto_update
+                && !was_on
+                && matches!(status, UpdateStatus::Available(_))
+            {
+                command = Some(UpdateCommand::Install);
+            }
+            divider(ui);
+            switch_row(
+                ui,
+                tr("Restart by itself"),
+                Some(secondary_text(
+                    tr("Once Genshin is closed and the window is minimized or in the tray"),
+                    pal.tx2,
+                )),
+                &mut self.saved_state.auto_restart,
+                self.saved_state.auto_update,
+            );
+        });
         if let Some(command) = command
             && let Err(e) = self.update_tx.send(command)
         {

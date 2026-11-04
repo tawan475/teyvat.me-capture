@@ -576,10 +576,13 @@ fn main() -> eframe::Result {
     };
     #[cfg(windows)]
     let native_options = direct3d(native_options);
-    let start_window = if args.after_update {
-        app::StartWindow::Front
-    } else if args.minimized {
+    // A relaunch the app did by itself (`--after-update --minimized`) comes
+    // back out of sight, where the window was; one the user clicked comes to
+    // the front.
+    let start_window = if args.minimized {
         app::StartWindow::Minimized
+    } else if args.after_update {
+        app::StartWindow::Front
     } else {
         app::StartWindow::AsIs
     };
@@ -649,7 +652,8 @@ fn main() -> eframe::Result {
         // dropped the same way. Except `--minimized`: the window the user just
         // updated from comes back where they can see it, which
         // `--after-update` asks for.
-        let args = relaunch_args(std::env::args_os().skip(1));
+        let quiet = app::RESTART_QUIET.load(std::sync::atomic::Ordering::SeqCst);
+        let args = relaunch_args(std::env::args_os().skip(1), quiet);
         #[cfg(windows)]
         if admin::ELEVATE_ON_RESTART.load(std::sync::atomic::Ordering::SeqCst) {
             if admin::relaunch_elevated(&args) {
@@ -663,11 +667,16 @@ fn main() -> eframe::Result {
                     tracing::info!("relaunched {exe:?} with {args:?} after update");
                     // This process got the click on "Yes", so it may still
                     // hand the foreground on; its own window is already gone.
+                    // Not for a restart it did by itself: that one comes
+                    // back out of sight and takes nothing from the user.
                     #[cfg(windows)]
-                    unsafe {
-                        let _ = windows::Win32::UI::WindowsAndMessaging::AllowSetForegroundWindow(
-                            child.id(),
-                        );
+                    if !quiet {
+                        unsafe {
+                            let _ =
+                                windows::Win32::UI::WindowsAndMessaging::AllowSetForegroundWindow(
+                                    child.id(),
+                                );
+                        }
                     }
                     #[cfg(not(windows))]
                     drop(child);
@@ -754,13 +763,20 @@ fn open_log_dir() -> Result<()> {
 
 /// The arguments for the relaunch after an update: this run's, without
 /// `--minimized` (or an earlier relaunch's `--after-update`), then
-/// `--after-update`.
-fn relaunch_args(args: impl IntoIterator<Item = std::ffi::OsString>) -> Vec<std::ffi::OsString> {
+/// `--after-update`; a `quiet` relaunch (the app's own, with the window out
+/// of sight) adds `--minimized` back so it comes back where it was.
+fn relaunch_args(
+    args: impl IntoIterator<Item = std::ffi::OsString>,
+    quiet: bool,
+) -> Vec<std::ffi::OsString> {
     let mut args: Vec<std::ffi::OsString> = args
         .into_iter()
         .filter(|arg| arg != autostart::MINIMIZED_ARG && arg != AFTER_UPDATE_ARG)
         .collect();
     args.push(AFTER_UPDATE_ARG.into());
+    if quiet {
+        args.push(autostart::MINIMIZED_ARG.into());
+    }
     args
 }
 
@@ -982,13 +998,26 @@ mod tests {
         let os = |args: &[&str]| -> Vec<std::ffi::OsString> {
             args.iter().map(std::ffi::OsString::from).collect()
         };
-        let args = relaunch_args(os(&["-b", "pcap", autostart::MINIMIZED_ARG, "--no-admin"]));
+        let args = relaunch_args(
+            os(&["-b", "pcap", autostart::MINIMIZED_ARG, "--no-admin"]),
+            false,
+        );
         assert_eq!(args, os(&["-b", "pcap", "--no-admin", AFTER_UPDATE_ARG]));
         // A relaunch of a relaunch carries it once.
-        assert_eq!(relaunch_args(args.clone()), args);
+        assert_eq!(relaunch_args(args.clone(), false), args);
 
         let parsed = parse(&["--after-update"]).unwrap();
         assert!(parsed.after_update && !parsed.minimized);
+
+        // The app's own restart comes back out of sight, where the window was.
+        let quiet = relaunch_args(os(&["--no-admin"]), true);
+        assert_eq!(
+            quiet,
+            os(&["--no-admin", AFTER_UPDATE_ARG, autostart::MINIMIZED_ARG])
+        );
+        assert_eq!(relaunch_args(quiet.clone(), true), quiet);
+        let parsed = parse(&["--after-update", autostart::MINIMIZED_ARG]).unwrap();
+        assert!(parsed.after_update && parsed.minimized);
     }
 
     #[test]

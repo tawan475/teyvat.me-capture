@@ -2,6 +2,26 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.17.13
+
+- Updates install by themselves. A new version found by the check is
+  downloaded and installed while capture keeps running (**Settings → About →
+  Install updates by itself**, on), and Teyvat.me restarts into it on its own
+  once Genshin is closed and the window is minimized or in the tray
+  (**Restart by itself**, on) — a window in sight keeps its **Restart now**.
+  Until now a release waited for a click on a banner on the home page that
+  most people never gave: logs sent in showed apps finding every new version
+  at start and running the old one for days.
+- The update bar is over every screen, not the home page alone; the tray
+  icon carries an amber mark while an update waits, its tooltip says so, and
+  one Windows notification per release says the version is installed (or is
+  out, when installing by itself is off).
+- The check runs hourly (it was six hours), on coming back to the window
+  after an hour, and ten minutes after one that failed. It reads the newest
+  release's version from the releases page's redirect, with no API quota, so
+  a building full of players behind one address is never refused; GitHub's
+  API is asked only once a newer version is known.
+
 ## 1.17.12
 
 - Opening Teyvat.me while it is already running brings its window to the

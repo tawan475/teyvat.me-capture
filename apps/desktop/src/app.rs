@@ -186,6 +186,16 @@ pub struct SavedAppState {
     pub resin_alert: bool,
     #[serde(default = "default_resin_alert_at")]
     pub resin_alert_at: u32,
+    /// Settings › About: a release the check finds is downloaded and
+    /// installed by itself (on by default; the home banner used to wait for
+    /// a click that most people never gave).
+    #[serde(default = "default_true")]
+    pub auto_update: bool,
+    /// Settings › About: the installed release starts by itself once
+    /// Genshin is closed and the window is out of sight
+    /// ([`restart_due`]).
+    #[serde(default = "default_true")]
+    pub auto_restart: bool,
     /// This device's alert settings on the tracker (the last presence
     /// answer's), so the resin alert follows them offline too. Replaces
     /// `resin_alert`/`resin_alert_at` while held; dropped on sign-out.
@@ -338,6 +348,8 @@ impl Default for SavedAppState {
             send_wishes: true,
             resin_alert: false,
             resin_alert_at: default_resin_alert_at(),
+            auto_update: true,
+            auto_restart: true,
             tracker_alerts: None,
         }
     }
@@ -467,6 +479,36 @@ fn address_change(current: &str, edited: &str) -> AddressChange {
         Some(host) => AddressChange::To { base, host },
         None => AddressChange::Invalid,
     }
+}
+
+/// Set with `restart_requested` when the restart into an installed update
+/// is the app's own doing, not a click on "Restart now": the relaunch then
+/// comes back where the window was (minimized, or in the tray) instead of
+/// in front.
+pub static RESTART_QUIET: AtomicBool = AtomicBool::new(false);
+
+/// How long an installed release waits before the app restarts into it by
+/// itself: a moment for the status to be seen, and for a window that was
+/// just minimized to settle.
+const AUTO_RESTART_AFTER: Duration = Duration::from_secs(10);
+
+/// Whether the app restarts into an installed update by itself now.
+///
+/// Only while nothing is lost by it: Genshin is not running (a restart
+/// during a session would drop the session key, and capture has to be on
+/// before the game connects), and the window is out of sight (in the tray
+/// or minimized), so nobody is in the middle of using it. A window in sight
+/// keeps its banner with "Restart now".
+fn restart_due(
+    wanted: bool,
+    ready_for: Option<Duration>,
+    game: GameStatus,
+    out_of_sight: bool,
+) -> bool {
+    wanted
+        && out_of_sight
+        && game == GameStatus::NotRunning
+        && ready_for.is_some_and(|since| since >= AUTO_RESTART_AFTER)
 }
 
 /// Whether whoami should be read again: never read yet, the window just
@@ -702,6 +744,12 @@ pub struct TeyvatmeApp {
     /// Whether the window had the focus last frame (for the whoami re-read
     /// on return).
     window_focused: bool,
+    /// The updater's status last frame (see [`Self::poll_update_status`]).
+    seen_update_status: UpdateStatus,
+    /// Since when an installed release has been waiting for the restart.
+    update_ready_since: Option<Instant>,
+    /// Whether the tray icon carries the update mark now.
+    tray_update_marked: bool,
     /// The sign-in notice last toasted, so it is said once.
     auth_notice_toasted: Option<String>,
     /// The tracker address being edited under "Advanced"; applied only once
@@ -955,10 +1003,35 @@ impl<T, E: Display> ToastError<T> for std::result::Result<T, E> {
 /// Built where the tray lives rather than passed across a thread boundary, so
 /// no assumption is made about `tray_icon::Icon` being `Send`.
 fn load_tray_icon() -> Option<tray_icon::Icon> {
+    load_tray_icon_marked(false)
+}
+
+/// The tray icon, with the update mark (an amber disc in its lower right
+/// corner, ringed dark so it reads on a light taskbar too) when `marked`.
+fn load_tray_icon_marked(marked: bool) -> Option<tray_icon::Icon> {
     let icon_data = image::load_from_memory(include_bytes!("../assets/icon-256.png")).ok()?;
-    let rgba = icon_data.into_rgba8();
+    let mut rgba = icon_data.into_rgba8();
     let (width, height) = rgba.dimensions();
+    if marked {
+        draw_update_mark(&mut rgba);
+    }
     tray_icon::Icon::from_rgba(rgba.into_raw(), width, height).ok()
+}
+
+/// Paint the update mark over an icon's lower right corner.
+fn draw_update_mark(icon: &mut image::RgbaImage) {
+    let (width, height) = icon.dimensions();
+    let radius = width.min(height) as f32 * 0.22;
+    let ring = radius * 0.18;
+    let (cx, cy) = (width as f32 - radius - 2.0, height as f32 - radius - 2.0);
+    for (x, y, pixel) in icon.enumerate_pixels_mut() {
+        let d = ((x as f32 + 0.5 - cx).powi(2) + (y as f32 + 0.5 - cy).powi(2)).sqrt();
+        if d <= radius - ring {
+            *pixel = image::Rgba([0xFF, 0xB0, 0x20, 0xFF]);
+        } else if d <= radius {
+            *pixel = image::Rgba([0x1A, 0x1A, 0x1F, 0xFF]);
+        }
+    }
 }
 
 /// How long after the window is hidden or minimized its memory is handed back:
@@ -1237,6 +1310,7 @@ fn start_async_runtime(
                 cancel_token.clone(),
                 toast_tx.clone(),
                 Arc::clone(&install_lock),
+                crate::update::AutoInstall(saved_state_rx.clone()),
             ));
 
             // Wish history from the keys; ends with the monitor.
@@ -1509,6 +1583,9 @@ impl TeyvatmeApp {
             browser_rx,
             whoami_checked_at: None,
             window_focused: true,
+            seen_update_status: UpdateStatus::Idle,
+            update_ready_since: None,
+            tray_update_marked: false,
             auth_notice_toasted: None,
             tracker_url_edit,
             pending_address: None,
@@ -1920,6 +1997,13 @@ impl TeyvatmeApp {
         let focused = ctx.input(|i| i.viewport().focused).unwrap_or(true);
         let regained_focus = focused && !self.window_focused;
         self.window_focused = focused;
+        // Coming back to the window is a moment to look for a release too
+        // (the updater skips it when the last look is recent).
+        if regained_focus
+            && let Err(e) = self.update_tx.send(UpdateCommand::Check { manual: false })
+        {
+            tracing::error!("Unable to send update command: {e}");
+        }
         if sign_in != TrackerSignIn::SignedIn {
             return;
         }
@@ -2251,6 +2335,27 @@ fn is_admin() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_app_restarts_into_an_update_only_out_of_sight_with_the_game_closed() {
+        use GameStatus::{Decoding, LaunchCaptured, NotRunning};
+        let waited = Some(AUTO_RESTART_AFTER);
+        assert!(restart_due(true, waited, NotRunning, true));
+        // Not under the user's hands: a window in sight keeps "Restart now".
+        assert!(!restart_due(true, waited, NotRunning, false));
+        // Never during a session: the session key would be lost.
+        assert!(!restart_due(true, waited, LaunchCaptured, true));
+        assert!(!restart_due(true, waited, Decoding, true));
+        // A moment first, and only when the setting says so.
+        assert!(!restart_due(
+            true,
+            Some(Duration::from_secs(1)),
+            NotRunning,
+            true
+        ));
+        assert!(!restart_due(true, None, NotRunning, true));
+        assert!(!restart_due(false, waited, NotRunning, true));
+    }
 
     /// `monitor::CAPTURE_SHUTDOWN_TIMEOUT` is private to its module, so the
     /// mirror above is checked against the source rather than the item. Two

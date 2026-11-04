@@ -61,7 +61,6 @@ impl TeyvatmeApp {
                     .show(ui, |ui| {
                         ui.spacing_mut().item_spacing.y = GAP;
                         self.crash_banner(ui);
-                        self.update_banner(ui);
                         let wide = ui.available_width() >= BREAKPOINT - 32.0;
                         self.status_strip(ui, app_state, !wide);
                         self.pair(
@@ -140,16 +139,28 @@ impl TeyvatmeApp {
         }
     }
 
-    /// A newer version found, or installed and waiting for a restart.
-    fn update_banner(&mut self, ui: &mut Ui) {
+    /// The update bar over every screen: a newer version found, being
+    /// installed, installed and waiting for the restart, or one to download
+    /// by hand. Flush with the window's top, so it is seen whatever page is
+    /// open (the old rounded banner lived on the home page alone).
+    pub(super) fn update_bar(&mut self, ui: &mut Ui) {
         let status = self.update_status.borrow().clone();
-        let (title, ready, version) = match &status {
-            UpdateStatus::Available(v) | UpdateStatus::Installing(v) => {
-                (trf("Update {0}", &[v]), false, v.clone())
-            }
+        let (title, version) = match &status {
+            UpdateStatus::Available(v) => (trf("Update {0}", &[v]), v.clone()),
+            UpdateStatus::Installing(v) => (
+                trf("Installing {0} · capture keeps running", &[v]),
+                v.clone(),
+            ),
             UpdateStatus::Ready(v) => (
-                trf("{0} installed · restart to use it", &[v]),
-                true,
+                if self.saved_state.auto_restart {
+                    trf("{0} installed · restarts when Genshin is closed", &[v])
+                } else {
+                    trf("{0} installed · restart to use it", &[v])
+                },
+                v.clone(),
+            ),
+            UpdateStatus::Manual(v) => (
+                trf("{0} is out · download it on this platform", &[v]),
                 v.clone(),
             ),
             _ => return,
@@ -157,12 +168,12 @@ impl TeyvatmeApp {
         let pal = widgets::p(ui);
         let mut open = false;
         let mut restart = false;
+        let mut download = false;
         egui::Frame::new()
             .fill(pal.ac_con)
-            .corner_radius(egui::CornerRadius::same(12))
             .inner_margin(Margin {
-                left: 14,
-                right: 8,
+                left: 16,
+                right: 10,
                 top: 8,
                 bottom: 8,
             })
@@ -186,14 +197,23 @@ impl TeyvatmeApp {
                                 .min_size(vec2(0.0, 32.0)),
                             )
                         };
-                        if ready {
-                            restart = outlined(ui, tr("Restart now")).clicked();
-                        } else {
-                            open = outlined(ui, tr("Details")).clicked();
+                        match &status {
+                            UpdateStatus::Ready(_) => {
+                                restart = outlined(ui, tr("Restart now")).clicked();
+                            }
+                            UpdateStatus::Installing(_) => {
+                                ui.add(egui::Spinner::new().size(18.0).color(pal.ac_on));
+                            }
+                            UpdateStatus::Manual(_) => {
+                                download = outlined(ui, tr("Download")).clicked();
+                            }
+                            _ => {
+                                open = outlined(ui, tr("Details")).clicked();
+                            }
                         }
                         ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
                             line(ui, strong_text(title, pal.ac_on)).on_hover_text(trf(
-                                "Teyvat.me Capture {0} is ready to install · you have {1}",
+                                "Teyvat.me Capture {0} · you have {1}",
                                 &[&version, &env!("CARGO_PKG_VERSION")],
                             ));
                         });
@@ -202,6 +222,11 @@ impl TeyvatmeApp {
             });
         if open {
             self.open_settings(Page::About);
+        }
+        if download {
+            ui.ctx().open_url(egui::OpenUrl::new_tab(
+                "https://github.com/tawan475/teyvat.me-capture/releases",
+            ));
         }
         if restart {
             self.restart_to_update(ui);

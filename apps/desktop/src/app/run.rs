@@ -9,6 +9,7 @@
 //! (a spinner, a flashing tile, a toast's timeout).
 
 use std::sync::atomic::Ordering;
+use std::time::Instant;
 
 use egui::{Context, Frame};
 
@@ -17,6 +18,7 @@ use crate::activity::{Event, Kind, Topic};
 use crate::game_watch::{GameStatus, MissedLaunch};
 use crate::i18n::{tr, trf};
 use crate::ui::toast::Action;
+use crate::update::UpdateStatus;
 use crate::{Message, State};
 
 impl TeyvatmeApp {
@@ -67,11 +69,14 @@ impl TeyvatmeApp {
                 tracing::info!("relaunched after an update: bringing the window to the front");
                 ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
                 ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+                self.toasts
+                    .success(trf("Updated to {0}", &[&env!("CARGO_PKG_VERSION")]));
             }
         }
 
         // Background reports always reach the log; toasts only while seen.
         self.drain_activity(!out_of_sight);
+        self.poll_update_status(ctx, out_of_sight);
         self.update_tray_tooltip();
 
         // Nothing is drawn out of sight: eframe keeps running frames for a
@@ -151,6 +156,10 @@ impl TeyvatmeApp {
             .frame(Frame::new().fill(pal.bg))
             .show(ctx, |ui| {
                 ui.multiply_opacity(0.35 + 0.65 * (1.0 - (1.0 - fade).powi(3)));
+                // Over every screen but the first run's.
+                if !matches!(self.view, View::FirstRun(_)) {
+                    self.update_bar(ui);
+                }
                 self.draw_view(ui, &app_state);
             });
 
@@ -267,9 +276,98 @@ impl TeyvatmeApp {
         }
     }
 
+    /// Act on what the updater reports: say once per release (a Windows
+    /// notification, which reaches a window in the tray) that a version is
+    /// out or installed, mark the tray icon while one waits, and restart
+    /// into an installed one by itself when that loses nothing
+    /// ([`super::restart_due`]).
+    fn poll_update_status(&mut self, ctx: &Context, out_of_sight: bool) {
+        let status = self.update_status.borrow().clone();
+        if status != self.seen_update_status {
+            match &status {
+                // Found, and left for the user: the setting is off (on, it
+                // is installing already).
+                UpdateStatus::Available(v) if !self.saved_state.auto_update => {
+                    self.update_notice(
+                        &format!("out {v}"),
+                        trf("Teyvat.me {0} is out", &[v]),
+                        tr("Open Teyvat.me to update").to_owned(),
+                    );
+                }
+                UpdateStatus::Ready(v) => {
+                    self.update_ready_since = Some(Instant::now());
+                    let text = if self.saved_state.auto_restart {
+                        tr("It starts by itself once Genshin is closed, or restart Teyvat.me now")
+                    } else {
+                        tr("Restart Teyvat.me to use it")
+                    };
+                    self.update_notice(
+                        &format!("ready {v}"),
+                        trf("Teyvat.me {0} installed", &[v]),
+                        text.to_owned(),
+                    );
+                }
+                _ => {}
+            }
+            if !matches!(status, UpdateStatus::Ready(_)) {
+                self.update_ready_since = None;
+            }
+            self.seen_update_status = status.clone();
+            self.mark_tray(status.pending().is_some());
+        }
+        let UpdateStatus::Ready(version) = &status else {
+            return;
+        };
+        let game = self.state_rx.borrow().game_status;
+        let ready_for = self.update_ready_since.map(|at| at.elapsed());
+        if super::restart_due(self.saved_state.auto_restart, ready_for, game, out_of_sight) {
+            tracing::info!(
+                "restarting into {version} by itself: Genshin is not running and the window is \
+                 out of sight"
+            );
+            super::RESTART_QUIET.store(true, Ordering::SeqCst);
+            self.restart_requested.store(true, Ordering::SeqCst);
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        } else if self.saved_state.auto_restart && out_of_sight && game == GameStatus::NotRunning {
+            // Out of sight nothing else redraws: come back when the wait is up.
+            ctx.request_repaint_after(
+                super::AUTO_RESTART_AFTER.saturating_sub(ready_for.unwrap_or_default()),
+            );
+        }
+    }
+
+    /// A Windows notification about an update, once per `key` (a release
+    /// and what is said about it) across runs.
+    fn update_notice(&self, key: &str, title: String, text: String) {
+        if !crate::update::note_once(crate::update::update_notice_marker().as_deref(), key) {
+            return;
+        }
+        tracing::info!("update notice: {title} · {text}");
+        std::thread::spawn(move || {
+            if let Err(e) = crate::notify::show(&title, &text) {
+                tracing::warn!("the update notice could not be shown: {e:#}");
+            }
+        });
+    }
+
+    /// Put the update mark on the tray icon, or take it off.
+    fn mark_tray(&mut self, marked: bool) {
+        if marked == self.tray_update_marked {
+            return;
+        }
+        let Some(tray) = &self.tray_icon else {
+            return;
+        };
+        if let Err(e) = tray.set_icon(super::load_tray_icon_marked(marked)) {
+            tracing::debug!("could not set the tray icon: {e}");
+            return;
+        }
+        self.tray_update_marked = marked;
+    }
+
     /// "Teyvat.me · <the status strip's title>", and when the last capture
     /// was, on the tray icon; kept current while in the tray too (a frame a
-    /// minute there, see `run_frame`).
+    /// minute there, see `run_frame`). An update waiting comes first.
     fn update_tray_tooltip(&mut self) {
         let Some(tray) = &self.tray_icon else {
             return;
@@ -278,9 +376,17 @@ impl TeyvatmeApp {
             let state = self.state_rx.borrow();
             (state.game_status, state.capture_done, state.captured_at)
         };
+        let update = match &*self.update_status.borrow() {
+            UpdateStatus::Ready(v) => Some(trf("{0} installed · restart to use it", &[v])),
+            UpdateStatus::Available(v) | UpdateStatus::Installing(v) => {
+                Some(trf("Update {0}", &[v]))
+            }
+            _ => None,
+        };
         let text = tray_tooltip_text(
             super::home::strip_title(self.is_admin, status, done),
             captured_at.map(|at| (chrono::Local::now() - at).num_seconds().max(0)),
+            update.as_deref(),
         );
         if text != self.tray_tooltip {
             if let Err(e) = tray.set_tooltip(Some(&text)) {
@@ -382,10 +488,14 @@ fn closed_many(killed: impl std::fmt::Display) -> String {
     trf("Closed {0} Genshin processes. Start it again to capture.", &[&killed])
 }
 
-/// The tray icon's tooltip: the status strip's title and, on a second line,
-/// how long ago the last capture was, when there is one.
-fn tray_tooltip_text(title: &str, since_capture: Option<i64>) -> String {
-    let mut text = format!("Teyvat.me · {title}");
+/// The tray icon's tooltip: an update waiting first, then the status strip's
+/// title and, on a line of its own, how long ago the last capture was, when
+/// there is one.
+fn tray_tooltip_text(title: &str, since_capture: Option<i64>, update: Option<&str>) -> String {
+    let mut text = match update {
+        Some(update) => format!("Teyvat.me · {update}\n{title}"),
+        None => format!("Teyvat.me · {title}"),
+    };
     if let Some(seconds) = since_capture {
         text.push('\n');
         text.push_str(&trf(
@@ -403,12 +513,21 @@ mod tests {
     #[test]
     fn the_tray_tooltip_says_when_the_last_capture_was() {
         assert_eq!(
-            tray_tooltip_text("Capture done", None),
+            tray_tooltip_text("Capture done", None, None),
             "Teyvat.me · Capture done"
         );
         assert_eq!(
-            tray_tooltip_text("Capture done", Some(12 * 60 + 5)),
+            tray_tooltip_text("Capture done", Some(12 * 60 + 5), None),
             "Teyvat.me · Capture done\nLast capture 12 min ago"
+        );
+        // An update waiting is the first thing the tooltip says.
+        assert_eq!(
+            tray_tooltip_text(
+                "Capture done",
+                Some(12 * 60 + 5),
+                Some("1.17.13 installed · restart to use it")
+            ),
+            "Teyvat.me · 1.17.13 installed · restart to use it\nCapture done\nLast capture 12 min ago"
         );
     }
 }
