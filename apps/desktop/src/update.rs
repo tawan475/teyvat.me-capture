@@ -229,6 +229,52 @@ pub fn check_for_new_version() -> Result<Option<Release>> {
     Ok(Some(release))
 }
 
+/// The newest stable release's version, read without GitHub's API.
+///
+/// `<releases>/latest` answers with a redirect to the release's tag page, so
+/// one HEAD request names the version, and it has no API rate limit (the
+/// releases API allows 60 requests an hour per address: a dorm or office full
+/// of players behind one address would see every hourly check refused).
+/// GitHub keeps prereleases and drafts out of "latest", which is also what a
+/// stable build may be offered; a prerelease build asks the API instead
+/// ([`check_for_new_version`]).
+async fn latest_release_version(client: &reqwest::Client) -> Result<String> {
+    let url = format!("{RELEASES_URL}/latest");
+    let response = client
+        .head(&url)
+        .header(header::USER_AGENT, "rust-reqwest/self-update")
+        .send()
+        .await
+        .with_context(|| format!("could not reach {url}"))?;
+    let location = response
+        .headers()
+        .get(header::LOCATION)
+        .and_then(|value| value.to_str().ok())
+        .ok_or_else(|| anyhow!("{url} answered {} without a redirect", response.status()))?;
+    version_from_release_location(location)
+        .ok_or_else(|| anyhow!("{url} redirected to {location}, which names no release"))
+}
+
+/// The version in a release page's address, `…/releases/tag/v1.17.12` →
+/// `1.17.12`.
+fn version_from_release_location(location: &str) -> Option<String> {
+    let (_, tag) = location
+        .trim_end_matches('/')
+        .rsplit_once("/releases/tag/")?;
+    let tag = tag.split(['?', '#']).next()?;
+    let version = tag.strip_prefix('v').unwrap_or(tag);
+    (!version.is_empty() && version.chars().next().is_some_and(|c| c.is_ascii_digit()))
+        .then(|| version.to_owned())
+}
+
+/// Whether a release named `version` is one the running `current` build
+/// should look at: newer, and not a prerelease unless this build is one too
+/// (the rules of [`best_release`], on one version).
+fn is_newer_release(current: &str, version: &str) -> bool {
+    (is_prerelease(current) || !is_prerelease(version))
+        && self_update::version::bump_is_greater(current, version).unwrap_or(false)
+}
+
 /// The release asset name that matches the binary currently running.
 ///
 /// These must stay in sync with the `out_file` names produced by
@@ -576,15 +622,31 @@ fn manual_notice_marker() -> Option<PathBuf> {
     })
 }
 
+/// Where the once-per-release notices the window sends ([`note_once`]) are
+/// remembered.
+pub fn update_notice_marker() -> Option<PathBuf> {
+    eframe::storage_dir(crate::app_id()).map(|mut path| {
+        path.push("last_update_notice");
+        path
+    })
+}
+
 /// Whether to tell the user about a release they have to install themselves.
 ///
 /// Once per release, not once per launch: on a platform whose asset cannot be
 /// installed in place the same toast would otherwise greet every single start
-/// for as long as that release is the newest one. Answering yes records
-/// `version` in the marker, which is what makes the next answer no.
+/// for as long as that release is the newest one.
 fn should_report_manual_install(marker: Option<&Path>, version: &str) -> bool {
+    note_once(marker, version)
+}
+
+/// Whether `key` (a release and what is said about it) has not been noted in
+/// `marker` yet. Answering yes records it, which is what makes the next
+/// answer no: a notice gated on this is given once per release, not at every
+/// start for the rest of that release's life.
+pub fn note_once(marker: Option<&Path>, key: &str) -> bool {
     let Some(marker) = marker else {
-        // No storage directory to remember it in; a repeated toast beats a
+        // No storage directory to remember it in; a repeated notice beats a
         // silently skipped update.
         return true;
     };
@@ -593,7 +655,7 @@ fn should_report_manual_install(marker: Option<&Path>, version: &str) -> bool {
         .ok()
         .as_deref()
         .map(str::trim)
-        == Some(version)
+        == Some(key)
     {
         return false;
     }
@@ -601,36 +663,80 @@ fn should_report_manual_install(marker: Option<&Path>, version: &str) -> bool {
     if let Some(parent) = marker.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    let _ = std::fs::write(marker, version);
+    let _ = std::fs::write(marker, key);
     true
 }
 
-/// How often the running app looks for a release again.
-const CHECK_EVERY: std::time::Duration = std::time::Duration::from_secs(6 * 60 * 60);
+/// How often the running app looks for a release again. The look is one
+/// HEAD request without an API quota ([`latest_release_version`]), so hourly
+/// costs nothing; it used to be six hours, which is how a release shipped in
+/// the morning was still unknown to an app left running over a whole evening.
+const CHECK_EVERY: std::time::Duration = std::time::Duration::from_secs(60 * 60);
+/// How soon a check that failed (no network, GitHub down) is tried again.
+const RETRY_AFTER: std::time::Duration = std::time::Duration::from_secs(10 * 60);
+/// A check the window asks for (the focus came back) is skipped this soon
+/// after the last one, whatever its outcome.
+const MIN_GAP: std::time::Duration = std::time::Duration::from_secs(50 * 60);
 
-/// The updater: checks at start and every [`CHECK_EVERY`], or when asked, and
-/// installs when asked — while the app keeps running. Installing replaces the
-/// executable on disk (`self_replace` moves the running one aside), so the
-/// new version runs from the next start; nothing restarts on its own.
+/// When the next automatic check is due after one that `succeeded` or not.
+fn next_check_after(succeeded: bool) -> std::time::Duration {
+    if succeeded { CHECK_EVERY } else { RETRY_AFTER }
+}
+
+/// Whether a check the window asked for (not the user) is worth running
+/// `since_last` after the previous one.
+fn asked_check_due(since_last: Option<std::time::Duration>) -> bool {
+    since_last.is_none_or(|since| since >= MIN_GAP)
+}
+
+/// Whether a release that was found installs by itself.
+pub struct AutoInstall(pub watch::Receiver<crate::app::SavedAppState>);
+
+impl AutoInstall {
+    fn on(&self) -> bool {
+        self.0.borrow().auto_update
+    }
+}
+
+/// The updater: checks at start, every [`CHECK_EVERY`] (sooner after a
+/// failure), or when asked, and installs a release it finds by itself when
+/// Settings › About says so (or when asked) — while the app keeps running.
+/// Installing replaces the executable on disk (`self_replace` moves the
+/// running one aside), so the new version runs from the next start; the
+/// window decides whether that start happens by itself
+/// ([`crate::app::restart_due`]).
 pub async fn run_updater(
     status_tx: watch::Sender<UpdateStatus>,
     mut commands: mpsc::UnboundedReceiver<UpdateCommand>,
     cancel_token: CancellationToken,
     toast_tx: crate::activity::Sender,
     install_lock: std::sync::Arc<InstallLock>,
+    auto_install: AutoInstall,
 ) {
     let mut found: Option<Release> = None;
-    let mut timer = tokio::time::interval(CHECK_EVERY);
-    // The first tick fires at once: the check at start.
+    // Redirects are the point: the one to the newest release's page is read,
+    // not followed.
+    let client = crate::http_client_builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap_or_default();
+    // The first check is at start.
+    let mut next_check = tokio::time::Instant::now();
+    let mut last_check: Option<tokio::time::Instant> = None;
     loop {
-        let command = tokio::select! {
+        let (command, due) = tokio::select! {
             _ = cancel_token.cancelled() => return,
-            _ = timer.tick() => UpdateCommand::Check { manual: false },
+            _ = tokio::time::sleep_until(next_check) => (UpdateCommand::Check { manual: false }, true),
             command = commands.recv() => match command {
-                Some(command) => command,
+                Some(command) => (command, false),
                 None => return,
             },
         };
+        if due {
+            // Whatever comes of this one, the timer never fires again at
+            // once; a check that runs sets its own next time.
+            next_check = tokio::time::Instant::now() + CHECK_EVERY;
+        }
         let status = status_tx.borrow().clone();
         // An install under way or done is not undone by a later check.
         if matches!(status, UpdateStatus::Installing(_) | UpdateStatus::Ready(_)) {
@@ -641,84 +747,149 @@ pub async fn run_updater(
                 if !manual && matches!(status, UpdateStatus::Checking) {
                     continue;
                 }
+                if !manual && !due && !asked_check_due(last_check.map(|at| at.elapsed())) {
+                    continue;
+                }
                 let _ = status_tx.send(UpdateStatus::Checking);
-                let next = match tokio::task::spawn_blocking(check_for_new_version).await {
-                    Ok(Ok(None)) => {
+                last_check = Some(tokio::time::Instant::now());
+                let checked = check(&client, manual, &toast_tx).await;
+                next_check = tokio::time::Instant::now() + next_check_after(checked.is_ok());
+                let next = match checked {
+                    Ok(Checked::UpToDate) => {
                         found = None;
                         UpdateStatus::UpToDate
                     }
-                    Ok(Ok(Some(release))) => {
+                    Ok(Checked::Installable(release)) => {
                         let version = release.version.clone();
-                        match asset_for_current_platform(&release)
-                            .and_then(|a| install_plan_for(&a))
-                        {
-                            Ok(_) => {
-                                found = Some(release);
-                                UpdateStatus::Available(version)
-                            }
-                            Err(e) => {
-                                tracing::warn!(
-                                    "Teyvat.me {version} is available but cannot be installed in place: {e}"
-                                );
-                                found = None;
-                                // The automatic checks say so once per release, not
-                                // at every start for the rest of its life.
-                                if !manual
-                                    && should_report_manual_install(
-                                        manual_notice_marker().as_deref(),
-                                        &version,
-                                    )
-                                {
-                                    #[rustfmt::skip]
-                                    let text = trf("Teyvat.me {0} is out · install it by hand on this platform: {1}", &[&version, &RELEASES_URL]);
-                                    let _ = toast_tx.send(crate::activity::Event::info(
-                                        crate::activity::Topic::App,
-                                        text,
-                                    ));
-                                }
-                                UpdateStatus::Manual(version)
-                            }
-                        }
+                        found = Some(release);
+                        UpdateStatus::Available(version)
                     }
-                    Ok(Err(e)) => {
+                    Ok(Checked::ByHand(version)) => {
+                        found = None;
+                        UpdateStatus::Manual(version)
+                    }
+                    Err(e) => {
                         tracing::warn!("update check failed: {e:#}");
                         UpdateStatus::Failed(format!("{e:#}"))
                     }
-                    Err(e) => UpdateStatus::Failed(e.to_string()),
                 };
                 let _ = status_tx.send(next);
+                // Found by the app itself (not the About button, which shows
+                // what it found and leaves the install to its Update now):
+                // installed at once when that is the setting.
+                if !manual
+                    && matches!(status_tx.borrow().clone(), UpdateStatus::Available(_))
+                    && auto_install.on()
+                    && let Some(release) = found.clone()
+                    && let Installed::Cancelled =
+                        install(release, &status_tx, &cancel_token, &install_lock, &toast_tx).await
+                {
+                    return;
+                }
             }
             UpdateCommand::Install => {
                 let Some(release) = found.clone() else {
                     continue;
                 };
-                let version = release.version.clone();
-                let _ = status_tx.send(UpdateStatus::Installing(version.clone()));
-                match download_new_version_and_replace_current(
-                    release,
-                    &cancel_token,
-                    &install_lock,
-                )
-                .await
+                if let Installed::Cancelled =
+                    install(release, &status_tx, &cancel_token, &install_lock, &toast_tx).await
                 {
-                    Ok(InstallOutcome::Installed) => {
-                        tracing::info!("installed {version}; it runs from the next start");
-                        let _ = status_tx.send(UpdateStatus::Ready(version));
-                    }
-                    // Shutdown won the race; nothing was touched.
-                    Ok(InstallOutcome::Cancelled) => return,
-                    Err(e) => {
-                        tracing::error!("update failed: {e:#}");
-                        let _ = toast_tx.send(crate::activity::Event::error(
-                            crate::activity::Topic::App,
-                            trf("Update failed: {0}", &[&e]),
-                        ));
-                        let _ = status_tx.send(UpdateStatus::Failed(format!("{e:#}")));
-                    }
+                    return;
                 }
             }
         }
     }
+}
+
+/// What a check found.
+enum Checked {
+    UpToDate,
+    /// A newer release with an asset this platform installs in place.
+    Installable(Release),
+    /// A newer release this platform installs by hand (its version).
+    ByHand(String),
+}
+
+/// Look for a newer release: the cheap look at the newest stable release's
+/// version first, the API only when that is newer than this build (or when
+/// this build is a prerelease, which "latest" never names).
+async fn check(
+    client: &reqwest::Client,
+    manual: bool,
+    toast_tx: &crate::activity::Sender,
+) -> Result<Checked> {
+    let current_version = self_update::cargo_crate_version!();
+    if !is_prerelease(current_version) {
+        let latest = latest_release_version(client).await?;
+        if !is_newer_release(current_version, &latest) {
+            tracing::info!("{current_version} is current (the newest release is {latest})");
+            return Ok(Checked::UpToDate);
+        }
+    }
+    let Some(release) = tokio::task::spawn_blocking(check_for_new_version)
+        .await
+        .map_err(|e| anyhow!("{e}"))??
+    else {
+        return Ok(Checked::UpToDate);
+    };
+    let version = release.version.clone();
+    match asset_for_current_platform(&release).and_then(|a| install_plan_for(&a)) {
+        Ok(_) => Ok(Checked::Installable(release)),
+        Err(e) => {
+            tracing::warn!(
+                "Teyvat.me {version} is available but cannot be installed in place: {e}"
+            );
+            // The automatic checks say so once per release, not at every
+            // start for the rest of its life.
+            if !manual && should_report_manual_install(manual_notice_marker().as_deref(), &version)
+            {
+                #[rustfmt::skip]
+                let text = trf("Teyvat.me {0} is out · install it by hand on this platform: {1}", &[&version, &RELEASES_URL]);
+                let _ = toast_tx.send(crate::activity::Event::info(
+                    crate::activity::Topic::App,
+                    text,
+                ));
+            }
+            Ok(Checked::ByHand(version))
+        }
+    }
+}
+
+/// Whether an install ended, or shutdown won the race (nothing was touched,
+/// and the updater is done).
+enum Installed {
+    Ended,
+    Cancelled,
+}
+
+/// Download `release` and replace the running executable, reporting through
+/// the status.
+async fn install(
+    release: Release,
+    status_tx: &watch::Sender<UpdateStatus>,
+    cancel_token: &CancellationToken,
+    install_lock: &InstallLock,
+    toast_tx: &crate::activity::Sender,
+) -> Installed {
+    let version = release.version.clone();
+    let _ = status_tx.send(UpdateStatus::Installing(version.clone()));
+    match download_new_version_and_replace_current(release, cancel_token, install_lock).await {
+        Ok(InstallOutcome::Installed) => {
+            tracing::info!("installed {version}; it runs from the next start");
+            let _ = status_tx.send(UpdateStatus::Ready(version));
+        }
+        // Shutdown won the race; nothing was touched.
+        Ok(InstallOutcome::Cancelled) => return Installed::Cancelled,
+        Err(e) => {
+            tracing::error!("update failed: {e:#}");
+            let _ = toast_tx.send(crate::activity::Event::error(
+                crate::activity::Topic::App,
+                trf("Update failed: {0}", &[&e]),
+            ));
+            let _ = status_tx.send(UpdateStatus::Failed(format!("{e:#}")));
+        }
+    }
+    Installed::Ended
 }
 
 #[cfg(test)]
@@ -911,6 +1082,76 @@ mod tests {
 
         // No storage directory: better a repeated toast than a silent update.
         assert!(should_report_manual_install(None, "0.4.0"));
+    }
+
+    #[test]
+    fn a_notice_is_noted_once_per_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let marker = dir.path().join("last_update_notice");
+
+        assert!(note_once(Some(&marker), "ready 1.17.13"));
+        assert!(!note_once(Some(&marker), "ready 1.17.13"));
+        // Another thing to say about the same release is said once too.
+        assert!(note_once(Some(&marker), "out 1.17.13"));
+        assert!(!note_once(Some(&marker), "out 1.17.13"));
+        assert!(note_once(Some(&marker), "ready 1.17.14"));
+    }
+
+    #[test]
+    fn the_release_page_address_names_the_version() {
+        let at = |location| version_from_release_location(location);
+        assert_eq!(
+            at("https://github.com/tawan475/teyvat.me-capture/releases/tag/v1.17.12"),
+            Some("1.17.12".to_owned())
+        );
+        assert_eq!(
+            at("/tawan475/teyvat.me-capture/releases/tag/1.18.0/"),
+            Some("1.18.0".to_owned())
+        );
+        assert_eq!(
+            at("https://github.com/tawan475/teyvat.me-capture/releases/tag/v0.2.2-T-10?x=1"),
+            Some("0.2.2-T-10".to_owned())
+        );
+        // No release at all (the page itself, or a sign-in bounce).
+        assert_eq!(
+            at("https://github.com/tawan475/teyvat.me-capture/releases"),
+            None
+        );
+        assert_eq!(
+            at("https://github.com/login?return_to=/releases/tag/"),
+            None
+        );
+        assert_eq!(
+            at("https://github.com/tawan475/teyvat.me-capture/releases/tag/vnext"),
+            None
+        );
+    }
+
+    #[test]
+    fn only_a_newer_release_of_this_builds_kind_is_looked_at() {
+        assert!(is_newer_release("1.17.12", "1.17.13"));
+        assert!(is_newer_release("1.17.12", "1.18.0"));
+        assert!(!is_newer_release("1.17.12", "1.17.12"));
+        assert!(!is_newer_release("1.17.12", "1.17.11"));
+        // A stable build is never walked onto a prerelease.
+        assert!(!is_newer_release("1.17.12", "1.18.0-rc.1"));
+        // A prerelease build may take a newer one, stable or not.
+        assert!(is_newer_release("1.18.0-rc.1", "1.18.0-rc.2"));
+        assert!(is_newer_release("1.18.0-rc.1", "1.18.0"));
+        assert!(!is_newer_release("1.17.12", "latest"));
+    }
+
+    #[test]
+    fn checks_come_hourly_sooner_after_a_failure_and_not_on_every_focus() {
+        assert_eq!(next_check_after(true), CHECK_EVERY);
+        assert_eq!(next_check_after(false), RETRY_AFTER);
+        assert!(RETRY_AFTER < CHECK_EVERY);
+        // The focus coming back asks for a check: run only once the last one
+        // is old enough, so Alt+Tabbing is not a request a minute.
+        assert!(asked_check_due(None));
+        assert!(!asked_check_due(Some(Duration::from_secs(60))));
+        assert!(asked_check_due(Some(MIN_GAP)));
+        assert!(MIN_GAP < CHECK_EVERY);
     }
 
     #[test]
