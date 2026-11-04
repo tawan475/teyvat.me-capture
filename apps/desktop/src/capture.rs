@@ -34,6 +34,14 @@ pub static DUPLICATES_DROPPED: AtomicU64 = AtomicU64::new(0);
 /// included.
 pub static MERGED_DATAGRAMS_SEEN: AtomicBool = AtomicBool::new(false);
 
+/// Set when a login went by with the capture delivering only this PC's sends
+/// (`SnifferStats::one_way_login`): the server's token response carries the
+/// key, so such a capture never reads a login. On one Wi-Fi PC Windows'
+/// packet monitor did exactly that (2026-11-02), and a raw socket there
+/// delivered the server's side. The monitor takes it and moves capture to
+/// compatible mode.
+pub static ONE_WAY_CAPTURE_SEEN: AtomicBool = AtomicBool::new(false);
+
 /// Events and buffers pktmon's ETW session has lost so far (compatible
 /// capture), for the stats line; `None` when that session isn't running.
 pub fn etw_losses() -> Option<(u32, u32)> {
@@ -121,10 +129,26 @@ impl Display for CaptureError {
 
 pub type Result<T> = std::result::Result<T, CaptureError>;
 
+/// One captured Ethernet frame and, when the backend reports where in the
+/// stack it was seen (pktmon's components), that point, so the packet log can
+/// say which component delivered each frame.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CapturedFrame {
+    pub data: Vec<u8>,
+    pub source: Option<u16>,
+}
+
+impl CapturedFrame {
+    /// A frame from a backend with one point of capture.
+    pub fn plain(data: Vec<u8>) -> Self {
+        Self { data, source: None }
+    }
+}
+
 #[async_trait]
 #[allow(clippy::double_must_use)]
 pub trait CaptureBackend: Send {
-    async fn next_packet(&mut self) -> Result<Vec<u8>>;
+    async fn next_packet(&mut self) -> Result<CapturedFrame>;
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]

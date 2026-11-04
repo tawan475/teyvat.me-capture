@@ -408,6 +408,7 @@
   "Windows asks every time Teyvat.me starts": "Windows pregunta cada vez que se abre Teyvat.me",
   "Windows lets only administrators read network packets": "Windows solo permite a los administradores leer paquetes de red",
   "Windows lets only admins read network packets": "Windows solo deja a los admins leer paquetes de red",
+  "Windows' packet monitor showed none of the game server's packets on this PC, so capture switched to compatible mode. Return to the title screen and enter again to read this login.": "El monitor de paquetes de Windows no mostró ningún paquete del servidor del juego en este PC, así que la captura pasó al modo compatible. Vuelve a la pantalla de título y entra de nuevo para que se lea este inicio de sesión.",
   "Wish URL copied": "URL de deseos copiada",
   "Wish history": "Historial de deseos",
   "Wish history not saved · {0}": "Historial de deseos no guardado · {0}",

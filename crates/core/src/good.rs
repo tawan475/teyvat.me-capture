@@ -160,6 +160,85 @@ pub struct Good {
     /// exploration progress and reputation, as the game last sent each part.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub gi_exploration: Option<GiExploration>,
+    /// Endgame: the Imaginarium Theater's season state and the Stygian
+    /// Onslaught's records, as the game last sent each.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub gi_endgame: Option<GiEndgame>,
+}
+
+/// `gi_endgame` (contract v1, append fields only).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiEndgame {
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub theater: Option<GiTheater>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub stygian: Option<GiStygian>,
+}
+
+/// The Imaginarium Theater's season running, as of the login (and of
+/// opening the Theater): `RoleCombatScheduleExcelConfigData.scheduleId`, the
+/// difficulty chosen (`RoleCombatDifficultyExcelConfigData.difficultyId`,
+/// and its `difficultyLevel` 1 Easy … 5 Lunar Mode when the game data knows
+/// the row) and the acts cleared (0 until the season's run is over).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiTheater {
+    pub season: u32,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub difficulty: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub level: Option<u32>,
+    pub acts: u32,
+}
+
+/// The Stygian Onslaught's records, as the game lists them when its menu
+/// is opened: one per season and run kind.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiStygian {
+    pub records: Vec<GiStygianRecord>,
+}
+
+/// One record: `LeyLineChallengeExcelConfigData.scheduleId`, the difficulty
+/// (1-6), when it was set (unix seconds), whether it was a co-op run, and
+/// each boss fight.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiStygianRecord {
+    pub season: u32,
+    pub difficulty: u32,
+    pub at: u64,
+    pub coop: bool,
+    pub fights: Vec<GiStygianFight>,
+}
+
+/// One boss fight of a record: its time in seconds (0 when not finished),
+/// whether it was finished, the account's own team (GOOD character keys; a
+/// co-op run's other players are never exported), and the fight's figures
+/// when the game sent them.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiStygianFight {
+    pub time: u32,
+    pub done: bool,
+    pub team: Vec<String>,
+    /// The strongest single strike.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub strike: Option<GiFigure>,
+    /// The highest total damage dealt by one character.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub damage: Option<GiFigure>,
+}
+
+/// A figure and, when the game leaves no doubt which, the character it
+/// belongs to (GOOD key).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiFigure {
+    pub value: u64,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub by: Option<String>,
 }
 
 /// `gi_collections`: what the player has collected, each part as the game
@@ -1271,6 +1350,35 @@ mod tests {
                 domains_cleared: None,
                 tribal_chapters: None,
             }),
+            gi_endgame: Some(GiEndgame {
+                theater: Some(GiTheater {
+                    season: 31,
+                    difficulty: Some(129),
+                    level: Some(5),
+                    acts: 10,
+                }),
+                stygian: Some(GiStygian {
+                    records: vec![GiStygianRecord {
+                        season: 5_269_012,
+                        difficulty: 6,
+                        at: 1_790_972_494,
+                        coop: false,
+                        fights: vec![GiStygianFight {
+                            time: 51,
+                            done: true,
+                            team: vec!["Alhaitham".to_string()],
+                            strike: Some(GiFigure {
+                                value: 367_183,
+                                by: Some("Alhaitham".to_string()),
+                            }),
+                            damage: Some(GiFigure {
+                                value: 15_616_746,
+                                by: None,
+                            }),
+                        }],
+                    }],
+                }),
+            }),
         };
 
         let json = serde_json::to_value(&good).expect("Good must serialize");
@@ -1302,6 +1410,7 @@ mod tests {
                 "gi_capture",
                 "gi_characters",
                 "gi_collections",
+                "gi_endgame",
                 "gi_events",
                 "gi_exploration",
                 "gi_miliastra",
@@ -1495,6 +1604,21 @@ mod tests {
                 "reputation": { "1": 8 },
             })
         );
+        // `docs/leyline.d.ts` GiEndgame.
+        assert_eq!(
+            json["gi_endgame"],
+            serde_json::json!({
+                "theater": { "season": 31, "difficulty": 129, "level": 5, "acts": 10 },
+                "stygian": { "records": [{
+                    "season": 5269012, "difficulty": 6, "at": 1790972494, "coop": false,
+                    "fights": [{
+                        "time": 51, "done": true, "team": ["Alhaitham"],
+                        "strike": { "value": 367183, "by": "Alhaitham" },
+                        "damage": { "value": 15616746 }
+                    }]
+                }] }
+            })
+        );
     }
 
     #[test]
@@ -1528,6 +1652,7 @@ mod tests {
             gi_teapot: None,
             gi_miliastra: None,
             gi_exploration: None,
+            gi_endgame: None,
         };
 
         let json = serde_json::to_value(&good).expect("Good must serialize");

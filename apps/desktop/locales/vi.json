@@ -408,6 +408,7 @@
   "Windows asks every time Teyvat.me starts": "Windows hỏi mỗi lần Teyvat.me khởi động",
   "Windows lets only administrators read network packets": "Windows chỉ cho quản trị viên đọc gói tin mạng",
   "Windows lets only admins read network packets": "Windows chỉ cho quản trị viên đọc gói tin mạng",
+  "Windows' packet monitor showed none of the game server's packets on this PC, so capture switched to compatible mode. Return to the title screen and enter again to read this login.": "Trình theo dõi gói tin của Windows không thấy gói tin nào từ máy chủ game trên PC này nên việc ghi đã chuyển sang chế độ tương thích. Hãy về màn hình chờ rồi vào lại để đọc lần đăng nhập này.",
   "Wish URL copied": "Đã sao chép URL cầu nguyện",
   "Wish history": "Lịch sử cầu nguyện",
   "Wish history not saved · {0}": "Chưa lưu lịch sử cầu nguyện · {0}",

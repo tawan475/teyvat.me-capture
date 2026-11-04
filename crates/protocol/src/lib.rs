@@ -93,6 +93,10 @@ use crate::connection::parse_frame;
 use crate::crypto::{
     LatePass, LateWindow, bruteforce, decrypt_command, guess, late_search, lookup_initial_key,
 };
+pub use crate::endgame::{
+    Figure, MAX_THEATER_ACTS, StygianFight, StygianRecord, StygianTeam, TheaterDetail,
+    matches_stygian_records, matches_theater_notify,
+};
 pub use crate::fetter::matches_fetter_notify;
 pub use crate::flat::{FlatMessage, flat_message, parse_avatar_info};
 pub use crate::gacha::{
@@ -143,6 +147,7 @@ mod collections;
 mod connection;
 mod crypto;
 mod cs_rand;
+mod endgame;
 mod fetter;
 mod flat;
 mod gacha;
@@ -155,6 +160,9 @@ mod shop;
 #[cfg(test)]
 mod test_support;
 mod unk_util;
+mod wire;
+
+pub use kcp::SEGMENTS_DROPPED as KCP_SEGMENTS_DROPPED;
 
 const PORTS: [u16; 2] = [22101, 22102];
 
@@ -1764,6 +1772,13 @@ pub enum CommandMatch {
     /// a purchase, which the caller believes when every goods is one of the
     /// Paimon's Bargains it holds. Never produced by [`classify_command`].
     ShopGoods(Vec<ShopEntry>),
+    /// The Imaginarium Theater's season state (see [`matches_theater_notify`]):
+    /// a candidate, which the caller settles against the game data's seasons.
+    Theater(TheaterDetail),
+    /// The Stygian Onslaught's records (see [`matches_stygian_records`]): a
+    /// candidate, kept for the seasons the game data knows and the account's
+    /// own team.
+    StygianRecords(Vec<StygianRecord>),
 }
 
 impl CommandMatch {
@@ -1818,6 +1833,8 @@ impl CommandMatch {
             Self::Bosses(_) => "bosses",
             Self::Events(_) => "events",
             Self::Comfort(_) => "comfort",
+            Self::Theater(_) => "theater",
+            Self::StygianRecords(_) => "stygian records",
         }
     }
 
@@ -2065,6 +2082,12 @@ pub fn classify_command(game_command: &GameCommand) -> Option<CommandMatch> {
         .and_then(read_bargains)
     {
         claims.push(CommandMatch::Bargains(found));
+    }
+    if let Some(found) = matches_theater_notify(&game_command.proto_data) {
+        claims.push(CommandMatch::Theater(found));
+    }
+    if let Some(found) = matches_stygian_records(&game_command.proto_data) {
+        claims.push(CommandMatch::StygianRecords(found));
     }
     // Last on purpose. Its shape -- one packed uint64 list beside a scalar or
     // two -- is the least specific of the five, so anything another matcher can

@@ -506,6 +506,13 @@ fn main() -> eframe::Result {
     let instance = single_instance::SingleInstance::new(lock).unwrap();
     let irminsul_instance = single_instance::SingleInstance::new(irminsul_lock).unwrap();
     if !instance.is_single() {
+        // Launched again while running: the user wants the window, not a
+        // second copy. Hand the running one the request and go.
+        #[cfg(windows)]
+        if app::wake_running_instance() {
+            eprintln!("Teyvat.me is already running; its window was brought to the front.");
+            std::process::exit(0);
+        }
         eprintln!("Another instance of Teyvat.me is already running.");
         std::process::exit(1);
     }
@@ -893,6 +900,13 @@ fn tracing_init() -> Result<(
         .init();
     crash::install(&dir);
     tracing::info!("Tracing initialized and logging to file.");
+    // Which Windows this is: capture behaves differently per build (what the
+    // packet monitor delivers on Wi-Fi differed between two PCs, 2026-11-03).
+    tracing::info!(
+        os = sysinfo::System::long_os_version().unwrap_or_default(),
+        build = sysinfo::System::kernel_version().unwrap_or_default(),
+        "running on"
+    );
     let notice = crash::report_previous_run(&previous_run, rotated_log.as_deref());
 
     Ok((guard, ReloadHandle(reload_handle), notice))

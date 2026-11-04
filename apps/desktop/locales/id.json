@@ -408,6 +408,7 @@
   "Windows asks every time Teyvat.me starts": "Windows bertanya setiap kali Teyvat.me dimulai",
   "Windows lets only administrators read network packets": "Windows hanya mengizinkan administrator membaca paket jaringan",
   "Windows lets only admins read network packets": "Windows hanya mengizinkan admin membaca paket jaringan",
+  "Windows' packet monitor showed none of the game server's packets on this PC, so capture switched to compatible mode. Return to the title screen and enter again to read this login.": "Pemantau paket Windows tidak menunjukkan satu pun paket server game di PC ini, jadi tangkapan beralih ke mode kompatibel. Kembali ke layar judul lalu masuk lagi agar login ini terbaca.",
   "Wish URL copied": "URL permohonan disalin",
   "Wish history": "Riwayat Permohonan",
   "Wish history not saved · {0}": "Riwayat permohonan tidak tersimpan · {0}",

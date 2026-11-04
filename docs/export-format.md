@@ -25,7 +25,7 @@ On the developer page: [what a file holds](https://teyvat.me/developers#file) an
 |---|---|---|
 | GOOD: `characters`, `weapons`, `artifacts`, `materials`, `timestamp` | yes, filtered by your export settings | yes, the whole account |
 | [`leyline`](https://teyvat.me/developers#file) (the Leyline version, `1`) | yes | yes |
-| `gi_achievements`, `gi_achievement_times`, `gi_player`, `gi_characters`, `gi_anecdotes`, `gi_tasks`, `gi_collections`, `gi_wardrobe`, `gi_exploration`, `gi_achievement_progress`, `gi_events`, `gi_teapot`, `gi_miliastra` | yes | yes |
+| `gi_achievements`, `gi_achievement_times`, `gi_player`, `gi_characters`, `gi_anecdotes`, `gi_tasks`, `gi_collections`, `gi_wardrobe`, `gi_exploration`, `gi_achievement_progress`, `gi_events`, `gi_teapot`, `gi_miliastra`, `gi_endgame` | yes | yes |
 | [`gi_guid` and `gi_exp`](https://teyvat.me/developers#gi_guid) on each weapon and artifact | no | yes |
 | `gi_capture` (why the snapshot was taken) | no | yes |
 
@@ -57,6 +57,7 @@ Each key links to its entry on the [developer page](https://teyvat.me/developers
 | [`gi_miliastra`](https://teyvat.me/developers#gi_miliastra) | Miliastra Wonderland cosmetics owned. |
 | [`gi_exploration`](https://teyvat.me/developers#gi_exploration) | Statues of The Seven, offerings, the map points and areas you've unlocked, exploration per area, reputation, domains cleared and Natlan's tribal chapters. |
 | [`gi_wardrobe`](https://teyvat.me/developers#gi_wardrobe) | Outfits, wind gliders, weapon skins and sprint trails you own and who wears them, and your saved teams. |
+| [`gi_endgame`](https://teyvat.me/developers#gi_endgame) | The Imaginarium Theater season you're in, the difficulty you picked and the acts you cleared; your Stygian Onslaught records (difficulty, time per boss, your team). |
 | [`gi_capture`](https://teyvat.me/developers#gi_capture) | Uploads only: why this snapshot was taken, and which game login it belongs to. |
 
 ## Rules it keeps

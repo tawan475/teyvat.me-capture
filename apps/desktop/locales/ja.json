@@ -408,6 +408,7 @@
   "Windows asks every time Teyvat.me starts": "Teyvat.me を起動するたびに Windows が確認します",
   "Windows lets only administrators read network packets": "Windows では管理者だけがネットワークパケットを読み取れます",
   "Windows lets only admins read network packets": "Windows では管理者しかネットワークパケットを読み取れません",
+  "Windows' packet monitor showed none of the game server's packets on this PC, so capture switched to compatible mode. Return to the title screen and enter again to read this login.": "この PC では Windows のパケットモニターにゲームサーバーからのパケットが一つも見えなかったため、キャプチャを互換モードに切り替えました。このログインを読み取るには、タイトル画面に戻って再度ログインしてください。",
   "Wish URL copied": "祈願 URL をコピーしました",
   "Wish history": "祈願履歴",
   "Wish history not saved · {0}": "祈願履歴を保存できませんでした · {0}",

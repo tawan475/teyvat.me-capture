@@ -15,7 +15,8 @@
 //!
 //! With `GAME_DATA=<game_data.json>` (the build's, in
 //! `target/*/build/teyvatme-*/out/`) the messages are also applied as the app
-//! would, and the parts of the export they filled are listed with their sizes.
+//! would, and the parts of the export they filled are listed with their sizes;
+//! `EXPORT_OUT=<file>` writes that export (personal data, for a local look).
 
 use std::collections::BTreeMap;
 
@@ -109,6 +110,12 @@ fn main() {
                 other => size(other).to_string(),
             };
             println!("export {key}: {parts}");
+        }
+        // `EXPORT_OUT=<file>` also writes the export itself (personal data:
+        // for a look at a part's contents, never for a report).
+        if let Ok(out) = std::env::var("EXPORT_OUT") {
+            std::fs::write(&out, &json).expect("write the export");
+            println!("export written to {out}");
         }
     }
     // DUMP=<cmd>: the wire shape of that command (tags, types, counts).

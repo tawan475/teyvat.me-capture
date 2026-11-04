@@ -208,6 +208,31 @@ pub struct Weapon {
     pub rarity: u32,
 }
 
+/// One Imaginarium Theater season (`RoleCombatScheduleExcelConfigData`).
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct TheaterSeason {
+    /// `beginTimeStr`: when it opens, in the server's local time
+    /// (`YYYY-MM-DD HH:MM:SS`; 04:00 on the first of the month).
+    pub begin: String,
+    /// Its difficulty rows (`RoleCombatDifficultyExcelConfigData.difficultyId`).
+    pub difficulties: BTreeSet<u32>,
+}
+
+/// The endgame seasons, so the progress messages can be recognised and read
+/// against the game's own tables: empty when a table could not be read (then
+/// nothing is believed).
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(default)]
+pub struct Endgame {
+    /// Imaginarium Theater seasons by `scheduleId`.
+    pub theater_seasons: BTreeMap<u32, TheaterSeason>,
+    /// `RoleCombatDifficultyExcelConfigData`: `difficultyId` → `difficultyLevel`
+    /// (1 Easy … 5 Lunar Mode).
+    pub theater_difficulties: BTreeMap<u32, u32>,
+    /// Stygian Onslaught seasons (`LeyLineChallengeExcelConfigData.scheduleId`).
+    pub stygian_seasons: BTreeSet<u32>,
+}
+
 /// The ids the exploration messages carry, so a candidate can be checked
 /// against the game's own tables: each set is what the dump lists, empty when
 /// its table could not be read (then nothing is believed).

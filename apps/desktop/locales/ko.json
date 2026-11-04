@@ -408,6 +408,7 @@
   "Windows asks every time Teyvat.me starts": "Teyvat.me를 시작할 때마다 Windows가 묻습니다",
   "Windows lets only administrators read network packets": "Windows에서는 관리자만 네트워크 패킷을 읽을 수 있음",
   "Windows lets only admins read network packets": "Windows에서는 관리자만 네트워크 패킷을 읽을 수 있음",
+  "Windows' packet monitor showed none of the game server's packets on this PC, so capture switched to compatible mode. Return to the title screen and enter again to read this login.": "이 PC에서 Windows 패킷 모니터가 게임 서버의 패킷을 하나도 보여주지 않아 캡처를 호환 모드로 바꿨습니다. 이번 로그인을 읽으려면 타이틀 화면으로 돌아가 다시 입장하세요.",
   "Wish URL copied": "기원 URL 복사됨",
   "Wish history": "기원 기록",
   "Wish history not saved · {0}": "기원 기록 저장 안 됨 · {0}",

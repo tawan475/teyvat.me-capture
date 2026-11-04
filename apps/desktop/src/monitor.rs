@@ -23,12 +23,13 @@ use tokio::task::{JoinError, JoinHandle};
 use tokio_util::sync::CancellationToken;
 
 use crate::activity::{Event, Topic};
-use crate::capture::{self, BackendType, CaptureSource, create_capture};
+use crate::capture::{self, BackendType, CaptureSource, CapturedFrame, create_capture};
 // The decode layer moved to teyvatme-core; the replay and this module's tests
 // still reach it through here.
 pub(crate) use crate::decode::{
     AppliedData, DataReplacement, DataVerdict, KeyReport, STATS_INTERVAL, SnifferEvent,
-    SnifferStats, apply_commands, changes_in, classify_commands, decode_one_packet, full_send_in,
+    SnifferStats, apply_commands, changes_in, classify_commands, decode_one_packet,
+    frame_direction, full_send_in,
 };
 use crate::game_watch::{self, GameStatus, GameWatch, SystemProcessDetector};
 use crate::i18n::{tr, trf};
@@ -403,10 +404,15 @@ impl AutomationPlan {
 /// [`CaptureEvent::Started`] exists so `capturing` can be set when the backend
 /// actually exists rather than when its task is spawned -- the failure path is
 /// entirely inside the task, so spawning proves nothing.
+///
+/// `Started` and `Failed` name the capture task they come from
+/// (`Monitor::capture_generation`): every task shares one channel, so a
+/// replaced task's report can be read after its replacement was spawned, and
+/// taken for the replacement's. Its frames are still read: the game sent them.
 enum CaptureEvent {
-    Started,
-    Packet(Vec<u8>),
-    Failed(anyhow::Error),
+    Started(u64),
+    Packet(CapturedFrame),
+    Failed(u64, anyhow::Error),
 }
 
 /// Handle to the thread that owns the [`GameSniffer`].
@@ -443,13 +449,26 @@ fn spawn_sniffer_thread(
             let mut last_generation = sniffer.session_generation();
             let mut stats = SnifferStats::default();
             let mut next_report = Instant::now() + STATS_INTERVAL;
+            // Debug builds: `TEYVATME_FAKE_ONE_WAY` acts as if a login went by
+            // with the server's side missing, to test the switch on a PC whose
+            // capture is fine.
+            #[cfg(debug_assertions)]
+            if std::env::var_os("TEYVATME_FAKE_ONE_WAY").is_some() {
+                capture::ONE_WAY_CAPTURE_SEEN.store(true, Ordering::Relaxed);
+            }
             loop {
                 // Woken at least once per interval, so the stats line keeps its
                 // schedule when no packet arrives.
                 let wait = next_report.saturating_duration_since(Instant::now());
                 match packet_rx.recv_timeout(wait) {
                     Ok(packet) => {
-                        stats.note_frame(thread_queued.load(Ordering::Relaxed));
+                        stats.note_frame(
+                            thread_queued.load(Ordering::Relaxed),
+                            frame_direction(
+                                &packet,
+                                [capture::PORT_RANGE.0, capture::PORT_RANGE.1],
+                            ),
+                        );
                         let started = thread_game_started.load(Ordering::Relaxed);
                         sniffer.set_game_started_ms((started != 0).then_some(started));
                         let delivered = decode_one_packet(
@@ -462,6 +481,16 @@ fn spawn_sniffer_thread(
                         thread_queued.fetch_sub(1, Ordering::Relaxed);
                         if !delivered {
                             break;
+                        }
+                        if stats.one_way_login(sniffer.key_recovery_failed()) {
+                            let (sent, received) = stats.frames_since_reset();
+                            tracing::warn!(
+                                sent,
+                                received,
+                                "the capture showed only this PC's sends for a whole login; the \
+                                 server's token response, which carries the key, never came"
+                            );
+                            capture::ONE_WAY_CAPTURE_SEEN.store(true, Ordering::Relaxed);
                         }
                     }
                     Err(blocking_mpsc::RecvTimeoutError::Timeout) => {}
@@ -476,7 +505,11 @@ fn spawn_sniffer_thread(
                     if let Some(line) = stats.report(duplicates, now) {
                         tracing::info!(
                             frames = line.frames,
+                            sent = line.sent,
+                            received = line.received,
                             duplicates_dropped = line.duplicates,
+                            kcp_dropped =
+                                teyvatme_protocol::KCP_SEGMENTS_DROPPED.load(Ordering::Relaxed),
                             max_queue = line.max_queue,
                             commands_since_reset = line.commands_since_reset,
                             key = ?sniffer.key_state(),
@@ -611,10 +644,12 @@ impl PacketLog {
         Ok(())
     }
 
-    /// Record one captured frame, `timestamp_ns` after the unix epoch.
-    fn append_frame(&mut self, timestamp_ns: u64, frame: &[u8]) -> Result<()> {
+    /// Record one captured frame, `timestamp_ns` after the unix epoch, from
+    /// `source` (the pktmon component that delivered it, if known: the file
+    /// gets an interface per source, so a log shows where each frame was seen).
+    fn append_frame(&mut self, timestamp_ns: u64, source: Option<u16>, frame: &[u8]) -> Result<()> {
         if let Some(writer) = self.frames.as_mut() {
-            writer.write_packet(timestamp_ns, frame)?;
+            writer.write_packet_from(timestamp_ns, source, frame)?;
         }
         Ok(())
     }
@@ -738,6 +773,9 @@ pub struct Monitor {
     cancel_token: CancellationToken,
     capture_cancel_token: Option<CancellationToken>,
     capture_handle: Option<JoinHandle<Result<()>>>,
+    /// Which capture task `capture_handle` is: counted up by every start, and
+    /// carried by the task's own `Started`/`Failed` reports.
+    capture_generation: u64,
     packet_tx: mpsc::UnboundedSender<CaptureEvent>,
     packet_rx: mpsc::UnboundedReceiver<CaptureEvent>,
     capture_backend: BackendType,
@@ -898,6 +936,7 @@ impl Monitor {
             cancel_token,
             capture_cancel_token: None,
             capture_handle: None,
+            capture_generation: 0,
             packet_tx,
             packet_rx,
             capture_backend,
@@ -1099,6 +1138,7 @@ impl Monitor {
                 _ = self.game_poll.tick() => {
                     self.poll_game_status();
                     self.switch_on_merged_datagrams().await;
+                    self.switch_on_one_way_capture().await;
                     self.supervise_capture().await;
                     self.watch_capture_silence().await;
                 }
@@ -1203,7 +1243,9 @@ impl Monitor {
         self.stop_capture().await;
 
         let cancel_token = CancellationToken::new();
+        self.capture_generation += 1;
         let capture_handle = tokio::spawn(capture_task(
+            self.capture_generation,
             cancel_token.clone(),
             self.packet_tx.clone(),
             self.capture_backend,
@@ -1213,7 +1255,14 @@ impl Monitor {
         self.capture_cancel_token = Some(cancel_token);
         self.capture_handle = Some(capture_handle);
         self.capture_silence.capture_started();
-        self.automation_cycle_started_at = Some(Instant::now());
+        // The automation cycle starts with the first capture, not with every
+        // backend restart (the silence watchdog's, a mode switch's): the data
+        // held through a restart is still this login's, and dating the cycle
+        // after it kept every automated snapshot waiting for a character
+        // list that only comes with the next login.
+        if self.automation_cycle_started_at.is_none() {
+            self.automation_cycle_started_at = Some(Instant::now());
+        }
         // Not `true`: everything that can fail -- no elevation, no such device,
         // an ETW session already owned by a previous process -- fails inside the
         // task, so a spawned task is not a running capture. The task says so
@@ -1275,7 +1324,9 @@ impl Monitor {
     /// packets over 9000 bytes never arrived), so the toast says how to get it
     /// back. Every later login on this PC is read from the start.
     async fn switch_on_merged_datagrams(&mut self) {
-        if !capture::MERGED_DATAGRAMS_SEEN.swap(false, Ordering::Relaxed) || self.compatible_capture
+        if !capture::MERGED_DATAGRAMS_SEEN.swap(false, Ordering::Relaxed)
+            || self.compatible_capture
+            || !self.uses_pktmon()
         {
             return;
         }
@@ -1283,6 +1334,30 @@ impl Monitor {
         let _ = self.toast_tx.send(Event::warn(
             Topic::Capture,
             tr("This PC merges the game's packets, so capture switched to compatible mode. If this login isn't read, return to the title screen and enter again."),
+        ));
+        self.set_compatible_capture(true).await;
+    }
+
+    /// Move capture to compatible mode once a login went by with the server's
+    /// side missing entirely (`capture::ONE_WAY_CAPTURE_SEEN`): Windows'
+    /// packet monitor on one Wi-Fi PC delivered only the client's sends, and a
+    /// raw socket there delivered the server's. Like the merged-datagram
+    /// switch, the login it was seen in is lost; the toast says how to get it
+    /// back, and every later login on this PC is read from the start.
+    async fn switch_on_one_way_capture(&mut self) {
+        if !capture::ONE_WAY_CAPTURE_SEEN.swap(false, Ordering::Relaxed)
+            || self.compatible_capture
+            || !self.uses_pktmon()
+        {
+            return;
+        }
+        tracing::warn!(
+            "switching capture to compatible mode: the packet monitor showed none of the server's \
+             packets"
+        );
+        let _ = self.toast_tx.send(Event::warn(
+            Topic::Capture,
+            tr("Windows' packet monitor showed none of the game server's packets on this PC, so capture switched to compatible mode. Return to the title screen and enter again to read this login."),
         ));
         self.set_compatible_capture(true).await;
     }
@@ -1303,12 +1378,22 @@ impl Monitor {
     async fn set_compatible_capture(&mut self, compatible: bool) {
         self.compatible_capture = compatible;
         self.app_state.update_compatible_capture(compatible);
-        #[cfg(windows)]
-        let pktmon = self.capture_backend == BackendType::Pktmon;
-        #[cfg(not(windows))]
-        let pktmon = false;
-        if pktmon && self.capture_handle.is_some() {
+        if self.uses_pktmon() && self.capture_handle.is_some() {
             self.start_capture().await;
+        }
+    }
+
+    /// Whether the compatible-mode switch means anything here: it swaps
+    /// pktmon for raw sockets, so under `-b pcap` (and off Windows) there is
+    /// nothing to switch, and no toast to show.
+    fn uses_pktmon(&self) -> bool {
+        #[cfg(windows)]
+        {
+            self.capture_backend == BackendType::Pktmon
+        }
+        #[cfg(not(windows))]
+        {
+            false
         }
     }
 
@@ -1341,7 +1426,9 @@ impl Monitor {
             // that has since been stopped can still be queued behind its own
             // packets. Reporting that as "capturing" would put the lie the
             // status line used to tell straight back into it.
-            CaptureEvent::Started if self.capture_handle.is_some() => {
+            CaptureEvent::Started(generation)
+                if generation == self.capture_generation && self.capture_handle.is_some() =>
+            {
                 tracing::info!("capture backend is running");
                 // It came up, so the next failure starts its backoff from
                 // scratch rather than inheriting a long delay from an outage
@@ -1351,14 +1438,20 @@ impl Monitor {
                 self.set_capturing(true);
                 self.ctx.request_repaint();
             }
-            CaptureEvent::Started => {
+            CaptureEvent::Started(_) => {
                 tracing::debug!("ignoring a start report from a capture that already stopped");
             }
             CaptureEvent::Packet(packet) => {
                 self.capture_silence.note_frame(Instant::now());
                 self.handle_packet(packet);
             }
-            CaptureEvent::Failed(e) => {
+            // Dropping the live task's cancel token for a replaced task's
+            // failure left that task running beside its replacement: two
+            // backends, every datagram decoded twice.
+            CaptureEvent::Failed(generation, e) if generation != self.capture_generation => {
+                tracing::debug!("a replaced capture task reported its failure late: {e}");
+            }
+            CaptureEvent::Failed(_, e) => {
                 tracing::error!("Capture task encountered an error: {e}");
                 let _ = self.toast_tx.send(Event::error(
                     Topic::Capture,
@@ -1473,15 +1566,22 @@ impl Monitor {
     }
 
     /// Hand a captured frame to the sniffer thread.
-    fn handle_packet(&mut self, packet: Vec<u8>) {
+    fn handle_packet(&mut self, frame: CapturedFrame) {
+        let CapturedFrame {
+            data: packet,
+            source,
+        } = frame;
         #[cfg(debug_assertions)]
         if let Some(writer) = self.pcapng.as_mut() {
-            let _ = writer.write_packet(now_ns(), &packet);
+            let _ = writer.write_packet_from(now_ns(), source, &packet);
         }
         if self.packet_log.is_on()
-            && let Err(e) = self.packet_log.append_frame(now_ns(), &packet)
+            && let Err(e) = self.packet_log.append_frame(now_ns(), source, &packet)
         {
-            tracing::info!("error logging a captured frame {e}");
+            // Said once, and the log closed: a full disk fails every frame,
+            // thousands a minute during a login.
+            tracing::warn!("error logging a captured frame, closing the packet log: {e}");
+            let _ = self.packet_log.set_on(false);
         }
 
         // Game traffic: for a game that was already open, starts the clock on
@@ -2917,6 +3017,7 @@ pub fn embedded_game_data_sha() -> Option<&'static str> {
 }
 
 async fn capture_task(
+    generation: u64,
     cancel_token: CancellationToken,
     packet_tx: mpsc::UnboundedSender<CaptureEvent>,
     backend: BackendType,
@@ -2932,14 +3033,14 @@ async fn capture_task(
             // the most common first-run failure there is.
             let error = anyhow!("Error creating packet capture using {:?}: {e}", backend);
             tracing::error!("{error}");
-            let _ = packet_tx.send(CaptureEvent::Failed(error));
+            let _ = packet_tx.send(CaptureEvent::Failed(generation, error));
             return Ok(());
         }
     };
     tracing::info!("starting capture");
     // Only now is there a backend to capture with. The monitor sets `capturing`
     // from this, not from having spawned the task.
-    let _ = packet_tx.send(CaptureEvent::Started);
+    let _ = packet_tx.send(CaptureEvent::Started(generation));
 
     loop {
         let packet = tokio::select!(
@@ -2950,9 +3051,10 @@ async fn capture_task(
             Ok(packet) => packet,
             Err(e) => {
                 tracing::error!("Error receiving packet: {e}");
-                let _ = packet_tx.send(CaptureEvent::Failed(anyhow!(
-                    "Capture stream closed or errored: {e}"
-                )));
+                let _ = packet_tx.send(CaptureEvent::Failed(
+                    generation,
+                    anyhow!("Capture stream closed or errored: {e}"),
+                ));
                 break;
             }
         };
@@ -3305,7 +3407,7 @@ pub(crate) mod tests {
         );
 
         // The frames before decryption, readable by the replay tool.
-        log.append_frame(1_700_000_000_000_000_000, &[0xAB; 60])
+        log.append_frame(1_700_000_000_000_000_000, Some(13), &[0xAB; 60])
             .unwrap();
         let recording = std::fs::read(dir.join(&frames[0])).unwrap();
         assert_eq!(&recording[0..4], &0x0a0d0d0a_u32.to_le_bytes());
@@ -3317,7 +3419,7 @@ pub(crate) mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut log = PacketLog::with_dir(Some(dir.path().to_path_buf()));
         log.append(&command(1, &[], &[7])).unwrap();
-        log.append_frame(1, &[1, 2, 3]).unwrap();
+        log.append_frame(1, None, &[1, 2, 3]).unwrap();
         assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
 
         log.set_on(true).unwrap();

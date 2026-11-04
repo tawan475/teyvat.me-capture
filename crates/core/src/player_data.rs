@@ -3,6 +3,7 @@
 // Portions copyright (c) 2025 Erik Gilling and irminsul contributors
 // See THIRD_PARTY_NOTICES.md.
 
+use std::cell::Cell;
 use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::ops::RangeInclusive;
@@ -26,6 +27,7 @@ mod avatar_change;
 mod collections;
 
 pub use collections::{CollectionPart, LoneList};
+mod endgame;
 mod exploration;
 
 pub use exploration::ExplorationPart;
@@ -711,6 +713,11 @@ pub struct PlayerData {
     /// drops zero counts so the empty ones do not appear; a real Story Key
     /// count does.
     items: HashMap<(u32, u64), Item>,
+    /// [`account_uid`](Self::account_uid) as last read off `items`, until
+    /// they change: every unclaimed message asks for it (the character
+    /// updates are told apart by the account's guids), and reading it walks
+    /// the whole inventory. Cleared wherever `items` is written.
+    uid_cache: Cell<Option<Option<u32>>>,
     properties: HashMap<u32, u64>,
     /// The Travel Accounts book as the game last sent it in full. The game
     /// re-sends the whole book each time it is asked for it, so the newest
@@ -743,6 +750,8 @@ pub struct PlayerData {
     collections: collections::CollectionsState,
     /// `gi_exploration`, as the exploration messages last said.
     exploration: exploration::ExplorationState,
+    /// `gi_endgame`: the Theater's season state and the Stygian records.
+    endgame: endgame::EndgameState,
     /// Not account data: kept by [`reset`](Self::reset).
     commission_reward: CommissionReward,
 }
@@ -767,6 +776,7 @@ impl PlayerData {
             achievements: HashMap::new(),
             characters: HashMap::new(),
             items: HashMap::new(),
+            uid_cache: Cell::new(None),
             properties: HashMap::new(),
             anecdotes: None,
             routine: Routine::default(),
@@ -779,6 +789,7 @@ impl PlayerData {
             spincrystals: None,
             collections: collections::CollectionsState::default(),
             exploration: exploration::ExplorationState::default(),
+            endgame: endgame::EndgameState::default(),
             commission_reward: CommissionReward::default(),
         }
     }
@@ -808,6 +819,7 @@ impl PlayerData {
         self.achievements.clear();
         self.characters.clear();
         self.items.clear();
+        self.uid_cache.set(None);
         self.properties.clear();
         self.anecdotes = None;
         self.routine = Routine::default();
@@ -817,6 +829,7 @@ impl PlayerData {
         self.spincrystals = None;
         self.collections = collections::CollectionsState::default();
         self.exploration = exploration::ExplorationState::default();
+        self.endgame = endgame::EndgameState::default();
         self.character_equip_guid_map.clear();
     }
 
@@ -1186,8 +1199,14 @@ impl PlayerData {
                 continue;
             }
 
-            if item.has_material() || item.has_equip() || item.has_furniture() {
-                self.items.insert((item.item_id, item.guid), item.clone());
+            if (item.has_material() || item.has_equip() || item.has_furniture())
+                && self
+                    .items
+                    .insert((item.item_id, item.guid), item.clone())
+                    .is_none()
+            {
+                // A new guid can change the vote; a replaced item's can't.
+                self.uid_cache.set(None);
             }
         }
     }
@@ -1245,6 +1264,9 @@ impl PlayerData {
         let before = self.items.len();
         self.items.retain(|(_, guid), _| !doomed.contains(guid));
         let removed = before - self.items.len();
+        if removed > 0 {
+            self.uid_cache.set(None);
+        }
 
         // Gear is unequipped before it can be destroyed, so this is normally
         // already empty of these guids -- but a stale mapping would attribute a
@@ -1621,7 +1643,33 @@ impl PlayerData {
 
     /// The account UID, read off the captured item guids.
     pub fn account_uid(&self) -> Option<u32> {
-        self.uid_check().uid
+        if let Some(uid) = self.uid_cache.get() {
+            #[cfg(test)]
+            assert_eq!(uid, self.item_uid().0, "the cached UID missed a change");
+            return uid;
+        }
+        let uid = self.item_uid().0;
+        self.uid_cache.set(Some(uid));
+        uid
+    }
+
+    /// The UID the item guids vote for (see [`uid_check`](Self::uid_check)),
+    /// with the votes by top half: the part of the check that decides.
+    fn item_uid(&self) -> (Option<u32>, BTreeMap<u64, usize>) {
+        let mut item_tops: BTreeMap<u64, usize> = BTreeMap::new();
+        for (_, guid) in self.items.keys() {
+            if *guid != 0 {
+                *item_tops.entry(guid >> 32).or_default() += 1;
+            }
+        }
+        let total: usize = item_tops.values().sum();
+        let uid = item_tops
+            .iter()
+            .filter(|(top, _)| **top != 0)
+            .max_by_key(|(_, n)| **n)
+            .filter(|(_, n)| (**n as f64) >= (total as f64) * UID_MAJORITY)
+            .and_then(|(top, _)| u32::try_from(*top).ok());
+        (uid, item_tops)
     }
 
     /// How the account UID is read off the captured item guids, with the
@@ -1635,12 +1683,7 @@ impl PlayerData {
     /// [`UID_MAJORITY`] of the items share; a real split claims nothing. Avatar
     /// guids are counted but don't vote: their field is unverified on 7.1.
     pub fn uid_check(&self) -> good::UidCheck {
-        let mut item_tops: BTreeMap<u64, usize> = BTreeMap::new();
-        for (_, guid) in self.items.keys() {
-            if *guid != 0 {
-                *item_tops.entry(guid >> 32).or_default() += 1;
-            }
-        }
+        let (uid, item_tops) = self.item_uid();
         let mut avatar_tops: BTreeMap<u64, usize> = BTreeMap::new();
         for avatar in self.characters.values() {
             *avatar_tops.entry(avatar.guid >> 32).or_default() += 1;
@@ -1659,9 +1702,6 @@ impl PlayerData {
             .max_by_key(|(_, n)| **n)
             .map(|(top, n)| (*top, *n));
         let agreeing = best.map_or(0, |(_, n)| n);
-        let uid = best
-            .filter(|(_, n)| (*n as f64) >= (total as f64) * UID_MAJORITY)
-            .and_then(|(top, _)| u32::try_from(top).ok());
         good::UidCheck {
             uid,
             agreeing,
@@ -2028,6 +2068,7 @@ impl PlayerData {
             gi_miliastra: self.export_miliastra(),
             gi_wardrobe: self.export_wardrobe(),
             gi_exploration: self.export_exploration(),
+            gi_endgame: self.export_endgame(),
         };
 
         if settings.include_characters {
@@ -2720,6 +2761,8 @@ mod tests {
         id_tables: &'static str,
         /// The `exploration` object's inside; empty leaves it out.
         exploration: &'static str,
+        /// The `endgame` object's inside; empty leaves it out.
+        endgame: &'static str,
     }
 
     impl TestGameData {
@@ -2746,7 +2789,7 @@ mod tests {
                     "spincrystals": {{{}}},
                     "recipes": {{{}}},
                     "crafting": {{{}}},
-                    "id_tables": {{{}}}{}
+                    "id_tables": {{{}}}{}{}
                 }}"#,
                 self.affix_map,
                 self.artifact_map,
@@ -2764,6 +2807,11 @@ mod tests {
                     String::new()
                 } else {
                     format!(r#", "exploration": {{{}}}"#, self.exploration)
+                },
+                if self.endgame.is_empty() {
+                    String::new()
+                } else {
+                    format!(r#", "endgame": {{{}}}"#, self.endgame)
                 },
             );
             AnimeGameData::new_from_reader(json.as_bytes()).unwrap()
@@ -4891,7 +4939,7 @@ mod tests {
         use teyvatme_protocol::{AvatarWardrobe, SavedTeam, WeaponSkin};
         let mut data = PlayerData::new(
             TestGameData {
-                character_map: r#""10000046": "Hu Tao", "10000005": "Traveler""#,
+                character_map: r#""10000046": "Hu Tao", "10000005": "Traveler", "10000007": "Traveler""#,
                 ..Default::default()
             }
             .build(),
@@ -4905,7 +4953,13 @@ mod tests {
         traveler.guid = guid(2);
         traveler.wearing_flycloak_id = 140_001;
         traveler.trace_effect_id = 215_001;
-        data.process_characters(&[hu_tao, traveler]);
+        // The other body wears the default glider and sits in no team: the
+        // body in a team speaks for "Traveler", whatever order the roster's
+        // map yields them in.
+        let mut twin = avatar(10000007, &[]);
+        twin.guid = guid(3);
+        twin.wearing_flycloak_id = 140_002;
+        data.process_characters(&[twin.clone(), hu_tao, traveler, twin]);
         data.process_collection(CollectionPart::Wardrobe(AvatarWardrobe {
             gliders: vec![140_001, 140_002],
             outfits: vec![204_601],
@@ -4946,6 +5000,160 @@ mod tests {
         );
         data.reset();
         assert!(data.is_empty());
+    }
+
+    // -- gi_endgame -------------------------------------------------------------------
+
+    const ENDGAME_DATA: &str = r#"
+        "theater_seasons": {
+            "31": {"begin": "2026-11-01 04:00:00", "difficulties": [125, 126, 127, 128, 129]},
+            "32": {"begin": "2026-12-01 04:00:00", "difficulties": [130, 131, 132, 133, 134]}
+        },
+        "theater_difficulties": {"125": 1, "126": 2, "127": 3, "128": 4, "129": 5, "130": 1, "134": 5},
+        "stygian_seasons": [5269012, 5269013]"#;
+
+    fn endgame_data() -> PlayerData {
+        PlayerData::new(
+            TestGameData {
+                character_map: r#""10000046": "Hu Tao", "10000005": "Traveler""#,
+                material_map: r#""104002": "Adventurer's Experience""#,
+                endgame: ENDGAME_DATA,
+                ..Default::default()
+            }
+            .build(),
+        )
+    }
+
+    #[test]
+    fn the_theater_season_is_the_one_opening_at_the_window_start() {
+        use teyvatme_protocol::TheaterDetail;
+        let mut data = endgame_data();
+        // Asia: 2026-11-01 04:00 UTC+8.
+        let detail = TheaterDetail {
+            start: 1_793_476_800,
+            end: 1_796_068_799,
+            small: vec![10, 25, 31, 2, 129],
+            lists: vec![vec![1, 2, 3, 4, 5, 6, 7], vec![1, 2], vec![3, 6, 9, 12]],
+        };
+        assert!(data.apply_theater(&detail));
+        let json = serde_json::to_value(data.export_at(&settings(), NOW_SECS * 1000).0).unwrap();
+        assert_eq!(
+            json["gi_endgame"],
+            serde_json::json!({"theater": {"season": 31, "difficulty": 129, "level": 5, "acts": 7}})
+        );
+
+        // America (UTC-5) opens the same season 13 hours later; no difficulty
+        // chosen yet and no acts: a season not entered.
+        let detail = TheaterDetail {
+            start: 1_793_476_800 + 13 * 3600,
+            end: 1_796_068_799 + 13 * 3600,
+            small: vec![24, 10, 31, 2],
+            lists: vec![],
+        };
+        assert!(data.apply_theater(&detail));
+        let json = serde_json::to_value(data.export_at(&settings(), NOW_SECS * 1000).0).unwrap();
+        assert_eq!(
+            json["gi_endgame"]["theater"],
+            serde_json::json!({"season": 31, "acts": 0})
+        );
+
+        // A window the data has no season for, or one that does not name its
+        // season, changes nothing.
+        let stranger = TheaterDetail {
+            start: 1_793_476_800 - 86_400 * 31,
+            end: 1_793_476_799,
+            small: vec![30, 129],
+            lists: vec![],
+        };
+        assert!(!data.apply_theater(&stranger));
+        let unnamed = TheaterDetail {
+            start: 1_793_476_800,
+            end: 1_796_068_799,
+            small: vec![10, 129],
+            lists: vec![],
+        };
+        assert!(!data.apply_theater(&unnamed));
+        data.reset();
+        assert!(data.export_endgame().is_none());
+    }
+
+    #[test]
+    fn stygian_records_keep_known_seasons_and_the_accounts_own_team() {
+        use teyvatme_protocol::{Figure, StygianFight, StygianRecord, StygianTeam};
+        let mut data = endgame_data();
+        let uid = 812_345_678u64;
+        let guid = |n: u64| (uid << 32) + n;
+        let mut hu_tao = avatar(10000046, &[]);
+        hu_tao.guid = guid(1);
+        data.process_characters(&[hu_tao]);
+        data.process_items(&[material_item(104_002, guid(2), 3)]);
+        assert_eq!(data.account_uid(), Some(uid as u32));
+
+        let record = |schedule: u32, teams: Vec<StygianTeam>| StygianRecord {
+            schedule,
+            difficulty: 6,
+            at_ms: 1_790_972_494_088,
+            fights: vec![
+                StygianFight {
+                    time: 51,
+                    finished: true,
+                    teams: teams.clone(),
+                    strike: Some(Figure {
+                        value: 367_183,
+                        by: Some(10000046),
+                    }),
+                    damage: Some(Figure {
+                        value: 15_616_746,
+                        by: None,
+                    }),
+                },
+                StygianFight {
+                    time: 0,
+                    finished: false,
+                    teams,
+                    ..Default::default()
+                },
+            ],
+        };
+        let mine = StygianTeam {
+            uid,
+            avatars: vec![10000046, 10000005, 10000999],
+        };
+        let friend = StygianTeam {
+            uid: 823_456_789,
+            avatars: vec![10000030],
+        };
+        let records = vec![
+            record(5_269_012, vec![mine.clone()]),
+            record(5_269_012, vec![friend.clone(), mine.clone()]),
+            // A season the data does not know: dropped.
+            record(5_269_099, vec![mine]),
+        ];
+        assert_eq!(data.apply_stygian_records(&records), 2);
+        let json = serde_json::to_value(data.export_at(&settings(), NOW_SECS * 1000).0).unwrap();
+        assert_eq!(
+            json["gi_endgame"]["stygian"],
+            serde_json::json!({"records": [
+                {"season": 5269012, "difficulty": 6, "at": 1790972494, "coop": false, "fights": [
+                    {"time": 51, "done": true, "team": ["HuTao", "Traveler"],
+                     "strike": {"value": 367183, "by": "HuTao"}, "damage": {"value": 15616746}},
+                    {"time": 0, "done": false, "team": ["HuTao", "Traveler"]}
+                ]},
+                {"season": 5269012, "difficulty": 6, "at": 1790972494, "coop": true, "fights": [
+                    {"time": 51, "done": true, "team": ["HuTao", "Traveler"],
+                     "strike": {"value": 367183, "by": "HuTao"}, "damage": {"value": 15616746}},
+                    {"time": 0, "done": false, "team": ["HuTao", "Traveler"]}
+                ]}
+            ]})
+        );
+        assert!(
+            !json["gi_endgame"]["stygian"]
+                .to_string()
+                .contains("823456789")
+        );
+        // Without an account (no inventory), nothing is believed.
+        let mut fresh = endgame_data();
+        assert_eq!(fresh.apply_stygian_records(&records), 0);
     }
 
     #[test]

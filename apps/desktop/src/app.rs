@@ -879,6 +879,60 @@ static TRAY_HIDE_ASKED: AtomicBool = AtomicBool::new(false);
 #[cfg(windows)]
 static MINIMIZE_HOOK_CTX: std::sync::OnceLock<Context> = std::sync::OnceLock::new();
 
+/// A second launch asked the running window to come to the front (the
+/// [`WAKE_MESSAGE`] reached `minimize_hook`); answered by the next frame.
+#[cfg(windows)]
+static WAKE_ASKED: AtomicBool = AtomicBool::new(false);
+
+/// Posted to the running app's window by a second launch of the exe
+/// (`wake_running_instance`). An app-private message number: nothing else
+/// sends it to this window.
+#[cfg(windows)]
+const WAKE_MESSAGE: u32 = windows::Win32::UI::WindowsAndMessaging::WM_APP + 0x5457;
+
+/// From a second launch: bring the running Teyvat.me's window to the front.
+///
+/// Finds the other process's window by the title bar text this run would
+/// have (`crate::window_title`: the isolated run and the normal one differ),
+/// lets that process take the foreground (a process may only hand that right
+/// on while it is the one in front, which a just-launched exe is) and posts it
+/// [`WAKE_MESSAGE`]. `false` when no such window was found.
+#[cfg(windows)]
+pub fn wake_running_instance() -> bool {
+    use std::os::windows::ffi::OsStrExt;
+
+    use windows::Win32::UI::WindowsAndMessaging::{
+        AllowSetForegroundWindow, FindWindowExW, GetWindowThreadProcessId, PostMessageW,
+    };
+    use windows::core::PCWSTR;
+
+    let title: Vec<u16> = std::ffi::OsStr::new(&crate::window_title())
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    let mut after = None;
+    unsafe {
+        while let Ok(hwnd) = FindWindowExW(None, after, PCWSTR::null(), PCWSTR(title.as_ptr()))
+            && !hwnd.0.is_null()
+        {
+            let mut pid = 0;
+            GetWindowThreadProcessId(hwnd, Some(&mut pid));
+            if pid != 0 && pid != std::process::id() {
+                let _ = AllowSetForegroundWindow(pid);
+                return PostMessageW(
+                    Some(hwnd),
+                    WAKE_MESSAGE,
+                    windows::Win32::Foundation::WPARAM(0),
+                    windows::Win32::Foundation::LPARAM(0),
+                )
+                .is_ok();
+            }
+            after = Some(hwnd);
+        }
+    }
+    false
+}
+
 trait ToastError<T> {
     fn toast_error(self, app: &mut TeyvatmeApp) -> Option<T>;
 }
@@ -1079,6 +1133,13 @@ unsafe extern "system" fn minimize_hook(
     use windows::Win32::UI::Shell::DefSubclassProc;
     use windows::Win32::UI::WindowsAndMessaging::{SC_MINIMIZE, WM_SYSCOMMAND};
 
+    if msg == WAKE_MESSAGE {
+        WAKE_ASKED.store(true, Ordering::Relaxed);
+        if let Some(ctx) = MINIMIZE_HOOK_CTX.get() {
+            ctx.request_repaint();
+        }
+        return windows::Win32::Foundation::LRESULT(1);
+    }
     // The low four bits of a WM_SYSCOMMAND are the system's own.
     if msg == WM_SYSCOMMAND
         && wparam.0 & 0xFFF0 == SC_MINIMIZE as usize

@@ -16,7 +16,7 @@
 use std::time::{Duration, Instant};
 
 use teyvatme_protocol::{
-    CommandMatch, GameCommand, GamePacket, GameSniffer, KeyState, avatar_wardrobe,
+    CommandMatch, GameCommand, GamePacket, GameSniffer, KeyState, PacketDirection, avatar_wardrobe,
     classify_command, classify_union, flat_message, matches_avatar_team_update,
     matches_records_message, matches_scene_request, matches_scene_team_update,
     matches_shop_purchase, player_nickname, union_commands,
@@ -167,6 +167,8 @@ impl DataReplacement {
                         | CommandMatch::Party(_)
                         | CommandMatch::Bargains(_)
                         | CommandMatch::ShopGoods(_)
+                        | CommandMatch::Theater(_)
+                        | CommandMatch::StygianRecords(_)
                 )
         });
         self.verdict(key, replaces)
@@ -546,6 +548,27 @@ pub fn apply_commands(
                     applied.live_updates += 1;
                 }
             }
+            CommandMatch::Theater(detail) => {
+                // Only the game data's seasons can say.
+                if player_data.apply_theater(&detail) {
+                    tracing::info!(
+                        acts = detail.acts_cleared(),
+                        "Found the Theater's season state"
+                    );
+                    applied.routine = true;
+                }
+            }
+            CommandMatch::StygianRecords(records) => {
+                let kept = player_data.apply_stygian_records(&records);
+                if kept > 0 {
+                    tracing::info!(
+                        kept,
+                        of = records.len(),
+                        "Found the Stygian Onslaught records"
+                    );
+                    applied.routine = true;
+                }
+            }
             CommandMatch::TeamUpdate(teams) => {
                 // Only the held characters can say (never log the names).
                 let changed = player_data.apply_team_update(&teams);
@@ -675,6 +698,12 @@ pub fn changes_in(classified: &[(u16, CommandMatch)]) -> usize {
 /// How often the sniffer thread logs what it has been doing.
 pub const STATS_INTERVAL: Duration = Duration::from_secs(60);
 
+/// Client frames a connection must have shown, with none from the server,
+/// before its failed login counts as a one-way capture
+/// ([`SnifferStats::one_way_login`]). A login exchange sends a few dozen; a
+/// handful could be a forged handshake or a game closed at the title screen.
+pub const ONE_WAY_MIN_SENT: u64 = 10;
+
 /// What the sniffer thread did, for one INFO line a minute.
 ///
 /// The log of 2026-10-04 had nothing to show for the hour and three quarters
@@ -685,6 +714,17 @@ pub const STATS_INTERVAL: Duration = Duration::from_secs(60);
 pub struct SnifferStats {
     /// Frames this interval.
     frames: u64,
+    /// Of them, to the game server and from it (a frame on neither game port
+    /// counts in neither). One PC's packet monitor delivered only the
+    /// client's sends; a line with both counts shows that at a glance.
+    sent: u64,
+    received: u64,
+    /// The same two counts since the last session reset, for
+    /// [`SnifferStats::one_way_login`].
+    sent_since_reset: u64,
+    received_since_reset: u64,
+    /// Whether this connection was already reported as one-way.
+    one_way_reported: bool,
     /// Frames the interval before, so going quiet is reported once.
     previous_frames: u64,
     /// Deepest the queue to this thread got this interval.
@@ -701,6 +741,8 @@ pub struct SnifferStats {
 #[derive(Debug)]
 pub struct StatsLine {
     pub frames: u64,
+    pub sent: u64,
+    pub received: u64,
     pub duplicates: u64,
     pub max_queue: usize,
     pub commands_since_reset: u64,
@@ -710,9 +752,44 @@ pub struct StatsLine {
 impl SnifferStats {
     /// A frame was taken off the queue, which then held `queued` (this one
     /// included).
-    pub fn note_frame(&mut self, queued: usize) {
+    pub fn note_frame(&mut self, queued: usize, direction: Option<PacketDirection>) {
         self.frames += 1;
+        match direction {
+            Some(PacketDirection::Sent) => {
+                self.sent += 1;
+                self.sent_since_reset += 1;
+            }
+            Some(PacketDirection::Received) => {
+                self.received += 1;
+                self.received_since_reset += 1;
+            }
+            None => {}
+        }
         self.max_queue = self.max_queue.max(queued);
+    }
+
+    /// Whether the capture is delivering only the client's sends: the login's
+    /// key was given up on (`key_failed`, [`GameSniffer::key_recovery_failed`])
+    /// while this connection has shown [`ONE_WAY_MIN_SENT`] frames to the
+    /// server and none from it. The server's token response is what carries
+    /// the key, so such a capture can never read a login; one PC's packet
+    /// monitor delivered exactly that (2026-11-02), and a raw socket there
+    /// delivered the server's side. Said once per connection.
+    pub fn one_way_login(&mut self, key_failed: bool) -> bool {
+        if self.one_way_reported
+            || !key_failed
+            || self.received_since_reset != 0
+            || self.sent_since_reset < ONE_WAY_MIN_SENT
+        {
+            return false;
+        }
+        self.one_way_reported = true;
+        true
+    }
+
+    /// Frames to the server and from it since the last session reset.
+    pub fn frames_since_reset(&self) -> (u64, u64) {
+        (self.sent_since_reset, self.received_since_reset)
     }
 
     pub fn note_commands(&mut self, count: usize, now: Instant) {
@@ -724,6 +801,9 @@ impl SnifferStats {
 
     pub fn note_reset(&mut self) {
         self.commands_since_reset = 0;
+        self.sent_since_reset = 0;
+        self.received_since_reset = 0;
+        self.one_way_reported = false;
     }
 
     /// The line for the interval ending `now`, given the process-wide count of
@@ -734,6 +814,8 @@ impl SnifferStats {
         let due = self.frames > 0 || self.previous_frames > 0;
         let line = due.then(|| StatsLine {
             frames: self.frames,
+            sent: self.sent,
+            received: self.received,
             duplicates: duplicates_total.saturating_sub(self.duplicates_reported),
             max_queue: self.max_queue,
             commands_since_reset: self.commands_since_reset,
@@ -741,9 +823,40 @@ impl SnifferStats {
         });
         self.previous_frames = self.frames;
         self.frames = 0;
+        self.sent = 0;
+        self.received = 0;
         self.max_queue = 0;
         self.duplicates_reported = duplicates_total;
         line
+    }
+}
+
+/// Which way an Ethernet frame goes, by the UDP port in `ports` it carries:
+/// the destination port is the server's for a send, the source port for a
+/// receive. `None` for anything else (not IPv4 UDP, or neither port).
+pub fn frame_direction(frame: &[u8], ports: [u16; 2]) -> Option<PacketDirection> {
+    // One 802.1Q tag is skipped, as the parser and the deduper skip it: a
+    // capture whose kept copies carry one would otherwise count no receives,
+    // and a failed login on it would read as a one-way capture.
+    let ip_at = if frame.get(12..14)? == [0x81, 0x00] {
+        18
+    } else {
+        14
+    };
+    let ip = frame.get(ip_at..)?;
+    if frame.get(ip_at - 2..ip_at)? != [0x08, 0x00] || ip.first()? >> 4 != 4 || *ip.get(9)? != 17 {
+        return None;
+    }
+    let header = usize::from(ip[0] & 0x0f) * 4;
+    let udp = ip.get(header..header + 4)?;
+    let source = u16::from_be_bytes([udp[0], udp[1]]);
+    let destination = u16::from_be_bytes([udp[2], udp[3]]);
+    if ports.contains(&destination) {
+        Some(PacketDirection::Sent)
+    } else if ports.contains(&source) {
+        Some(PacketDirection::Received)
+    } else {
+        None
     }
 }
 
@@ -1023,7 +1136,7 @@ mod tests {
         let mut stats = SnifferStats::default();
         let start = Instant::now();
         for queued in [1, 5, 3] {
-            stats.note_frame(queued);
+            stats.note_frame(queued, None);
         }
         stats.note_commands(4, start);
         stats.note_commands(0, start);
@@ -1036,7 +1149,7 @@ mod tests {
         assert_eq!(line.last_decode_age, Some(Duration::ZERO));
 
         // The next interval counts afresh, except what spans intervals.
-        stats.note_frame(1);
+        stats.note_frame(1, None);
         let later = start + Duration::from_secs(60);
         let line = stats.report(100, later).expect("a frame arrived");
         assert_eq!(line.frames, 1);
@@ -1046,11 +1159,106 @@ mod tests {
         assert_eq!(line.last_decode_age, Some(Duration::from_secs(60)));
     }
 
+    /// An Ethernet frame carrying IPv4 UDP from `source` to `destination`.
+    fn udp_frame(source: u16, destination: u16) -> Vec<u8> {
+        let mut frame = vec![0u8; 14];
+        frame[12..14].copy_from_slice(&[0x08, 0x00]);
+        let mut ip = vec![0u8; 20];
+        ip[0] = 0x45;
+        ip[9] = 17;
+        frame.extend(ip);
+        frame.extend(source.to_be_bytes());
+        frame.extend(destination.to_be_bytes());
+        frame.extend([0, 8, 0, 0]);
+        frame
+    }
+
+    #[test]
+    fn frames_are_told_apart_by_the_game_port() {
+        let ports = [22101, 22102];
+        assert_eq!(
+            frame_direction(&udp_frame(51000, 22102), ports),
+            Some(PacketDirection::Sent)
+        );
+        assert_eq!(
+            frame_direction(&udp_frame(22101, 51000), ports),
+            Some(PacketDirection::Received)
+        );
+        assert_eq!(frame_direction(&udp_frame(53, 51000), ports), None);
+        let mut tcp = udp_frame(51000, 22102);
+        tcp[14 + 9] = 6;
+        assert_eq!(frame_direction(&tcp, ports), None);
+        assert_eq!(frame_direction(&[0u8; 20], ports), None);
+        // One 802.1Q tag before the IPv4 ethertype.
+        let mut tagged = udp_frame(22101, 51000);
+        tagged.splice(12..12, [0x81, 0x00, 0x00, 0x05]);
+        assert_eq!(
+            frame_direction(&tagged, ports),
+            Some(PacketDirection::Received)
+        );
+        let mut stats = SnifferStats::default();
+        stats.note_frame(1, Some(PacketDirection::Sent));
+        stats.note_frame(1, Some(PacketDirection::Received));
+        stats.note_frame(1, Some(PacketDirection::Received));
+        stats.note_frame(1, None);
+        let line = stats.report(0, Instant::now()).unwrap();
+        assert_eq!((line.frames, line.sent, line.received), (4, 1, 2));
+    }
+
+    #[test]
+    fn a_failed_login_with_sends_only_is_one_way_once_per_connection() {
+        let mut stats = SnifferStats::default();
+        for _ in 0..ONE_WAY_MIN_SENT - 1 {
+            stats.note_frame(1, Some(PacketDirection::Sent));
+        }
+        assert!(!stats.one_way_login(true), "too few sends to judge");
+        stats.note_frame(1, Some(PacketDirection::Sent));
+        assert!(!stats.one_way_login(false), "the key is not given up yet");
+        assert!(stats.one_way_login(true));
+        assert!(!stats.one_way_login(true), "said once");
+        assert_eq!(stats.frames_since_reset(), (ONE_WAY_MIN_SENT, 0));
+
+        // A new connection is judged afresh.
+        stats.note_reset();
+        assert_eq!(stats.frames_since_reset(), (0, 0));
+        for _ in 0..ONE_WAY_MIN_SENT {
+            stats.note_frame(1, Some(PacketDirection::Sent));
+        }
+        assert!(stats.one_way_login(true));
+    }
+
+    #[test]
+    fn one_server_frame_means_the_capture_is_not_one_way() {
+        let mut stats = SnifferStats::default();
+        for _ in 0..ONE_WAY_MIN_SENT * 2 {
+            stats.note_frame(1, Some(PacketDirection::Sent));
+        }
+        stats.note_frame(1, Some(PacketDirection::Received));
+        // A frame on neither game port says nothing about direction.
+        stats.note_frame(1, None);
+        assert!(!stats.one_way_login(true));
+        // The minute's counts reset with the report; the connection's don't.
+        let _ = stats.report(0, Instant::now());
+        assert_eq!(stats.frames_since_reset(), (ONE_WAY_MIN_SENT * 2, 1));
+        assert!(!stats.one_way_login(true));
+    }
+
+    #[test]
+    fn a_receive_only_capture_is_never_one_way() {
+        // Raw sockets on one Wi-Fi delivered the server's side alone; that
+        // reads every login, so nothing must switch.
+        let mut stats = SnifferStats::default();
+        for _ in 0..ONE_WAY_MIN_SENT * 2 {
+            stats.note_frame(1, Some(PacketDirection::Received));
+        }
+        assert!(!stats.one_way_login(true));
+    }
+
     #[test]
     fn capture_going_quiet_is_reported_once() {
         let mut stats = SnifferStats::default();
         let now = Instant::now();
-        stats.note_frame(1);
+        stats.note_frame(1, None);
         assert!(stats.report(0, now).is_some());
 
         let quiet = stats.report(0, now).expect("the drop to zero is news");
@@ -1062,7 +1270,7 @@ mod tests {
     fn a_reset_restarts_the_command_count() {
         let mut stats = SnifferStats::default();
         let now = Instant::now();
-        stats.note_frame(1);
+        stats.note_frame(1, None);
         stats.note_commands(7, now);
         stats.note_reset();
         stats.note_commands(2, now);

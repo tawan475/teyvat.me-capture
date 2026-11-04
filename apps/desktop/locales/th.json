@@ -408,6 +408,7 @@
   "Windows asks every time Teyvat.me starts": "Windows จะถามทุกครั้งที่ Teyvat.me เริ่มทำงาน",
   "Windows lets only administrators read network packets": "Windows ให้เฉพาะผู้ดูแลระบบอ่านแพ็กเก็ตเครือข่ายได้",
   "Windows lets only admins read network packets": "Windows ให้เฉพาะแอดมินอ่านแพ็กเก็ตเครือข่ายได้",
+  "Windows' packet monitor showed none of the game server's packets on this PC, so capture switched to compatible mode. Return to the title screen and enter again to read this login.": "ตัวตรวจสอบแพ็กเก็ตของ Windows บน PC นี้ไม่พบแพ็กเก็ตจากเซิร์ฟเวอร์เกมเลย จึงเปลี่ยนการดักจับเป็นโหมดเข้ากันได้ ให้กลับไปหน้าจอไตเติลแล้วเข้าใหม่เพื่ออ่านการล็อกอินครั้งนี้",
   "Wish URL copied": "คัดลอก URL การอธิษฐานแล้ว",
   "Wish history": "ประวัติการอธิษฐาน",
   "Wish history not saved · {0}": "ไม่ได้บันทึกประวัติการอธิษฐาน · {0}",

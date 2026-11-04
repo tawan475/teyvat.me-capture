@@ -63,7 +63,7 @@ fn lookup_const_value<T: FromStr>(
     res
 }
 
-const DATABASE_VERSION: u32 = 9;
+const DATABASE_VERSION: u32 = 11;
 
 #[derive(Debug, Deserialize, Serialize)]
 struct Database {
@@ -96,6 +96,9 @@ struct Database {
     id_tables: IdTables,
     #[serde(default)]
     exploration: Exploration,
+    /// The endgame seasons the progress messages are read against.
+    #[serde(default)]
+    endgame: Endgame,
 }
 
 impl Database {
@@ -119,6 +122,7 @@ impl Database {
             crafting: Crafting::default(),
             id_tables: IdTables::default(),
             exploration: Exploration::default(),
+            endgame: Endgame::default(),
         }
     }
 
@@ -284,6 +288,11 @@ impl AnimeGameData {
         Ok(&self.db()?.exploration)
     }
 
+    /// The endgame seasons (see [`Endgame`]).
+    pub fn endgame(&self) -> Result<&Endgame> {
+        Ok(&self.db()?.endgame)
+    }
+
     pub fn has_data(&self) -> bool {
         self.db.is_some()
     }
@@ -375,6 +384,9 @@ impl AnimeGameData {
         tracing::info!("Downloading exploration tables");
         db.exploration = Self::fetch_exploration(source, &latest_git_hash).await;
 
+        tracing::info!("Downloading endgame schedules");
+        db.endgame = Self::fetch_endgame(source, &latest_git_hash).await;
+
         self.db = Some(db);
 
         let _ = self.try_save_db();
@@ -391,6 +403,92 @@ impl AnimeGameData {
         serde_json::to_writer_pretty(writer, &self.db)?;
 
         Ok(())
+    }
+
+    /// The endgame seasons. A table that cannot be read leaves its part
+    /// empty (logged), like the exploration tables.
+    async fn fetch_endgame<Source: GameDataSource>(source: &Source, git_ref: &str) -> Endgame {
+        async fn rows<Source: GameDataSource>(
+            source: &Source,
+            git_ref: &str,
+            path: &str,
+        ) -> Vec<serde_json::Value> {
+            match source
+                .get_json_file::<Vec<serde_json::Value>>(git_ref, path)
+                .await
+            {
+                Ok(rows) => rows,
+                Err(e) => {
+                    tracing::warn!("could not read {path}; its seasons are left out: {e}");
+                    Vec::new()
+                }
+            }
+        }
+        let id = |row: &serde_json::Value, field: &str| -> Option<u32> {
+            row.get(field)?.as_u64()?.try_into().ok()
+        };
+
+        let schedules = rows(
+            source,
+            git_ref,
+            "ExcelBinOutput/RoleCombatScheduleExcelConfigData.json",
+        )
+        .await;
+        let difficulties = rows(
+            source,
+            git_ref,
+            "ExcelBinOutput/RoleCombatDifficultyExcelConfigData.json",
+        )
+        .await;
+        let theater_difficulties: BTreeMap<u32, u32> = difficulties
+            .iter()
+            .filter_map(|row| Some((id(row, "difficultyId")?, id(row, "difficultyLevel")?)))
+            .collect();
+        // A schedule names its difficulty rows in one of its (obfuscated)
+        // lists: the longest list whose numbers are all difficulty ids (a
+        // schedule also carries a short list of small numbers, which the
+        // first seasons' low row ids would pass for).
+        let theater_seasons = schedules
+            .iter()
+            .filter_map(|row| {
+                let schedule = id(row, "scheduleId")?;
+                let begin = row.get("beginTimeStr")?.as_str()?.to_string();
+                let difficulties = row
+                    .as_object()?
+                    .values()
+                    .filter_map(|value| value.as_array())
+                    .filter(|list| !list.is_empty())
+                    .filter_map(|list| {
+                        list.iter()
+                            .map(|v| u32::try_from(v.as_u64()?).ok())
+                            .collect::<Option<BTreeSet<u32>>>()
+                    })
+                    .filter(|ids| ids.iter().all(|id| theater_difficulties.contains_key(id)))
+                    .max_by_key(BTreeSet::len)
+                    .unwrap_or_default();
+                Some((
+                    schedule,
+                    TheaterSeason {
+                        begin,
+                        difficulties,
+                    },
+                ))
+            })
+            .collect();
+        let stygian_seasons = rows(
+            source,
+            git_ref,
+            "ExcelBinOutput/LeyLineChallengeExcelConfigData.json",
+        )
+        .await
+        .iter()
+        .filter_map(|row| id(row, "scheduleId"))
+        .collect();
+        Endgame {
+            theater_seasons,
+            theater_difficulties,
+            stygian_seasons,
+        }
     }
 
     /// The exploration tables' ids. A table that cannot be read leaves its set
@@ -919,6 +1017,17 @@ mod tests {
                 "ExcelBinOutput/TribalQuestChapterExcelConfigData.json" => {
                     include_str!("test_data/ExcelBinOutput/TribalQuestChapterExcelConfigData.json")
                 }
+                "ExcelBinOutput/RoleCombatScheduleExcelConfigData.json" => {
+                    include_str!("test_data/ExcelBinOutput/RoleCombatScheduleExcelConfigData.json")
+                }
+                "ExcelBinOutput/RoleCombatDifficultyExcelConfigData.json" => {
+                    include_str!(
+                        "test_data/ExcelBinOutput/RoleCombatDifficultyExcelConfigData.json"
+                    )
+                }
+                "ExcelBinOutput/LeyLineChallengeExcelConfigData.json" => {
+                    include_str!("test_data/ExcelBinOutput/LeyLineChallengeExcelConfigData.json")
+                }
                 "TextMap/TextMap_MediumEN.json" => {
                     include_str!("test_data/TextMap/TextMap_MediumEN.json")
                 }
@@ -1062,6 +1171,29 @@ mod tests {
             exploration.scene_points,
             BTreeMap::from([(3, BTreeSet::from([1, 7, 12]))])
         );
+    }
+
+    #[tokio::test]
+    async fn endgame_seasons_come_from_their_tables() {
+        let source = TestDataSource;
+        let mut data = AnimeGameData::new();
+        data.update_impl(&source).await.unwrap();
+        let endgame = data.endgame().unwrap();
+        assert_eq!(
+            endgame.theater_seasons.keys().copied().collect::<Vec<_>>(),
+            [31, 32]
+        );
+        let season = &endgame.theater_seasons[&31];
+        assert_eq!(season.begin, "2026-11-01 04:00:00");
+        // The difficulty list is the schedule's list made of difficulty ids,
+        // not its level list or its reward list.
+        assert_eq!(
+            season.difficulties,
+            BTreeSet::from([125, 126, 127, 128, 129])
+        );
+        assert_eq!(endgame.theater_difficulties[&129], 5);
+        assert_eq!(endgame.theater_difficulties.len(), 10);
+        assert_eq!(endgame.stygian_seasons, BTreeSet::from([5269012, 5269013]));
     }
 
     #[tokio::test]

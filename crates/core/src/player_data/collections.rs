@@ -778,11 +778,32 @@ impl PlayerData {
     /// weapon skins' own list of wearers.
     pub(super) fn export_wardrobe(&self) -> Option<good::GiWardrobe> {
         let state = &self.collections;
+        let wardrobe = state.wardrobe.as_ref();
+        // The Traveler's two bodies share one key: the one in a saved team
+        // speaks for it, else the lower avatar id. (Whichever the character
+        // map yielded last used to win, which changed between runs.)
+        let in_a_team = |guid: u64| {
+            wardrobe.is_some_and(|w| w.teams.values().any(|t| t.avatar_guids.contains(&guid)))
+        };
         let worn = |pick: fn(&super::AvatarInfo) -> u32| -> BTreeMap<String, u32> {
-            self.characters
-                .values()
-                .filter(|avatar| pick(avatar) != 0)
-                .filter_map(|avatar| Some((self.character_key_by_guid(avatar.guid)?, pick(avatar))))
+            let mut by_key: BTreeMap<String, &super::AvatarInfo> = BTreeMap::new();
+            for avatar in self.characters.values().filter(|avatar| pick(avatar) != 0) {
+                let Some(key) = self.character_key_by_guid(avatar.guid) else {
+                    continue;
+                };
+                let rank = |a: &super::AvatarInfo| (!in_a_team(a.guid), a.avatar_id);
+                by_key
+                    .entry(key)
+                    .and_modify(|held| {
+                        if rank(avatar) < rank(held) {
+                            *held = avatar;
+                        }
+                    })
+                    .or_insert(avatar);
+            }
+            by_key
+                .into_iter()
+                .map(|(key, avatar)| (key, pick(avatar)))
                 .collect()
         };
         let kind = |owned: &[u32], worn: BTreeMap<String, u32>| {
@@ -792,7 +813,6 @@ impl PlayerData {
                 expires: None,
             })
         };
-        let wardrobe = state.wardrobe.as_ref();
         let out = good::GiWardrobe {
             outfits: wardrobe.and_then(|w| kind(&w.outfits, worn(|a| a.costume_id))),
             gliders: wardrobe.and_then(|w| kind(&w.gliders, worn(|a| a.wearing_flycloak_id))),

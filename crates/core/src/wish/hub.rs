@@ -121,25 +121,27 @@ impl Captured {
     }
 }
 
-/// The server region of a UID, as the game's dispatch names it: the region
-/// is in the UID's first digit (after the leading 1 of a ten-digit one).
+/// The server region of a UID, as the game's dispatch names it.
+///
+/// A UID is an eight-digit account number with the region in front of it,
+/// so the region is everything before the last eight digits, read whole:
+/// `8` and `18` are both Asia, and a nine-digit China UID that starts with
+/// 18 (`187654321`) is region `1`. Reading the first digit of a ten-digit
+/// UID called every one of them China.
 ///
 /// The game learns its region from the dispatch server over HTTP, not from
 /// the traffic Teyvat.me reads, so this is how the link gets its `region`.
 pub fn region_for_uid(uid: u32) -> Option<&'static str> {
-    let digits = uid.to_string();
-    let first = match digits.len() {
-        9 => digits.as_bytes()[0],
-        10 if digits.starts_with('1') => digits.as_bytes()[1],
-        _ => return None,
-    };
-    match (digits.len(), first) {
-        (_, b'6') => Some("os_usa"),
-        (_, b'7') => Some("os_euro"),
-        (_, b'8') => Some("os_asia"),
-        (_, b'9') => Some("os_cht"),
-        (9, b'1' | b'2' | b'3') => Some("cn_gf01"),
-        (9, b'5') => Some("cn_qd01"),
+    if uid < 100_000_000 {
+        return None;
+    }
+    match uid / 100_000_000 {
+        6 | 16 => Some("os_usa"),
+        7 | 17 => Some("os_euro"),
+        8 | 18 => Some("os_asia"),
+        9 | 19 => Some("os_cht"),
+        1 | 2 | 3 | 11 | 12 | 13 => Some("cn_gf01"),
+        5 | 15 => Some("cn_qd01"),
         _ => None,
     }
 }
@@ -603,6 +605,16 @@ mod tests {
         assert_eq!(region_for_uid(511_111_111), Some("cn_qd01"));
         assert_eq!(region_for_uid(411_111_111), None);
         assert_eq!(region_for_uid(81_111_111), None);
+        // Ten digits: the region is the first two, never the leading 1.
+        assert_eq!(region_for_uid(1_611_111_111), Some("os_usa"));
+        assert_eq!(region_for_uid(1_711_111_111), Some("os_euro"));
+        assert_eq!(region_for_uid(1_911_111_111), Some("os_cht"));
+        assert_eq!(region_for_uid(1_111_111_111), Some("cn_gf01"));
+        assert_eq!(region_for_uid(1_511_111_111), Some("cn_qd01"));
+        assert_eq!(region_for_uid(1_011_111_111), None);
+        assert_eq!(region_for_uid(2_811_111_111), None);
+        // A nine-digit China UID that happens to start with 18.
+        assert_eq!(region_for_uid(187_654_321), Some("cn_gf01"));
     }
 
     fn banner(gacha_type: u32, gacha_id: &str) -> GachaRecordLink {

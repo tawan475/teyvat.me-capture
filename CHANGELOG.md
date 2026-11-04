@@ -2,6 +2,59 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.17.12
+
+- Opening Teyvat.me while it is already running brings its window to the
+  front, out of the tray or the taskbar, instead of doing nothing.
+- A ten-digit UID (18…, 16…) showed its server as China; it is read from the
+  digits before the account number now, so 18… is Asia again.
+- Live sync no longer rebuilds the export several times a second while a lone
+  change waits its two minutes; it looks again every 15 s, or when new data
+  arrives.
+- The log no longer gets a line per server ACK the KCP reassembler skips
+  (141,000 lines in one evening); the stats line counts them (`kcp_dropped`),
+  shows frames per direction (`sent`/`received`), and Windows' packet monitor
+  lists the adapters and components it found at start.
+- Wi-Fi: the packet monitor's own copies of a Wi-Fi adapter's packets are
+  802.11 frames, which were thrown away; they are read now, so an incoming
+  packet no longer depends on the one component that reports it as Ethernet.
+- When a login goes by with none of the game server's packets seen (one PC's
+  packet monitor delivered only the client's sends), capture switches to
+  compatible mode by itself and says so; the next login is read.
+- The log starts with the Windows edition and build, and the raw packet log
+  names which packet monitor component delivered each frame.
+- New in the export: `gi_endgame`. The Imaginarium Theater season you are
+  in, the difficulty you picked and the acts you cleared (from the login),
+  and your Stygian Onslaught records (difficulty, time per boss, your own
+  team, and each fight's strongest single strike and highest total damage;
+  read when you open its menu). A co-op record's other players are never
+  exported. The seasons come with the game data; a season newer than
+  the build is skipped until the next release.
+- Genshin 7.2: the Miliastra Wonderland cosmetics are read again. The game
+  now lists the emotes and poses beside them as entries instead of plain
+  numbers, which made the whole message unrecognisable to 1.17.11. Every
+  other part of a 7.2 login reads as before.
+- Decoding a login takes about 40% less CPU: the message matchers read each
+  payload in place instead of copying it into a field map two dozen times,
+  and the account's UID is no longer recounted over the whole inventory for
+  every message the matchers leave unclaimed.
+- Compatible capture now notices a network interface or address that
+  appears after it started (Wi-Fi joining, a VPN, a renumbering) and
+  listens on it too; a reader that fails is reopened. It used to list the
+  interfaces once, so a game started on a new one was never heard.
+- A capture backend restart (the silence watchdog's, a mode switch's) no
+  longer stops the automated snapshots for the rest of the login: they
+  waited for a character list that only comes with the next login.
+- A replaced capture task's late failure report no longer drops the running
+  task's stop handle, which left both running and decoded every packet
+  twice.
+- A KCP segment with an unknown command no longer costs the segments after
+  it in the same datagram; the packet log closes with one warning when it
+  can't be written instead of logging every frame; the compatible-mode
+  switch is not announced under `-b pcap`, where it changes nothing;
+  recordings declare no snapshot length cap, as a merged datagram can be
+  longer than the one they declared.
+
 ## 1.17.11
 
 - Compatible capture now reads the game's packets through a raw socket

@@ -18,10 +18,9 @@
 
 use std::collections::BTreeMap;
 
-use protobuf::Message;
 use protobuf::UnknownValueRef::{Fixed32, Fixed64, LengthDelimited, Varint};
 
-use crate::r#gen::protos::Unk;
+use crate::wire;
 
 /// The most records believed in one list (the map point list is a packed list,
 /// not records; the longest record lists in 7.1 hold a few hundred).
@@ -82,14 +81,15 @@ fn varints_of(bytes: &[u8]) -> Option<Vec<u64>> {
 /// repeats a lone number, has more than [`MAX_RECORD_FIELDS`] field numbers, or holds
 /// fixed-width numbers).
 fn read_record(bytes: &[u8]) -> Option<Record> {
-    let msg = Unk::parse_from_bytes(bytes).ok()?;
+    let fields = wire::fields(bytes)?;
+    if fields.len() > MAX_RECORD_FIELDS {
+        return None;
+    }
     let mut record = Record::default();
-    let mut tags = std::collections::BTreeSet::new();
-    for (tag, value) in msg.unknown_fields().iter() {
-        tags.insert(tag);
-        if tags.len() > MAX_RECORD_FIELDS {
-            return None;
-        }
+    for (tag, value) in fields
+        .into_iter()
+        .flat_map(|(tag, values)| values.into_iter().map(move |value| (tag, value)))
+    {
         match value {
             Varint(v) => {
                 if record.varints.insert(tag, v).is_some() {
@@ -119,10 +119,12 @@ fn read_record(bytes: &[u8]) -> Option<Record> {
 /// length-delimited field is a list when it reads as numbers but not as a
 /// record.
 pub fn matches_records_message(data: &[u8]) -> Option<RecordsMessage> {
-    let msg = Unk::parse_from_bytes(data).ok()?;
     let mut by_tag: BTreeMap<u32, Vec<&[u8]>> = BTreeMap::new();
     let mut out = RecordsMessage::default();
-    for (tag, value) in msg.unknown_fields().iter() {
+    for (tag, value) in wire::fields(data)?
+        .into_iter()
+        .flat_map(|(tag, values)| values.into_iter().map(move |value| (tag, value)))
+    {
         match value {
             Varint(v) => {
                 if out.varints.insert(tag, v).is_some() {
