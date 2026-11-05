@@ -833,6 +833,37 @@ impl PlayerData {
         self.character_equip_guid_map.clear();
     }
 
+    /// Whether the held data is a whole account: an owned character and the
+    /// bag. Every account has both (the Traveler, and gear), so an empty
+    /// roster or bag is never the account's real state. It is what is held
+    /// between a new login's bag and its character list (two messages of one
+    /// burst), or for good when that login's connection drops in between: a
+    /// snapshot taken then would tell the tracker the account owns no
+    /// characters. Every upload and export path asks this first.
+    pub fn holds_account(&self) -> bool {
+        self.missing_for(&ExportSettings::for_tracker()).is_none()
+    }
+
+    /// What an export with `settings` needs that is not held yet
+    /// ([`Self::holds_account`]): `"characters"` when it exports characters
+    /// and no owned one is held, `"inventory"` when it exports gear or
+    /// materials and the bag is empty. `None`: nothing is missing.
+    pub fn missing_for(&self, settings: &ExportSettings) -> Option<&'static str> {
+        let roster = self
+            .characters
+            .values()
+            .any(|avatar| avatar.avatar_type == AVATAR_TYPE_FORMAL);
+        if settings.include_characters && !roster {
+            return Some("characters");
+        }
+        let bag =
+            settings.include_artifacts || settings.include_weapons || settings.include_materials;
+        if bag && self.items.is_empty() {
+            return Some("inventory");
+        }
+        None
+    }
+
     /// Whether nothing at all has been captured.
     #[cfg(any(test, feature = "test-support"))]
     pub fn is_empty(&self) -> bool {
@@ -1932,6 +1963,11 @@ impl PlayerData {
         &self,
         settings: &ExportSettings,
     ) -> Result<(String, ExportReport)> {
+        // An empty roster or bag is a login caught halfway, never the
+        // account: written out it would erase the tracker's characters.
+        if let Some(missing) = self.missing_for(settings) {
+            anyhow::bail!("this login's {missing} have not been captured yet");
+        }
         let now_ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -2853,6 +2889,52 @@ mod tests {
             avatar.skill_level_map.insert(*skill_id, *level);
         }
         avatar
+    }
+
+    /// A relogin replaces the data, and its bag arrives a message before its
+    /// character list: in between (for good, when that connection drops or a
+    /// recording ends there) the held data is not an account, and nothing
+    /// may be exported from it as one.
+    #[test]
+    fn a_new_logins_bag_without_its_characters_is_not_an_account() {
+        let mut data = player_data();
+        assert!(!data.holds_account());
+        assert_eq!(data.missing_for(&settings()), Some("characters"));
+
+        data.process_items(&[material_item(104001, 1, 3)]);
+        data.process_characters(&[character(10000002, &[])]);
+        assert!(data.holds_account());
+
+        // The next login: its bag first.
+        data.reset();
+        data.process_items(&[material_item(104001, 1, 4)]);
+        assert!(!data.holds_account());
+        assert_eq!(data.missing_for(&settings()), Some("characters"));
+        // The export refuses it rather than writing an empty roster.
+        assert!(
+            data.export_genshin_optimizer_with_report(&settings())
+                .is_err()
+        );
+        // An export that leaves characters out needs only the bag.
+        let gear_only = ExportSettings {
+            include_characters: false,
+            ..settings()
+        };
+        assert_eq!(data.missing_for(&gear_only), None);
+
+        // A trial or mirror copy alone is not the roster.
+        let mut trial = character(10000002, &[]);
+        trial.avatar_type = 2;
+        data.process_characters(&[trial]);
+        assert!(!data.holds_account());
+
+        data.process_characters(&[character(10000002, &[])]);
+        assert!(data.holds_account());
+
+        // Characters without the bag are not an account either.
+        data.reset();
+        data.process_characters(&[character(10000002, &[])]);
+        assert_eq!(data.missing_for(&settings()), Some("inventory"));
     }
 
     #[test]

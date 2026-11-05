@@ -524,10 +524,11 @@ impl Decoder {
             serde_json::from_str(settings)?
         };
         let mut state = self.state.lock().unwrap();
+        // A login caught halfway counts as nothing captured yet.
         let Some(data) = state
             .player_data
             .as_ref()
-            .filter(|_| state.data_at.is_some())
+            .filter(|data| state.data_at.is_some() && data.missing_for(&settings).is_none())
         else {
             return Ok(None);
         };
@@ -567,11 +568,8 @@ impl Decoder {
 
     /// When live sync next has something to decide (Unix ms), if anything.
     pub fn live_next_tick(&self, live_enabled: bool) -> Option<u64> {
-        self.state
-            .lock()
-            .unwrap()
-            .live
-            .next_tick_ms(live_enabled, now_ms())
+        let state = state_ready(&self.state)?;
+        state.live.next_tick_ms(live_enabled, now_ms())
     }
 
     /// What live sync sends now: a snapshot it asked for (`S`, a ticket and
@@ -678,10 +676,16 @@ fn note_gaps(state: &mut State, summary: &str) {
     state.event("error", format!("Export incomplete: {summary}"));
 }
 
-/// The state, when the data is captured.
+/// The state, when the data is captured and is a whole account: a login
+/// caught halfway (its bag without its characters) is never uploaded, or
+/// the tracker would record an account with no characters.
 fn state_ready(state: &Mutex<State>) -> Option<std::sync::MutexGuard<'_, State>> {
     let state = state.lock().unwrap();
-    (state.player_data.is_some() && state.data_at.is_some()).then_some(state)
+    let whole = state
+        .player_data
+        .as_ref()
+        .is_some_and(PlayerData::holds_account);
+    (whole && state.data_at.is_some()).then_some(state)
 }
 
 /// The tracker export for a snapshot taken for `reason`, labelled with its

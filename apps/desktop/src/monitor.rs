@@ -2034,6 +2034,15 @@ impl Monitor {
         self.automation_pending_since = None;
         let saved_state = self.upload_state();
         let plan = AutomationPlan::for_state(&saved_state);
+        // The trigger waited for this login's characters, but a trial or
+        // mirror copy alone stamps them too: never a tracker snapshot
+        // without the owned roster. The real list re-arms the trigger.
+        if plan.tracker.is_some()
+            && let Some(missing) = self.player_data.missing_for(&ExportSettings::for_tracker())
+        {
+            tracing::info!(missing, "the login is not all in yet; no automation export");
+            return;
+        }
 
         let signature = (
             self.app_state.app_state.updated.items_updated,
@@ -2285,15 +2294,22 @@ impl Monitor {
     /// When live sync next has something to decide, in Unix ms.
     fn live_next_tick(&self) -> Option<u64> {
         let state = self.upload_state();
-        if !uploads_allowed(&self.capture_source) || !crate::app::want_tracker_upload(&state) {
+        if !uploads_allowed(&self.capture_source)
+            || !crate::app::want_tracker_upload(&state)
+            || !self.player_data.holds_account()
+        {
             return None;
         }
         self.live.next_tick_ms(live_enabled(&state), now_ms())
     }
 
     /// Let live sync send what is due: a batch, or a snapshot it asked for.
+    /// Nothing while the held data is a login caught halfway (its bag
+    /// without its characters): a snapshot it still wants from before the
+    /// relogin (a collapse, a resync) waits for the whole account instead
+    /// of telling the tracker it owns no characters.
     fn live_tick(&mut self) {
-        if !uploads_allowed(&self.capture_source) {
+        if !uploads_allowed(&self.capture_source) || !self.player_data.holds_account() {
             return;
         }
         let state = self.upload_state();
@@ -2581,7 +2597,10 @@ impl Monitor {
     /// `manual`), when there is data.
     fn snapshot_asked(&mut self) {
         let updated = &self.app_state.app_state.updated;
-        if updated.items_updated.is_none() || updated.characters_updated.is_none() {
+        if updated.items_updated.is_none()
+            || updated.characters_updated.is_none()
+            || !self.player_data.holds_account()
+        {
             tracing::info!("nothing captured; the snapshot asked for is skipped");
             return;
         }

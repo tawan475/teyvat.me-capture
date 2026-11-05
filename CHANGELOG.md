@@ -2,6 +2,19 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## Unreleased
+
+- Nothing is uploaded or exported from a login caught halfway. A new login
+  sends the bag a message before the character list; in between (and for
+  good when that connection drops there) Teyvat.me held a bag with no
+  characters. The automated upload already waited for both, but a live sync
+  snapshot still wanted from before the relogin (a collapse, a resync),
+  Android's Upload now and a toast's Retry could send that state, and the
+  tracker would have recorded an account with no characters. Every upload
+  and export now waits for the owned roster and the bag
+  (`PlayerData::holds_account`). `--replay-export` of a recording that ends
+  inside a login exports the account before it, saying so.
+
 ## 1.17.17
 
 - Teyvat.me no longer asks the tracker who it is signed in as every five
