@@ -236,14 +236,8 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
         val lastLive by tracker.lastLive.collectAsState()
         val signInUrl by tracker.signInUrl.collectAsState()
         val trackerAlerts by tracker.alerts.collectAsState()
-        // whoami every 5 min too (the desktop's), not only on resume: the
-        // upload target may change on the website while the app is open.
-        androidx.compose.runtime.LaunchedEffect(Unit) {
-            while (true) {
-                kotlinx.coroutines.delay(5 * 60_000L)
-                tracker.refreshWho()
-            }
-        }
+        // whoami on resume only (the desktop's rule): while the game runs every
+        // presence answer carries it (Tracker.sendPresence), so no 5-minute poll.
         val trackerView = TrackerView(
             trackerState, lastUpload, uploading, settings.trackerUpload, settings.sendWishes, settings.liveSync,
             revoked = revoked, capturedUid = summary.player?.uid, key = importKey, api = Links.trackerApi,

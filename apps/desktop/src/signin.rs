@@ -1640,6 +1640,31 @@ impl TrackerAuth {
         }
     }
 
+    /// A whoami the tracker sent with a presence answer (`link.rs`): taken
+    /// like [`Self::refresh_whoami`]'s answer while signed in, so the panel
+    /// stays current without polling whoami. One that does not parse, or
+    /// arrives signed out, is ignored; an unchanged one publishes nothing.
+    pub async fn adopt_whoami(&self, json: &serde_json::Value) {
+        let Ok(whoami) = parse_whoami(json) else {
+            return;
+        };
+        let session = self.inner.session.lock().await;
+        if session.refresh.is_none() {
+            return;
+        }
+        let same = matches!(
+            &*self.inner.status_tx.borrow(),
+            AuthStatus::SignedIn { whoami: Some(held), error: None } if *held == whoami
+        );
+        if !same {
+            tracing::info!(scope = ?whoami.scope, "tracker sign-in: whoami from presence");
+            self.publish(AuthStatus::SignedIn {
+                whoami: Some(whoami),
+                error: None,
+            });
+        }
+    }
+
     /// Send another feature's request (the wish sync's routes) with this
     /// session's bearer token, for the address the caller meant: the rules
     /// of [`Self::upload`] -- refresh (under the session lock) and retry once

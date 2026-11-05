@@ -923,6 +923,38 @@ async fn a_saved_sign_in_loads_and_reads_whoami() {
 }
 
 #[tokio::test]
+async fn a_whoami_from_presence_is_taken_only_while_signed_in() {
+    let tracker = Arc::new(FakeTracker::start().await);
+    tracker.state().refresh = Some("refresh-saved".to_string());
+    let h = harness(&tracker.base, None, Browser::Nothing);
+    let pushed = serde_json::json!({
+        "scope": "account", "user": "player01", "accountId": 7, "accountName": "Alt",
+        "uid": "812345678", "server": "ASIA", "dashboardUrl": "https://example.test/app/a/7",
+        "configUrl": "https://example.test/app/settings/devices?device=1",
+    });
+    // Signed out: ignored.
+    h.auth.adopt_whoami(&pushed).await;
+    assert!(!matches!(status(&h), AuthStatus::SignedIn { .. }));
+
+    h.store.save(&tracker.origin(), "refresh-saved").unwrap();
+    h.auth.load(&client()).await;
+    h.auth.adopt_whoami(&pushed).await;
+    let AuthStatus::SignedIn { whoami, error } = status(&h) else {
+        panic!("not signed in: {:?}", status(&h));
+    };
+    assert_eq!(error, None);
+    assert_eq!(whoami.unwrap().target_label(), "Alt (UID 812345678)");
+    // One that does not parse changes nothing.
+    h.auth
+        .adopt_whoami(&serde_json::json!({"scope": "dance"}))
+        .await;
+    assert!(matches!(
+        status(&h),
+        AuthStatus::SignedIn { whoami: Some(w), .. } if w.account_name.as_deref() == Some("Alt")
+    ));
+}
+
+#[tokio::test]
 async fn a_refresh_the_tracker_refuses_signs_out() {
     let tracker = Arc::new(FakeTracker::start().await);
     // The stored token was rotated away or its session ended.

@@ -2,6 +2,15 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.17.17
+
+- Teyvat.me no longer asks the tracker who it is signed in as every five
+  minutes. While the game runs, each presence heartbeat's answer already
+  says who is signed in and where uploads go, so the signed-in panel follows
+  it from there; with the game closed nothing uploads, and bringing the
+  window back still reads it again. Copies left running in the tray all day
+  made most of these requests. Android does the same.
+
 ## 1.17.16
 
 - Quests finished during a session are captured as they happen: a parent quest

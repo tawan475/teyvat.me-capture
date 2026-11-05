@@ -34,7 +34,7 @@ pub fn presence_due(state: &str, raw_uid: i64, now: u64) -> bool {
 
 /// The heartbeat's answer (status 0: none): `{"gone"}` once the tracker
 /// lacks the route, else the commands and, when the answer had the field,
-/// `alerts` (null: none set).
+/// `alerts` (null: none set) and `whoami` (the tracker's whoami object).
 pub fn presence_answered(status: i32, body: &str, now: u64) -> String {
     let outcome = PresenceOutcome::of(u16::try_from(status).unwrap_or(0), body);
     PRESENCE.lock().unwrap().answered(&outcome, now);
@@ -64,6 +64,9 @@ fn answer_json(outcome: &PresenceOutcome) -> serde_json::Value {
         AlertsAnswer::Unset => out["alerts"] = serde_json::Value::Null,
         AlertsAnswer::Set(alerts) => out["alerts"] = json!(alerts),
     }
+    if let Some(whoami) = &answer.whoami {
+        out["whoami"] = whoami.clone();
+    }
     out
 }
 
@@ -87,6 +90,10 @@ mod tests {
         assert_eq!(
             of(r#"{"alerts": {"resin": 160, "resinFull": true, "quiet": true}}"#),
             json!({ "commands": [], "alerts": { "resin": 160, "resinFull": true } })
+        );
+        assert_eq!(
+            of(r#"{"whoami": {"scope": "uid", "user": "player01"}}"#),
+            json!({ "commands": [], "whoami": { "scope": "uid", "user": "player01" } })
         );
         assert_eq!(answer_json(&PresenceOutcome::Gone), json!({ "gone": true }));
     }
