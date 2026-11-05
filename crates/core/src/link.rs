@@ -132,6 +132,11 @@ pub struct PresenceAnswer {
     /// Known commands, in order; unknown kinds are skipped.
     pub commands: Vec<Command>,
     pub alerts: AlertsAnswer,
+    /// The tracker's `whoami` for this sign-in, as the answer carries it
+    /// (an object; absent with an import key or from a tracker before
+    /// 2026-11-06). Each app reads it as its own whoami answer, so it needs
+    /// no whoami poll of its own while heartbeats flow.
+    pub whoami: Option<serde_json::Value>,
 }
 
 impl PresenceAnswer {
@@ -166,10 +171,12 @@ impl PresenceAnswer {
                 Err(_) => AlertsAnswer::Absent,
             },
         };
+        let whoami = value.get("whoami").filter(|w| w.is_object()).cloned();
         Self {
             next_secs,
             commands,
             alerts,
+            whoami,
         }
     }
 }
@@ -345,6 +352,20 @@ mod tests {
                 resin_full: true
             })
         );
+    }
+
+    #[test]
+    fn an_answer_carries_whoami_when_the_tracker_sends_it() {
+        let answer = PresenceAnswer::parse(
+            r#"{"next": 60, "whoami": {"scope": "uid", "user": "player01"}}"#,
+        );
+        assert_eq!(
+            answer.whoami,
+            Some(serde_json::json!({"scope": "uid", "user": "player01"}))
+        );
+        assert_eq!(PresenceAnswer::parse(r#"{"next": 60}"#).whoami, None);
+        assert_eq!(PresenceAnswer::parse(r#"{"whoami": null}"#).whoami, None);
+        assert_eq!(PresenceAnswer::parse(r#"{"whoami": "x"}"#).whoami, None);
     }
 
     #[test]

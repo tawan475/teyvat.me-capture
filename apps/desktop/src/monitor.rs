@@ -2551,6 +2551,12 @@ impl Monitor {
                     self.app_state.update_tracker_alerts(alerts);
                     self.ctx.request_repaint();
                 }
+                // Who this sign-in is and where uploads go: the panel keeps it
+                // current from here, with no whoami poll (app.rs).
+                if let Some(whoami) = answer.whoami {
+                    let auth = self.tracker_auth.clone();
+                    tokio::spawn(async move { auth.adopt_whoami(&whoami).await });
+                }
                 for command in answer.commands {
                     tracing::info!(?command, "the tracker asked for something");
                     match command {

@@ -565,6 +565,12 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
             val answer = json(NativeBridge.presenceAnswered(status, text, System.currentTimeMillis()))
             if (!linked) return@launch
             if (answer.has("alerts")) setAlerts(TrackerAlerts.parse(answer.optJSONObject("alerts")))
+            // Who this sign-in is and where uploads go, with no whoami poll.
+            if (stateFlow.value is TrackerState.SignedIn) {
+                Whoami.parse(answer.optJSONObject("whoami"))?.let { who ->
+                    if ((stateFlow.value as? TrackerState.SignedIn)?.who != who) setWho(who)
+                }
+            }
             val commands = answer.optJSONArray("commands") ?: return@launch
             for (i in 0 until commands.length()) {
                 when (commands.optString(i)) {

@@ -68,12 +68,12 @@ const CAPTURE_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 const MONITOR_SHUTDOWN_TIMEOUT: Duration =
     Duration::from_secs(CAPTURE_SHUTDOWN_TIMEOUT.as_secs() + 3);
 
-/// How often whoami is re-read while signed in, so an upload target changed
-/// on the tracker's website shows up without a restart.
-const WHOAMI_REFRESH_INTERVAL: Duration = Duration::from_secs(5 * 60);
-
 /// Coming back to the window re-reads whoami (the user may have just changed
-/// the target in the browser), but not more often than this.
+/// the target in the browser), but not more often than this. There is no
+/// timed re-read: while the game runs, every presence answer carries whoami
+/// (`monitor.rs`); with it closed nothing uploads, and the window shows a
+/// fresh one whenever it is brought back (a 5-minute poll was ~2,250
+/// requests a day, mostly from copies idling in the tray, 2026-11-06).
 const WHOAMI_FOCUS_MIN_INTERVAL: Duration = Duration::from_secs(10);
 
 /// Whether the tracker sign-in (`signin.rs`) is signed in, as the upload
@@ -575,15 +575,12 @@ enum Closing {
     Now,
 }
 
-/// Whether whoami should be read again: never read yet, the window just
-/// got the focus back (and the last read is not brand new), or it is due.
+/// Whether whoami should be read again: never read yet, or the window just
+/// got the focus back (and the last read is not brand new).
 fn whoami_refresh_due(regained_focus: bool, since_last: Option<Duration>) -> bool {
     match since_last {
         None => true,
-        Some(since) => {
-            since >= WHOAMI_REFRESH_INTERVAL
-                || (regained_focus && since >= WHOAMI_FOCUS_MIN_INTERVAL)
-        }
+        Some(since) => regained_focus && since >= WHOAMI_FOCUS_MIN_INTERVAL,
     }
 }
 
@@ -2090,9 +2087,6 @@ impl TeyvatmeApp {
         if whoami_refresh_due(regained_focus, since) {
             self.whoami_checked_at = Some(Instant::now());
             self.send_tracker(TrackerRequest::Refresh);
-            ctx.request_repaint_after(WHOAMI_REFRESH_INTERVAL);
-        } else if let Some(since) = since {
-            ctx.request_repaint_after(WHOAMI_REFRESH_INTERVAL.saturating_sub(since));
         }
     }
 
@@ -3164,13 +3158,17 @@ mod tests {
     }
 
     #[test]
-    fn whoami_is_reread_on_return_and_every_few_minutes() {
+    fn whoami_is_reread_on_return_only() {
         assert!(whoami_refresh_due(false, None));
         assert!(!whoami_refresh_due(false, Some(Duration::from_secs(30))));
         assert!(whoami_refresh_due(true, Some(Duration::from_secs(30))));
         // Not on every focus flicker.
         assert!(!whoami_refresh_due(true, Some(Duration::from_secs(2))));
-        assert!(whoami_refresh_due(false, Some(WHOAMI_REFRESH_INTERVAL)));
+        // No timed re-read: presence answers carry it while the game runs.
+        assert!(!whoami_refresh_due(
+            false,
+            Some(Duration::from_secs(24 * 3600))
+        ));
     }
 
     fn whoami(scope: UploadScope) -> Whoami {
