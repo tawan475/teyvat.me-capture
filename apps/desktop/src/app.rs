@@ -914,6 +914,17 @@ pub enum StartWindow {
 /// until [`restore_window`], which runs on the tray's thread.
 static HIDDEN_TO_TRAY: AtomicBool = AtomicBool::new(false);
 
+/// Whether the window was minimized or in the tray on its last frame. Read
+/// by `main` once the window has died under the app (its graphics device
+/// gone), so the copy it starts in its place comes back out of sight too.
+static OUT_OF_SIGHT: AtomicBool = AtomicBool::new(false);
+
+/// See [`OUT_OF_SIGHT`]: the window as it was on its last frame, which is all
+/// there is once the window itself is gone.
+pub fn window_was_out_of_sight() -> bool {
+    OUT_OF_SIGHT.load(Ordering::Relaxed)
+}
+
 /// Whether the window's own minimize goes to the tray now; read by
 /// [`minimize_hook`].
 #[cfg(windows)]

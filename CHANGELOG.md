@@ -2,6 +2,21 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.17.14
+
+- A lost graphics device no longer ends Teyvat.me. Direct3D reports the
+  device lost after a driver reset or update, a sleep or a display change,
+  and the window's renderer answers the next frame with a panic it cannot
+  recover from inside the process (1.17.13 died with "Error in
+  Surface::present"). Teyvat.me now starts itself again in its place, with
+  the same command line and the window back where it was (minimized or in
+  the tray); the crash report is still written and the next run says so. A
+  device that fails at every start gets one restart, not a loop.
+- Paimon's Bargains: the Fates bought this month are counted again. A Fate
+  bought for Starglitter, which has no monthly limit, hid the shop's count
+  field, and the Stardust Fates then read as unbought ("5 / 5 left" on
+  teyvat.me for a player who had bought them out).
+
 ## 1.17.13
 
 - Updates install by themselves. A new version found by the check is
