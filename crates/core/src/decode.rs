@@ -164,6 +164,7 @@ impl DataReplacement {
                         | CommandMatch::ResinSpent(_)
                         | CommandMatch::Records(_)
                         | CommandMatch::TeamUpdate(_)
+                        | CommandMatch::QuestUpdate(_)
                         | CommandMatch::Party(_)
                         | CommandMatch::Bargains(_)
                         | CommandMatch::ShopGoods(_)
@@ -452,6 +453,15 @@ pub fn apply_commands(
                 );
                 player_data.process_collection(CollectionPart::Quests(found));
                 applied.routine = true;
+            }
+            CommandMatch::QuestUpdate(update) => {
+                // Believed against the login's list only (the shape is a
+                // common one); it rides along with the next export.
+                let (finished, accepted) = player_data.apply_quest_update(&update);
+                if finished + accepted > 0 {
+                    tracing::info!(finished, accepted, "Found parent quests moving");
+                    applied.routine = true;
+                }
             }
             CommandMatch::Archive(found) => {
                 tracing::info!(tabs = found.len(), "Found the Archive");

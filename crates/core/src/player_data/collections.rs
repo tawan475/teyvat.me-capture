@@ -490,6 +490,38 @@ impl PlayerData {
         }
     }
 
+    /// Parent quests just finished or accepted
+    /// (`FinishedParentQuestUpdateNotify`), applied to the login's list:
+    /// nothing without one, a finished quest joins `finished` and leaves
+    /// `active`, an accepted one joins `active` unless finished already. A
+    /// finished quest never goes back. Returns how many were (finished,
+    /// accepted) that changed the list.
+    pub fn apply_quest_update(&mut self, update: &ParentQuests) -> (usize, usize) {
+        let Some(held) = self.collections.quests.as_mut() else {
+            return (0, 0);
+        };
+        let mut finished = 0;
+        for &id in &update.finished {
+            if let Err(at) = held.finished.binary_search(&id) {
+                held.finished.insert(at, id);
+                finished += 1;
+            }
+            if let Ok(at) = held.active.binary_search(&id) {
+                held.active.remove(at);
+            }
+        }
+        let mut accepted = 0;
+        for &id in &update.active {
+            if held.finished.binary_search(&id).is_err()
+                && let Err(at) = held.active.binary_search(&id)
+            {
+                held.active.insert(at, id);
+                accepted += 1;
+            }
+        }
+        (finished, accepted)
+    }
+
     /// Saved teams edited mid-session (`AvatarTeamUpdateNotify`): believed
     /// only once the login's wardrobe is held and when every guid is one of
     /// the account's characters (the message's shape is a common one).

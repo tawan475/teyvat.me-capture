@@ -511,6 +511,70 @@ fn restart_due(
         && ready_for.is_some_and(|since| since >= AUTO_RESTART_AFTER)
 }
 
+/// How long a close waits for an update to install before the app closes
+/// anyway ([`install_on_close`]). A download on a slow line, or one GitHub
+/// is slow to serve, is not worth a window that will not go away; the
+/// update is tried again at the next start's check.
+const CLOSE_INSTALL_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// What a request to close the window does about an update.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum OnClose {
+    /// Close at once, as before.
+    Close,
+    /// Start installing the release found, then close.
+    Install,
+    /// An install is under way (the hourly check's): let it finish, then
+    /// close.
+    WaitForInstall,
+}
+
+/// Whether closing the app installs a known update first.
+///
+/// Players ran old versions for days because the window was never looked
+/// at; closing it is a moment the app is not in use, so a release the check
+/// found and has not installed yet goes in then, and the new version runs
+/// from the next start. Never a relaunch: the user is closing it.
+/// A close that is the app's own restart (`restart_requested`: "Restart
+/// now", the quiet restart, restart as administrator) closes as it did; one
+/// installed already (`Ready`), or no update known, closes at once.
+fn install_on_close(status: &UpdateStatus, restart_requested: bool) -> OnClose {
+    if restart_requested {
+        return OnClose::Close;
+    }
+    match status {
+        UpdateStatus::Available(_) => OnClose::Install,
+        UpdateStatus::Installing(_) => OnClose::WaitForInstall,
+        UpdateStatus::Idle
+        | UpdateStatus::Checking
+        | UpdateStatus::UpToDate
+        | UpdateStatus::Manual(_)
+        | UpdateStatus::Ready(_)
+        | UpdateStatus::Failed(_) => OnClose::Close,
+    }
+}
+
+/// Whether a close that waits for an install ([`install_on_close`]) goes on
+/// now: the install ended (installed, or failed and logged) or the wait is
+/// up. `Available` still counts as waiting: the updater has not picked up
+/// the install command yet.
+fn close_wait_over(status: &UpdateStatus, waited: Duration) -> bool {
+    waited >= CLOSE_INSTALL_TIMEOUT
+        || !matches!(
+            status,
+            UpdateStatus::Available(_) | UpdateStatus::Installing(_)
+        )
+}
+
+/// A close under way (see [`install_on_close`]).
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Closing {
+    /// The close waits for `version` to install, since `since`.
+    Installing { version: String, since: Instant },
+    /// The next close request goes through.
+    Now,
+}
+
 /// Whether whoami should be read again: never read yet, the window just
 /// got the focus back (and the last read is not brand new), or it is due.
 fn whoami_refresh_due(regained_focus: bool, since_last: Option<Duration>) -> bool {
@@ -748,6 +812,9 @@ pub struct TeyvatmeApp {
     seen_update_status: UpdateStatus,
     /// Since when an installed release has been waiting for the restart.
     update_ready_since: Option<Instant>,
+    /// A close that waits for an update to install first, or one that goes
+    /// through (see [`install_on_close`]).
+    closing: Option<Closing>,
     /// Whether the tray icon carries the update mark now.
     tray_update_marked: bool,
     /// The sign-in notice last toasted, so it is said once.
@@ -1596,6 +1663,7 @@ impl TeyvatmeApp {
             window_focused: true,
             seen_update_status: UpdateStatus::Idle,
             update_ready_since: None,
+            closing: None,
             tray_update_marked: false,
             auth_notice_toasted: None,
             tracker_url_edit,
@@ -2366,6 +2434,82 @@ mod tests {
         ));
         assert!(!restart_due(true, None, NotRunning, true));
         assert!(!restart_due(false, waited, NotRunning, true));
+    }
+
+    #[test]
+    fn closing_installs_a_known_update_first_and_never_an_installed_or_unknown_one() {
+        let version = || "1.17.15".to_owned();
+        // Found and not installed yet (the setting is off, or the check just
+        // ran): installed on the way out.
+        assert_eq!(
+            install_on_close(&UpdateStatus::Available(version()), false),
+            OnClose::Install
+        );
+        // The hourly install is under way: let it finish.
+        assert_eq!(
+            install_on_close(&UpdateStatus::Installing(version()), false),
+            OnClose::WaitForInstall
+        );
+        // Installed already: it runs from the next start as it is.
+        assert_eq!(
+            install_on_close(&UpdateStatus::Ready(version()), false),
+            OnClose::Close
+        );
+        // No update known.
+        for status in [
+            UpdateStatus::Idle,
+            UpdateStatus::Checking,
+            UpdateStatus::UpToDate,
+            UpdateStatus::Manual(version()),
+            UpdateStatus::Failed("offline".to_owned()),
+        ] {
+            assert_eq!(
+                install_on_close(&status, false),
+                OnClose::Close,
+                "{status:?}"
+            );
+        }
+        // The app's own restart ("Restart now", the quiet restart, restart as
+        // administrator) is not a close that installs anything.
+        assert_eq!(
+            install_on_close(&UpdateStatus::Available(version()), true),
+            OnClose::Close
+        );
+        assert_eq!(
+            install_on_close(&UpdateStatus::Installing(version()), true),
+            OnClose::Close
+        );
+    }
+
+    #[test]
+    fn a_close_waits_for_the_install_to_end_or_the_timeout() {
+        let version = || "1.17.15".to_owned();
+        let soon = Duration::from_secs(1);
+        // Still downloading, or the command not picked up yet: wait.
+        assert!(!close_wait_over(&UpdateStatus::Installing(version()), soon));
+        assert!(!close_wait_over(&UpdateStatus::Available(version()), soon));
+        // Installed, or failed (logged, toasted): close.
+        assert!(close_wait_over(&UpdateStatus::Ready(version()), soon));
+        assert!(close_wait_over(
+            &UpdateStatus::Failed("no network".to_owned()),
+            soon
+        ));
+        assert!(close_wait_over(&UpdateStatus::UpToDate, soon));
+        // The wait is up: close anyway, whatever the download is doing (the
+        // shutdown cancels it; a replacement under way is waited for by the
+        // install lock).
+        assert!(close_wait_over(
+            &UpdateStatus::Installing(version()),
+            CLOSE_INSTALL_TIMEOUT
+        ));
+        assert!(close_wait_over(
+            &UpdateStatus::Available(version()),
+            CLOSE_INSTALL_TIMEOUT
+        ));
+        assert!(!close_wait_over(
+            &UpdateStatus::Installing(version()),
+            CLOSE_INSTALL_TIMEOUT - Duration::from_millis(1)
+        ));
     }
 
     /// `monitor::CAPTURE_SHUTDOWN_TIMEOUT` is private to its module, so the

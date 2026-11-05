@@ -108,8 +108,8 @@ use crate::r#gen::protos::{AvatarInfo, Item, PacketHead, PropValue, Unk, prop_va
 use crate::kcp::{KcpSniffer, SegmentHead, segment_head};
 use crate::oodle::TcpDecoder;
 pub use crate::quests::{
-    MAX_PARENT_QUESTS, MIN_PARENT_QUESTS, PARENT_QUEST_IDS, ParentQuests,
-    matches_finished_parent_quest_notify,
+    MAX_PARENT_QUEST_UPDATE, MAX_PARENT_QUESTS, MIN_PARENT_QUESTS, PARENT_QUEST_IDS, ParentQuests,
+    matches_finished_parent_quest_notify, matches_parent_quest_update,
 };
 pub use crate::records::{Record, RecordsMessage, matches_records_message};
 pub use crate::routine::{
@@ -1706,6 +1706,10 @@ pub enum CommandMatch {
     /// Every parent quest touched, finished or not: see
     /// [`matches_finished_parent_quest_notify`].
     Quests(ParentQuests),
+    /// Parent quests just finished or accepted, proven by their sub-quests:
+    /// see [`matches_parent_quest_update`]. The caller applies them to the
+    /// list it holds.
+    QuestUpdate(ParentQuests),
     /// The Archive's unlocked entries by tab: see [`matches_codex_notify`].
     Archive(BTreeMap<ArchiveTab, Vec<u32>>),
     /// Enemies defeated and creatures captured: see
@@ -1820,6 +1824,7 @@ impl CommandMatch {
             Self::TcgTavern(_) => "tcg tavern",
             Self::Archive(_) => "archive",
             Self::Quests(_) => "quests",
+            Self::QuestUpdate(_) => "quest update",
             Self::Defeats(_) => "defeats",
             Self::Handbook(_) => "handbook",
             Self::Tcg(_) => "tcg",
@@ -2028,6 +2033,9 @@ pub fn classify_command(game_command: &GameCommand) -> Option<CommandMatch> {
     }
     if let Some(quests) = matches_finished_parent_quest_notify(&game_command.proto_data) {
         claims.push(CommandMatch::Quests(quests));
+    }
+    if let Some(update) = matches_parent_quest_update(&game_command.proto_data) {
+        claims.push(CommandMatch::QuestUpdate(update));
     }
     if let Some(archive) = matches_codex_notify(&game_command.proto_data) {
         claims.push(CommandMatch::Archive(archive));

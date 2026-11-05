@@ -2,6 +2,30 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.17.16
+
+- Quests finished during a session are captured as they happen: a parent quest
+  the game reports finished (or newly accepted) with its sub-quests joins
+  `gi_collections.quests` at once instead of at the next login, so the
+  tracker's World Quests list is right after the session's own snapshot.
+- A wish whose answer carried a counter equal to a banner number (a wish count
+  of 100 or 200) is no longer logged without its banner: the field the banner
+  sat on in an earlier wish settles it, and only that banner is re-synced.
+
+## 1.17.15
+
+- Closing Teyvat.me installs an update that is waiting first. A new version
+  the hourly check has found and not installed yet (**Install updates by
+  itself** off, or the check just ran) is downloaded and installed when the
+  window is closed, from its close button or the tray's Quit, and the app
+  then closes; one being installed finishes first. The bar says "Installing
+  X · Teyvat.me closes when it is done" meanwhile, and the next start runs
+  the new version. Nothing restarts by itself: closing means closing. A
+  download that fails or takes over 30 s is logged and the app closes
+  anyway, as does closing it a second time. Players kept running old
+  versions because the window was never looked at; the moments the app is
+  not in use are when updates go in now, this one among them.
+
 ## 1.17.14
 
 - A lost graphics device no longer ends Teyvat.me. Direct3D reports the

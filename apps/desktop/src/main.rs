@@ -666,6 +666,9 @@ fn main() -> eframe::Result {
     // Teyvat.me" in the missed-launch modal, the update relaunch -- closes the
     // window and comes back here, so this is the one place the clean exit is
     // marked. Before the relaunch: the replacement reads this log at startup.
+    // A close that installed an update on the way out (`app::install_on_close`)
+    // leaves `restart` off: the user closed the app, so nothing is started
+    // here; the new version runs the next time they start it.
     let restart = restart_requested.load(Ordering::SeqCst);
     match &result {
         Err(e) => crash::mark_clean_exit(&format!("the window could not run: {e}")),

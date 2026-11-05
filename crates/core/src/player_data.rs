@@ -4507,6 +4507,38 @@ mod tests {
     }
 
     #[test]
+    fn a_quest_update_moves_the_held_list_and_never_back() {
+        let update = |finished: Vec<u32>, active: Vec<u32>| teyvatme_protocol::ParentQuests {
+            finished,
+            active,
+        };
+        let mut data = player_data();
+        // Nothing to apply it to before the login's list.
+        assert_eq!(data.apply_quest_update(&update(vec![1003], vec![])), (0, 0));
+        data.process_collection(CollectionPart::Quests(update(
+            vec![1001, 1002],
+            vec![1003, 1005],
+        )));
+        // An active quest finished, a new one accepted.
+        assert_eq!(
+            data.apply_quest_update(&update(vec![1003], vec![1004])),
+            (1, 1)
+        );
+        let held = data.collections.quests.clone().unwrap();
+        assert_eq!(held.finished, vec![1001, 1002, 1003]);
+        assert_eq!(held.active, vec![1004, 1005]);
+        // Re-sent: nothing changes. A finished quest never becomes active again.
+        assert_eq!(
+            data.apply_quest_update(&update(vec![1003], vec![1004, 1001])),
+            (0, 0)
+        );
+        assert_eq!(
+            data.collections.quests.unwrap(),
+            update(vec![1001, 1002, 1003], vec![1004, 1005])
+        );
+    }
+
+    #[test]
     fn the_pot_music_list_exports_its_spincrystals() {
         let mut data = collector();
         // Two Spincrystals among the tracks every Pot has.
