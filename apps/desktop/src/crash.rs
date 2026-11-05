@@ -195,14 +195,7 @@ fn append_crash_report(text: &str) {
 pub fn install_panic_hook() {
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
-        // `PanicHookInfo::payload_as_str` would do this, but it is only stable
-        // from 1.91 and this crate supports 1.88.
-        let payload = info.payload();
-        let message = payload
-            .downcast_ref::<&str>()
-            .copied()
-            .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
-            .unwrap_or("<non-string panic payload>");
+        let message = panic_message(info.payload());
         let location = match info.location() {
             Some(location) => location.to_string(),
             None => "<unknown location>".to_string(),
@@ -230,6 +223,20 @@ pub fn install_panic_hook() {
         // Debug builds keep their console, so leave the usual output in place.
         default_hook(info);
     }));
+}
+
+/// The text a panic carries: what `panic!` was given, or a stand-in when it
+/// was something else.
+///
+/// `PanicHookInfo::payload_as_str` would do this, but it is only stable from
+/// 1.91 and this crate supports 1.88; `main` needs it on the payload
+/// `catch_unwind` hands back as well, which has no such method.
+pub fn panic_message(payload: &(dyn std::any::Any + Send)) -> &str {
+    payload
+        .downcast_ref::<&str>()
+        .copied()
+        .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
+        .unwrap_or("<non-string panic payload>")
 }
 
 /// How the previous run ended, as far as its log and `crash.log` can say.

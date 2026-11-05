@@ -274,7 +274,11 @@ fn id_field(goods: &[ShopEntry]) -> Option<u32> {
 
 /// The fields that could count what was bought, given the limit's: present
 /// on some goods but not all, and wherever present a count from 1 to that
-/// goods' limit; a field that is 1 on nearly every goods is a flag.
+/// goods' limit -- or to [`MAX_LIMIT`] on a goods without one: the
+/// Starglitter Fates have no limit and are bought all the same (a 7.2 shop
+/// with ten Intertwined Fates bought for Starglitter hid the count field
+/// this way, and the Stardust Fates read as unbought); a field that is 1 on
+/// nearly every goods is a flag.
 fn bought_fields(goods: &[ShopEntry], skip: &[u32], limit: u32) -> Vec<u32> {
     let tags: BTreeSet<u32> = goods
         .iter()
@@ -292,9 +296,8 @@ fn bought_fields(goods: &[ShopEntry], skip: &[u32], limit: u32) -> Vec<u32> {
             }
             let counts = with.iter().all(|g| {
                 let value = g.varints[tag];
-                g.varints
-                    .get(&limit)
-                    .is_some_and(|max| (1..=*max).contains(&value))
+                let max = g.varints.get(&limit).copied().unwrap_or(MAX_LIMIT);
+                (1..=max).contains(&value)
             });
             let flag = with.len() as f64 > FLAG_SHARE * goods.len() as f64
                 && with.iter().all(|g| g.varints[tag] == 1);
@@ -443,10 +446,10 @@ impl Bargains {
             let grew = |g: &ShopEntry, id: &u32, tag: &u32| {
                 let before = self.goods[id].get(tag).copied().unwrap_or(0);
                 let now = g.varints[tag];
-                *tag != layout.id
-                    && *tag != layout.limit
-                    && now > before
-                    && g.varints.get(&layout.limit).is_some_and(|max| now <= *max)
+                // A goods without a limit (the Starglitter Fates) is bought
+                // too; its count is only bounded by what a month can hold.
+                let max = g.varints.get(&layout.limit).copied().unwrap_or(MAX_LIMIT);
+                *tag != layout.id && *tag != layout.limit && now > before && now <= max
             };
             let first = &bought[0];
             let found: Vec<u32> = first
@@ -684,6 +687,50 @@ mod tests {
         assert!(found.apply_purchase(&matches_shop_purchase(&buy).unwrap()));
         let fate = found.fates.iter().find(|f| f.goods_id == 102502).unwrap();
         assert_eq!(fate.bought, 1);
+    }
+
+    /// 7.2, from a player's recording: both Stardust Fates bought out (the
+    /// count equal to the limit), ten Intertwined Fates bought for
+    /// Starglitter -- a goods with no limit field, which used to disqualify
+    /// the count field -- and a lone 1 on one other goods, which was then
+    /// taken for the count, so the Fates read as unbought ("5/5 left").
+    #[test]
+    fn a_count_on_an_unlimited_goods_does_not_hide_the_field() {
+        let mut list = bargains(&[(102501, 5), (102502, 5)]);
+        // No limit, ten bought.
+        list[2] = goods(102003, 223, Some((221, 5)), 10, 0);
+        list[3] = goods(102004, 224, Some((221, 5)), 0, 0);
+        list.push(flagged_goods());
+        let found = read_bargains(&matches_shop_goods(&shop_rsp(&list)).unwrap()).unwrap();
+        assert!(found.bought_any);
+        let stock: Vec<(u32, u32, u32, Option<u32>)> = found
+            .fates
+            .iter()
+            .map(|f| (f.currency, f.item, f.bought, f.limit))
+            .collect();
+        assert_eq!(
+            stock,
+            vec![
+                (221, 223, 10, None),
+                (221, 224, 0, None),
+                (222, 223, 5, Some(5)),
+                (222, 224, 5, Some(5)),
+            ]
+        );
+
+        // A purchase of an unlimited goods teaches the count field too.
+        let mut found =
+            read_bargains(&matches_shop_goods(&shop_rsp(&bargains(&[]))).unwrap()).unwrap();
+        assert!(!found.bought_any);
+        let buy = [
+            b(5, &goods(102003, 223, Some((221, 5)), 2, 0)),
+            v(15, 1001),
+            v(7, 2),
+        ]
+        .concat();
+        assert!(found.apply_purchase(&matches_shop_purchase(&buy).unwrap()));
+        let fate = found.fates.iter().find(|f| f.goods_id == 102003).unwrap();
+        assert_eq!((fate.bought, fate.limit), (2, None));
     }
 
     #[test]

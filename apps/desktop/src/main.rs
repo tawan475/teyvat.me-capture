@@ -8,7 +8,7 @@ use std::fmt::Display;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -611,17 +611,54 @@ fn main() -> eframe::Result {
         renderer: eframe::Renderer::Glow,
         ..native_options.clone()
     };
-    let result = match start(native_options) {
-        // Direct3D 12 could not start (no adapter, an old driver): the window
-        // opens with OpenGL as before.
-        #[cfg(windows)]
-        Err(e) => {
-            tracing::warn!("Direct3D could not start the window ({e}); using OpenGL");
-            start(glow_options)
+    let run_started = Instant::now();
+    // A panic inside the window's frame unwinds out of `run_native` (winit
+    // re-raises what its window procedure caught). The one kind worth
+    // catching is wgpu giving up on the graphics device: Direct3D reports a
+    // lost device after a driver reset or update, a sleep, a display change,
+    // and wgpu answers the next present with a panic, since the device cannot
+    // be made again inside the process. A fresh process can, so the app
+    // starts itself again (1.17.13 died there, taking capture with it). The
+    // panic hook has already written the crash report by now, so the next
+    // run says "Crashed last time" as for any crash -- that is what happened,
+    // and the session's capture was lost with the window.
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        match start(native_options) {
+            // Direct3D 12 could not start (no adapter, an old driver): the
+            // window opens with OpenGL as before.
+            #[cfg(windows)]
+            Err(e) => {
+                tracing::warn!("Direct3D could not start the window ({e}); using OpenGL");
+                start(glow_options)
+            }
+            result => {
+                drop(glow_options);
+                result
+            }
         }
-        result => {
-            drop(glow_options);
-            result
+    }));
+    let result = match result {
+        Ok(result) => result,
+        Err(payload) => {
+            let message = crash::panic_message(payload.as_ref());
+            let restarted_already = std::env::var_os(RESTARTED_AFTER_GRAPHICS_LOSS_ENV).is_some();
+            if graphics_panic(message)
+                && restart_after_graphics_loss(restarted_already, run_started.elapsed())
+            {
+                tracing::error!(
+                    "the window's graphics device is gone ({}); starting again",
+                    message.lines().next().unwrap_or_default()
+                );
+                // Release the single-instance mutexes before the replacement
+                // tries to take them.
+                drop(instance);
+                drop(irminsul_instance);
+                let quiet = app::window_was_out_of_sight();
+                if relaunch(Relaunch::AfterGraphicsLoss { quiet }) {
+                    return Ok(());
+                }
+            }
+            std::panic::resume_unwind(payload);
         }
     };
 
@@ -642,52 +679,120 @@ fn main() -> eframe::Result {
     drop(irminsul_instance);
 
     if restart {
-        // The command line is reproduced as faithfully as it can be. argv[0]
-        // is deliberately *not* reused: it is whatever the launcher passed,
-        // which can be a bare name or a path relative to a working directory
-        // that no longer applies. argv[1..] on the other hand has to be carried
-        // across -- without it a user who started
-        // `teyvatme-windows-pcap.exe -b pcap` came back on the pktmon default
-        // after an update, and `--no-admin` and `-r <file>` replay mode were
-        // dropped the same way. Except `--minimized`: the window the user just
-        // updated from comes back where they can see it, which
-        // `--after-update` asks for.
         let quiet = app::RESTART_QUIET.load(std::sync::atomic::Ordering::SeqCst);
-        let args = relaunch_args(std::env::args_os().skip(1), quiet);
         #[cfg(windows)]
         if admin::ELEVATE_ON_RESTART.load(std::sync::atomic::Ordering::SeqCst) {
+            let args = relaunch_args(std::env::args_os().skip(1), Relaunch::AfterUpdate { quiet });
             if admin::relaunch_elevated(&args) {
                 tracing::info!("relaunched as administrator");
             }
             return result;
         }
-        match std::env::current_exe() {
-            Ok(exe) => match std::process::Command::new(&exe).args(&args).spawn() {
-                Ok(child) => {
-                    tracing::info!("relaunched {exe:?} with {args:?} after update");
-                    // This process got the click on "Yes", so it may still
-                    // hand the foreground on; its own window is already gone.
-                    // Not for a restart it did by itself: that one comes
-                    // back out of sight and takes nothing from the user.
-                    #[cfg(windows)]
-                    if !quiet {
-                        unsafe {
-                            let _ =
-                                windows::Win32::UI::WindowsAndMessaging::AllowSetForegroundWindow(
-                                    child.id(),
-                                );
-                        }
-                    }
-                    #[cfg(not(windows))]
-                    drop(child);
-                }
-                Err(e) => tracing::error!("could not relaunch {exe:?} after update: {e}"),
-            },
-            Err(e) => tracing::error!("could not find the current executable to relaunch: {e}"),
-        }
+        relaunch(Relaunch::AfterUpdate { quiet });
     }
 
     result
+}
+
+/// Why the app starts a copy of itself as it exits.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Relaunch {
+    /// Into an installed update. `quiet`: the app's own restart (the window
+    /// was out of sight), not a click on "Restart now".
+    AfterUpdate { quiet: bool },
+    /// After the window died with its graphics device. `quiet`: the window
+    /// was minimized or in the tray.
+    AfterGraphicsLoss { quiet: bool },
+}
+
+impl Relaunch {
+    fn quiet(self) -> bool {
+        match self {
+            Relaunch::AfterUpdate { quiet } | Relaunch::AfterGraphicsLoss { quiet } => quiet,
+        }
+    }
+}
+
+/// Start the replacement process, after the window has closed and the
+/// single-instance locks are released. True when it was started.
+fn relaunch(relaunch: Relaunch) -> bool {
+    // The command line is reproduced as faithfully as it can be. argv[0]
+    // is deliberately *not* reused: it is whatever the launcher passed,
+    // which can be a bare name or a path relative to a working directory
+    // that no longer applies. argv[1..] on the other hand has to be carried
+    // across -- without it a user who started
+    // `teyvatme-windows-pcap.exe -b pcap` came back on the pktmon default
+    // after an update, and `--no-admin` and `-r <file>` replay mode were
+    // dropped the same way. Except `--minimized`: the window the user just
+    // updated from comes back where they can see it, which
+    // `--after-update` asks for.
+    let args = relaunch_args(std::env::args_os().skip(1), relaunch);
+    let exe = match std::env::current_exe() {
+        Ok(exe) => exe,
+        Err(e) => {
+            tracing::error!("could not find the current executable to relaunch: {e}");
+            return false;
+        }
+    };
+    let mut command = std::process::Command::new(&exe);
+    command.args(&args);
+    match relaunch {
+        // The mark is for the run that follows a graphics loss alone: an
+        // update's relaunch starts the count over.
+        Relaunch::AfterUpdate { .. } => command.env_remove(RESTARTED_AFTER_GRAPHICS_LOSS_ENV),
+        Relaunch::AfterGraphicsLoss { .. } => command.env(RESTARTED_AFTER_GRAPHICS_LOSS_ENV, "1"),
+    };
+    match command.spawn() {
+        Ok(child) => {
+            tracing::info!("relaunched {exe:?} with {args:?} ({relaunch:?})");
+            // After an update this process got the click on "Yes", so it may
+            // still hand the foreground on; its own window is already gone.
+            // Not for a restart it did by itself: that one comes back out of
+            // sight and takes nothing from the user. Nor after a graphics
+            // loss: nobody clicked anything.
+            #[cfg(windows)]
+            if relaunch == (Relaunch::AfterUpdate { quiet: false }) {
+                unsafe {
+                    let _ = windows::Win32::UI::WindowsAndMessaging::AllowSetForegroundWindow(
+                        child.id(),
+                    );
+                }
+            }
+            #[cfg(not(windows))]
+            drop(child);
+            true
+        }
+        Err(e) => {
+            tracing::error!("could not relaunch {exe:?} ({relaunch:?}): {e}");
+            false
+        }
+    }
+}
+
+/// Set on the process started after a graphics loss, so a device that is
+/// gone for good does not restart the app forever: see
+/// [`restart_after_graphics_loss`].
+const RESTARTED_AFTER_GRAPHICS_LOSS_ENV: &str = "TEYVATME_RESTARTED_AFTER_GRAPHICS_LOSS";
+
+/// How long a run started after a graphics loss must have lasted before
+/// another loss starts the app again: one that long shows the device works.
+const GRAPHICS_RESTART_MIN_RUN: Duration = Duration::from_secs(10 * 60);
+
+/// Whether a run that just lost its graphics device is started again: always
+/// the first time, and again only once a restarted run has lasted
+/// [`GRAPHICS_RESTART_MIN_RUN`] -- a device that fails at every start would
+/// otherwise restart the app, and write a crash report, without end.
+fn restart_after_graphics_loss(restarted_already: bool, ran_for: Duration) -> bool {
+    !restarted_already || ran_for >= GRAPHICS_RESTART_MIN_RUN
+}
+
+/// A panic wgpu raised itself, about the graphics device, as opposed to one
+/// from the app's own code: its fatal surface path ("Error in
+/// Surface::present: Validation Error / Caused by: Parent device is lost")
+/// and its default handler for an uncaptured error ("wgpu error: …"). Both
+/// texts are wgpu's own (`wgpu::backend::wgpu_core`).
+fn graphics_panic(message: &str) -> bool {
+    message.starts_with("Error in Surface::") || message.starts_with("wgpu error:")
 }
 
 /// The root everything Teyvat.me writes for itself hangs off.
@@ -761,20 +866,22 @@ fn open_log_dir() -> Result<()> {
     Ok(())
 }
 
-/// The arguments for the relaunch after an update: this run's, without
-/// `--minimized` (or an earlier relaunch's `--after-update`), then
-/// `--after-update`; a `quiet` relaunch (the app's own, with the window out
-/// of sight) adds `--minimized` back so it comes back where it was.
+/// The arguments for a relaunch: this run's, without `--minimized` (or an
+/// earlier relaunch's `--after-update`), then `--after-update` for the
+/// relaunch into an update; a quiet relaunch (the window was out of sight)
+/// adds `--minimized` back so it comes back where it was.
 fn relaunch_args(
     args: impl IntoIterator<Item = std::ffi::OsString>,
-    quiet: bool,
+    relaunch: Relaunch,
 ) -> Vec<std::ffi::OsString> {
     let mut args: Vec<std::ffi::OsString> = args
         .into_iter()
         .filter(|arg| arg != autostart::MINIMIZED_ARG && arg != AFTER_UPDATE_ARG)
         .collect();
-    args.push(AFTER_UPDATE_ARG.into());
-    if quiet {
+    if matches!(relaunch, Relaunch::AfterUpdate { .. }) {
+        args.push(AFTER_UPDATE_ARG.into());
+    }
+    if relaunch.quiet() {
         args.push(autostart::MINIMIZED_ARG.into());
     }
     args
@@ -930,7 +1037,7 @@ fn tracing_init() -> Result<(
 
 #[cfg(test)]
 mod tests {
-    use std::time::{Duration, SystemTime};
+    use std::time::SystemTime;
 
     use clap::CommandFactory;
 
@@ -998,26 +1105,80 @@ mod tests {
         let os = |args: &[&str]| -> Vec<std::ffi::OsString> {
             args.iter().map(std::ffi::OsString::from).collect()
         };
+        let after_update = Relaunch::AfterUpdate { quiet: false };
         let args = relaunch_args(
             os(&["-b", "pcap", autostart::MINIMIZED_ARG, "--no-admin"]),
-            false,
+            after_update,
         );
         assert_eq!(args, os(&["-b", "pcap", "--no-admin", AFTER_UPDATE_ARG]));
         // A relaunch of a relaunch carries it once.
-        assert_eq!(relaunch_args(args.clone(), false), args);
+        assert_eq!(relaunch_args(args.clone(), after_update), args);
 
         let parsed = parse(&["--after-update"]).unwrap();
         assert!(parsed.after_update && !parsed.minimized);
 
         // The app's own restart comes back out of sight, where the window was.
-        let quiet = relaunch_args(os(&["--no-admin"]), true);
+        let quietly = Relaunch::AfterUpdate { quiet: true };
+        let quiet = relaunch_args(os(&["--no-admin"]), quietly);
         assert_eq!(
             quiet,
             os(&["--no-admin", AFTER_UPDATE_ARG, autostart::MINIMIZED_ARG])
         );
-        assert_eq!(relaunch_args(quiet.clone(), true), quiet);
+        assert_eq!(relaunch_args(quiet.clone(), quietly), quiet);
         let parsed = parse(&["--after-update", autostart::MINIMIZED_ARG]).unwrap();
         assert!(parsed.after_update && parsed.minimized);
+    }
+
+    /// The restart after a lost graphics device is not an update: no
+    /// "Updated to" toast or window in front, the same command line, and the
+    /// window back where it was.
+    #[test]
+    fn the_graphics_restart_keeps_the_command_line_and_the_window_where_it_was() {
+        let os = |args: &[&str]| -> Vec<std::ffi::OsString> {
+            args.iter().map(std::ffi::OsString::from).collect()
+        };
+        let in_sight = Relaunch::AfterGraphicsLoss { quiet: false };
+        let args = relaunch_args(
+            os(&[
+                "-b",
+                "pcap",
+                AFTER_UPDATE_ARG,
+                autostart::MINIMIZED_ARG,
+                "--no-admin",
+            ]),
+            in_sight,
+        );
+        assert_eq!(args, os(&["-b", "pcap", "--no-admin"]));
+        let out_of_sight = Relaunch::AfterGraphicsLoss { quiet: true };
+        assert_eq!(
+            relaunch_args(args.clone(), out_of_sight),
+            os(&["-b", "pcap", "--no-admin", autostart::MINIMIZED_ARG])
+        );
+        assert!(parse(&[autostart::MINIMIZED_ARG]).unwrap().minimized);
+    }
+
+    /// Only wgpu's own panics restart the window, and a device that fails at
+    /// every start gets one restart, not a loop.
+    #[test]
+    fn only_a_lost_graphics_device_restarts_the_window_and_not_without_end() {
+        assert!(graphics_panic(
+            "Error in Surface::present: Validation Error\n\nCaused by:\n  Parent device is lost\n"
+        ));
+        assert!(graphics_panic(
+            "wgpu error: Validation Error\n\nCaused by:\n  In Queue::submit\n"
+        ));
+        assert!(!graphics_panic(
+            "called `Option::unwrap()` on a `None` value"
+        ));
+        assert!(!graphics_panic("the decoder fell over: Surface::present"));
+
+        assert!(restart_after_graphics_loss(false, Duration::ZERO));
+        assert!(!restart_after_graphics_loss(true, Duration::ZERO));
+        assert!(!restart_after_graphics_loss(
+            true,
+            GRAPHICS_RESTART_MIN_RUN - Duration::from_secs(1)
+        ));
+        assert!(restart_after_graphics_loss(true, GRAPHICS_RESTART_MIN_RUN));
     }
 
     #[test]

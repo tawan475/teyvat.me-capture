@@ -54,6 +54,7 @@ impl TeyvatmeApp {
         }
         self.was_minimized = minimized;
         let out_of_sight = HIDDEN_TO_TRAY.load(Ordering::Relaxed) || minimized;
+        super::OUT_OF_SIGHT.store(out_of_sight, Ordering::Relaxed);
         if !out_of_sight {
             self.see_window(ctx);
         }
