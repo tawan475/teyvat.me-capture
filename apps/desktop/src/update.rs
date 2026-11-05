@@ -704,7 +704,9 @@ impl AutoInstall {
 /// Installing replaces the executable on disk (`self_replace` moves the
 /// running one aside), so the new version runs from the next start; the
 /// window decides whether that start happens by itself
-/// ([`crate::app::restart_due`]).
+/// ([`crate::app::restart_due`]). Closing the window with a release found
+/// and not installed sends `Install` too and waits for the outcome
+/// (`crate::app::install_on_close`).
 pub async fn run_updater(
     status_tx: watch::Sender<UpdateStatus>,
     mut commands: mpsc::UnboundedReceiver<UpdateCommand>,

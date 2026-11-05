@@ -9,7 +9,7 @@ use egui::{Align, DragValue, Layout, RichText, Ui, vec2};
 use teyvatme_core::FORMAT_NAME;
 
 use super::frame::BREAKPOINT;
-use super::{AddressChange, Page, TeyvatmeApp, ThemeChoice, TrackerSignIn};
+use super::{AddressChange, Closing, Page, TeyvatmeApp, ThemeChoice, TrackerSignIn};
 use crate::TracingLevel;
 use crate::clock::ClockChoice;
 use crate::i18n::{Lang, tr, trf};
@@ -1113,6 +1113,11 @@ impl TeyvatmeApp {
                 &[v, &env!("CARGO_PKG_VERSION")],
             ),
             UpdateStatus::Manual(v) => trf("{0} is out · download it on this platform", &[v]),
+            UpdateStatus::Installing(v)
+                if matches!(self.closing, Some(Closing::Installing { .. })) =>
+            {
+                trf("Installing {0} · Teyvat.me closes when it is done", &[v])
+            }
             UpdateStatus::Installing(v) => trf("Installing {0} · capture keeps running", &[v]),
             UpdateStatus::Ready(v) => trf(
                 "{0} installed · restart to use it, or it starts next time",

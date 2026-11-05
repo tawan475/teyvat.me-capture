@@ -13,7 +13,7 @@ use std::time::Instant;
 
 use egui::{Context, Frame};
 
-use super::{HIDDEN_TO_TRAY, Onboarding, Page, StartWindow, TeyvatmeApp, View};
+use super::{Closing, HIDDEN_TO_TRAY, Onboarding, Page, StartWindow, TeyvatmeApp, View};
 use crate::activity::{Event, Kind, Topic};
 use crate::game_watch::{GameStatus, MissedLaunch};
 use crate::i18n::{tr, trf};
@@ -78,6 +78,7 @@ impl TeyvatmeApp {
         // Background reports always reach the log; toasts only while seen.
         self.drain_activity(!out_of_sight);
         self.poll_update_status(ctx, out_of_sight);
+        self.handle_close_request(ctx);
         self.update_tray_tooltip();
 
         // Nothing is drawn out of sight: eframe keeps running frames for a
@@ -297,7 +298,10 @@ impl TeyvatmeApp {
                 }
                 UpdateStatus::Ready(v) => {
                     self.update_ready_since = Some(Instant::now());
-                    let text = if self.saved_state.auto_restart {
+                    let text = if matches!(self.closing, Some(Closing::Installing { .. })) {
+                        // Installed on the way out: nothing restarts.
+                        tr("It runs the next time you start Teyvat.me")
+                    } else if self.saved_state.auto_restart {
                         tr("It starts by itself once Genshin is closed, or restart Teyvat.me now")
                     } else {
                         tr("Restart Teyvat.me to use it")
@@ -319,6 +323,10 @@ impl TeyvatmeApp {
         let UpdateStatus::Ready(version) = &status else {
             return;
         };
+        // A close under way is a close: never turned into a restart.
+        if self.closing.is_some() {
+            return;
+        }
         let game = self.state_rx.borrow().game_status;
         let ready_for = self.update_ready_since.map(|at| at.elapsed());
         if super::restart_due(self.saved_state.auto_restart, ready_for, game, out_of_sight) {
@@ -334,6 +342,81 @@ impl TeyvatmeApp {
             ctx.request_repaint_after(
                 super::AUTO_RESTART_AFTER.saturating_sub(ready_for.unwrap_or_default()),
             );
+        }
+    }
+
+    /// Closing the window (its close button, the tray's Quit, "Close
+    /// Teyvat.me" in the missed-launch modal) installs an update the check
+    /// found first, then closes ([`super::install_on_close`]): the close is
+    /// cancelled and asked again once the install ended or
+    /// [`super::CLOSE_INSTALL_TIMEOUT`] is up. Capture stops and the
+    /// executable is replaced in the same order as before (the install
+    /// finishes before the window goes, so `Drop` finds nothing to wait
+    /// for; a timed-out download is cancelled by it as today). Closing
+    /// again while it waits closes at once. Nothing here relaunches: the
+    /// restart flag stays off, so `main` returns.
+    fn handle_close_request(&mut self, ctx: &Context) {
+        let status = self.update_status.borrow().clone();
+        if ctx.input(|i| i.viewport().close_requested()) {
+            match &self.closing {
+                Some(Closing::Now) => return,
+                Some(Closing::Installing { version, .. }) => {
+                    tracing::info!(
+                        "closed again while {version} was installing; closing without waiting"
+                    );
+                    self.closing = Some(Closing::Now);
+                    return;
+                }
+                None => {}
+            }
+            let restart = self.restart_requested.load(Ordering::SeqCst);
+            match super::install_on_close(&status, restart) {
+                super::OnClose::Close => {
+                    self.closing = Some(Closing::Now);
+                    return;
+                }
+                super::OnClose::Install => {
+                    if let Err(e) = self.update_tx.send(crate::update::UpdateCommand::Install) {
+                        tracing::warn!("could not ask for the install before closing: {e}");
+                        self.closing = Some(Closing::Now);
+                        return;
+                    }
+                }
+                super::OnClose::WaitForInstall => {}
+            }
+            let version = status.pending().unwrap_or_default().to_owned();
+            tracing::info!(
+                "closing: installing {version} first (up to {:?})",
+                super::CLOSE_INSTALL_TIMEOUT
+            );
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            self.closing = Some(Closing::Installing {
+                version,
+                since: Instant::now(),
+            });
+            ctx.request_repaint();
+            return;
+        }
+        let Some(Closing::Installing { version, since }) = &self.closing else {
+            return;
+        };
+        let waited = since.elapsed();
+        if super::close_wait_over(&status, waited) {
+            match &status {
+                UpdateStatus::Ready(_) => tracing::info!(
+                    "{version} installed before closing; it runs from the next start"
+                ),
+                UpdateStatus::Available(_) | UpdateStatus::Installing(_) => {
+                    tracing::warn!("{version} did not install within {waited:?}; closing anyway")
+                }
+                _ => tracing::warn!("{version} was not installed before closing ({status:?})"),
+            }
+            self.closing = Some(Closing::Now);
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        } else {
+            // The status's changes repaint by themselves; the timeout needs
+            // a frame of its own (out of sight nothing else draws).
+            ctx.request_repaint_after(super::CLOSE_INSTALL_TIMEOUT.saturating_sub(waited));
         }
     }
 

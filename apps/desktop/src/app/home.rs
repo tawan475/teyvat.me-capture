@@ -15,7 +15,7 @@ use egui::{Align, Id, Layout, Margin, Response, RichText, Ui, vec2};
 use teyvatme_core::FORMAT_NAME;
 
 use super::frame::BREAKPOINT;
-use super::{OptimizerExportTarget, Page, TeyvatmeApp, TrackerSignIn, today};
+use super::{Closing, OptimizerExportTarget, Page, TeyvatmeApp, TrackerSignIn, today};
 use crate::AppState;
 use crate::game_watch::{GameStatus, MissedLaunch};
 use crate::i18n::{tr, trf};
@@ -144,9 +144,22 @@ impl TeyvatmeApp {
     /// by hand. Flush with the window's top, so it is seen whatever page is
     /// open (the old rounded banner lived on the home page alone).
     pub(super) fn update_bar(&mut self, ui: &mut Ui) {
-        let status = self.update_status.borrow().clone();
+        let mut status = self.update_status.borrow().clone();
+        // Installing on the way out: the bar says so (a spinner and the
+        // text, not a colour), from the frame the close was asked in.
+        let closing = match &self.closing {
+            Some(Closing::Installing { version, .. }) => {
+                status = UpdateStatus::Installing(version.clone());
+                true
+            }
+            _ => false,
+        };
         let (title, version) = match &status {
             UpdateStatus::Available(v) => (trf("Update {0}", &[v]), v.clone()),
+            UpdateStatus::Installing(v) if closing => (
+                trf("Installing {0} · Teyvat.me closes when it is done", &[v]),
+                v.clone(),
+            ),
             UpdateStatus::Installing(v) => (
                 trf("Installing {0} · capture keeps running", &[v]),
                 v.clone(),
