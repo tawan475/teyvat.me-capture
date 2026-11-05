@@ -23,10 +23,13 @@
 //! An entry also carries text fields (two content decryption keys among
 //! them). They are never read: only varints and the sub-quest lists are.
 //!
-//! The live update (`FinishedParentQuestUpdateNotify`) is not matched: in the
-//! recorded 7.1 sessions it carried an id and a time and nothing else (no
-//! sub-quests, never a finished quest), which is a dozen messages' shape. The
-//! next login's list replaces what was captured.
+//! The live update (`FinishedParentQuestUpdateNotify`) carries one or a few
+//! entries of the same layout: a quest just accepted comes with its id and a
+//! time only, a quest just finished with the flags and its sub-quests (seen in
+//! a user's 7.2 sessions; the recorded 7.1 ones only had accepts). An id and a
+//! time is a dozen messages' shape, so [`matches_parent_quest_update`] keeps
+//! only the entries whose sub-quest list proves them, read with the field
+//! numbers the login's list taught it; the next login's list replaces it all.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::RangeInclusive;
@@ -193,6 +196,90 @@ pub fn matches_finished_parent_quest_notify(data: &[u8]) -> Option<ParentQuests>
     }
     out.finished.sort_unstable();
     out.active.sort_unstable();
+    if let Ok(mut learned) = LEARNED_QUEST_TAGS.lock() {
+        *learned = Some(QuestTags { id: *id_tag, flags });
+    }
+    Some(out)
+}
+
+/// The entries' field numbers as the last login's list showed them: an
+/// update's one or two entries are too few to tell them apart by their values.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct QuestTags {
+    id: u32,
+    /// Every flag field; a quest is finished only when it carries all of them.
+    flags: Vec<u32>,
+}
+
+static LEARNED_QUEST_TAGS: std::sync::Mutex<Option<QuestTags>> = std::sync::Mutex::new(None);
+
+/// The most entries believed in one update.
+pub const MAX_PARENT_QUEST_UPDATE: usize = 50;
+
+/// Recover the parent quests a `FinishedParentQuestUpdateNotify` moved, or
+/// `None` if this is not one: exactly one field, repeated up to
+/// [`MAX_PARENT_QUEST_UPDATE`] times, each value a message carrying an id in
+/// range on the field the login's list taught (`None` before a list was read)
+/// and only varints beside its nested fields.
+///
+/// Only entries a sub-quest list proves (every nested entry a sub-quest of
+/// that id) are returned, finished when every flag is set, else accepted; an
+/// id with a time and nothing else is left out, since other lists read that
+/// way too. `None` when nothing is proved.
+pub fn matches_parent_quest_update(data: &[u8]) -> Option<ParentQuests> {
+    let tags = LEARNED_QUEST_TAGS.lock().ok()?.clone()?;
+    let msg = Unk::parse_from_bytes(data).ok()?;
+    let mut list_tag = None;
+    let mut raw = Vec::new();
+    for (tag, value) in msg.unknown_fields().iter() {
+        let LengthDelimited(bytes) = value else {
+            return None;
+        };
+        if *list_tag.get_or_insert(tag) != tag {
+            return None;
+        }
+        raw.push(bytes);
+    }
+    if raw.is_empty() || raw.len() > MAX_PARENT_QUEST_UPDATE {
+        return None;
+    }
+    let mut out = ParentQuests::default();
+    for bytes in raw {
+        let parsed = Unk::parse_from_bytes(bytes).ok()?;
+        if parsed
+            .unknown_fields()
+            .iter()
+            .any(|(_, value)| !matches!(value, Varint(_) | LengthDelimited(_)))
+        {
+            return None;
+        }
+        let entry = read_entry(&parsed);
+        let id = *entry.varints.get(&tags.id)?;
+        if !PARENT_QUEST_IDS.contains(&id) {
+            return None;
+        }
+        let proven = entry
+            .nested
+            .values()
+            .any(|values| sub_quests_of(values, id));
+        if !proven {
+            continue;
+        }
+        let finished = tags
+            .flags
+            .iter()
+            .all(|flag| entry.varints.get(flag) == Some(&1));
+        if finished {
+            out.finished.push(id as u32);
+        } else {
+            out.active.push(id as u32);
+        }
+    }
+    if out.finished.is_empty() && out.active.is_empty() {
+        return None;
+    }
+    out.finished.sort_unstable();
+    out.active.sort_unstable();
     Some(out)
 }
 
@@ -291,5 +378,94 @@ mod tests {
         // No finished flag anywhere.
         let none: Vec<Vec<u8>> = (0..30).map(|n| quest(1_000 + n, false, 2)).collect();
         assert_eq!(matches_finished_parent_quest_notify(&notify(&none)), None);
+    }
+
+    /// The login's list, read first so the update knows the field numbers.
+    fn learn() {
+        matches_finished_parent_quest_notify(&notify(&sample())).unwrap();
+    }
+
+    #[test]
+    fn a_finished_quest_in_an_update_is_read_with_the_lists_field_numbers() {
+        learn();
+        // Finished, with its sub-quests, in the 7.1 layout.
+        let update = b(2, &quest(77_225, true, 2));
+        assert_eq!(
+            matches_parent_quest_update(&update),
+            Some(ParentQuests {
+                finished: vec![77_225],
+                active: vec![],
+            })
+        );
+        // Accepted, sub-quests under way: active.
+        let accepted = b(2, &quest(77_681, false, 3));
+        assert_eq!(
+            matches_parent_quest_update(&accepted),
+            Some(ParentQuests {
+                finished: vec![],
+                active: vec![77_681],
+            })
+        );
+        // Two in one message, one of each.
+        let both = [
+            b(2, &quest(77_225, true, 2)),
+            b(2, &quest(77_681, false, 1)),
+        ]
+        .concat();
+        assert_eq!(
+            matches_parent_quest_update(&both),
+            Some(ParentQuests {
+                finished: vec![77_225],
+                active: vec![77_681],
+            })
+        );
+    }
+
+    #[test]
+    fn an_id_and_a_time_alone_prove_nothing() {
+        learn();
+        // What a just-accepted quest looks like, and a dozen other messages.
+        let bare = b(2, &[v(14, 77_681), v(15, 1_790_000_000)].concat());
+        assert_eq!(matches_parent_quest_update(&bare), None);
+        // The state without the flag is not finished (7.1 had such entries).
+        let state_only = b(2, &[v(14, 9_001), v(5, 1), b(13, &v(5, 900_101))].concat());
+        assert_eq!(
+            matches_parent_quest_update(&state_only),
+            Some(ParentQuests {
+                finished: vec![],
+                active: vec![9_001],
+            })
+        );
+    }
+
+    #[test]
+    fn other_messages_are_not_quest_updates() {
+        learn();
+        // Sub-quests of another parent.
+        let stranger = b(
+            2,
+            &[v(14, 1_000), v(4, 1), v(5, 1), b(13, &v(5, 555_501))].concat(),
+        );
+        assert_eq!(matches_parent_quest_update(&stranger), None);
+        // A second top-level field.
+        let mut two = b(2, &quest(77_225, true, 2));
+        two.extend(v(9, 1));
+        assert_eq!(matches_parent_quest_update(&two), None);
+        // A fixed-width field in an entry: not this message's layout.
+        let mut fixed = quest(77_225, true, 2);
+        fixed.extend(varint((7 << 3) | 5));
+        fixed.extend_from_slice(&[1, 2, 3, 4]);
+        assert_eq!(matches_parent_quest_update(&b(2, &fixed)), None);
+        // Too many entries.
+        let many: Vec<u8> = (0..60)
+            .flat_map(|n| b(2, &quest(70_000 + n, true, 1)))
+            .collect();
+        assert_eq!(matches_parent_quest_update(&many), None);
+        // No id on the list's id field.
+        let no_id = b(
+            2,
+            &[v(20, 77_225), v(4, 1), v(5, 1), b(13, &v(5, 7_722_501))].concat(),
+        );
+        assert_eq!(matches_parent_quest_update(&no_id), None);
     }
 }

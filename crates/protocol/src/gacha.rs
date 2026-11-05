@@ -14,7 +14,10 @@
 //!   `authkey_ver`) and the retcode.
 //! * **`DoGachaRsp`** (command 21670 in 7.1) answers a wish. It carries one
 //!   entry per pull, each wrapping the pulled item, and the banner's
-//!   `gacha_type` among a dozen counters.
+//!   `gacha_type` among a dozen counters. A counter can equal a banner type
+//!   (a wish count reaching 100 or 200, as two of a user's 7.2 ten-pulls
+//!   showed), so the field that held the banner in an unambiguous answer is
+//!   remembered and settles the ambiguous ones that follow.
 //!
 //! Like every other message this library reads, both command ids and every
 //! field number are reshuffled by each game version, so nothing here names one.
@@ -134,7 +137,8 @@ impl fmt::Debug for GachaAuthKey {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct GachaWish {
     /// The banner, one of [`GACHA_TYPES`]; `None` when more than one scalar
-    /// held a banner-type value and they could not be told apart.
+    /// held a banner-type value and no earlier answer had shown which field
+    /// is the banner's.
     pub gacha_type: Option<u32>,
     /// 1 or 10.
     pub pulls: u32,
@@ -294,24 +298,42 @@ pub fn matches_do_gacha_rsp(data: &[u8]) -> Option<GachaWish> {
         read_gacha_item(entry)?;
     }
 
-    let values: Vec<u64> = scalars.into_values().collect();
-    if !values.iter().any(|value| WISH_CURRENCY_IDS.contains(value)) {
+    if !scalars
+        .values()
+        .any(|value| WISH_CURRENCY_IDS.contains(value))
+    {
         return None;
     }
-    if !values.contains(&(entries.len() as u64)) {
+    if !scalars.values().any(|&value| value == entries.len() as u64) {
         return None;
     }
-    let mut types: Vec<u32> = values
+    // The scalars that hold a banner type, by field number.
+    let candidates: BTreeMap<u32, u32> = scalars
         .iter()
-        .filter_map(|&value| u32::try_from(value).ok())
-        .filter(|value| GACHA_TYPES.contains(value))
+        .filter_map(|(&tag, &value)| u32::try_from(value).ok().map(|value| (tag, value)))
+        .filter(|(_, value)| GACHA_TYPES.contains(value))
         .collect();
+    let mut types: Vec<u32> = candidates.values().copied().collect();
     types.sort_unstable();
     types.dedup();
     let gacha_type = match types.as_slice() {
         [] => return None,
-        [one] => Some(*one),
-        _ => None,
+        [one] => {
+            // One banner type, on one field: that field is the banner's.
+            if let [(tag, _)] = candidates.iter().collect::<Vec<_>>()[..]
+                && let Ok(mut learned) = LEARNED_GACHA_TYPE_TAG.lock()
+            {
+                *learned = Some(*tag);
+            }
+            Some(*one)
+        }
+        // A counter equals a banner type too. The field an earlier answer
+        // held the banner on tells them apart; before one was seen, nothing can.
+        _ => LEARNED_GACHA_TYPE_TAG
+            .lock()
+            .ok()
+            .and_then(|learned| *learned)
+            .and_then(|tag| candidates.get(&tag).copied()),
     };
 
     Some(GachaWish {
@@ -319,6 +341,11 @@ pub fn matches_do_gacha_rsp(data: &[u8]) -> Option<GachaWish> {
         pulls: entries.len() as u32,
     })
 }
+
+/// The field number the banner's `gacha_type` sat on in the last `DoGachaRsp`
+/// that held exactly one banner-type value: it settles an answer in which a
+/// counter equals a banner type too (`None` until one was seen).
+static LEARNED_GACHA_TYPE_TAG: std::sync::Mutex<Option<u32>> = std::sync::Mutex::new(None);
 
 /// The most banners believed in one banner list.
 const MAX_BANNERS: usize = 64;
@@ -821,11 +848,24 @@ mod tests {
         );
     }
 
+    /// `DoGachaRsp` with the banner on field `banner_tag` instead of 1, and
+    /// `extra` scalars appended.
+    fn do_gacha_rsp_on(banner_tag: u32, gacha_type: u64, extra: &[(u32, u64)]) -> Vec<u8> {
+        let mut payload = do_gacha_rsp(0, &[gacha_item(15_401, false)]);
+        // Field 1 held the banner; move it.
+        payload.drain(..field_varint(1, 0).len());
+        payload.extend(field_varint(banner_tag, gacha_type));
+        for &(tag, value) in extra {
+            payload.extend(field_varint(tag, value));
+        }
+        payload
+    }
+
     #[test]
-    fn two_banner_like_scalars_leave_the_banner_unknown() {
-        let mut payload = do_gacha_rsp(302, &[gacha_item(15_401, false)]);
-        // A daily wish count that happens to be 200.
-        payload.extend(field_varint(1464, 200));
+    fn two_banner_like_scalars_leave_the_banner_unknown_until_one_answer_was_clear() {
+        // Fields no other test's answer puts the banner on, so whatever
+        // another test taught stays out of this one.
+        let payload = do_gacha_rsp_on(901, 302, &[(902, 200)]);
         assert_eq!(
             matches_do_gacha_rsp(&payload),
             Some(GachaWish {
@@ -833,6 +873,22 @@ mod tests {
                 pulls: 1,
             })
         );
+    }
+
+    #[test]
+    fn a_clear_answer_teaches_the_banner_field_for_the_ambiguous_ones() {
+        // The 7.2 case: a wish count reaching 200 beside the banner.
+        let clear = do_gacha_rsp_on(1, 301, &[(1464, 199)]);
+        assert_eq!(matches_do_gacha_rsp(&clear).unwrap().gacha_type, Some(301));
+        let ambiguous = do_gacha_rsp_on(1, 302, &[(1464, 200)]);
+        assert_eq!(
+            matches_do_gacha_rsp(&ambiguous).unwrap().gacha_type,
+            Some(302)
+        );
+        // The learned field does not invent a banner: with the banner-type
+        // values on other fields only, nothing is known.
+        let elsewhere = do_gacha_rsp_on(903, 100, &[(904, 500)]);
+        assert_eq!(matches_do_gacha_rsp(&elsewhere).unwrap().gacha_type, None);
     }
 
     #[test]

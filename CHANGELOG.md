@@ -2,6 +2,16 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.17.16
+
+- Quests finished during a session are captured as they happen: a parent quest
+  the game reports finished (or newly accepted) with its sub-quests joins
+  `gi_collections.quests` at once instead of at the next login, so the
+  tracker's World Quests list is right after the session's own snapshot.
+- A wish whose answer carried a counter equal to a banner number (a wish count
+  of 100 or 200) is no longer logged without its banner: the field the banner
+  sat on in an earlier wish settles it, and only that banner is re-synced.
+
 ## 1.17.15
 
 - Closing Teyvat.me installs an update that is waiting first. A new version
