@@ -5304,7 +5304,9 @@ mod tests {
 
     #[test]
     fn stygian_records_keep_known_seasons_and_the_accounts_own_team() {
-        use teyvatme_protocol::{Figure, StygianFight, StygianRecord, StygianTeam};
+        use teyvatme_protocol::{
+            Figure, StygianFight, StygianMember, StygianPlayer, StygianRecord, StygianTeam,
+        };
         let mut data = endgame_data();
         let uid = 812_345_678u64;
         let guid = |n: u64| (uid << 32) + n;
@@ -5318,6 +5320,17 @@ mod tests {
             schedule,
             difficulty: 6,
             at_ms: 1_790_972_494_088,
+            players: teams
+                .iter()
+                .enumerate()
+                .map(|(i, t)| StygianPlayer {
+                    uid: t.uid,
+                    index: i as u32 + 1,
+                    nickname: (teams.len() > 1).then(|| format!("Player{}", i + 1)),
+                    picture: Some(1001 + i as u32),
+                    ..Default::default()
+                })
+                .collect(),
             fights: vec![
                 StygianFight {
                     time: 51,
@@ -5340,13 +5353,26 @@ mod tests {
                 },
             ],
         };
+        let member = |id: u32, level: u32, constellation: Option<u32>| StygianMember {
+            id,
+            level: Some(level),
+            constellation,
+            ..Default::default()
+        };
         let mine = StygianTeam {
             uid,
             avatars: vec![10000046, 10000005, 10000999],
+            members: vec![
+                member(10000046, 90, Some(1)),
+                member(10000005, 80, Some(6)),
+                // Not in the game data: left out like in `team`.
+                member(10000999, 90, Some(0)),
+            ],
         };
         let friend = StygianTeam {
             uid: 823_456_789,
-            avatars: vec![10000030],
+            avatars: vec![10000005],
+            members: vec![member(10000005, 100, None)],
         };
         let records = vec![
             record(5_269_012, vec![mine.clone()]),
@@ -5356,18 +5382,35 @@ mod tests {
         ];
         assert_eq!(data.apply_stygian_records(&records), 2);
         let json = serde_json::to_value(data.export_at(&settings(), NOW_SECS * 1000).0).unwrap();
+        let solo_team = serde_json::json!([{"p": 1, "team": [
+            {"key": "HuTao", "level": 90, "constellation": 1},
+            {"key": "Traveler", "level": 80, "constellation": 6}
+        ]}]);
+        // The friend is 1P, the account 2P: listed by position.
+        let coop_teams = serde_json::json!([
+            {"p": 1, "team": [{"key": "Traveler", "level": 100}]},
+            {"p": 2, "team": [
+                {"key": "HuTao", "level": 90, "constellation": 1},
+                {"key": "Traveler", "level": 80, "constellation": 6}
+            ]}
+        ]);
         assert_eq!(
             json["gi_endgame"]["stygian"],
             serde_json::json!({"records": [
                 {"season": 5269012, "difficulty": 6, "at": 1790972494, "coop": false, "fights": [
                     {"time": 51, "done": true, "team": ["HuTao", "Traveler"],
-                     "strike": {"value": 367183, "by": "HuTao"}, "damage": {"value": 15616746}},
-                    {"time": 0, "done": false, "team": ["HuTao", "Traveler"]}
+                     "strike": {"value": 367183, "by": "HuTao"}, "damage": {"value": 15616746},
+                     "players": solo_team},
+                    {"time": 0, "done": false, "team": ["HuTao", "Traveler"], "players": solo_team}
                 ]},
                 {"season": 5269012, "difficulty": 6, "at": 1790972494, "coop": true, "fights": [
                     {"time": 51, "done": true, "team": ["HuTao", "Traveler"],
-                     "strike": {"value": 367183, "by": "HuTao"}, "damage": {"value": 15616746}},
-                    {"time": 0, "done": false, "team": ["HuTao", "Traveler"]}
+                     "strike": {"value": 367183, "by": "HuTao"}, "damage": {"value": 15616746},
+                     "players": coop_teams},
+                    {"time": 0, "done": false, "team": ["HuTao", "Traveler"], "players": coop_teams}
+                ], "players": [
+                    {"p": 1, "self": false, "picture": 1001, "nickname": "Player1"},
+                    {"p": 2, "self": true, "picture": 1002, "nickname": "Player2"}
                 ]}
             ]})
         );

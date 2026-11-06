@@ -219,12 +219,54 @@ pub struct GiStygianRecord {
     pub at: u64,
     pub coop: bool,
     pub fights: Vec<GiStygianFight>,
+    /// A co-op run's players in the game's order (1P, 2P…), since 1.17.20:
+    /// position, whether it is the account, the profile picture and the
+    /// nickname when the game sent them. Never a UID.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub players: Option<Vec<GiStygianPlayer>>,
+}
+
+/// A player of a co-op record.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiStygianPlayer {
+    /// The position, 1-4 (the game's 1P-4P).
+    pub p: u32,
+    /// The account's own place in the run.
+    #[serde(rename = "self")]
+    pub is_self: bool,
+    /// `ProfilePictureExcelConfigData.id`.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub picture: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub nickname: Option<String>,
+}
+
+/// One player's characters in a fight, as the record holds them.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiStygianPlayerTeam {
+    /// The player's position (`GiStygianPlayer.p`).
+    pub p: u32,
+    pub team: Vec<GiStygianMember>,
+}
+
+/// A character as it was when the record was set (GOOD key); level and
+/// constellation when the message told them apart.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiStygianMember {
+    pub key: String,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub level: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub constellation: Option<u32>,
 }
 
 /// One boss fight of a record: its time in seconds (0 when not finished),
-/// whether it was finished, the account's own team (GOOD character keys; a
-/// co-op run's other players are never exported), and the fight's figures
-/// when the game sent them.
+/// whether it was finished, the account's own team (GOOD character keys),
+/// the fight's figures when the game sent them and, since 1.17.20, every
+/// player's characters by position (other players' UIDs are never exported).
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GiStygianFight {
@@ -237,6 +279,11 @@ pub struct GiStygianFight {
     /// The highest total damage dealt by one character.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub damage: Option<GiFigure>,
+    /// Since 1.17.20: every player's characters, by position (a solo run's
+    /// one entry is the account's), with the record's own level and
+    /// constellation. Absent when the record's player list did not read.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub players: Option<Vec<GiStygianPlayerTeam>>,
 }
 
 /// A figure and, when the game leaves no doubt which, the character it
@@ -1373,7 +1420,7 @@ mod tests {
                         season: 5_269_012,
                         difficulty: 6,
                         at: 1_790_972_494,
-                        coop: false,
+                        coop: true,
                         fights: vec![GiStygianFight {
                             time: 51,
                             done: true,
@@ -1386,7 +1433,39 @@ mod tests {
                                 value: 15_616_746,
                                 by: None,
                             }),
+                            players: Some(vec![
+                                GiStygianPlayerTeam {
+                                    p: 1,
+                                    team: vec![GiStygianMember {
+                                        key: "Furina".to_string(),
+                                        level: Some(100),
+                                        constellation: Some(6),
+                                    }],
+                                },
+                                GiStygianPlayerTeam {
+                                    p: 2,
+                                    team: vec![GiStygianMember {
+                                        key: "Alhaitham".to_string(),
+                                        level: Some(90),
+                                        constellation: None,
+                                    }],
+                                },
+                            ]),
                         }],
+                        players: Some(vec![
+                            GiStygianPlayer {
+                                p: 1,
+                                is_self: false,
+                                picture: Some(1023),
+                                nickname: Some("Lumine".to_string()),
+                            },
+                            GiStygianPlayer {
+                                p: 2,
+                                is_self: true,
+                                picture: None,
+                                nickname: None,
+                            },
+                        ]),
                     }],
                 }),
             }),
@@ -1626,12 +1705,20 @@ mod tests {
                     "stars": 12, "maxStars": 12, "starredActs": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
                 },
                 "stygian": { "records": [{
-                    "season": 5269012, "difficulty": 6, "at": 1790972494, "coop": false,
+                    "season": 5269012, "difficulty": 6, "at": 1790972494, "coop": true,
                     "fights": [{
                         "time": 51, "done": true, "team": ["Alhaitham"],
                         "strike": { "value": 367183, "by": "Alhaitham" },
-                        "damage": { "value": 15616746 }
-                    }]
+                        "damage": { "value": 15616746 },
+                        "players": [
+                            { "p": 1, "team": [{ "key": "Furina", "level": 100, "constellation": 6 }] },
+                            { "p": 2, "team": [{ "key": "Alhaitham", "level": 90 }] }
+                        ]
+                    }],
+                    "players": [
+                        { "p": 1, "self": false, "picture": 1023, "nickname": "Lumine" },
+                        { "p": 2, "self": true }
+                    ]
                 }] }
             })
         );
