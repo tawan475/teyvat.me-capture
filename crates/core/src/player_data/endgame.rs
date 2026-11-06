@@ -10,7 +10,7 @@
 use std::collections::BTreeMap;
 
 use teyvatme_game_data::{Endgame, TheaterDifficulty};
-use teyvatme_protocol::{StygianRecord, TheaterDetail};
+use teyvatme_protocol::{AbyssRecord, StygianRecord, TheaterDetail};
 
 use super::PlayerData;
 use crate::good;
@@ -22,6 +22,8 @@ pub(super) struct EndgameState {
     /// By season and whether the run was co-op (a season has at most one
     /// record of each).
     pub stygian: Option<BTreeMap<(u32, bool), good::GiStygianRecord>>,
+    /// The Spiral Abyss's record book by period.
+    pub abyss: Option<BTreeMap<u32, good::GiAbyssRecord>>,
     /// Bumped whenever a part differs from what was held: what the decoders
     /// upload a snapshot for, since the live delta has no path for
     /// `gi_endgame` and the records only arrive after the login's snapshot
@@ -341,6 +343,85 @@ impl PlayerData {
         count
     }
 
+    /// Keep the Spiral Abyss's record book: every period as sent (the
+    /// message is the whole book, so it replaces what was held), its figures
+    /// labelled when the message's layout is the one known
+    /// ([`ABYSS_FIGURE_FIELDS`]), its characters by GOOD key (one the game
+    /// data lacks is left out). Returns how many periods were kept.
+    pub fn apply_abyss_records(&mut self, records: &[AbyssRecord]) -> usize {
+        let key_of = |id: u32| -> Option<String> {
+            self.game_data
+                .get_character(id)
+                .ok()
+                .map(|name| good::to_good_key(name))
+                .filter(|key| !key.is_empty())
+        };
+        // The layout is known when every figure field of the message is one
+        // of the known ones; a reshuffled one leaves the figures out of the
+        // whole book (never mislabelled one by one).
+        let known = records.iter().all(|r| {
+            r.figures
+                .keys()
+                .all(|tag| ABYSS_FIGURE_FIELDS.iter().any(|(known, _)| known == tag))
+        });
+        if !known {
+            tracing::warn!(
+                fields = ?records
+                    .iter()
+                    .flat_map(|r| r.figures.keys().copied())
+                    .collect::<std::collections::BTreeSet<_>>(),
+                "the Spiral Abyss record book's figures are not in a known layout; left out"
+            );
+        }
+        let mut kept = BTreeMap::new();
+        for record in records {
+            let figure = |which: AbyssFigure| -> Option<good::GiFigure> {
+                if !known {
+                    return None;
+                }
+                let (tag, _) = ABYSS_FIGURE_FIELDS.iter().find(|(_, f)| *f == which)?;
+                let (avatar, value) = record.figures.get(tag)?;
+                Some(good::GiFigure {
+                    value: *value,
+                    by: key_of(*avatar),
+                })
+            };
+            kept.insert(
+                record.schedule,
+                good::GiAbyssRecord {
+                    season: record.schedule,
+                    floor: record.floor,
+                    chamber: record.chamber,
+                    stars: record.stars,
+                    defeats: figure(AbyssFigure::Defeats),
+                    strike: figure(AbyssFigure::Strike),
+                    damage_taken: figure(AbyssFigure::DamageTaken),
+                    skills: figure(AbyssFigure::Skills),
+                    bursts: figure(AbyssFigure::Bursts),
+                    picked: record
+                        .picked
+                        .iter()
+                        .filter_map(|(avatar, times)| {
+                            Some(good::GiAbyssPick {
+                                key: key_of(*avatar)?,
+                                times: *times,
+                            })
+                        })
+                        .collect(),
+                },
+            );
+        }
+        if kept.is_empty() {
+            return 0;
+        }
+        let count = kept.len();
+        if self.endgame.abyss.as_ref() != Some(&kept) {
+            self.endgame.abyss = Some(kept);
+            self.endgame.version += 1;
+        }
+        count
+    }
+
     /// `gi_endgame`, or `None` when none of it was captured.
     pub(super) fn export_endgame(&self) -> Option<good::GiEndgame> {
         let endgame = self.game_data.endgame().ok();
@@ -363,12 +444,48 @@ impl PlayerData {
             .map(|records| good::GiStygian {
                 records: records.values().cloned().collect(),
             });
-        if theater.is_none() && stygian.is_none() {
+        let abyss = self
+            .endgame
+            .abyss
+            .as_ref()
+            .map(|periods| good::GiAbyssBook {
+                periods: periods.values().cloned().collect(),
+            });
+        if theater.is_none() && stygian.is_none() && abyss.is_none() {
             return None;
         }
-        Some(good::GiEndgame { theater, stygian })
+        Some(good::GiEndgame {
+            theater,
+            stygian,
+            abyss,
+        })
     }
 }
+
+/// The Spiral Abyss record book's figures.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AbyssFigure {
+    Defeats,
+    Strike,
+    DamageTaken,
+    Skills,
+    Bursts,
+}
+
+/// The figures' field numbers as the 7.2 client sends them, read off a log
+/// beside the game's Challenge Summary (2026-11-07: Most Defeats 111,
+/// Strongest Single Strike 6,424,192, Most Damage Taken 17,911, Elemental
+/// Skills 85, Elemental Bursts 24, each with its character). Every version
+/// renumbers fields: a message whose figure fields are not all listed here
+/// exports no figures (the floor, stars and picked characters are told by
+/// shape and stay) until the new layout is learned the same way.
+const ABYSS_FIGURE_FIELDS: [(u32, AbyssFigure); 5] = [
+    (1, AbyssFigure::Bursts),
+    (6, AbyssFigure::DamageTaken),
+    (10, AbyssFigure::Strike),
+    (11, AbyssFigure::Defeats),
+    (12, AbyssFigure::Skills),
+];
 
 #[cfg(test)]
 mod tests {

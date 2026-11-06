@@ -11,6 +11,13 @@ Each release's section is its GitHub release notes (`.github/workflows/release.y
   Now the records, and the Imaginarium Theater's state when it moves after
   a run, go up as a `change` snapshot at once, in live mode too; opening
   the screen again with nothing new sends nothing.
+- The Spiral Abyss's record book is captured when its Challenge Summary is
+  opened (`gi_endgame.abyss`): per period the deepest descent, the stars,
+  Most Defeats, Strongest Single Strike, Most Damage Taken, Elemental Skills
+  and Bursts Unleashed with their characters, and the characters picked most
+  with how often. The figures' labels are read off the 7.2 layout; a later
+  version's reshuffle leaves them out (floor, stars and picks stay) until it
+  is learned again.
 
 ## 1.17.20
 

@@ -449,6 +449,35 @@ export interface GiExploration {
 export interface GiEndgame {
   theater?: GiTheater
   stygian?: GiStygian
+  /** The Spiral Abyss's record book, as listed when its Challenge Summary opens (Capture 1.17.21+). */
+  abyss?: GiAbyssBook
+}
+
+export interface GiAbyssBook {
+  /** One per period played, oldest first (the game keeps the last two years). */
+  periods: GiAbyssRecord[]
+}
+
+export interface GiAbyssRecord {
+  /** TowerScheduleExcelConfigData.scheduleId (the period). */
+  season: GameId
+  /** The deepest descent: floor (9-12) and chamber (1-3). */
+  floor: number
+  chamber: number
+  /** Stars earned that period (36 at a full clear). */
+  stars: number
+  /** Most Defeats. Each figure is absent when the game sent it empty, or when the message's field layout is not one Capture knows the labels of (every version renumbers them). */
+  defeats?: GiFigure
+  /** Strongest Single Strike. */
+  strike?: GiFigure
+  /** Most Damage Taken. */
+  damageTaken?: GiFigure
+  /** Elemental Skills Unleashed. */
+  skills?: GiFigure
+  /** Elemental Bursts Unleashed. */
+  bursts?: GiFigure
+  /** The characters the game lists as picked that period (the four most used), with how often. */
+  picked: { key: string; times: number }[]
 }
 
 export interface GiTheater {

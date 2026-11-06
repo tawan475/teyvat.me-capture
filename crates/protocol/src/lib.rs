@@ -94,8 +94,9 @@ use crate::crypto::{
     LatePass, LateWindow, bruteforce, decrypt_command, guess, late_search, lookup_initial_key,
 };
 pub use crate::endgame::{
-    Figure, MAX_THEATER_ACTS, StygianFight, StygianMember, StygianPlayer, StygianRecord,
-    StygianTeam, TheaterDetail, matches_stygian_records, matches_theater_notify,
+    AbyssRecord, Figure, MAX_THEATER_ACTS, StygianFight, StygianMember, StygianPlayer,
+    StygianRecord, StygianTeam, TheaterDetail, matches_abyss_records, matches_stygian_records,
+    matches_theater_notify,
 };
 pub use crate::fetter::matches_fetter_notify;
 pub use crate::flat::{FlatMessage, flat_message, parse_avatar_info};
@@ -1781,6 +1782,10 @@ pub enum CommandMatch {
     /// candidate, kept for the seasons the game data knows and the account's
     /// own team.
     StygianRecords(Vec<StygianRecord>),
+    /// The Spiral Abyss's record book (see [`matches_abyss_records`]): a
+    /// candidate, whose figures the caller labels against the layouts it
+    /// knows.
+    AbyssRecords(Vec<AbyssRecord>),
 }
 
 impl CommandMatch {
@@ -1838,6 +1843,7 @@ impl CommandMatch {
             Self::Comfort(_) => "comfort",
             Self::Theater(_) => "theater",
             Self::StygianRecords(_) => "stygian records",
+            Self::AbyssRecords(_) => "abyss records",
         }
     }
 
@@ -2094,6 +2100,9 @@ pub fn classify_command(game_command: &GameCommand) -> Option<CommandMatch> {
     }
     if let Some(found) = matches_stygian_records(&game_command.proto_data) {
         claims.push(CommandMatch::StygianRecords(found));
+    }
+    if let Some(found) = matches_abyss_records(&game_command.proto_data) {
+        claims.push(CommandMatch::AbyssRecords(found));
     }
     // Last on purpose. Its shape -- one packed uint64 list beside a scalar or
     // two -- is the least specific of the five, so anything another matcher can

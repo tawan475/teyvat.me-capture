@@ -170,6 +170,7 @@ impl DataReplacement {
                         | CommandMatch::ShopGoods(_)
                         | CommandMatch::Theater(_)
                         | CommandMatch::StygianRecords(_)
+                        | CommandMatch::AbyssRecords(_)
                 )
         });
         self.verdict(key, replaces)
@@ -590,6 +591,20 @@ pub fn apply_commands(
                         of = records.len(),
                         changed = player_data.endgame_version() != version,
                         "Found the Stygian Onslaught records"
+                    );
+                    applied.routine = true;
+                    applied.endgame |= player_data.endgame_version() != version;
+                }
+            }
+            CommandMatch::AbyssRecords(records) => {
+                let version = player_data.endgame_version();
+                let kept = player_data.apply_abyss_records(&records);
+                if kept > 0 {
+                    tracing::info!(
+                        kept,
+                        of = records.len(),
+                        changed = player_data.endgame_version() != version,
+                        "Found the Spiral Abyss record book"
                     );
                     applied.routine = true;
                     applied.endgame |= player_data.endgame_version() != version;

@@ -5460,6 +5460,76 @@ mod tests {
     }
 
     #[test]
+    fn the_abyss_record_book_is_labelled_and_exported() {
+        use teyvatme_protocol::AbyssRecord;
+        let mut data = endgame_data();
+        let record = |schedule: u32, figures: &[(u32, (u32, u64))]| AbyssRecord {
+            schedule,
+            floor: 12,
+            chamber: 3,
+            stars: 36,
+            figures: figures.iter().copied().collect(),
+            picked: vec![(10000046, 17), (10000005, 17), (10000999, 17)],
+        };
+        let book = vec![
+            record(
+                123,
+                &[
+                    (1, (10000005, 24)),
+                    (6, (10000046, 17_911)),
+                    (10, (10000046, 6_424_192)),
+                    (11, (10000046, 111)),
+                    (12, (10000999, 85)),
+                ],
+            ),
+            record(122, &[(1, (10000005, 13)), (10, (10000046, 5_800_611))]),
+        ];
+        assert_eq!(data.apply_abyss_records(&book), 2);
+        let json = serde_json::to_value(data.export_at(&settings(), NOW_SECS * 1000).0).unwrap();
+        // Oldest first; a character the data lacks has no key (its figure
+        // keeps the value); the empty figure is absent.
+        assert_eq!(
+            json["gi_endgame"]["abyss"],
+            serde_json::json!({ "periods": [
+                {
+                    "season": 122, "floor": 12, "chamber": 3, "stars": 36,
+                    "strike": { "value": 5800611, "by": "HuTao" },
+                    "bursts": { "value": 13, "by": "Traveler" },
+                    "picked": [{ "key": "HuTao", "times": 17 }, { "key": "Traveler", "times": 17 }]
+                },
+                {
+                    "season": 123, "floor": 12, "chamber": 3, "stars": 36,
+                    "defeats": { "value": 111, "by": "HuTao" },
+                    "strike": { "value": 6424192, "by": "HuTao" },
+                    "damageTaken": { "value": 17911, "by": "HuTao" },
+                    "skills": { "value": 85 },
+                    "bursts": { "value": 24, "by": "Traveler" },
+                    "picked": [{ "key": "HuTao", "times": 17 }, { "key": "Traveler", "times": 17 }]
+                }
+            ] })
+        );
+        // The same book again changes nothing; a reshuffled layout keeps the
+        // periods but no figures.
+        let version = data.endgame_version();
+        assert_eq!(data.apply_abyss_records(&book), 2);
+        assert_eq!(data.endgame_version(), version);
+        let reshuffled = vec![record(
+            123,
+            &[(3, (10000046, 111)), (10, (10000046, 6_424_192))],
+        )];
+        assert_eq!(data.apply_abyss_records(&reshuffled), 1);
+        let json = serde_json::to_value(data.export_at(&settings(), NOW_SECS * 1000).0).unwrap();
+        assert_eq!(
+            json["gi_endgame"]["abyss"]["periods"][0],
+            serde_json::json!({
+                "season": 123, "floor": 12, "chamber": 3, "stars": 36,
+                "picked": [{ "key": "HuTao", "times": 17 }, { "key": "Traveler", "times": 17 }]
+            })
+        );
+        assert_eq!(data.endgame_version(), version + 1);
+    }
+
+    #[test]
     fn teams_follow_the_party_setup() {
         use teyvatme_protocol::{AvatarWardrobe, SavedTeam};
         let mut data = PlayerData::new(

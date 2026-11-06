@@ -3,8 +3,10 @@
 
 //! Endgame progress, recognised by shape: the Imaginarium Theater's season
 //! state (`RoleCombatDataNotify` at every login, and the reply when the
-//! Theater is opened; 7.1 ids 1982 and 2068) and the Stygian Onslaught's
-//! records (the reply when its menu is opened; 7.1 id 4056).
+//! Theater is opened; 7.1 ids 1982 and 2068), the Stygian Onslaught's
+//! records (the reply when its menu is opened; 7.1 id 4056) and the Spiral
+//! Abyss's record book (the reply when its Challenge Summary opens; 7.2 id
+//! 23737).
 //!
 //! Both come back as *candidates*: their field numbers and most of their
 //! names are reshuffled every version, so what can be told here is the
@@ -805,6 +807,279 @@ pub fn matches_stygian_records(data: &[u8]) -> Option<Vec<StygianRecord>> {
     Some(records)
 }
 
+/// Spiral Abyss schedule ids (`TowerScheduleExcelConfigData`: 124 at 7.2;
+/// the handbook keeps the last two years, so nothing below 100 is listed
+/// any more), above any star count so the period is told from the stars.
+const ABYSS_SCHEDULE_IDS: std::ops::RangeInclusive<u64> = 61..=100_000;
+/// The Abyssal Moon Spire's floors (9-12: the record book counts only
+/// those), with room above.
+const ABYSS_FLOORS: std::ops::RangeInclusive<u64> = 9..=20;
+/// Chambers of a floor (three), with room.
+const ABYSS_CHAMBERS: std::ops::RangeInclusive<u64> = 1..=5;
+/// Stars of a period (36 at a full clear), with room.
+const ABYSS_STARS: std::ops::RangeInclusive<u64> = 0..=60;
+/// Periods a message may hold (24 for a player of six years).
+const MAX_ABYSS_PERIODS: usize = 200;
+/// Figures a period carries (five at 7.2) and characters it lists as picked
+/// (four), with room.
+const MAX_ABYSS_FIGURES: usize = 16;
+const MAX_ABYSS_PICKED: usize = 32;
+
+/// One period of the Spiral Abyss's record book (the Challenge Summary),
+/// as the game keeps it.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct AbyssRecord {
+    /// `TowerScheduleExcelConfigData.scheduleId`.
+    pub schedule: u32,
+    /// The deepest descent: its floor and chamber.
+    pub floor: u32,
+    pub chamber: u32,
+    /// Stars earned that period.
+    pub stars: u32,
+    /// The figures by field number, each a character and a value; a figure
+    /// the game sent empty (no damage taken) is left out. Which figure a
+    /// field is lives on the wire only as its number, reshuffled every
+    /// version, so the caller labels them against the layouts it knows.
+    pub figures: BTreeMap<u32, (u32, u64)>,
+    /// The characters the game lists as picked that period, with how often.
+    pub picked: Vec<(u32, u32)>,
+}
+
+/// The stats' pairs by field: each pair its two numbers by field, or `None`
+/// for an empty one.
+type AbyssPairs = BTreeMap<u32, Vec<Option<BTreeMap<u32, u64>>>>;
+
+/// One period as read, before the message settles what its fields are: the
+/// summary's lone numbers by field and the stats' pairs by field.
+struct AbyssRecordRead {
+    summary: BTreeMap<u32, u64>,
+    pairs: AbyssPairs,
+}
+
+/// Read `data` as the Spiral Abyss's record book, or `None` if it is not
+/// one: a list of periods (and a lone number or two beside it), each
+/// period a few lone numbers, one submessage of lone numbers (the deepest
+/// floor and chamber, the stars and the period) and one whose every field
+/// is a pair of a character and a number (the five figures, and the picked
+/// characters with their count, which repeat on one field). What each field
+/// is gets settled across the message: the period is the only number above
+/// any star count and differs per entry; the chamber, floor and stars by
+/// their ranges and the game's own rule that a floor opens with six stars
+/// on the one before and a chamber with the one before cleared.
+pub fn matches_abyss_records(data: &[u8]) -> Option<Vec<AbyssRecord>> {
+    let top = wire::fields(data)?;
+    let mut periods = None;
+    let mut lone_numbers = 0;
+    for values in top.values() {
+        match values.as_slice() {
+            [Varint(_)] => lone_numbers += 1,
+            values if values.iter().all(|v| matches!(v, LengthDelimited(_))) => {
+                let read: Option<Vec<AbyssRecordRead>> = (values.len() <= MAX_ABYSS_PERIODS)
+                    .then(|| values.iter().map(|v| abyss_record(as_bytes(v)?)).collect())
+                    .flatten();
+                if periods.replace(read?).is_some() {
+                    return None;
+                }
+            }
+            _ => return None,
+        }
+    }
+    if lone_numbers > 2 {
+        return None;
+    }
+    settle_abyss(periods?)
+}
+
+fn abyss_record(bytes: &[u8]) -> Option<AbyssRecordRead> {
+    let fields = wire::fields(bytes)?;
+    let mut summary = None;
+    let mut pairs = None;
+    for values in fields.values() {
+        match values.as_slice() {
+            [Varint(_)] => {}
+            [LengthDelimited(sub)] => {
+                let inner = wire::fields(sub)?;
+                if inner.values().all(|v| matches!(v.as_slice(), [Varint(_)])) {
+                    if !(3..=8).contains(&inner.len()) {
+                        return None;
+                    }
+                    let read = inner
+                        .iter()
+                        .map(|(tag, v)| (*tag, as_varint(&v[0]).unwrap_or(0)))
+                        .collect();
+                    if summary.replace(read).is_some() {
+                        return None;
+                    }
+                } else {
+                    let read = abyss_pairs(&inner)?;
+                    if pairs.replace(read).is_some() {
+                        return None;
+                    }
+                }
+            }
+            _ => return None,
+        }
+    }
+    Some(AbyssRecordRead {
+        summary: summary?,
+        pairs: pairs?,
+    })
+}
+
+/// The stats submessage: every field one or more submessages of exactly two
+/// lone numbers, or empty.
+fn abyss_pairs(fields: &wire::Fields<'_>) -> Option<AbyssPairs> {
+    let mut out = BTreeMap::new();
+    let mut count = 0;
+    for (tag, values) in fields {
+        let mut list = Vec::new();
+        for value in values {
+            let bytes = as_bytes(value)?;
+            if bytes.is_empty() {
+                list.push(None);
+                continue;
+            }
+            let pair = wire::fields(bytes)?;
+            if pair.len() != 2 {
+                return None;
+            }
+            let read: Option<BTreeMap<u32, u64>> = pair
+                .iter()
+                .map(|(t, v)| match v.as_slice() {
+                    [Varint(n)] => Some((*t, *n)),
+                    _ => None,
+                })
+                .collect();
+            list.push(Some(read?));
+        }
+        count += list.len();
+        out.insert(*tag, list);
+    }
+    (!out.is_empty() && count <= MAX_ABYSS_FIGURES + MAX_ABYSS_PICKED).then_some(out)
+}
+
+/// Settle the fields across the periods (see [`matches_abyss_records`]).
+fn settle_abyss(reads: Vec<AbyssRecordRead>) -> Option<Vec<AbyssRecord>> {
+    if reads.is_empty() {
+        return None;
+    }
+    // The summary's four roles: one assignment of its fields must fit every
+    // period, and only one.
+    let tags: BTreeSet<u32> = reads
+        .iter()
+        .flat_map(|r| r.summary.keys().copied())
+        .collect();
+    if !(3..=4).contains(&tags.len()) {
+        return None;
+    }
+    let value = |r: &AbyssRecordRead, tag: u32| r.summary.get(&tag).copied().unwrap_or(0);
+    let all = |tag: u32, range: &std::ops::RangeInclusive<u64>| {
+        reads.iter().all(|r| range.contains(&value(r, tag)))
+    };
+    let mut found = None;
+    for &schedule in &tags {
+        let mut seen = BTreeSet::new();
+        if !all(schedule, &ABYSS_SCHEDULE_IDS)
+            || !reads.iter().all(|r| seen.insert(value(r, schedule)))
+        {
+            continue;
+        }
+        for &floor in &tags {
+            if floor == schedule || !all(floor, &ABYSS_FLOORS) {
+                continue;
+            }
+            for &chamber in &tags {
+                if chamber == schedule || chamber == floor || !all(chamber, &ABYSS_CHAMBERS) {
+                    continue;
+                }
+                // The stars: the field left, or none when the summary has
+                // three (0 stars are off the wire).
+                let stars = tags
+                    .iter()
+                    .copied()
+                    .find(|t| ![schedule, floor, chamber].contains(t));
+                let fits = reads.iter().all(|r| {
+                    let stars = stars.map_or(0, |t| value(r, t));
+                    let floors_above_nine = value(r, floor) - 9;
+                    ABYSS_STARS.contains(&stars)
+                        && stars >= 6 * floors_above_nine + value(r, chamber) - 1
+                        && stars <= 9 * floors_above_nine + 3 * value(r, chamber)
+                });
+                if fits && found.replace((schedule, floor, chamber, stars)).is_some() {
+                    return None;
+                }
+            }
+        }
+    }
+    let (schedule, floor, chamber, stars) = found?;
+
+    // The pairs: the field that repeats within a period is the picked list,
+    // the rest the figures; and in a pair the field that is a character id
+    // in every pair of the message is the character.
+    let mut picked_tag = None;
+    let mut by_tag: BTreeMap<u32, (usize, usize)> = BTreeMap::new();
+    for r in &reads {
+        for (tag, list) in &r.pairs {
+            if list.len() > 1 && picked_tag.replace(*tag).is_some_and(|t| t != *tag) {
+                return None;
+            }
+        }
+        for pair in r.pairs.values().flatten().flatten() {
+            for (tag, n) in pair {
+                let entry = by_tag.entry(*tag).or_default();
+                entry.0 += 1;
+                entry.1 += usize::from(AVATAR_IDS.contains(n));
+            }
+        }
+    }
+    let picked_tag = picked_tag?;
+    let avatar_tags: Vec<u32> = by_tag
+        .iter()
+        .filter(|(_, (seen, avatars))| seen == avatars)
+        .map(|(tag, _)| *tag)
+        .collect();
+    let [avatar_tag] = avatar_tags.as_slice() else {
+        return None;
+    };
+    let read_pair = |pair: &BTreeMap<u32, u64>| -> Option<(u32, u64)> {
+        let avatar = *pair.get(avatar_tag)?;
+        let (_, number) = pair.iter().find(|(t, _)| *t != avatar_tag)?;
+        Some((avatar as u32, *number))
+    };
+    let mut out = Vec::with_capacity(reads.len());
+    for r in &reads {
+        let mut figures = BTreeMap::new();
+        let mut picked = Vec::new();
+        for (tag, list) in &r.pairs {
+            if *tag == picked_tag {
+                for pair in list.iter().flatten() {
+                    let (avatar, times) = read_pair(pair)?;
+                    picked.push((avatar, u32::try_from(times).ok()?));
+                }
+            } else {
+                let [one] = list.as_slice() else {
+                    return None;
+                };
+                if let Some(pair) = one {
+                    figures.insert(*tag, read_pair(pair)?);
+                }
+            }
+        }
+        if figures.len() > MAX_ABYSS_FIGURES || picked.len() > MAX_ABYSS_PICKED {
+            return None;
+        }
+        out.push(AbyssRecord {
+            schedule: value(r, schedule) as u32,
+            floor: value(r, floor) as u32,
+            chamber: value(r, chamber) as u32,
+            stars: stars.map_or(0, |t| value(r, t)) as u32,
+            figures,
+            picked,
+        });
+    }
+    Some(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1363,5 +1638,189 @@ mod tests {
         assert_eq!(matches_stygian_records(&data), None);
         assert_eq!(matches_stygian_records(&[]), None);
         assert_eq!(matches_theater_notify(&[]), None);
+    }
+
+    /// A period of the record book in the 7.2 layout: the summary on field
+    /// 15 (floor 7, stars 8, period 11, chamber 14), the stats on field 9
+    /// with each pair {5: character, 15: number}, the picked list on 13.
+    fn abyss_record_bytes(
+        period: u64,
+        floor: u64,
+        chamber: u64,
+        stars: u64,
+        figures: &[(u32, Option<(u64, u64)>)],
+        picked: &[(u64, u64)],
+    ) -> Vec<u8> {
+        let abyss_pair = |avatar: u64, number: u64| {
+            let mut out = Vec::new();
+            field_varint(5, avatar, &mut out);
+            field_varint(15, number, &mut out);
+            out
+        };
+        let mut entry = Vec::new();
+        field_varint(2, 1, &mut entry);
+        field_varint(4, 10, &mut entry);
+        field_varint(6, 1, &mut entry);
+        let mut stats = Vec::new();
+        for (tag, figure) in figures {
+            match figure {
+                Some((avatar, number)) => {
+                    field_bytes(*tag, &abyss_pair(*avatar, *number), &mut stats)
+                }
+                None => field_bytes(*tag, &[], &mut stats),
+            }
+        }
+        for (avatar, times) in picked {
+            field_bytes(13, &abyss_pair(*avatar, *times), &mut stats);
+        }
+        field_bytes(9, &stats, &mut entry);
+        let mut summary = Vec::new();
+        field_varint(7, floor, &mut summary);
+        if stars > 0 {
+            field_varint(8, stars, &mut summary);
+        }
+        field_varint(11, period, &mut summary);
+        field_varint(14, chamber, &mut summary);
+        field_bytes(15, &summary, &mut entry);
+        entry
+    }
+
+    fn abyss_message(periods: &[Vec<u8>]) -> Vec<u8> {
+        let mut data = Vec::new();
+        for p in periods {
+            field_bytes(8, p, &mut data);
+        }
+        data
+    }
+
+    #[test]
+    fn the_abyss_record_book_is_read_and_its_fields_settled() {
+        let full = abyss_record_bytes(
+            123,
+            12,
+            3,
+            36,
+            &[
+                (1, Some((10000125, 24))),
+                (6, Some((10000047, 17_911))),
+                (10, Some((10000106, 6_424_192))),
+                (11, Some((10000106, 111))),
+                (12, Some((10000058, 85))),
+            ],
+            &[
+                (10000103, 17),
+                (10000107, 17),
+                (10000116, 17),
+                (10000125, 17),
+            ],
+        );
+        // An empty figure (no damage taken) is left out.
+        let quiet = abyss_record_bytes(
+            122,
+            12,
+            3,
+            36,
+            &[
+                (1, Some((10000125, 13))),
+                (6, None),
+                (10, Some((10000106, 5_800_611))),
+                (11, Some((10000104, 14))),
+                (12, Some((10000104, 10))),
+            ],
+            &[(10000103, 6), (10000104, 6)],
+        );
+        let read = matches_abyss_records(&abyss_message(&[quiet, full])).unwrap();
+        assert_eq!(read.len(), 2);
+        assert_eq!(
+            read[1],
+            AbyssRecord {
+                schedule: 123,
+                floor: 12,
+                chamber: 3,
+                stars: 36,
+                figures: BTreeMap::from([
+                    (1, (10000125, 24)),
+                    (6, (10000047, 17_911)),
+                    (10, (10000106, 6_424_192)),
+                    (11, (10000106, 111)),
+                    (12, (10000058, 85)),
+                ]),
+                picked: vec![
+                    (10000103, 17),
+                    (10000107, 17),
+                    (10000116, 17),
+                    (10000125, 17)
+                ],
+            }
+        );
+        assert_eq!(read[0].schedule, 122);
+        assert_eq!(read[0].figures.len(), 4);
+        assert!(!read[0].figures.contains_key(&6));
+        assert_eq!(read[0].picked, vec![(10000103, 6), (10000104, 6)]);
+
+        // One period alone settles too, the game's own unlock rule telling
+        // the chamber from the stars: floor 9, chamber 1, 3 stars.
+        let one = abyss_record_bytes(
+            124,
+            9,
+            1,
+            3,
+            &[(1, Some((10000125, 2)))],
+            &[(10000103, 1), (10000107, 1)],
+        );
+        let read = matches_abyss_records(&abyss_message(&[one])).unwrap();
+        assert_eq!((read[0].floor, read[0].chamber, read[0].stars), (9, 1, 3));
+        // A summary the rule cannot settle (chamber 3 of floor 9 with no
+        // star is impossible, and so is any other reading) is not the book.
+        let odd = abyss_record_bytes(
+            124,
+            9,
+            3,
+            0,
+            &[(1, Some((10000125, 2)))],
+            &[(10000103, 1), (10000107, 1)],
+        );
+        assert_eq!(matches_abyss_records(&abyss_message(&[odd])), None);
+    }
+
+    #[test]
+    fn the_other_endgame_messages_are_not_the_abyss_record_book() {
+        let record = record(
+            5_269_012,
+            6,
+            1_790_972_494_088,
+            &[fight(1, 51, true, &[team(ME, &[10000096])])],
+            &[ME],
+        );
+        assert_eq!(
+            matches_abyss_records(&records_message(&[record], &[])),
+            None
+        );
+        assert_eq!(
+            matches_abyss_records(&theater_detail_bytes(&[1, 2, 3], &[3])),
+            None
+        );
+        assert_eq!(matches_abyss_records(&[]), None);
+        // Two lists of periods, or a figure field that repeats, are not it.
+        let one = abyss_record_bytes(
+            124,
+            9,
+            1,
+            3,
+            &[(1, Some((10000125, 2)))],
+            &[(10000103, 1), (10000107, 1)],
+        );
+        let mut data = abyss_message(std::slice::from_ref(&one));
+        field_bytes(9, &one, &mut data);
+        assert_eq!(matches_abyss_records(&data), None);
+        let twice = abyss_record_bytes(
+            124,
+            9,
+            1,
+            3,
+            &[(1, Some((10000125, 2))), (1, Some((10000125, 3)))],
+            &[(10000103, 1), (10000107, 1)],
+        );
+        assert_eq!(matches_abyss_records(&abyss_message(&[twice])), None);
     }
 }
