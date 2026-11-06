@@ -319,22 +319,20 @@ const PLAYER_PROPERTY_IDS: std::ops::RangeInclusive<u32> = 10_000..=10_999;
 /// The largest real player property is Mora, capped at 9,999,999,999.
 const MAX_PLAUSIBLE_PROPERTY: u64 = 1_000_000_000_000;
 
-/// Distinct top-level fields a delete notify is allowed to carry.
+/// `StoreItemDelNotify` is `{repeated uint64 guid_list, StoreType store_type}`
+/// and nothing else (7.1 schema): the packed guid list and the store it is
+/// deleted from, `STORE_PACK` (1) or `STORE_DEPOT` (2). Both are required.
 ///
-/// `StoreItemDelNotify` is `{repeated uint64 guid_list, StoreType store_type}`.
-/// Sweeping Grasscutter's generated protos for messages that carry exactly one
-/// repeated-uint64 list and nothing but scalars beside it finds 23 of them at
-/// three fields or fewer, so this bound is what the shape actually looks like
-/// rather than a guess.
-const MAX_ITEM_DEL_FIELDS: usize = 3;
-
-/// Ceiling for the non-guid scalars in a delete notify.
-///
-/// The only one the message defines is `StoreType` (0, 1 or 2). The bound is
-/// left far above that so an added retcode or count field does not reject a
-/// real delete, while still ruling out a message whose "scalar" is a timestamp
-/// or an id -- that is some other packet wearing a similar shape.
-const MAX_ITEM_DEL_SCALAR: u64 = u16::MAX as u64;
+/// Looser shapes were accepted until 1.17.18 (an unpacked list, any small
+/// companion, no companion at all), and server *replies* passed for deletes:
+/// `WeaponPromoteRsp`/`WeaponUpgradeRsp`/`ReliquaryUpgradeRsp`/
+/// `SetEquipLockStateRsp` (the target's guid as one plain number beside levels
+/// or a lock flag) and `ReliquaryDecomposeRsp` (the strongbox's *new* pieces,
+/// a packed list with no store type). Their guids are items the account keeps,
+/// so the inventory intersection didn't save them: an upgraded weapon lost its
+/// wearer, a locked piece left the bag, a strongbox's output vanished, each
+/// until the next login (a user's report, 2026-11-06).
+const ITEM_DEL_STORE_TYPES: [u64; 2] = [1, 2];
 
 /// Largest delete list believed. The inventory caps out in the low thousands,
 /// so anything past this is a misparse rather than a mass decompose.
@@ -2471,18 +2469,13 @@ fn plausible_guid_list(values: &[u64]) -> bool {
 /// documentation only -- like every other matcher here this goes on shape,
 /// because command ids are reshuffled every game version.
 ///
-/// **The result is a list of candidates, and the caller must treat it as one.**
-/// The shape -- one packed uint64 list beside a scalar or two -- is the least
-/// specific this library matches on: sweeping Grasscutter's protos finds 23
-/// messages wearing it, among them `AvatarDelNotify`, the avatar-team packets
-/// and `ReliquaryDecomposeReq`. What makes acting on it safe is not this
-/// function but the intersection the caller performs: remove only guids the
-/// inventory actually holds. Every colliding message then resolves to one of
-/// two harmless outcomes -- it carries avatar guids, which are drawn from the
-/// same counter but are never an item's guid, so nothing intersects; or it
-/// carries item guids that really are being destroyed (a decompose request, a
-/// talent conversion), where acting early reaches the same state the delete
-/// notify would a moment later.
+/// **The result is still a list of candidates, and the caller must treat it as
+/// one** (remove only guids the inventory holds): a packed uint64 list beside
+/// one small number is a common shape. But the shape is now exactly the
+/// notify's -- one packed guid list and a store type of 1 or 2, nothing else
+/// (see `ITEM_DEL_STORE_TYPES`) -- because the intersection alone is not
+/// enough: a reply naming an item the account *keeps* (an upgrade's target, a
+/// lock toggle, a strongbox's output) intersects too, and removed it.
 pub fn matches_item_del_packet(game_command: &GameCommand) -> Option<Vec<u64>> {
     let msg = Unk::parse_from_bytes(&game_command.proto_data).ok()?;
 
@@ -2499,64 +2492,26 @@ pub fn matches_item_del_packet(game_command: &GameCommand) -> Option<Vec<u64>> {
         }
     }
 
-    let mut numbers: Vec<u32> = blobs
-        .iter()
-        .map(|(number, _)| *number)
-        .chain(varints.iter().map(|(number, _)| *number))
-        .collect();
-    numbers.sort_unstable();
-    numbers.dedup();
-    if numbers.is_empty() || numbers.len() > MAX_ITEM_DEL_FIELDS {
+    // Exactly two fields: the packed guid list and the store type. An
+    // unpacked list (each guid its own varint) is refused: proto3 packs
+    // repeated scalars, and a lone guid as a plain number is what a reply's
+    // `target_*_guid` looks like.
+    let ([(guid_field, bytes)], [(store_field, store_type)]) =
+        (blobs.as_slice(), varints.as_slice())
+    else {
+        return None;
+    };
+    if guid_field == store_field || !ITEM_DEL_STORE_TYPES.contains(store_type) {
+        trace!(
+            command_id = game_command.command_id,
+            store_type = *store_type,
+            "a guid list, but not beside a store type: not a delete notify"
+        );
         return None;
     }
-
-    // The guid list is packed in every proto3 build of this message, so the
-    // usual case is exactly one blob. More than one means a message carrying
-    // submessages or strings, which a delete notify does not have.
-    let (guid_field, guids) = match blobs.as_slice() {
-        [(number, bytes)] => {
-            let values = decode_packed_varints(bytes)?;
-            if !plausible_guid_list(&values) {
-                return None;
-            }
-            (*number, values)
-        }
-        // No blob at all: an unpacked encoding, where each guid is its own
-        // varint under one field number. Accepted because `packed` is a wire
-        // detail the server is free to change.
-        [] => {
-            let mut candidate = None;
-            for &number in &numbers {
-                let values: Vec<u64> = varints
-                    .iter()
-                    .filter(|(field, _)| *field == number)
-                    .map(|(_, scalar)| *scalar)
-                    .collect();
-                if plausible_guid_list(&values) {
-                    if candidate.is_some() {
-                        // Two guid-shaped fields is not this message.
-                        return None;
-                    }
-                    candidate = Some((number, values));
-                }
-            }
-            candidate?
-        }
-        _ => return None,
-    };
-
-    // Whatever else the message carries has to be a small scalar -- `StoreType`
-    // and at most a retcode-sized companion.
-    for (number, scalar) in &varints {
-        if *number != guid_field && *scalar > MAX_ITEM_DEL_SCALAR {
-            trace!(
-                command_id = game_command.command_id,
-                field = *number,
-                scalar = *scalar,
-                "guid-shaped list, but a companion scalar is too large for a delete notify"
-            );
-            return None;
-        }
+    let guids = decode_packed_varints(bytes)?;
+    if !plausible_guid_list(&guids) {
+        return None;
     }
 
     if first_time(&ITEM_DEL_NOTIFY_LOGGED) {
@@ -5347,20 +5302,80 @@ mod tests {
     }
 
     #[test]
-    fn an_unpacked_guid_list_is_also_recognised() {
-        // `packed` is a wire detail the server may change; each guid as its own
-        // varint under one field number has to work too.
+    fn a_depot_delete_notify_yields_its_guid_list() {
+        let guids = [guid(800_123_456, 9)];
+        let mut payload = field_bytes(DEL_GUID_LIST_TAG, &packed(&guids));
+        payload.extend(field_varint(DEL_STORE_TYPE_TAG, 2));
+        assert_eq!(
+            matches_item_del_packet(&command(payload)).expect("match"),
+            guids
+        );
+    }
+
+    #[test]
+    fn an_unpacked_guid_list_is_not_a_delete_notify() {
+        // proto3 packs repeated scalars; guids as separate varints are some
+        // other message's plain numbers.
         let guids = [guid(800_123_456, 1), guid(800_123_456, 2)];
         let mut payload = Vec::new();
         for value in guids {
             payload.extend(field_varint(DEL_GUID_LIST_TAG, value));
         }
         payload.extend(field_varint(DEL_STORE_TYPE_TAG, 1));
+        assert!(matches_item_del_packet(&command(payload)).is_none());
+    }
 
-        assert_eq!(
-            matches_item_del_packet(&command(payload)).expect("match"),
-            guids
-        );
+    // Replies the looser matcher took for deletes before 1.17.18, each naming
+    // an item the account keeps (7.1 field numbers). A user's report,
+    // 2026-11-06: a weapon levelled while equipped lost its wearer; a
+    // strongbox's new pieces vanished until the next login.
+
+    #[test]
+    fn a_weapon_promote_reply_is_not_a_delete_notify() {
+        // WeaponPromoteRsp {target_weapon_guid = 1, cur_promote_level = 5,
+        // old_promote_level = 11} (retcode 0 is left off).
+        let mut payload = field_varint(1, guid(800_123_456, 77));
+        payload.extend(field_varint(5, 5));
+        payload.extend(field_varint(11, 4));
+        assert!(matches_item_del_packet(&command(payload.clone())).is_none());
+        assert!(!matches!(
+            classify_command(&command(payload)),
+            Some(CommandMatch::DeletedItems(_))
+        ));
+    }
+
+    #[test]
+    fn a_weapon_upgrade_reply_is_not_a_delete_notify() {
+        // WeaponUpgradeRsp {cur_level = 2, target_weapon_guid = 10,
+        // old_level = 14}.
+        let mut payload = field_varint(2, 80);
+        payload.extend(field_varint(10, guid(800_123_456, 77)));
+        payload.extend(field_varint(14, 70));
+        assert!(matches_item_del_packet(&command(payload)).is_none());
+    }
+
+    #[test]
+    fn a_lock_toggle_reply_is_not_a_delete_notify() {
+        // SetEquipLockStateRsp {is_locked = 7, target_equip_guid = 13}.
+        let mut payload = field_varint(7, 1);
+        payload.extend(field_varint(13, guid(800_123_456, 5)));
+        assert!(matches_item_del_packet(&command(payload)).is_none());
+    }
+
+    #[test]
+    fn a_strongbox_reply_is_not_a_delete_notify() {
+        // ReliquaryDecomposeRsp {guid_list = 8}: the pieces it just made, with
+        // no store type beside them.
+        let new_pieces = [guid(800_123_456, 901), guid(800_123_456, 902)];
+        let payload = field_bytes(8, &packed(&new_pieces));
+        assert!(matches_item_del_packet(&command(payload)).is_none());
+    }
+
+    #[test]
+    fn a_guid_list_beside_something_other_than_a_store_type_is_not_a_delete_notify() {
+        let mut payload = field_bytes(DEL_GUID_LIST_TAG, &packed(&[guid(800_123_456, 1)]));
+        payload.extend(field_varint(DEL_STORE_TYPE_TAG, 7));
+        assert!(matches_item_del_packet(&command(payload)).is_none());
     }
 
     #[test]

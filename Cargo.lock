@@ -5776,7 +5776,7 @@ dependencies = [
 
 [[package]]
 name = "teyvatme"
-version = "1.17.17"
+version = "1.17.18"
 dependencies = [
  "anyhow",
  "async-trait",

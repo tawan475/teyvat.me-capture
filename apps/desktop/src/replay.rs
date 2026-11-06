@@ -48,7 +48,7 @@ use crate::live::{Action, BatchAnswer, ImportAnswer, LiveSync, Reason};
 use crate::monitor::{
     self, AppliedData, DataReplacement, DataVerdict, KeyReport, SnifferEvent, SnifferStats,
 };
-use crate::player_data::{ExportSettings, PlayerData};
+use crate::player_data::{ExportReport, ExportSettings, PlayerData};
 use crate::recording::{self, RecordedFrame, Recording};
 
 /// Run a replay from the command line and return the process exit code: 0
@@ -377,6 +377,10 @@ impl JournalSim {
     fn advance(&mut self, now_ms: u64, player_data: &PlayerData) {
         self.now_ms = self.now_ms.max(now_ms);
         let now = self.now_ms;
+        // The monitor sends nothing while a login is caught halfway.
+        if !player_data.holds_account() {
+            return;
+        }
         if self.automation_at.is_some_and(|at| at <= now) {
             self.automation_at = None;
             if let Some(reason) = self.live.automation_reason(true, now) {
@@ -462,6 +466,19 @@ struct Replay {
     last_data_ns: Option<u64>,
     /// `--replay-journal`'s sender, when this is one.
     journal: Option<JournalSim>,
+    /// The export of the newest whole account a later login replaced, for
+    /// a recording that ends before that login's characters arrive.
+    last_whole: Option<WholeAccount>,
+}
+
+/// A whole account's export, taken as a new login replaced it.
+struct WholeAccount {
+    /// 1-based, as logged.
+    connection: usize,
+    good: Good,
+    report: ExportReport,
+    captured: AppliedData,
+    now_ms: u64,
 }
 
 impl Replay {
@@ -483,7 +500,21 @@ impl Replay {
             captured: AppliedData::default(),
             last_data_ns: None,
             journal: None,
+            last_whole: None,
         }
+    }
+
+    /// The time an export of the held data is stamped with: when its newest
+    /// part was captured.
+    fn export_ms(&self) -> u64 {
+        self.last_data_ns
+            .map(|ns| ns / 1_000_000)
+            .unwrap_or_else(|| {
+                tracing::warn!(
+                    "the recording has no timestamps; stamping the export with the time now"
+                );
+                chrono::Utc::now().timestamp_millis() as u64
+            })
     }
 
     /// Decode one recorded frame, as the live sniffer thread would.
@@ -675,6 +706,21 @@ impl Replay {
                         "first account data of this connection"
                     ),
                 }
+                // Kept for a recording that ends before this login is all
+                // in (its bag comes a message before its characters).
+                if self.player_data.holds_account() {
+                    let now_ms = self.export_ms();
+                    let (good, report) = self
+                        .player_data
+                        .export_at(&ExportSettings::for_tracker(), now_ms);
+                    self.last_whole = Some(WholeAccount {
+                        connection: self.data_from.unwrap_or(index) + 1,
+                        good,
+                        report,
+                        captured: self.captured,
+                        now_ms,
+                    });
+                }
                 self.player_data.reset();
                 self.captured = AppliedData::default();
                 self.data_from = None;
@@ -773,21 +819,33 @@ impl Replay {
             );
         }
 
-        let now_ms = self
-            .last_data_ns
-            .map(|ns| ns / 1_000_000)
-            .unwrap_or_else(|| {
-                tracing::warn!(
-                    "the recording has no timestamps; stamping the export with the time now"
-                );
-                chrono::Utc::now().timestamp_millis() as u64
-            });
         // What a tracker upload of this data would hold. The replay reads no
         // saved settings, so the Genshin Optimizer ones would only ever have
-        // been their defaults, which leave 1★ and 2★ gear out.
-        let (good, report) = self
-            .player_data
-            .export_at(&ExportSettings::for_tracker(), now_ms);
+        // been their defaults, which leave 1★ and 2★ gear out. A login caught
+        // halfway (its bag without its characters: the recording ends inside
+        // its login burst, or its connection dropped there) is never
+        // uploaded; the account before it is what the tracker last got.
+        let missing = self.player_data.missing_for(&ExportSettings::for_tracker());
+        let (good, report, captured, now_ms) = match (missing, self.last_whole.take()) {
+            (Some(missing), Some(whole)) => {
+                tracing::warn!(
+                    missing,
+                    "connection #{}'s login is not all in (no {missing} yet: the recording ends \
+                     inside it, or its connection dropped); exporting connection #{}'s, the \
+                     last whole account, as Capture would have uploaded it",
+                    self.data_from.map_or(0, |from| from + 1),
+                    whole.connection
+                );
+                (whole.good, whole.report, whole.captured, whole.now_ms)
+            }
+            _ => {
+                let now_ms = self.export_ms();
+                let (good, report) = self
+                    .player_data
+                    .export_at(&ExportSettings::for_tracker(), now_ms);
+                (good, report, self.captured, now_ms)
+            }
+        };
 
         let counts = report.counts();
         tracing::info!(
@@ -798,14 +856,14 @@ impl Replay {
             achievements = counts.achievements,
             anecdotes = good.gi_anecdotes.as_ref().map_or(0, |book| book.anecdotes.len()),
             uid = ?good.gi_player.as_ref().and_then(|player| player.uid),
-            data = %describe(self.captured),
+            data = %describe(captured),
             stamped = %when(Some(now_ms.saturating_mul(1_000_000))),
             "export built with the tracker's export settings (nothing filtered out)"
         );
-        if !self.captured.items {
+        if !captured.items {
             tracing::warn!("no inventory was decoded: artifacts, weapons and materials are empty");
         }
-        if !self.captured.characters {
+        if !captured.characters {
             tracing::warn!("no character data was decoded: characters are empty");
         }
         if !report.is_empty() {

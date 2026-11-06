@@ -2,6 +2,33 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.17.18
+
+- Pieces made by the Mystic Offering strongbox stay in the bag. The game's
+  answer to the strongbox lists the pieces it just made, and Teyvat.me took
+  that list for a delete: the 18 pieces offered left the bag, the new ones
+  were removed again right after they arrived, until the next login.
+- A weapon or artifact levelled or ascended while equipped keeps its wearer,
+  and so does a piece you lock or unlock. The game's answers
+  to those actions name the item by itself beside a level or a lock flag,
+  which also passed for a delete: the item was removed with its wearer, came
+  back with the next change without one, and exported as unequipped until
+  the next login. Only the game's real delete message removes items now: a
+  packed guid list beside the store it is deleted from, nothing else.
+- Artifacts made with Sanctifying Elixir export `elixirCrafted`, GOOD's own
+  spelling, so Genshin Optimizer keeps the flag. Teyvat.me wrote
+  `elixerCrafted`, which Genshin Optimizer ignores; the tracker reads both.
+- Nothing is uploaded or exported from a login caught halfway. A new login
+  sends the bag a message before the character list; in between (and for
+  good when that connection drops there) Teyvat.me held a bag with no
+  characters. The automated upload already waited for both, but a live sync
+  snapshot still wanted from before the relogin (a collapse, a resync),
+  Android's Upload now and a toast's Retry could send that state, and the
+  tracker would have recorded an account with no characters. Every upload
+  and export now waits for the owned roster and the bag
+  (`PlayerData::holds_account`). `--replay-export` of a recording that ends
+  inside a login exports the account before it, saying so.
+
 ## 1.17.17
 
 - Teyvat.me no longer asks the tracker who it is signed in as every five
