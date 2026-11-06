@@ -25,6 +25,7 @@ icons! {
     circle_x => "circle-x",
     cloud => "cloud",
     cloud_upload => "cloud-upload",
+    coffee => "coffee",
     copy => "copy",
     database => "database",
     discord => "discord",

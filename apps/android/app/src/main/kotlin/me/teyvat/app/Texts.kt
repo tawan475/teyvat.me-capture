@@ -91,6 +91,7 @@ object Links {
     const val SOURCE = "https://github.com/tawan475/teyvat.me-capture"
     const val ISSUES = "https://github.com/tawan475/teyvat.me-capture/issues/new"
     const val DISCORD = "https://discord.gg/W6GUY3UtAx"
+    const val KOFI = "https://ko-fi.com/tawan475"
     const val DEFAULT_TRACKER_API = "https://teyvat.me/api"
     const val STARDB_ACHIEVEMENTS = "https://stardb.gg/import"
     const val SEELIE_ACHIEVEMENTS = "https://seelie.me/achievements"

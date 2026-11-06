@@ -311,6 +311,8 @@
   "Stop saving": "หยุดบันทึก",
   "Stopped unexpectedly": "หยุดโดยไม่คาดคิด",
   "Sun": "อา.",
+  "Support Teyvat.me": "สนับสนุน Teyvat.me",
+  "Support Teyvat.me on Ko-fi": "สนับสนุน Teyvat.me บน Ko-fi",
   "Sync failed {0}: {1}": "ซิงก์ไม่สำเร็จ {0}: {1}",
   "Sync waits for the account's UID": "การซิงก์กำลังรอ UID ของบัญชี",
   "Sync {0}: the key expired": "ซิงก์ {0}: คีย์หมดอายุ",

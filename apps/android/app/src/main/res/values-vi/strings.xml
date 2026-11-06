@@ -305,6 +305,8 @@
     <string name="key_signed_out_only">Chỉ dùng khi chưa đăng nhập</string>
     <string name="clear">Xóa</string>
     <string name="discord_line">Trợ giúp, tin tức và góp ý</string>
+    <string name="support_kofi">Ủng hộ Teyvat.me trên Ko-fi</string>
+    <string name="support_line">Ủng hộ Teyvat.me</string>
 
     <!-- Home layout G (2026-10-27) -->
     <string name="step_enter_world">Vào thế giới</string>

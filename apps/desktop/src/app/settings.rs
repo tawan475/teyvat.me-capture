@@ -1297,6 +1297,12 @@ impl TeyvatmeApp {
                     crate::DISCORD_URL,
                 ),
                 (
+                    icons::coffee(),
+                    "Ko-fi",
+                    tr("Support Teyvat.me"),
+                    crate::KOFI_URL,
+                ),
+                (
                     icons::heart(),
                     tr("Thanks and licences"),
                     "irminsul, auto-artifactarium, anime-game-data, Outfit, Lucide",

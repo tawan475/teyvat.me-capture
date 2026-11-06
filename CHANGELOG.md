@@ -2,6 +2,12 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.17.20
+
+- A Ko-fi button beside Discord, in the app bar and in Settings › About,
+  for anyone who wants to support the project's running costs: the same
+  link the tracker's top bar has. On Android too.
+
 ## 1.17.19
 
 - The Imaginarium Theater's Star Challenge Stellas are captured: how many

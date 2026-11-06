@@ -777,6 +777,31 @@ pub fn button(
     .inner
 }
 
+/// Ko-fi's coral: what the Ko-fi button turns on hover, like the tracker's.
+pub const KOFI_COLOR: Color32 = Color32::from_rgb(0xff, 0x5e, 0x5b);
+
+/// An [`icon_button`] whose icon takes `hover` while the pointer is on it:
+/// painted by hand, because a button's tint is set before it is hovered.
+pub fn icon_button_hover(
+    ui: &mut Ui,
+    icon: ImageSource<'static>,
+    name: &str,
+    hover: Color32,
+) -> Response {
+    let pal = p(ui);
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(32.0), Sense::click());
+    if ui.is_rect_visible(rect) {
+        let color = if response.hovered() { hover } else { pal.tx2 };
+        icons::image(icon, 18.0, color).paint_at(
+            ui,
+            egui::Rect::from_center_size(rect.center(), Vec2::splat(18.0)),
+        );
+    }
+    response
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
+        .on_hover_text(name)
+}
+
 /// A 32 × 32 icon button with its name as the tooltip.
 pub fn icon_button(ui: &mut Ui, icon: ImageSource<'static>, name: &str) -> Response {
     let pal = p(ui);

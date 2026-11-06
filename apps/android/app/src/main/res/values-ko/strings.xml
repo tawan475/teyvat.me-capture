@@ -305,6 +305,8 @@
     <string name="key_signed_out_only">로그아웃 상태에서만 사용</string>
     <string name="clear">지우기</string>
     <string name="discord_line">도움말, 소식, 피드백</string>
+    <string name="support_kofi">Ko-fi에서 Teyvat.me 후원하기</string>
+    <string name="support_line">Teyvat.me 후원하기</string>
 
     <!-- Home layout G (2026-10-27) -->
     <string name="step_enter_world">월드 입장</string>
