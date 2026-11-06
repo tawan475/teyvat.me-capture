@@ -2,6 +2,16 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.17.21
+
+- Stygian Onslaught records reach the tracker as soon as the record screen
+  is opened. They arrive after the login's snapshot and the live sync's
+  batches cannot carry them, so they went up only with the next login: a
+  co-op record opened in a session was never seen until the day after.
+  Now the records, and the Imaginarium Theater's state when it moves after
+  a run, go up as a `change` snapshot at once, in live mode too; opening
+  the screen again with nothing new sends nothing.
+
 ## 1.17.20
 
 - Stygian Onslaught co-op records name every player and their characters,

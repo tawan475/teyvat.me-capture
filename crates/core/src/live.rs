@@ -321,6 +321,19 @@ impl LiveSync {
         }
     }
 
+    /// Data only a snapshot carries changed (the Theater's state, the
+    /// Stygian records: the delta has no path for `gi_endgame`): a `change`
+    /// snapshot goes up for it at the next tick, in live mode too, unless a
+    /// snapshot is due anyway (a login or world change carries it) or no
+    /// login has been seen yet (nothing uploads before the first full send).
+    /// Before this, records opened after the login's snapshot reached the
+    /// tracker only with the next login.
+    pub fn note_snapshot_only_change(&mut self) {
+        if self.login.is_some() && self.wanted.is_none() {
+            self.wanted = Some(Reason::Change);
+        }
+    }
+
     /// Some account data changed (`count` entries, an estimate).
     pub fn note_change(&mut self, count: usize) {
         self.pending = self.pending.saturating_add(count.max(1));
@@ -1066,6 +1079,47 @@ mod tests {
         let next = live.capture(Reason::Login).unwrap();
         assert_ne!(next.session, login.session);
         assert_eq!(next.world, 1);
+    }
+
+    #[test]
+    fn a_change_only_a_snapshot_carries_goes_up_as_one() {
+        // Live mode: the records opened after the login's snapshot go up at
+        // the next tick as a `change` snapshot, once.
+        let mut live = live_at(0);
+        live.note_snapshot_only_change();
+        assert_eq!(live.next_tick_ms(true, 1), Some(1));
+        assert_eq!(
+            live.tick(true, 1, || panic!("no export")),
+            Action::Snapshot(Reason::Change)
+        );
+        let ticket = live.snapshot_started(Reason::Change, keyed(&good(100)));
+        live.snapshot_answered(
+            ticket,
+            Some(ImportAnswer {
+                base: Some("k2".into()),
+                watching: false,
+            }),
+            2,
+        );
+        assert_eq!(live.tick(true, 3, || panic!("no export")), Action::Nothing);
+        // Snapshot mode (no journal) too.
+        let mut live = LiveSync::new();
+        live.note_full_send();
+        let ticket = live.snapshot_started(Reason::Login, keyed(&good(1)));
+        live.snapshot_answered(ticket, Some(ImportAnswer::default()), 0);
+        live.note_snapshot_only_change();
+        assert_eq!(
+            live.tick(false, 1, || None),
+            Action::Snapshot(Reason::Change)
+        );
+        // A login due carries it: nothing extra. Before any login: nothing.
+        let mut live = LiveSync::new();
+        live.note_snapshot_only_change();
+        assert_eq!(live.tick(true, 1, || None), Action::Nothing);
+        live.note_full_send();
+        live.note_snapshot_only_change();
+        assert_eq!(live.automation_reason(true, 1), Some(Reason::Login));
+        assert_eq!(live.tick(true, 1, || None), Action::Nothing);
     }
 
     #[test]

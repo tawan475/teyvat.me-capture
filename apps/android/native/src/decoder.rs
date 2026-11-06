@@ -896,6 +896,9 @@ fn apply(
         state.live.note_full_send();
     }
     state.live.note_change(noted + applied.live_updates);
+    if applied.endgame {
+        state.live.note_snapshot_only_change();
+    }
     let first = state.data_at.is_none() || state.updated == Updated::default();
     if applied.items {
         state.updated.items = Some(at);

@@ -5422,6 +5422,41 @@ mod tests {
         // Without an account (no inventory), nothing is believed.
         let mut fresh = endgame_data();
         assert_eq!(fresh.apply_stygian_records(&records), 0);
+
+        // The decoder stamps the change for a snapshot once: a re-send of
+        // the same records (the screen opened again) is a no-op, a new set
+        // counts again.
+        use teyvatme_protocol::CommandMatch;
+
+        use crate::decode::{AppliedData, apply_commands};
+        let version = data.endgame_version();
+        let applied = apply_commands(
+            &mut data,
+            vec![(1, CommandMatch::StygianRecords(records.clone()))],
+        );
+        assert_eq!(
+            applied,
+            AppliedData {
+                routine: true,
+                ..AppliedData::default()
+            }
+        );
+        assert_eq!(data.endgame_version(), version);
+        let mut solo = records[0].clone();
+        solo.fights[1].finished = true;
+        let applied = apply_commands(
+            &mut data,
+            vec![(1, CommandMatch::StygianRecords(vec![solo]))],
+        );
+        assert_eq!(
+            applied,
+            AppliedData {
+                routine: true,
+                endgame: true,
+                ..AppliedData::default()
+            }
+        );
+        assert_eq!(data.endgame_version(), version + 1);
     }
 
     #[test]

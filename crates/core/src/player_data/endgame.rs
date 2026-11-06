@@ -22,6 +22,12 @@ pub(super) struct EndgameState {
     /// By season and whether the run was co-op (a season has at most one
     /// record of each).
     pub stygian: Option<BTreeMap<(u32, bool), good::GiStygianRecord>>,
+    /// Bumped whenever a part differs from what was held: what the decoders
+    /// upload a snapshot for, since the live delta has no path for
+    /// `gi_endgame` and the records only arrive after the login's snapshot
+    /// (the player opens the record screen). A re-send of the same data
+    /// leaves it alone.
+    pub version: u64,
 }
 
 /// The Theater's state for the season running.
@@ -185,7 +191,7 @@ impl PlayerData {
         };
         let acts = detail.acts_cleared();
         let row = difficulty.and_then(|d| endgame.theater_difficulties.get(&d));
-        self.endgame.theater = Some(TheaterProgress {
+        let next = TheaterProgress {
             season,
             difficulty,
             acts,
@@ -193,8 +199,18 @@ impl PlayerData {
             max_stars: row
                 .filter(|row| row.acts > 0)
                 .map(|row| row.acts + row.extras),
-        });
+        };
+        if self.endgame.theater.as_ref() != Some(&next) {
+            self.endgame.theater = Some(next);
+            self.endgame.version += 1;
+        }
         true
+    }
+
+    /// How many times the endgame parts changed since the data was cleared:
+    /// a snapshot is due when it moves (see [`EndgameState::version`]).
+    pub fn endgame_version(&self) -> u64 {
+        self.endgame.version
     }
 
     /// The Theater stars held, for the log: `(stars, of)`.
@@ -318,7 +334,10 @@ impl PlayerData {
             return 0;
         }
         let count = kept.len();
-        self.endgame.stygian = Some(kept);
+        if self.endgame.stygian.as_ref() != Some(&kept) {
+            self.endgame.stygian = Some(kept);
+            self.endgame.version += 1;
+        }
         count
     }
 

@@ -1734,6 +1734,9 @@ impl Monitor {
             self.live.note_full_send();
         }
         self.live.note_change(noted + applied.live_updates);
+        if applied.endgame {
+            self.live.note_snapshot_only_change();
+        }
 
         let mut updated = self.app_state.app_state.updated.clone();
         let now = instant_after(self.automation_cycle_started_at);
