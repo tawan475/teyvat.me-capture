@@ -268,6 +268,7 @@
     <string name="live_sync">Live-Sync</string>
     <string name="live_sync_line">Änderungen beim Spielen</string>
     <string name="live_changes_sent">Live-Sync · %1$s Änderungen an %2$s gesendet</string>
+    <string name="live_records_sent">Live-Sync · Endgame-Rekorde an %1$s gesendet</string>
     <!-- Parity with the desktop -->
     <string name="event_key_lost">Sitzungsschlüssel nicht gefunden</string>
     <string name="event_export_incomplete">Export unvollständig: %1$s</string>

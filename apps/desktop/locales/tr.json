@@ -166,6 +166,7 @@
   "Let Teyvat.me capture": "Teyvat.me taramasına izin ver",
   "Light": "Açık",
   "Live sync": "Canlı eşitleme",
+  "Live sync · endgame records sent to {0}": "Canlı eşitleme · endgame rekorları {0} adresine gönderildi",
   "Live sync · snapshot stored on {0}": "Canlı eşitleme · anlık görüntü kaydedildi: {0}",
   "Live sync · {0} changes sent to {1}": "Canlı eşitleme · gönderilen değişiklik: {0} → {1}",
   "Log folder": "Günlük klasörü",

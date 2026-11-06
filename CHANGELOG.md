@@ -8,9 +8,11 @@ Each release's section is its GitHub release notes (`.github/workflows/release.y
   is opened. They arrive after the login's snapshot and the live sync's
   batches cannot carry them, so they went up only with the next login: a
   co-op record opened in a session was never seen until the day after.
-  Now the records, and the Imaginarium Theater's state when it moves after
-  a run, go up as a `change` snapshot at once, in live mode too; opening
-  the screen again with nothing new sends nothing.
+  Now the records, the Spiral Abyss record book and the Imaginarium
+  Theater's state when it moves after a run go up at once as one small
+  request (`POST /irminsul/attach`, a few KB), which the tracker writes
+  into this login's snapshot; nothing is re-uploaded, and opening the
+  screen again with nothing new sends nothing. Live sync on or off alike.
 - The Spiral Abyss's record book is captured when its Challenge Summary is
   opened (`gi_endgame.abyss`): per period the deepest descent, the stars,
   Most Defeats, Strongest Single Strike, Most Damage Taken, Elemental Skills

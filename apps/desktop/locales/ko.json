@@ -166,6 +166,7 @@
   "Let Teyvat.me capture": "Teyvat.me가 캡처하도록 허용",
   "Light": "밝게",
   "Live sync": "실시간 동기화",
+  "Live sync · endgame records sent to {0}": "실시간 동기화 · 엔드게임 기록을 {0}에 보냈습니다",
   "Live sync · snapshot stored on {0}": "실시간 동기화 · {0}에 스냅샷 저장됨",
   "Live sync · {0} changes sent to {1}": "실시간 동기화 · {1}에 변경 {0}건 전송됨",
   "Log folder": "로그 폴더",

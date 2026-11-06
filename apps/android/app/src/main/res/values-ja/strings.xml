@@ -268,6 +268,7 @@
     <string name="live_sync">ライブ同期</string>
     <string name="live_sync_line">プレイ中の変化</string>
     <string name="live_changes_sent">ライブ同期 · %2$s に %1$s 件の変更を送信</string>
+    <string name="live_records_sent">ライブ同期 · エンドゲームの記録を %1$s に送信しました</string>
     <!-- Parity with the desktop -->
     <string name="event_key_lost">セッションキーが見つかりません</string>
     <string name="event_export_incomplete">エクスポートが不完全：%1$s</string>

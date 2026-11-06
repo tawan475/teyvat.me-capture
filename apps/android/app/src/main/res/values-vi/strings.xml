@@ -268,6 +268,7 @@
     <string name="live_sync">Đồng bộ trực tiếp</string>
     <string name="live_sync_line">Thay đổi khi bạn chơi</string>
     <string name="live_changes_sent">Đồng bộ trực tiếp · đã gửi %1$s thay đổi tới %2$s</string>
+    <string name="live_records_sent">Đồng bộ trực tiếp · đã gửi kỷ lục endgame tới %1$s</string>
     <!-- Parity with the desktop -->
     <string name="event_key_lost">Không tìm thấy khóa phiên</string>
     <string name="event_export_incomplete">Xuất chưa đủ: %1$s</string>

@@ -166,6 +166,7 @@
   "Let Teyvat.me capture": "Teyvat.me にキャプチャを許可",
   "Light": "ライト",
   "Live sync": "ライブ同期",
+  "Live sync · endgame records sent to {0}": "ライブ同期 · エンドゲームの記録を {0} に送信しました",
   "Live sync · snapshot stored on {0}": "ライブ同期 · {0} にスナップショットを保存",
   "Live sync · {0} changes sent to {1}": "ライブ同期 · {1} に {0} 件の変更を送信",
   "Log folder": "ログフォルダ",

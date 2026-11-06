@@ -81,7 +81,7 @@ object NativeBridge {
     /** When live sync next has something to do (Unix ms), or -1. */
     external fun liveNextTick(live: Boolean): Long
 
-    /** `"S<ticket>\n<GOOD JSON>"` (a snapshot), `"B\n<delta JSON>"` (a batch), or null. */
+    /** `"S<ticket>\n<GOOD JSON>"` (a snapshot), `"B\n<delta JSON>"` (a batch), `"A\n<attach JSON>"` (the endgame parts), or null. */
     external fun liveTick(live: Boolean): String?
 
     /** A snapshot upload finished: the tracker's answer, or null when it failed. */
@@ -89,6 +89,9 @@ object NativeBridge {
 
     /** A batch finished: its HTTP status (0: no answer, -1: signed out) and body. */
     external fun batchAnswered(status: Int, body: String)
+
+    /** An attach (`/irminsul/attach`) finished: its HTTP status (0: no answer, -1: signed out). */
+    external fun attachAnswered(status: Int)
 
     /**
      * Whether a presence heartbeat for [state] (`stopped`, `running`,

@@ -268,6 +268,7 @@
     <string name="live_sync">即時同步</string>
     <string name="live_sync_line">邊玩邊同步變化</string>
     <string name="live_changes_sent">即時同步 · 已向 %2$s 傳送 %1$s 項變化</string>
+    <string name="live_records_sent">即時同步 · 已將深境紀錄傳送到 %1$s</string>
     <!-- Parity with the desktop -->
     <string name="event_key_lost">未找到工作階段金鑰</string>
     <string name="event_export_incomplete">匯出不完整：%1$s</string>

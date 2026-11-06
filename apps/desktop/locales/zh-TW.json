@@ -166,6 +166,7 @@
   "Let Teyvat.me capture": "允許 Teyvat.me 擷取",
   "Light": "淺色",
   "Live sync": "即時同步",
+  "Live sync · endgame records sent to {0}": "即時同步 · 已將深境紀錄傳送到 {0}",
   "Live sync · snapshot stored on {0}": "即時同步 · 快照已儲存到 {0}",
   "Live sync · {0} changes sent to {1}": "即時同步 · 已向 {1} 傳送 {0} 項變化",
   "Log folder": "日誌資料夾",

@@ -268,6 +268,7 @@
     <string name="live_sync">Sinkronisasi live</string>
     <string name="live_sync_line">Perubahan selama bermain</string>
     <string name="live_changes_sent">Sinkronisasi live · %1$s perubahan dikirim ke %2$s</string>
+    <string name="live_records_sent">Sinkronisasi langsung · rekor endgame dikirim ke %1$s</string>
     <!-- Parity with the desktop -->
     <string name="event_key_lost">Kunci sesi tidak ditemukan</string>
     <string name="event_export_incomplete">Ekspor tidak lengkap: %1$s</string>

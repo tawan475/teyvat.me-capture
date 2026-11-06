@@ -578,6 +578,28 @@ export interface GiCapture {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+// 1b. Attach: the endgame parts for this login's snapshot                [1.17.21]
+//     POST <api>/irminsul/attach (Bearer or x-import-key)
+// ═════════════════════════════════════════════════════════════════════════════
+
+/**
+ * The endgame parts the game sends only when a screen is opened, after the
+ * login's snapshot (the Stygian records, the Spiral Abyss record book, the
+ * Theater's state after a run): sent once per change, a few KB. The tracker
+ * replaces each part present in this login's newest snapshot (its
+ * `gi_capture.session` = `session`) and keeps the rest; 404 (no snapshot
+ * yet) and 409 (another login's snapshot) are dropped, the next login's
+ * snapshot carries the data; 429 / 5xx / no answer are retried with backoff.
+ */
+export interface LeylineAttach {
+  v: 1
+  uid: number
+  /** The login's session id (`GiCapture.session`). */
+  session: string
+  gi_endgame: GiEndgame
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 // 2. The Leyline delta: live sync's changes since the newest snapshot   [shipped]
 //    POST <api>/irminsul/changes
 // ═════════════════════════════════════════════════════════════════════════════

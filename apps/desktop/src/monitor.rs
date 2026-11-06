@@ -34,7 +34,9 @@ pub(crate) use crate::decode::{
 use crate::game_watch::{self, GameStatus, GameWatch, SystemProcessDetector};
 use crate::i18n::{tr, trf};
 use crate::link::{Alerts, AlertsAnswer, Command, Heartbeat, PresenceOutcome, PresenceState};
-use crate::live::{Action, BatchAnswer, ImportAnswer, LiveSync, Reason};
+use crate::live::{
+    Action, AttachAnswer, AttachRequest, BatchAnswer, ImportAnswer, LiveSync, Reason,
+};
 use crate::player_data::{ExportReport, ExportSettings, PlayerData};
 use crate::signin::{AuthStatus, TrackerAuth, UploadCredential};
 use crate::{AppState, DataUpdated, Message, State};
@@ -298,6 +300,8 @@ enum LiveEvent {
     },
     /// The batch in flight was answered.
     Batch(BatchAnswer),
+    /// The attach in flight was answered.
+    Attach(AttachAnswer),
 }
 
 /// Whole-request timeout for one batch of live changes.
@@ -352,6 +356,10 @@ fn live_enabled(state: &crate::app::SavedAppState) -> bool {
 /// The tracker's batch route for an API base.
 pub(crate) fn changes_url(base_url: &str) -> String {
     format!("{}/irminsul/changes", base_url.trim_end_matches('/'))
+}
+
+fn attach_url(base_url: &str) -> String {
+    format!("{}/irminsul/attach", base_url.trim_end_matches('/'))
 }
 
 /// The three timestamps that identify one snapshot of captured data.
@@ -1735,7 +1743,7 @@ impl Monitor {
         }
         self.live.note_change(noted + applied.live_updates);
         if applied.endgame {
-            self.live.note_snapshot_only_change();
+            self.live.note_endgame_change();
         }
 
         let mut updated = self.app_state.app_state.updated.clone();
@@ -2340,7 +2348,57 @@ impl Monitor {
                 self.spawn_tracker_upload(credential, json, UploadReport::Quiet, Some(ticket));
             }
             Action::Batch(delta) => self.spawn_live_batch(&state, credential, *delta),
+            Action::Attach { session } => {
+                let uid = self.player_data.gi_player().and_then(|p| p.uid);
+                match (uid, self.player_data.gi_endgame()) {
+                    (Some(uid), Some(gi_endgame)) => {
+                        let request = AttachRequest {
+                            v: 1,
+                            uid,
+                            session,
+                            gi_endgame,
+                        };
+                        self.spawn_attach(&state, credential, request);
+                    }
+                    _ => self.live.attach_answered(AttachAnswer::Dropped, now),
+                }
+            }
         }
+    }
+
+    /// POST the endgame parts for this login's newest snapshot.
+    fn spawn_attach(
+        &self,
+        state: &crate::app::SavedAppState,
+        credential: UploadCredential,
+        request: AttachRequest,
+    ) {
+        tracing::info!("live sync: sending the endgame parts (attach)");
+        let client = self.http.clone();
+        let auth = self.tracker_auth.clone();
+        let live_tx = self.live_tx.clone();
+        let toast_tx = self.toast_tx.clone();
+        let host = destination_host(state);
+        let ctx = self.ctx.clone();
+        let api = state.tracker_api_url.clone();
+        tokio::spawn(async move {
+            let answer = send_attach(&client, &auth, &api, credential, &request).await;
+            match answer {
+                AttachAnswer::Stored => {
+                    tracing::info!("live sync: endgame parts attached");
+                    let _ = toast_tx.send(
+                        Event::ok(
+                            Topic::Destination,
+                            trf("Live sync · endgame records sent to {0}", &[&host]),
+                        )
+                        .routine(),
+                    );
+                }
+                other => tracing::warn!(answer = ?other, "live sync: endgame parts not attached"),
+            }
+            let _ = live_tx.send(LiveEvent::Attach(answer));
+            ctx.request_repaint();
+        });
     }
 
     /// The tracker export for a snapshot taken for `reason`, labelled with
@@ -2436,6 +2494,7 @@ impl Monitor {
                 self.live.snapshot_answered(ticket, answer, now);
             }
             LiveEvent::Batch(answer) => self.live.batch_answered(answer, now),
+            LiveEvent::Attach(answer) => self.live.attach_answered(answer, now),
         }
     }
 }
@@ -2711,6 +2770,79 @@ pub(crate) async fn send_live_batch_with_key(
             tracing::warn!("live sync: batch request failed: {}", e.without_url());
             BatchAnswer::Retry
         }
+    }
+}
+
+/// Send one attach with an import key, and read the answer.
+pub(crate) async fn send_attach_with_key(
+    client: &reqwest::Client,
+    api: &str,
+    key: &str,
+    request: &AttachRequest,
+) -> AttachAnswer {
+    let response = client
+        .post(attach_url(api))
+        .timeout(LIVE_BATCH_TIMEOUT)
+        .header("x-import-key", key)
+        .json(request)
+        .send()
+        .await;
+    match response {
+        Ok(response) => {
+            let status = response.status().as_u16();
+            let answer = AttachAnswer::of(status);
+            if answer != AttachAnswer::Stored {
+                let body = response.text().await.unwrap_or_default();
+                tracing::warn!(
+                    status,
+                    body = body.chars().take(200).collect::<String>(),
+                    "live sync: attach refused"
+                );
+            }
+            answer
+        }
+        Err(e) => {
+            tracing::warn!("live sync: attach request failed: {}", e.without_url());
+            AttachAnswer::Retry
+        }
+    }
+}
+
+/// Send one attach with the upload credential, and read the answer.
+async fn send_attach(
+    client: &reqwest::Client,
+    auth: &TrackerAuth,
+    api: &str,
+    credential: UploadCredential,
+    request: &AttachRequest,
+) -> AttachAnswer {
+    match credential {
+        UploadCredential::ImportKey { key, .. } => {
+            send_attach_with_key(client, api, &key, request).await
+        }
+        UploadCredential::SignedIn { base } => auth
+            .send_signed_in(client, &base, |token| {
+                client
+                    .post(attach_url(&base))
+                    .timeout(LIVE_BATCH_TIMEOUT)
+                    .bearer_auth(token)
+                    .json(request)
+            })
+            .await
+            .map_or_else(
+                |error| match error {
+                    crate::signin::AuthError::Http { status, .. } => {
+                        AttachAnswer::of(status.as_u16())
+                    }
+                    crate::signin::AuthError::SignedOut => AttachAnswer::Dropped,
+                    crate::signin::AuthError::Network(_) => AttachAnswer::Retry,
+                    other => {
+                        tracing::warn!("live sync: attach not sent: {other}");
+                        AttachAnswer::Retry
+                    }
+                },
+                |_| AttachAnswer::Stored,
+            ),
     }
 }
 

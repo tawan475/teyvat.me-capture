@@ -22,7 +22,7 @@
 //! today's behaviour: every change uploads the whole account after the 5 s
 //! debounce, tagged `reason: "change"`.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::delta::{self, GoodDelta, Keyed, Sum};
 use crate::good::{GiCapture, GiCaptureJournal, Good};
@@ -150,6 +150,47 @@ pub enum Action {
     Snapshot(Reason),
     /// POST this batch.
     Batch(Box<GoodDelta>),
+    /// POST the endgame parts held to `/irminsul/attach`, for the newest
+    /// snapshot of this login (`session`): see [`LiveSync::note_endgame_change`].
+    Attach {
+        session: String,
+    },
+}
+
+/// The attach request (`POST /irminsul/attach`, Capture 1.17.21): the
+/// endgame parts the game sends only when a screen is opened, after the
+/// login's snapshot, written by the tracker into that login's newest
+/// snapshot in place of what it held of them. Contract: the tracker's
+/// `docs/plans/live-sync.md` §13.5.
+#[derive(Clone, Debug, Serialize)]
+pub struct AttachRequest {
+    pub v: u32,
+    pub uid: u32,
+    pub session: String,
+    pub gi_endgame: crate::good::GiEndgame,
+}
+
+/// The tracker's answer to an attach, as far as live sync cares.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AttachAnswer {
+    /// Written, or already there.
+    Stored,
+    /// Rate limited, a server error, no connection: send it again after a wait.
+    Retry,
+    /// 404 (no snapshot yet), 409 (the newest snapshot is another login's),
+    /// 400, 401, 403: dropped; the next login's snapshot carries the data.
+    Dropped,
+}
+
+impl AttachAnswer {
+    /// `status` 0 = the request never got an answer.
+    pub fn of(status: u16) -> Self {
+        match status {
+            200..=299 => Self::Stored,
+            0 | 429 | 500..=599 => Self::Retry,
+            _ => Self::Dropped,
+        }
+    }
 }
 
 /// The tracker's answer to a snapshot upload, as far as live sync cares.
@@ -278,6 +319,14 @@ pub struct LiveSync {
     recheck_at_ms: u64,
     /// Snapshot mode until this UTC day is over (the daily batch limit).
     off_day: Option<u64>,
+    /// The endgame parts changed since the last attach was sent: one goes
+    /// at the next tick (unless a snapshot is due, which carries them).
+    attach_wanted: bool,
+    /// An attach request in flight.
+    attach_flight: bool,
+    /// Not before this (a failed attach backs off like a batch).
+    attach_retry_at_ms: u64,
+    attach_backoff_ms: u64,
 }
 
 const DAY_MS: u64 = 86_400_000;
@@ -321,17 +370,52 @@ impl LiveSync {
         }
     }
 
-    /// Data only a snapshot carries changed (the Theater's state, the
-    /// Stygian records: the delta has no path for `gi_endgame`): a `change`
-    /// snapshot goes up for it at the next tick, in live mode too, unless a
-    /// snapshot is due anyway (a login or world change carries it) or no
-    /// login has been seen yet (nothing uploads before the first full send).
-    /// Before this, records opened after the login's snapshot reached the
-    /// tracker only with the next login.
-    pub fn note_snapshot_only_change(&mut self) {
-        if self.login.is_some() && self.wanted.is_none() {
-            self.wanted = Some(Reason::Change);
+    /// The endgame parts differ from what was held (the Theater's state, the
+    /// Stygian records, the Abyss record book: they arrive when a screen is
+    /// opened, after the login's snapshot, and no batch path carries them).
+    /// An attach goes up at the next tick, in live mode and snapshot mode
+    /// alike, unless a snapshot is due anyway (a login or world change
+    /// carries them) or no login has been seen yet (nothing uploads before
+    /// the first full send). Before 1.17.21, records opened after the
+    /// login's snapshot reached the tracker only with the next login.
+    pub fn note_endgame_change(&mut self) {
+        if self.login.is_some() {
+            self.attach_wanted = true;
         }
+    }
+
+    /// The attach request finished.
+    pub fn attach_answered(&mut self, answer: AttachAnswer, now_ms: u64) {
+        self.attach_flight = false;
+        match answer {
+            AttachAnswer::Stored => {
+                self.attach_backoff_ms = 0;
+                self.attach_retry_at_ms = 0;
+            }
+            AttachAnswer::Retry => {
+                self.attach_wanted = true;
+                self.attach_backoff_ms = if self.attach_backoff_ms == 0 {
+                    FIRST_BACKOFF_MS
+                } else {
+                    (self.attach_backoff_ms * 2).min(MAX_BACKOFF_MS)
+                };
+                self.attach_retry_at_ms = now_ms + self.attach_backoff_ms;
+            }
+            AttachAnswer::Dropped => {
+                self.attach_backoff_ms = 0;
+                self.attach_retry_at_ms = 0;
+            }
+        }
+    }
+
+    /// Whether an attach goes now: wanted, none in flight, no snapshot due
+    /// (it would carry the parts), the backoff over.
+    fn attach_due(&self, now_ms: u64) -> bool {
+        self.attach_wanted
+            && !self.attach_flight
+            && self.wanted.is_none()
+            && self.snapshot_flight.is_none()
+            && now_ms >= self.attach_retry_at_ms
     }
 
     /// Some account data changed (`count` entries, an estimate).
@@ -365,6 +449,7 @@ impl LiveSync {
         self.unacked = None;
         self.pending = 0;
         self.logout_login = None;
+        self.attach_wanted = false;
         if self.wanted == Some(Reason::Logout) {
             self.wanted = None;
         }
@@ -409,6 +494,8 @@ impl LiveSync {
         if self.wanted == Some(reason) || reason == Reason::Manual {
             self.wanted = None;
         }
+        // The export just built holds the endgame parts as they are.
+        self.attach_wanted = false;
         self.tickets += 1;
         self.snapshot_flight = Some(SnapshotFlight {
             ticket: self.tickets,
@@ -480,6 +567,9 @@ impl LiveSync {
         {
             return Some(self.retry_at_ms.max(now_ms));
         }
+        if self.attach_wanted && !self.attach_flight && self.wanted.is_none() {
+            return Some(self.attach_retry_at_ms.max(now_ms));
+        }
         if !live_enabled || !self.is_live(now_ms) || self.wanted.is_some() {
             return None;
         }
@@ -516,6 +606,15 @@ impl LiveSync {
             && !reason.debounced()
         {
             return Action::Snapshot(reason);
+        }
+        if self.attach_due(now_ms)
+            && let Some(login) = &self.login
+        {
+            self.attach_wanted = false;
+            self.attach_flight = true;
+            return Action::Attach {
+                session: login.session.clone(),
+            };
         }
         if !live_enabled || !self.is_live(now_ms) || self.wanted.is_some() {
             return Action::Nothing;
@@ -1082,46 +1181,79 @@ mod tests {
     }
 
     #[test]
-    fn a_change_only_a_snapshot_carries_goes_up_as_one() {
+    fn an_endgame_change_goes_up_as_an_attach() {
         // Live mode: the records opened after the login's snapshot go up at
-        // the next tick as a `change` snapshot, once.
+        // the next tick as one attach for this login, once.
         let mut live = live_at(0);
-        live.note_snapshot_only_change();
+        let session = live.capture(Reason::World).unwrap().session;
+        live.note_endgame_change();
         assert_eq!(live.next_tick_ms(true, 1), Some(1));
         assert_eq!(
             live.tick(true, 1, || panic!("no export")),
-            Action::Snapshot(Reason::Change)
+            Action::Attach {
+                session: session.clone()
+            }
         );
-        let ticket = live.snapshot_started(Reason::Change, keyed(&good(100)));
-        live.snapshot_answered(
-            ticket,
-            Some(ImportAnswer {
-                base: Some("k2".into()),
-                watching: false,
-            }),
-            2,
-        );
+        // In flight: nothing more, a batch still goes; stored: done.
+        assert_eq!(live.next_tick_ms(true, 2), None);
+        live.attach_answered(AttachAnswer::Stored, 2);
         assert_eq!(live.tick(true, 3, || panic!("no export")), Action::Nothing);
+        // A failure is retried after a wait, a refusal dropped.
+        live.note_endgame_change();
+        assert!(matches!(live.tick(true, 4, || None), Action::Attach { .. }));
+        live.attach_answered(AttachAnswer::Retry, 4);
+        assert_eq!(live.next_tick_ms(true, 5), Some(4 + FIRST_BACKOFF_MS));
+        assert_eq!(live.tick(true, 5, || None), Action::Nothing);
+        assert!(matches!(
+            live.tick(true, 4 + FIRST_BACKOFF_MS, || None),
+            Action::Attach { .. }
+        ));
+        live.attach_answered(AttachAnswer::Dropped, 100_000);
+        assert_eq!(live.next_tick_ms(true, 100_001), None);
+        // A change while one is in flight sends again after the answer.
+        live.note_endgame_change();
+        assert!(matches!(
+            live.tick(true, 100_002, || None),
+            Action::Attach { .. }
+        ));
+        live.note_endgame_change();
+        assert_eq!(live.tick(true, 100_003, || None), Action::Nothing);
+        live.attach_answered(AttachAnswer::Stored, 100_004);
+        assert!(matches!(
+            live.tick(true, 100_005, || None),
+            Action::Attach { .. }
+        ));
+        live.attach_answered(AttachAnswer::Stored, 100_006);
         // Snapshot mode (no journal) too.
         let mut live = LiveSync::new();
         live.note_full_send();
         let ticket = live.snapshot_started(Reason::Login, keyed(&good(1)));
         live.snapshot_answered(ticket, Some(ImportAnswer::default()), 0);
-        live.note_snapshot_only_change();
-        assert_eq!(
+        live.note_endgame_change();
+        assert!(matches!(
             live.tick(false, 1, || None),
-            Action::Snapshot(Reason::Change)
-        );
-        // A login due carries it: nothing extra. Before any login: nothing.
+            Action::Attach { .. }
+        ));
+        // A login due carries it: no attach, not after the snapshot either
+        // (the export built holds the parts). Before any login: nothing.
         let mut live = LiveSync::new();
-        live.note_snapshot_only_change();
+        live.note_endgame_change();
         assert_eq!(live.tick(true, 1, || None), Action::Nothing);
         live.note_full_send();
-        live.note_snapshot_only_change();
+        live.note_endgame_change();
         assert_eq!(live.automation_reason(true, 1), Some(Reason::Login));
         assert_eq!(live.tick(true, 1, || None), Action::Nothing);
+        let ticket = live.snapshot_started(Reason::Login, keyed(&good(1)));
+        assert_eq!(live.tick(true, 2, || None), Action::Nothing);
+        live.snapshot_answered(ticket, Some(ImportAnswer::default()), 3);
+        assert_eq!(live.tick(true, 4, || None), Action::Nothing);
+        live.note_endgame_change();
+        assert!(matches!(live.tick(true, 5, || None), Action::Attach { .. }));
+        assert_eq!(AttachAnswer::of(200), AttachAnswer::Stored);
+        assert_eq!(AttachAnswer::of(0), AttachAnswer::Retry);
+        assert_eq!(AttachAnswer::of(503), AttachAnswer::Retry);
+        assert_eq!(AttachAnswer::of(409), AttachAnswer::Dropped);
     }
-
     #[test]
     fn a_world_change_without_a_journal_is_a_snapshot() {
         let mut live = LiveSync::new();

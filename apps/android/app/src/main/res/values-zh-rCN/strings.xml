@@ -268,6 +268,7 @@
     <string name="live_sync">实时同步</string>
     <string name="live_sync_line">边玩边同步变化</string>
     <string name="live_changes_sent">实时同步 · 已向 %2$s 发送 %1$s 项变化</string>
+    <string name="live_records_sent">实时同步 · 已将深境记录发送到 %1$s</string>
     <!-- Parity with the desktop -->
     <string name="event_key_lost">未找到会话密钥</string>
     <string name="event_export_incomplete">导出不完整：%1$s</string>

@@ -17,7 +17,7 @@ use anyhow::{Context, Result, bail};
 
 use crate::delta::GoodDelta;
 use crate::good::Good;
-use crate::live::{BatchAnswer, ImportAnswer};
+use crate::live::{AttachAnswer, AttachRequest, BatchAnswer, ImportAnswer};
 use crate::monitor;
 use crate::replay::{self, StandInTracker};
 
@@ -108,6 +108,15 @@ impl StandInTracker for LocalTracker {
             &self.api,
             &self.key,
             delta,
+        ))
+    }
+
+    fn attach(&mut self, request: &AttachRequest) -> AttachAnswer {
+        self.runtime.block_on(monitor::send_attach_with_key(
+            &self.client,
+            &self.api,
+            &self.key,
+            request,
         ))
     }
 }

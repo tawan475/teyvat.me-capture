@@ -166,6 +166,7 @@
   "Let Teyvat.me capture": "Разрешите Teyvat.me захват",
   "Light": "Светлая",
   "Live sync": "Живая синхронизация",
+  "Live sync · endgame records sent to {0}": "Живая синхронизация · рекорды эндгейма отправлены на {0}",
   "Live sync · snapshot stored on {0}": "Живая синхронизация · снимок сохранён на {0}",
   "Live sync · {0} changes sent to {1}": "Живая синхронизация · изменений отправлено на {1}: {0}",
   "Log folder": "Папка логов",

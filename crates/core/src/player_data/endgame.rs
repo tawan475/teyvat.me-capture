@@ -422,6 +422,12 @@ impl PlayerData {
         count
     }
 
+    /// `gi_endgame` as the export writes it (the attach request's body), or
+    /// `None` when none of it was captured.
+    pub fn gi_endgame(&self) -> Option<good::GiEndgame> {
+        self.export_endgame()
+    }
+
     /// `gi_endgame`, or `None` when none of it was captured.
     pub(super) fn export_endgame(&self) -> Option<good::GiEndgame> {
         let endgame = self.game_data.endgame().ok();

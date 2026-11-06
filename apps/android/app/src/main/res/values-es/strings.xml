@@ -268,6 +268,7 @@
     <string name="live_sync">Sincronización en vivo</string>
     <string name="live_sync_line">Cambios mientras juegas</string>
     <string name="live_changes_sent">Sincronización en vivo · %1$s cambios enviados a %2$s</string>
+    <string name="live_records_sent">Sincronización en vivo · récords de endgame enviados a %1$s</string>
     <!-- Parity with the desktop -->
     <string name="event_key_lost">Clave de sesión no encontrada</string>
     <string name="event_export_incomplete">Exportación incompleta: %1$s</string>
