@@ -24,6 +24,12 @@ async fn main() -> io::Result<()> {
     let manifest_dir = env::var_os("CARGO_MANIFEST_DIR").unwrap();
     let pin_dir = Path::new(&manifest_dir).join("../../game-data");
     println!("cargo:rerun-if-changed={}", pin_dir.display());
+    // A folder's change time only moves when a direct child is added or removed; the
+    // manifest changes with every pinned file.
+    println!(
+        "cargo:rerun-if-changed={}",
+        pin_dir.join("manifest.json").display()
+    );
     let pinned = teyvatme_game_data::Pinned::open(&pin_dir).map_err(io::Error::other)?;
 
     // Build the database and save it where the source includes it.

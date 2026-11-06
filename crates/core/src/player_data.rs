@@ -5123,7 +5123,12 @@ mod tests {
             "31": {"begin": "2026-11-01 04:00:00", "difficulties": [125, 126, 127, 128, 129]},
             "32": {"begin": "2026-12-01 04:00:00", "difficulties": [130, 131, 132, 133, 134]}
         },
-        "theater_difficulties": {"125": 1, "126": 2, "127": 3, "128": 4, "129": 5, "130": 1, "134": 5},
+        "theater_difficulties": {
+            "125": {"level": 1, "acts": 3}, "126": {"level": 2, "acts": 6},
+            "127": {"level": 3, "acts": 8}, "128": {"level": 4, "acts": 10},
+            "129": {"level": 5, "acts": 10, "extras": 2},
+            "130": {"level": 1, "acts": 3}, "134": {"level": 5, "acts": 10, "extras": 2}
+        },
         "stygian_seasons": [5269012, 5269013]"#;
 
     fn endgame_data() -> PlayerData {
@@ -5136,6 +5141,110 @@ mod tests {
             }
             .build(),
         )
+    }
+
+    #[test]
+    fn the_theater_stars_are_read_when_the_starred_acts_can_be_told() {
+        use teyvatme_protocol::TheaterDetail;
+        let mut data = endgame_data();
+        let theater = |data: &PlayerData| {
+            serde_json::to_value(data.export_at(&settings(), NOW_SECS * 1000).0).unwrap()
+                ["gi_endgame"]["theater"]
+                .clone()
+        };
+        // Hard Mode (8 acts, no extra bouts), act 5 without its star: the
+        // acts cleared, the starred acts, the reward acts and three
+        // difficulty levels are the lists; the count 7 is among the numbers
+        // (so are the act count three times over, and a counter at 2).
+        let hard = TheaterDetail {
+            start: 1_793_476_800,
+            end: 1_796_068_799,
+            small: vec![31, 8, 19, 2, 7, 127, 8, 1, 8, 1],
+            lists: vec![
+                vec![1, 2, 3, 4, 5, 6, 7, 8],
+                vec![1, 2, 3, 4, 6, 7, 8],
+                vec![3, 6],
+                vec![1, 2, 3],
+            ],
+        };
+        assert!(data.apply_theater(&hard));
+        assert_eq!(
+            theater(&data),
+            serde_json::json!({
+                "season": 31, "difficulty": 127, "level": 3, "acts": 8,
+                "stars": 7, "maxStars": 8, "starredActs": [1, 2, 3, 4, 6, 7, 8]
+            })
+        );
+        // Lunar Mode (10 acts and 2 extra bouts), every star: both act
+        // lists are the acts, both bout lists the bouts, and 12 is among
+        // the numbers.
+        let lunar = TheaterDetail {
+            start: 1_793_476_800,
+            end: 1_796_068_799,
+            small: vec![31, 10, 25, 3, 12, 5, 129, 2, 10, 1, 10, 1, 2],
+            lists: vec![
+                vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+                vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+                vec![1, 2],
+                vec![1, 2],
+                vec![3, 6, 9, 12],
+                vec![3, 4, 5],
+                vec![21],
+            ],
+        };
+        assert!(data.apply_theater(&lunar));
+        assert_eq!(theater(&data)["stars"], 12);
+        assert_eq!(theater(&data)["maxStars"], 12);
+        assert_eq!(
+            theater(&data)["starredActs"],
+            serde_json::json!((1..=10).collect::<Vec<_>>())
+        );
+        // One extra bout starred of the two: 11.
+        let one_bout = TheaterDetail {
+            small: vec![31, 10, 11, 129],
+            lists: vec![
+                vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+                vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+                vec![1, 2],
+                vec![1],
+            ],
+            ..lunar.clone()
+        };
+        assert!(data.apply_theater(&one_bout));
+        assert_eq!(theater(&data)["stars"], 11);
+
+        // Left out: fewer than four acts cleared (the short lists cannot be
+        // told apart), two different starred-looking lists, or a count the
+        // numbers do not carry.
+        for (small, lists) in [
+            (
+                vec![31, 3, 127, 3],
+                vec![vec![1, 2, 3], vec![1, 2], vec![1, 2, 3]],
+            ),
+            (
+                vec![31, 8, 127, 7, 6],
+                vec![
+                    vec![1, 2, 3, 4, 5, 6, 7, 8],
+                    vec![1, 2, 3, 4, 6, 7, 8],
+                    vec![1, 2, 3, 4, 5, 6],
+                ],
+            ),
+            (
+                vec![31, 8, 127],
+                vec![vec![1, 2, 3, 4, 5, 6, 7, 8], vec![1, 2, 3, 4, 6, 7, 8]],
+            ),
+        ] {
+            let detail = TheaterDetail {
+                small,
+                lists,
+                ..hard.clone()
+            };
+            assert!(data.apply_theater(&detail));
+            let json = theater(&data);
+            assert!(json.get("stars").is_none(), "{json}");
+            assert!(json.get("starredActs").is_none(), "{json}");
+            assert_eq!(json["maxStars"], 8);
+        }
     }
 
     #[test]
@@ -5153,7 +5262,9 @@ mod tests {
         let json = serde_json::to_value(data.export_at(&settings(), NOW_SECS * 1000).0).unwrap();
         assert_eq!(
             json["gi_endgame"],
-            serde_json::json!({"theater": {"season": 31, "difficulty": 129, "level": 5, "acts": 7}})
+            serde_json::json!({"theater": {
+                "season": 31, "difficulty": 129, "level": 5, "acts": 7, "maxStars": 12
+            }})
         );
 
         // America (UTC-5) opens the same season 13 hours later; no difficulty

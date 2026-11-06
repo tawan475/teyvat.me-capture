@@ -561,8 +561,11 @@ pub fn apply_commands(
             CommandMatch::Theater(detail) => {
                 // Only the game data's seasons can say.
                 if player_data.apply_theater(&detail) {
+                    let (stars, of) = player_data.theater_stars().unzip();
                     tracing::info!(
                         acts = detail.acts_cleared(),
+                        stars,
+                        of = of.flatten(),
                         "Found the Theater's season state"
                     );
                     applied.routine = true;

@@ -9,7 +9,7 @@
 
 use std::collections::BTreeMap;
 
-use teyvatme_game_data::Endgame;
+use teyvatme_game_data::{Endgame, TheaterDifficulty};
 use teyvatme_protocol::{StygianRecord, TheaterDetail};
 
 use super::PlayerData;
@@ -31,6 +31,91 @@ pub(super) struct TheaterProgress {
     /// `RoleCombatDifficultyExcelConfigData.difficultyId`, if chosen yet.
     pub difficulty: Option<u32>,
     pub acts: u32,
+    /// The Star Challenge Stellas earned and the acts they were earned on,
+    /// when the message tells them apart (see [`theater_stars`]).
+    pub stars: Option<TheaterStars>,
+    /// The stars the difficulty offers (its acts and extra bouts), when the
+    /// game data knows the row.
+    pub max_stars: Option<u32>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct TheaterStars {
+    pub stars: u32,
+    pub acts: Vec<u32>,
+}
+
+/// The fewest entries a list is believed to be the starred acts with, and
+/// the most stars a run may be short of: the message also lists three
+/// difficulty levels and the reward acts, which are short lists of act-sized
+/// numbers.
+const STARRED_MIN: u32 = 4;
+const STARS_MISSING_MAX: u32 = 4;
+
+/// Whether `list` is some acts in order, each at most `top`.
+fn acts_within(list: &[u64], top: u32) -> bool {
+    !list.is_empty()
+        && list.windows(2).all(|pair| pair[0] < pair[1])
+        && list.iter().all(|act| (1..=u64::from(top)).contains(act))
+}
+
+/// The Star Challenge Stellas of the season from the message's lists and
+/// numbers, or `None` when they cannot be told.
+///
+/// The game lists the acts cleared (`1..=cleared`) and, on another field,
+/// the acts whose star was earned; the hardest difficulty's extra bouts
+/// come as two more lists (cleared, starred) numbered from 1. The field
+/// numbers are not known, so the starred acts are the one list of acts within
+/// the cleared ones, at least [`STARRED_MIN`] long and at most
+/// [`STARS_MISSING_MAX`] short of them, that is not the cleared list itself;
+/// with no such list every act has its star. The count must then appear
+/// among the message's lone numbers (the game sends it too). A run short of
+/// more stars than that reads as full, and a run of fewer than four acts
+/// is left out: those lists cannot be told from the others.
+fn theater_stars(
+    detail: &TheaterDetail,
+    cleared: u32,
+    row: &TheaterDifficulty,
+) -> Option<TheaterStars> {
+    if row.acts == 0 || cleared < STARRED_MIN || cleared > row.acts {
+        return None;
+    }
+    let min_len = STARRED_MIN.max(cleared - STARS_MISSING_MAX) as usize;
+    let full: Vec<u64> = (1..=u64::from(cleared)).collect();
+    let candidates: Vec<&Vec<u64>> = detail
+        .lists
+        .iter()
+        .filter(|list| acts_within(list, cleared) && list.len() >= min_len)
+        .collect();
+    let partial: Vec<&Vec<u64>> = candidates
+        .iter()
+        .copied()
+        .filter(|list| **list != full)
+        .collect();
+    let starred = match partial.as_slice() {
+        [] if !candidates.is_empty() => &full,
+        [one] => *one,
+        _ => return None,
+    };
+    let extras = if row.extras == 0 {
+        0
+    } else {
+        detail
+            .lists
+            .iter()
+            .filter(|list| acts_within(list, row.extras))
+            .map(Vec::len)
+            .min()
+            .unwrap_or(0)
+    };
+    let stars = starred.len() + extras;
+    if !detail.small.contains(&(stars as u64)) {
+        return None;
+    }
+    Some(TheaterStars {
+        stars: stars as u32,
+        acts: starred.iter().map(|act| *act as u32).collect(),
+    })
 }
 
 /// The server regions' offsets from UTC, in seconds: Asia (and the Chinese
@@ -98,12 +183,24 @@ impl PlayerData {
             [one] => Some(*one),
             _ => None,
         };
+        let acts = detail.acts_cleared();
+        let row = difficulty.and_then(|d| endgame.theater_difficulties.get(&d));
         self.endgame.theater = Some(TheaterProgress {
             season,
             difficulty,
-            acts: detail.acts_cleared(),
+            acts,
+            stars: row.and_then(|row| theater_stars(detail, acts, row)),
+            max_stars: row
+                .filter(|row| row.acts > 0)
+                .map(|row| row.acts + row.extras),
         });
         true
+    }
+
+    /// The Theater stars held, for the log: `(stars, of)`.
+    pub fn theater_stars(&self) -> Option<(u32, Option<u32>)> {
+        let theater = self.endgame.theater.as_ref()?;
+        Some((theater.stars.as_ref()?.stars, theater.max_stars))
     }
 
     /// Keep the Stygian records of the seasons the game data knows, with the
@@ -185,8 +282,12 @@ impl PlayerData {
             difficulty: t.difficulty,
             level: t
                 .difficulty
-                .and_then(|d| endgame.and_then(|e| e.theater_difficulties.get(&d).copied())),
+                .and_then(|d| endgame.and_then(|e| e.theater_difficulties.get(&d)))
+                .map(|row| row.level),
             acts: t.acts,
+            stars: t.stars.as_ref().map(|s| s.stars),
+            max_stars: t.max_stars,
+            starred_acts: t.stars.as_ref().map(|s| s.acts.clone()),
         });
         let stygian = self
             .endgame

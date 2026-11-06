@@ -218,6 +218,19 @@ pub struct TheaterSeason {
     pub difficulties: BTreeSet<u32>,
 }
 
+/// One Imaginarium Theater difficulty row (`RoleCombatDifficultyExcelConfigData`).
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(default)]
+pub struct TheaterDifficulty {
+    /// `difficultyLevel`: 1 Easy … 5 Lunar Mode.
+    pub level: u32,
+    /// Its acts: the fight rules of its act pool (3 Easy … 10 Lunar Mode);
+    /// 0 when the pool could not be found.
+    pub acts: u32,
+    /// Its extra bouts (the hardest difficulty's second pool; 0 elsewhere).
+    pub extras: u32,
+}
+
 /// The endgame seasons, so the progress messages can be recognised and read
 /// against the game's own tables: empty when a table could not be read (then
 /// nothing is believed).
@@ -226,9 +239,8 @@ pub struct TheaterSeason {
 pub struct Endgame {
     /// Imaginarium Theater seasons by `scheduleId`.
     pub theater_seasons: BTreeMap<u32, TheaterSeason>,
-    /// `RoleCombatDifficultyExcelConfigData`: `difficultyId` → `difficultyLevel`
-    /// (1 Easy … 5 Lunar Mode).
-    pub theater_difficulties: BTreeMap<u32, u32>,
+    /// `RoleCombatDifficultyExcelConfigData` rows by `difficultyId`.
+    pub theater_difficulties: BTreeMap<u32, TheaterDifficulty>,
     /// Stygian Onslaught seasons (`LeyLineChallengeExcelConfigData.scheduleId`).
     pub stygian_seasons: BTreeSet<u32>,
 }

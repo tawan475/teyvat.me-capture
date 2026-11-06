@@ -2,6 +2,15 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.17.19
+
+- The Imaginarium Theater's Star Challenge Stellas are captured: how many
+  this season, of how many the difficulty offers, and which acts earned one
+  (`gi_endgame.theater` `stars`, `maxStars`, `starredActs`). They are told
+  from the season message's lists, so a run short of more than four stars
+  reads as full and a run of fewer than four acts has no stars yet; the
+  tracker shows them on the Endgame page.
+
 ## 1.17.18
 
 - Pieces made by the Mystic Offering strongbox stay in the bag. The game's

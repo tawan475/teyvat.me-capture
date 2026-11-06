@@ -180,7 +180,9 @@ pub struct GiEndgame {
 /// opening the Theater): `RoleCombatScheduleExcelConfigData.scheduleId`, the
 /// difficulty chosen (`RoleCombatDifficultyExcelConfigData.difficultyId`,
 /// and its `difficultyLevel` 1 Easy … 5 Lunar Mode when the game data knows
-/// the row) and the acts cleared (0 until the season's run is over).
+/// the row), the acts cleared (0 until the season's run is over) and, since
+/// 1.17.19, the Star Challenge Stellas: earned, possible, and the acts
+/// earned on (absent when the message does not tell them apart).
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GiTheater {
@@ -190,6 +192,12 @@ pub struct GiTheater {
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub level: Option<u32>,
     pub acts: u32,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub stars: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub max_stars: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub starred_acts: Option<Vec<u32>>,
 }
 
 /// The Stygian Onslaught's records, as the game lists them when its menu
@@ -1356,6 +1364,9 @@ mod tests {
                     difficulty: Some(129),
                     level: Some(5),
                     acts: 10,
+                    stars: Some(12),
+                    max_stars: Some(12),
+                    starred_acts: Some((1..=10).collect()),
                 }),
                 stygian: Some(GiStygian {
                     records: vec![GiStygianRecord {
@@ -1610,7 +1621,10 @@ mod tests {
         assert_eq!(
             json["gi_endgame"],
             serde_json::json!({
-                "theater": { "season": 31, "difficulty": 129, "level": 5, "acts": 10 },
+                "theater": {
+                    "season": 31, "difficulty": 129, "level": 5, "acts": 10,
+                    "stars": 12, "maxStars": 12, "starredActs": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+                },
                 "stygian": { "records": [{
                     "season": 5269012, "difficulty": 6, "at": 1790972494, "coop": false,
                     "fights": [{
