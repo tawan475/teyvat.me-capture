@@ -30,7 +30,7 @@ pub struct Artifact {
     // GOOD v3 fields.
     pub total_rolls: u32,
     pub astral_mark: bool,
-    pub elixer_crafted: bool,
+    pub elixir_crafted: bool,
     pub unactivated_substats: Vec<Substat>,
 
     /// The game's id of this piece, as a decimal string (a u64 does not fit a
@@ -1112,7 +1112,7 @@ mod tests {
             substats: vec![substat("critRate_")],
             total_rolls: 1,
             astral_mark: false,
-            elixer_crafted: false,
+            elixir_crafted: false,
             unactivated_substats: unactivated,
             gi_guid: Some("3488998120056947072".to_string()),
             gi_exp: Some(1_250),
@@ -1454,13 +1454,15 @@ mod tests {
 
         // The first five feed the backend's SHA-256 artifact hash; `location`,
         // `lock` and `astralMark` are its mutable live state; `totalRolls`,
-        // `elixerCrafted` and `substats` are stored on the row. Note
-        // `elixerCrafted` really is spelled that way on both sides.
+        // `elixirCrafted` and `substats` are stored on the row. GOOD's
+        // spelling: before 1.17.18 this was `elixerCrafted`, which Genshin
+        // Optimizer ignores (a user's report, 2026-11-06); the tracker reads
+        // both.
         assert_eq!(
             keys(&json["artifacts"][0]),
             [
                 "astralMark",
-                "elixerCrafted",
+                "elixirCrafted",
                 "gi_exp",
                 "gi_guid",
                 "level",

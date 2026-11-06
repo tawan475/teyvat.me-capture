@@ -2531,7 +2531,7 @@ impl PlayerData {
                 };
                 let rarity = artifact_data.rarity;
                 let astral_mark = artifact.starred;
-                let elixer_crafted = !artifact.elixer_choices.is_empty();
+                let elixir_crafted = !artifact.elixer_choices.is_empty();
                 let Ok(main_stat) = self.game_data.get_property(artifact.main_prop_id) else {
                     tracing::warn!(
                         main_prop_id = artifact.main_prop_id,
@@ -2558,7 +2558,7 @@ impl PlayerData {
                     substats,
                     total_rolls,
                     astral_mark,
-                    elixer_crafted,
+                    elixir_crafted,
                     unactivated_substats,
                     gi_guid: (settings.item_guids && item.guid != 0).then(|| item.guid.to_string()),
                     // Beside the guid it belongs to.
@@ -3823,7 +3823,7 @@ mod tests {
         r#""rarity":5,"mainStatKey":"hp","location":"HuTao","lock":true,"#,
         r#""substats":[{"key":"critRate_","value":7.8,"initialValue":3.9},"#,
         r#"{"key":"critDMG_","value":7.8,"initialValue":7.8}],"#,
-        r#""totalRolls":3,"astralMark":false,"elixerCrafted":false,"unactivatedSubstats":[]}],"#,
+        r#""totalRolls":3,"astralMark":false,"elixirCrafted":false,"unactivatedSubstats":[]}],"#,
         r#""weapons":[{"key":"StaffOfHoma","level":90,"ascension":6,"refinement":1,"#,
         r#""location":"HuTao","lock":true}],"#,
         r#""materials":{"HerosWit":12},"gi_achievements":[80014],"timestamp":1756000000000}"#,

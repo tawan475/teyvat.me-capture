@@ -536,7 +536,7 @@ mod tests {
             "setKey": "GoldenTroupe", "slotKey": "plume", "level": level, "rarity": 5,
             "mainStatKey": "atk", "location": location, "lock": lock,
             "substats": [{ "key": "critRate_", "value": 3.9, "initialValue": 3.9 }],
-            "totalRolls": 4, "astralMark": false, "elixerCrafted": false,
+            "totalRolls": 4, "astralMark": false, "elixirCrafted": false,
             "unactivatedSubstats": [], "gi_guid": guid
         })
     }

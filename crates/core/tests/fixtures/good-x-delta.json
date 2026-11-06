@@ -37,7 +37,7 @@
         ],
         "totalRolls": 8,
         "astralMark": false,
-        "elixerCrafted": false,
+        "elixirCrafted": false,
         "unactivatedSubstats": [],
         "gi_guid": "3488998120056947072"
       },
@@ -52,7 +52,7 @@
         "substats": [{ "key": "def", "value": 16.0, "initialValue": 16.0 }],
         "totalRolls": 3,
         "astralMark": false,
-        "elixerCrafted": false,
+        "elixirCrafted": false,
         "unactivatedSubstats": [],
         "gi_guid": "3488998120056947078"
       }
@@ -153,7 +153,7 @@
           ],
           "totalRolls": 3,
           "astralMark": false,
-          "elixerCrafted": false,
+          "elixirCrafted": false,
           "unactivatedSubstats": [{ "key": "critDMG_", "value": 7.8, "initialValue": 7.8 }]
         }
       ],
@@ -222,7 +222,7 @@
         ],
         "totalRolls": 9,
         "astralMark": false,
-        "elixerCrafted": false,
+        "elixirCrafted": false,
         "unactivatedSubstats": [],
         "gi_guid": "3488998120056947072"
       },
@@ -241,7 +241,7 @@
         ],
         "totalRolls": 3,
         "astralMark": false,
-        "elixerCrafted": false,
+        "elixirCrafted": false,
         "unactivatedSubstats": [{ "key": "critDMG_", "value": 7.8, "initialValue": 7.8 }],
         "gi_guid": "3488998120056947079"
       }
