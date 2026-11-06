@@ -63,7 +63,7 @@ fn lookup_const_value<T: FromStr>(
     res
 }
 
-const DATABASE_VERSION: u32 = 11;
+const DATABASE_VERSION: u32 = 13;
 
 #[derive(Debug, Deserialize, Serialize)]
 struct Database {
@@ -440,9 +440,65 @@ impl AnimeGameData {
             "ExcelBinOutput/RoleCombatDifficultyExcelConfigData.json",
         )
         .await;
-        let theater_difficulties: BTreeMap<u32, u32> = difficulties
+        // A difficulty's acts are the fight rules of its act pool, and the
+        // hardest difficulty's extra bouts those of a second pool. The pool
+        // fields are obfuscated: they are the numeric fields whose every value
+        // is a pool with rules; the act pool is the one every row has.
+        let mut rules_by_pool: BTreeMap<u32, u32> = BTreeMap::new();
+        for rule in rows(
+            source,
+            git_ref,
+            "ExcelBinOutput/RoleCombatFightRuleExcelConfigData.json",
+        )
+        .await
+        .iter()
+        {
+            if let Some(pool) = id(rule, "poolId") {
+                *rules_by_pool.entry(pool).or_default() += 1;
+            }
+        }
+        let pool_fields: Vec<String> = difficulties
             .iter()
-            .filter_map(|row| Some((id(row, "difficultyId")?, id(row, "difficultyLevel")?)))
+            .filter_map(|row| row.as_object())
+            .flat_map(|row| row.keys())
+            .filter(|field| !matches!(field.as_str(), "difficultyId" | "difficultyLevel"))
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .filter(|field| {
+                difficulties.iter().all(|row| {
+                    row.get(field.as_str()).is_none_or(|_| {
+                        id(row, field).is_some_and(|pool| rules_by_pool.contains_key(&pool))
+                    })
+                })
+            })
+            .cloned()
+            .collect();
+        let act_pool = pool_fields.iter().find(|field| {
+            difficulties
+                .iter()
+                .all(|row| row.get(field.as_str()).is_some())
+        });
+        let theater_difficulties: BTreeMap<u32, TheaterDifficulty> = difficulties
+            .iter()
+            .filter_map(|row| {
+                let pool_rules = |field: &String| {
+                    id(row, field).and_then(|pool| rules_by_pool.get(&pool).copied())
+                };
+                let acts = act_pool.and_then(pool_rules).unwrap_or(0);
+                let extras = pool_fields
+                    .iter()
+                    .filter(|field| Some(*field) != act_pool)
+                    .filter_map(pool_rules)
+                    .sum();
+                Some((
+                    id(row, "difficultyId")?,
+                    TheaterDifficulty {
+                        level: id(row, "difficultyLevel")?,
+                        acts,
+                        extras,
+                    },
+                ))
+            })
             .collect();
         // A schedule names its difficulty rows in one of its (obfuscated)
         // lists: the longest list whose numbers are all difficulty ids (a
@@ -1025,6 +1081,9 @@ mod tests {
                         "test_data/ExcelBinOutput/RoleCombatDifficultyExcelConfigData.json"
                     )
                 }
+                "ExcelBinOutput/RoleCombatFightRuleExcelConfigData.json" => {
+                    include_str!("test_data/ExcelBinOutput/RoleCombatFightRuleExcelConfigData.json")
+                }
                 "ExcelBinOutput/LeyLineChallengeExcelConfigData.json" => {
                     include_str!("test_data/ExcelBinOutput/LeyLineChallengeExcelConfigData.json")
                 }
@@ -1191,7 +1250,24 @@ mod tests {
             season.difficulties,
             BTreeSet::from([125, 126, 127, 128, 129])
         );
-        assert_eq!(endgame.theater_difficulties[&129], 5);
+        // Acts from the act pool's rules; the extra bouts from the hardest
+        // difficulty's second pool.
+        assert_eq!(
+            endgame.theater_difficulties[&129],
+            TheaterDifficulty {
+                level: 5,
+                acts: 10,
+                extras: 2,
+            }
+        );
+        assert_eq!(
+            endgame.theater_difficulties[&127],
+            TheaterDifficulty {
+                level: 3,
+                acts: 8,
+                extras: 0,
+            }
+        );
         assert_eq!(endgame.theater_difficulties.len(), 10);
         assert_eq!(endgame.stygian_seasons, BTreeSet::from([5269012, 5269013]));
     }

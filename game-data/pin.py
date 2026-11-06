@@ -81,6 +81,8 @@ EXCEL = [
     # Stygian Onslaught's schedules (id), which the progress messages are recognised and read against.
     "RoleCombatScheduleExcelConfigData",
     "RoleCombatDifficultyExcelConfigData",
+    # The acts and extra bouts of each Theater difficulty: the fight rules of its pools.
+    "RoleCombatFightRuleExcelConfigData",
     "LeyLineChallengeExcelConfigData",
 ]
 TEXT_MAP = "TextMap/TextMap_MediumEN.json"

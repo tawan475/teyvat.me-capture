@@ -460,6 +460,12 @@ export interface GiTheater {
   level?: 1 | 2 | 3 | 4 | 5
   /** Acts cleared this season (the game records them once the run is over; 0 before, and in a season not entered). */
   acts: number
+  /** Star Challenge Stellas earned this season (Capture 1.17.19+; absent when they could not be told from the message). */
+  stars?: number
+  /** Stars the difficulty offers: its acts plus the hardest difficulty's extra bouts (Capture 1.17.19+, when the game data knows the row). */
+  maxStars?: number
+  /** The acts whose star was earned, ascending (with `stars`; the extra bouts' stars count in `stars` only). */
+  starredActs?: number[]
 }
 
 export interface GiStygian {
