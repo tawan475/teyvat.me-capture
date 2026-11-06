@@ -540,8 +540,9 @@ fun GreyCard(@DrawableRes icon: Int, title: String, line: String) {
 }
 
 /**
- * Home's top bar: the brand and four 48 dp buttons (spec HomeTopBar).
- * History carries a red dot while the newest event is an error.
+ * Home's top bar: the brand and five 48 dp buttons (spec HomeTopBar; Ko-fi
+ * after Discord, as on the tracker's top bar). History carries a red dot
+ * while the newest event is an error.
  */
 @Composable
 fun HomeTopBar(
@@ -551,6 +552,7 @@ fun HomeTopBar(
     onTheme: () -> Unit,
     onSettings: () -> Unit,
     onDiscord: () -> Unit,
+    onKofi: () -> Unit,
 ) {
     Row(
         Modifier.fillMaxWidth().height(64.dp).padding(start = 16.dp),
@@ -587,6 +589,7 @@ fun HomeTopBar(
         }
         IconButton(onClick = onSettings) { TmIcon(R.drawable.ic_settings, stringResource(R.string.settings)) }
         IconButton(onClick = onDiscord) { TmIcon(R.drawable.ic_discord, "Discord") }
+        IconButton(onClick = onKofi) { TmIcon(R.drawable.ic_coffee, stringResource(R.string.support_kofi)) }
     }
 }
 

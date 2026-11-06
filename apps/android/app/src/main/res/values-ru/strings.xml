@@ -305,6 +305,8 @@
     <string name="key_signed_out_only">Используется, только пока вход не выполнен</string>
     <string name="clear">Очистить</string>
     <string name="discord_line">Помощь, новости и отзывы</string>
+    <string name="support_kofi">Поддержать Teyvat.me на Ko-fi</string>
+    <string name="support_line">Поддержать Teyvat.me</string>
 
     <!-- Home layout G (2026-10-27) -->
     <string name="step_enter_world">Вход в мир</string>

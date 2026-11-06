@@ -2,6 +2,18 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.17.20
+
+- Stygian Onslaught co-op records name every player and their characters,
+  as the game's record screen does: each player's position (1P, 2P…),
+  profile picture and nickname (`gi_endgame.stygian.records[].players`),
+  and per fight every player's characters with the level and constellation
+  they had when the record was set (`fights[].players`; solo records get
+  their one entry too). Other players' UIDs are still never exported.
+- A Ko-fi button beside Discord, in the app bar and in Settings › About,
+  for anyone who wants to support the project's running costs: the same
+  link the tracker's top bar has. On Android too.
+
 ## 1.17.19
 
 - The Imaginarium Theater's Star Challenge Stellas are captured: how many

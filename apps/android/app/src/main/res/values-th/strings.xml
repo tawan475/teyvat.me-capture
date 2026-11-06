@@ -305,6 +305,8 @@
     <string name="key_signed_out_only">ใช้เฉพาะตอนที่ไม่ได้เข้าสู่ระบบ</string>
     <string name="clear">ล้าง</string>
     <string name="discord_line">ความช่วยเหลือ ข่าวสาร และความคิดเห็น</string>
+    <string name="support_kofi">สนับสนุน Teyvat.me บน Ko-fi</string>
+    <string name="support_line">สนับสนุน Teyvat.me</string>
 
     <!-- Home layout G (2026-10-27) -->
     <string name="step_enter_world">เข้าสู่โลก</string>

@@ -257,6 +257,7 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
                             error = activityLine(summary)?.isError == true, dark = dark,
                             onHistory = ::openActivity, onTheme = ::cycleTheme, onSettings = ::openSettings,
                             onDiscord = { openUrl(Links.DISCORD) },
+                            onKofi = { openUrl(Links.KOFI) },
                         )
                         Screen.Activity -> TmTopBar(stringResource(R.string.activity), ::pop) {
                             IconButton(onClick = ::shareLog) { TmIcon(R.drawable.ic_share, stringResource(R.string.share_log)) }

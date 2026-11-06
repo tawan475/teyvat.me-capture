@@ -204,9 +204,9 @@ impl PlayerData {
     }
 
     /// Keep the Stygian records of the seasons the game data knows, with the
-    /// account's own team in each (a co-op record's other players are dropped,
-    /// UIDs included). The message is the whole list, so it replaces what was
-    /// held. Returns how many records were kept; 0 means "some other message"
+    /// account's own team in each and, by position, every player's characters
+    /// and a co-op run's players (nickname and picture; their UIDs are never
+    /// kept). The message is the whole list, so it replaces what was held. Returns how many records were kept; 0 means "some other message"
     /// (or no account yet: the login's inventory, which names the UID, comes
     /// first).
     pub fn apply_stygian_records(&mut self, records: &[StygianRecord]) -> usize {
@@ -238,6 +238,52 @@ impl PlayerData {
                     by: f.by.and_then(key_of),
                 })
             };
+            // Positions by UID: every team's player must be in the list.
+            let position = |uid: u64| {
+                record
+                    .players
+                    .iter()
+                    .find(|p| p.uid == uid)
+                    .map(|p| p.index)
+            };
+            let by_player = |f: &teyvatme_protocol::StygianFight| {
+                let mut teams = f
+                    .teams
+                    .iter()
+                    .map(|t| {
+                        Some(good::GiStygianPlayerTeam {
+                            p: position(t.uid)?,
+                            team: t
+                                .members
+                                .iter()
+                                .filter_map(|m| {
+                                    Some(good::GiStygianMember {
+                                        key: key_of(m.id)?,
+                                        level: m.level,
+                                        constellation: m.constellation,
+                                    })
+                                })
+                                .collect(),
+                        })
+                    })
+                    .collect::<Option<Vec<_>>>()?;
+                teams.sort_by_key(|t| t.p);
+                Some(teams)
+            };
+            let players = (coop && !record.players.is_empty()).then(|| {
+                let mut players: Vec<_> = record
+                    .players
+                    .iter()
+                    .map(|p| good::GiStygianPlayer {
+                        p: p.index,
+                        is_self: p.uid == u64::from(uid),
+                        picture: p.picture,
+                        nickname: p.nickname.clone(),
+                    })
+                    .collect();
+                players.sort_by_key(|p| p.p);
+                players
+            });
             let fights = record
                 .fights
                 .iter()
@@ -253,6 +299,7 @@ impl PlayerData {
                         .collect(),
                     strike: figure(&f.strike),
                     damage: figure(&f.damage),
+                    players: by_player(f),
                 })
                 .collect();
             kept.insert(
@@ -263,6 +310,7 @@ impl PlayerData {
                     at: record.at_ms / 1000,
                     coop,
                     fights,
+                    players,
                 },
             );
         }

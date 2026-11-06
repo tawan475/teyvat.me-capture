@@ -211,6 +211,8 @@ fun SettingsScreen(
         CardDivider()
         ListRow("Discord", stringResource(R.string.discord_line), R.drawable.ic_discord, onClick = { actions.openUrl(Links.DISCORD) }) { External() }
         CardDivider()
+        ListRow("Ko-fi", stringResource(R.string.support_line), R.drawable.ic_coffee, onClick = { actions.openUrl(Links.KOFI) }) { External() }
+        CardDivider()
         ListRow(stringResource(R.string.about), me.teyvat.app.BuildConfig.VERSION_NAME, R.drawable.ic_info, onClick = actions::openAbout) { Chevron() }
     }
 }
@@ -724,6 +726,8 @@ fun AboutScreen(
         ListRow(Links.trackerHost, stringResource(R.string.teyvat_site_line), R.drawable.ic_globe, onClick = { openUrl(Links.trackerSite) }) { External() }
         CardDivider()
         ListRow("Discord", stringResource(R.string.discord_line), R.drawable.ic_discord, onClick = { openUrl(Links.DISCORD) }) { External() }
+        CardDivider()
+        ListRow("Ko-fi", stringResource(R.string.support_line), R.drawable.ic_coffee, onClick = { openUrl(Links.KOFI) }) { External() }
         CardDivider()
         ListRow(stringResource(R.string.report_bug), stringResource(R.string.report_bug_line), R.drawable.ic_bug, onClick = { openUrl(Links.ISSUES) }) { External() }
         CardDivider()

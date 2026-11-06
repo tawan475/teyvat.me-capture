@@ -4,8 +4,8 @@
 //! The app buttons and what floats over the views. The window frame, title
 //! bar and its buttons are the OS's own (native decorations on every
 //! platform), and the views start flush under them; History, theme,
-//! Settings and Discord sit at the right end of the status strip (layout
-//! G), and the activity list opens under History.
+//! Settings, Discord and Ko-fi sit at the right end of the status strip
+//! (layout G), and the activity list opens under History.
 
 use egui::{Align, Align2, Context, CornerRadius, Frame, Id, Layout, Margin, Order, Ui};
 
@@ -19,10 +19,21 @@ use crate::ui::{icons, theme};
 pub(super) const BREAKPOINT: f32 = 720.0;
 
 impl TeyvatmeApp {
-    /// History, Theme, Settings and Discord, 32 px each, for the status
-    /// strip's right end. Added right to left: Discord is the rightmost.
+    /// History, Theme, Settings, Discord and Ko-fi, 32 px each, for the
+    /// status strip's right end. Added right to left: Ko-fi is the
+    /// rightmost, after Discord, as on the tracker's top bar.
     pub(super) fn app_buttons(&mut self, ui: &mut Ui) {
         let pal = widgets::p(ui);
+        if widgets::icon_button_hover(
+            ui,
+            icons::coffee(),
+            tr("Support Teyvat.me on Ko-fi"),
+            widgets::KOFI_COLOR,
+        )
+        .clicked()
+        {
+            ui.ctx().open_url(egui::OpenUrl::new_tab(crate::KOFI_URL));
+        }
         if widgets::icon_button(ui, icons::discord(), "Discord").clicked() {
             ui.ctx()
                 .open_url(egui::OpenUrl::new_tab(crate::DISCORD_URL));

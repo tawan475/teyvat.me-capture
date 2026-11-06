@@ -305,6 +305,8 @@
     <string name="key_signed_out_only">Usada só quando você não está conectado</string>
     <string name="clear">Limpar</string>
     <string name="discord_line">Ajuda, novidades e feedback</string>
+    <string name="support_kofi">Apoie o Teyvat.me no Ko-fi</string>
+    <string name="support_line">Apoie o Teyvat.me</string>
 
     <!-- Home layout G (2026-10-27) -->
     <string name="step_enter_world">Entrar no mundo</string>

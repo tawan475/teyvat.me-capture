@@ -47,6 +47,10 @@ mod wish_history;
 /// The community server (Settings › About and the quick bar).
 pub(crate) const DISCORD_URL: &str = "https://discord.gg/W6GUY3UtAx";
 
+/// Support for the project's running costs (Settings › About and the
+/// quick bar), beside Discord like the tracker's own button.
+pub(crate) const KOFI_URL: &str = "https://ko-fi.com/tawan475";
+
 /// The app id: where eframe keeps `app.ron`, and the data directory of a
 /// release build. One name for both, so settings and logs never part.
 const APP_ID: &str = "Teyvat.me";
