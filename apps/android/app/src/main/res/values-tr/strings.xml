@@ -268,6 +268,7 @@
     <string name="live_sync">Canlı eşitleme</string>
     <string name="live_sync_line">Oynarken değişiklikler</string>
     <string name="live_changes_sent">Canlı eşitleme · gönderilen değişiklik: %1$s → %2$s</string>
+    <string name="live_records_sent">Canlı eşitleme · endgame rekorları %1$s adresine gönderildi</string>
     <!-- Parity with the desktop -->
     <string name="event_key_lost">Oturum anahtarı bulunamadı</string>
     <string name="event_export_incomplete">Dışa aktarma eksik: %1$s</string>

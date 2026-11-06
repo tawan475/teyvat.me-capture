@@ -44,7 +44,9 @@ use tracing_subscriber::prelude::*;
 use tracing_subscriber::{EnvFilter, fmt};
 
 use crate::good::Good;
-use crate::live::{Action, BatchAnswer, ImportAnswer, LiveSync, Reason};
+use crate::live::{
+    Action, AttachAnswer, AttachRequest, BatchAnswer, ImportAnswer, LiveSync, Reason,
+};
 use crate::monitor::{
     self, AppliedData, DataReplacement, DataVerdict, KeyReport, SnifferEvent, SnifferStats,
 };
@@ -246,6 +248,8 @@ pub(crate) trait StandInTracker {
     /// A snapshot upload of `good`: `None` when it failed.
     fn snapshot(&mut self, good: &Good) -> Option<ImportAnswer>;
     fn batch(&mut self, delta: &crate::delta::GoodDelta) -> BatchAnswer;
+    /// The endgame parts for this login's snapshot (`/irminsul/attach`).
+    fn attach(&mut self, request: &AttachRequest) -> AttachAnswer;
 }
 
 /// The stand-in `--replay-journal` uses: every snapshot is stored and gets
@@ -269,6 +273,10 @@ impl StandInTracker for StoreEverything {
             collapse: false,
             watching: false,
         }
+    }
+
+    fn attach(&mut self, _: &AttachRequest) -> AttachAnswer {
+        AttachAnswer::Stored
     }
 }
 
@@ -410,6 +418,26 @@ impl JournalSim {
                         tracing::warn!(seq = delta.seq, ?answer, "batch not stored");
                     }
                     self.live.batch_answered(answer, now);
+                }
+                // The endgame parts for this login's snapshot (the journal
+                // gate's stand-in takes them as stored; --replay-live sends).
+                Action::Attach { session } => {
+                    let uid = player_data.gi_player().and_then(|p| p.uid);
+                    let answer = match (uid, player_data.gi_endgame()) {
+                        (Some(uid), Some(gi_endgame)) => {
+                            let request = AttachRequest {
+                                v: 1,
+                                uid,
+                                session,
+                                gi_endgame,
+                            };
+                            let answer = self.tracker.attach(&request);
+                            tracing::info!(?answer, "attach: the endgame parts sent");
+                            answer
+                        }
+                        _ => AttachAnswer::Dropped,
+                    };
+                    self.live.attach_answered(answer, now);
                 }
             }
         }
@@ -752,6 +780,9 @@ impl Replay {
                 journal.live.note_full_send();
             }
             journal.live.note_change(noted);
+            if applied.endgame {
+                journal.live.note_endgame_change();
+            }
             if let Some(ns) = at {
                 journal.automation_at = Some(ns / 1_000_000 + JOURNAL_DEBOUNCE_MS);
             }

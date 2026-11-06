@@ -860,7 +860,8 @@ pub extern "system" fn Java_me_teyvat_app_NativeBridge_liveNextTick(
 }
 
 /// `NativeBridge.liveTick(live)`: `"S<ticket>\n<GOOD JSON>"` (a snapshot),
-/// `"B\n<delta JSON>"` (a batch for `/irminsul/changes`), or null.
+/// `"B\n<delta JSON>"` (a batch for `/irminsul/changes`), `"A\n<attach JSON>"`
+/// (the endgame parts for `/irminsul/attach`), or null.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_me_teyvat_app_NativeBridge_liveTick(
     env: JNIEnv,
@@ -904,6 +905,17 @@ pub extern "system" fn Java_me_teyvat_app_NativeBridge_batchAnswered(
 ) {
     let body = java_string(&mut env, &body).unwrap_or_default();
     decoder::get().batch_answered(status, &body);
+}
+
+/// `NativeBridge.attachAnswered(status)`: the attach request finished
+/// (status 0: no answer, -1: signed out).
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_me_teyvat_app_NativeBridge_attachAnswered(
+    _env: JNIEnv,
+    _class: JClass,
+    status: jint,
+) {
+    decoder::get().attach_answered(status);
 }
 
 /// `NativeBridge.setWishSync(on)`: whether a captured wish key is synced to

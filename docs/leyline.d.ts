@@ -449,6 +449,35 @@ export interface GiExploration {
 export interface GiEndgame {
   theater?: GiTheater
   stygian?: GiStygian
+  /** The Spiral Abyss's record book, as listed when its Challenge Summary opens (Capture 1.17.21+). */
+  abyss?: GiAbyssBook
+}
+
+export interface GiAbyssBook {
+  /** One per period played, oldest first (the game keeps the last two years). */
+  periods: GiAbyssRecord[]
+}
+
+export interface GiAbyssRecord {
+  /** TowerScheduleExcelConfigData.scheduleId (the period). */
+  season: GameId
+  /** The deepest descent: floor (9-12) and chamber (1-3). */
+  floor: number
+  chamber: number
+  /** Stars earned that period (36 at a full clear). */
+  stars: number
+  /** Most Defeats. Each figure is absent when the game sent it empty, or when the message's field layout is not one Capture knows the labels of (every version renumbers them). */
+  defeats?: GiFigure
+  /** Strongest Single Strike. */
+  strike?: GiFigure
+  /** Most Damage Taken. */
+  damageTaken?: GiFigure
+  /** Elemental Skills Unleashed. */
+  skills?: GiFigure
+  /** Elemental Bursts Unleashed. */
+  bursts?: GiFigure
+  /** The characters the game lists as picked that period (the four most used), with how often. */
+  picked: { key: string; times: number }[]
 }
 
 export interface GiTheater {
@@ -546,6 +575,28 @@ export interface GiCapture {
   world: number
   /** The live journal this snapshot ends. */
   journal: { seq: number }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 1b. Attach: the endgame parts for this login's snapshot                [1.17.21]
+//     POST <api>/irminsul/attach (Bearer or x-import-key)
+// ═════════════════════════════════════════════════════════════════════════════
+
+/**
+ * The endgame parts the game sends only when a screen is opened, after the
+ * login's snapshot (the Stygian records, the Spiral Abyss record book, the
+ * Theater's state after a run): sent once per change, a few KB. The tracker
+ * replaces each part present in this login's newest snapshot (its
+ * `gi_capture.session` = `session`) and keeps the rest; 404 (no snapshot
+ * yet) and 409 (another login's snapshot) are dropped, the next login's
+ * snapshot carries the data; 429 / 5xx / no answer are retried with backoff.
+ */
+export interface LeylineAttach {
+  v: 1
+  uid: number
+  /** The login's session id (`GiCapture.session`). */
+  session: string
+  gi_endgame: GiEndgame
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

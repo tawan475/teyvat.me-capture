@@ -166,6 +166,7 @@
   "Let Teyvat.me capture": "ให้ Teyvat.me สแกนได้",
   "Light": "สว่าง",
   "Live sync": "ซิงก์สด",
+  "Live sync · endgame records sent to {0}": "ซิงค์สด · ส่งสถิติเอนด์เกมไปยัง {0} แล้ว",
   "Live sync · snapshot stored on {0}": "ซิงก์สด · บันทึกสแนปช็อตไว้ที่ {0} แล้ว",
   "Live sync · {0} changes sent to {1}": "ซิงก์สด · ส่งการเปลี่ยนแปลง {0} รายการไปที่ {1} แล้ว",
   "Log folder": "โฟลเดอร์ล็อก",

@@ -2,6 +2,25 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.17.21
+
+- Stygian Onslaught records reach the tracker as soon as the record screen
+  is opened. They arrive after the login's snapshot and the live sync's
+  batches cannot carry them, so they went up only with the next login: a
+  co-op record opened in a session was never seen until the day after.
+  Now the records, the Spiral Abyss record book and the Imaginarium
+  Theater's state when it moves after a run go up at once as one small
+  request (`POST /irminsul/attach`, a few KB), which the tracker writes
+  into this login's snapshot; nothing is re-uploaded, and opening the
+  screen again with nothing new sends nothing. Live sync on or off alike.
+- The Spiral Abyss's record book is captured when its Challenge Summary is
+  opened (`gi_endgame.abyss`): per period the deepest descent, the stars,
+  Most Defeats, Strongest Single Strike, Most Damage Taken, Elemental Skills
+  and Bursts Unleashed with their characters, and the characters picked most
+  with how often. The figures' labels are read off the 7.2 layout; a later
+  version's reshuffle leaves them out (floor, stars and picks stay) until it
+  is learned again.
+
 ## 1.17.20
 
 - Stygian Onslaught co-op records name every player and their characters,

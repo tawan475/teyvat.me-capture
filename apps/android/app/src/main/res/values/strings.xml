@@ -273,6 +273,7 @@
     <string name="live_sync">Live sync</string>
     <string name="live_sync_line">Changes as you play</string>
     <string name="live_changes_sent">Live sync · %1$s changes sent to %2$s</string>
+    <string name="live_records_sent">Live sync · endgame records sent to %1$s</string>
     <!-- Parity with the desktop -->
     <string name="event_key_lost">Session key not found</string>
     <string name="event_export_incomplete">Export incomplete: %1$s</string>

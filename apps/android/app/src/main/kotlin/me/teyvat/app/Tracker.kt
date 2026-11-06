@@ -497,6 +497,32 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
                 upload(System.currentTimeMillis(), manual = false, live = live, liveSnapshot = ticket to action.substringAfter('\n'))
             }
             action.startsWith("B") -> sendBatch(action.substringAfter('\n'))
+            action.startsWith("A") -> sendAttach(action.substringAfter('\n'))
+        }
+    }
+
+    /** POST the endgame parts to `/irminsul/attach` (the session's newest snapshot takes them). */
+    private fun sendAttach(request: String) {
+        batchInFlight = true
+        scope.launch {
+            val status = withContext(Dispatchers.IO) {
+                try {
+                    withCredential { credential -> rawCall("POST", "${Links.trackerApi}/irminsul/attach", request, credential) }
+                    200
+                } catch (e: SignedOut) {
+                    -1
+                } catch (e: HttpError) {
+                    if (e.status == 401 && e.code == "session_revoked") forget(revoked = true)
+                    e.status
+                } catch (e: IOException) {
+                    0
+                }
+            }
+            batchInFlight = false
+            NativeBridge.attachAnswered(status)
+            if (status in 200..299) {
+                NativeBridge.note("ok", context.getString(R.string.live_records_sent, Links.trackerHost))
+            }
         }
     }
 

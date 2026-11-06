@@ -170,6 +170,7 @@ impl DataReplacement {
                         | CommandMatch::ShopGoods(_)
                         | CommandMatch::Theater(_)
                         | CommandMatch::StygianRecords(_)
+                        | CommandMatch::AbyssRecords(_)
                 )
         });
         self.verdict(key, replaces)
@@ -193,6 +194,12 @@ pub struct AppliedData {
     /// A part of the planner's routine (`gi_tasks`). No timestamp of its own
     /// either, like the anecdotes.
     pub routine: bool,
+    /// The Theater's season state or the Stygian Onslaught records differ
+    /// from what was held: data only a snapshot carries (the live delta has
+    /// no path for `gi_endgame`), and the records come after the login's
+    /// snapshot, when the player opens the record screen. The monitor asks
+    /// live sync for a `change` snapshot.
+    pub endgame: bool,
     /// Live updates applied (a character's talents, levels, constellations,
     /// gear, friendship, a new character; achievements moving), for live
     /// sync's change count: what they are is only known once they are
@@ -208,6 +215,7 @@ impl AppliedData {
             || self.properties
             || self.anecdotes
             || self.routine
+            || self.endgame
     }
 
     /// Everything either side changed.
@@ -219,6 +227,7 @@ impl AppliedData {
             properties: self.properties || other.properties,
             anecdotes: self.anecdotes || other.anecdotes,
             routine: self.routine || other.routine,
+            endgame: self.endgame || other.endgame,
             live_updates: self.live_updates + other.live_updates,
         }
     }
@@ -560,6 +569,7 @@ pub fn apply_commands(
             }
             CommandMatch::Theater(detail) => {
                 // Only the game data's seasons can say.
+                let version = player_data.endgame_version();
                 if player_data.apply_theater(&detail) {
                     let (stars, of) = player_data.theater_stars().unzip();
                     tracing::info!(
@@ -569,17 +579,35 @@ pub fn apply_commands(
                         "Found the Theater's season state"
                     );
                     applied.routine = true;
+                    applied.endgame |= player_data.endgame_version() != version;
                 }
             }
             CommandMatch::StygianRecords(records) => {
+                let version = player_data.endgame_version();
                 let kept = player_data.apply_stygian_records(&records);
                 if kept > 0 {
                     tracing::info!(
                         kept,
                         of = records.len(),
+                        changed = player_data.endgame_version() != version,
                         "Found the Stygian Onslaught records"
                     );
                     applied.routine = true;
+                    applied.endgame |= player_data.endgame_version() != version;
+                }
+            }
+            CommandMatch::AbyssRecords(records) => {
+                let version = player_data.endgame_version();
+                let kept = player_data.apply_abyss_records(&records);
+                if kept > 0 {
+                    tracing::info!(
+                        kept,
+                        of = records.len(),
+                        changed = player_data.endgame_version() != version,
+                        "Found the Spiral Abyss record book"
+                    );
+                    applied.routine = true;
+                    applied.endgame |= player_data.endgame_version() != version;
                 }
             }
             CommandMatch::TeamUpdate(teams) => {

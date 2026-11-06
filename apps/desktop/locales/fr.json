@@ -166,6 +166,7 @@
   "Let Teyvat.me capture": "Autoriser Teyvat.me à capturer",
   "Light": "Clair",
   "Live sync": "Synchro en direct",
+  "Live sync · endgame records sent to {0}": "Synchro en direct · records de fin de jeu envoyés à {0}",
   "Live sync · snapshot stored on {0}": "Synchro en direct · instantané enregistré sur {0}",
   "Live sync · {0} changes sent to {1}": "Synchro en direct · {0} changements envoyés à {1}",
   "Log folder": "Dossier des journaux",

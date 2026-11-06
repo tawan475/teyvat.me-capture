@@ -174,6 +174,55 @@ pub struct GiEndgame {
     pub theater: Option<GiTheater>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub stygian: Option<GiStygian>,
+    /// Since 1.17.21: the Spiral Abyss's record book.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub abyss: Option<GiAbyssBook>,
+}
+
+/// The Spiral Abyss's record book (the Challenge Summary), as listed when it
+/// is opened: one entry per period played, oldest first.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiAbyssBook {
+    pub periods: Vec<GiAbyssRecord>,
+}
+
+/// One period's record: `TowerScheduleExcelConfigData.scheduleId`, the
+/// deepest descent (floor and chamber), the stars, the game's five figures
+/// (each absent when the game sent it empty, or when the message's layout
+/// is not one Teyvat.me knows the labels of) and the characters picked most,
+/// with how often.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiAbyssRecord {
+    pub season: u32,
+    pub floor: u32,
+    pub chamber: u32,
+    pub stars: u32,
+    /// Most Defeats.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub defeats: Option<GiFigure>,
+    /// Strongest Single Strike.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub strike: Option<GiFigure>,
+    /// Most Damage Taken.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub damage_taken: Option<GiFigure>,
+    /// Elemental Skills Unleashed.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub skills: Option<GiFigure>,
+    /// Elemental Bursts Unleashed.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub bursts: Option<GiFigure>,
+    pub picked: Vec<GiAbyssPick>,
+}
+
+/// A character the game lists as picked in a period, with how often.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiAbyssPick {
+    pub key: String,
+    pub times: u32,
 }
 
 /// The Imaginarium Theater's season running, as of the login (and of
@@ -1468,6 +1517,35 @@ mod tests {
                         ]),
                     }],
                 }),
+                abyss: Some(GiAbyssBook {
+                    periods: vec![GiAbyssRecord {
+                        season: 123,
+                        floor: 12,
+                        chamber: 3,
+                        stars: 36,
+                        defeats: Some(GiFigure {
+                            value: 111,
+                            by: Some("Mavuika".to_string()),
+                        }),
+                        strike: Some(GiFigure {
+                            value: 6_424_192,
+                            by: Some("Mavuika".to_string()),
+                        }),
+                        damage_taken: None,
+                        skills: Some(GiFigure {
+                            value: 85,
+                            by: Some("YaeMiko".to_string()),
+                        }),
+                        bursts: Some(GiFigure {
+                            value: 24,
+                            by: Some("Columbina".to_string()),
+                        }),
+                        picked: vec![GiAbyssPick {
+                            key: "Mavuika".to_string(),
+                            times: 17,
+                        }],
+                    }],
+                }),
             }),
         };
 
@@ -1719,6 +1797,14 @@ mod tests {
                         { "p": 1, "self": false, "picture": 1023, "nickname": "Lumine" },
                         { "p": 2, "self": true }
                     ]
+                }] },
+                "abyss": { "periods": [{
+                    "season": 123, "floor": 12, "chamber": 3, "stars": 36,
+                    "defeats": { "value": 111, "by": "Mavuika" },
+                    "strike": { "value": 6424192, "by": "Mavuika" },
+                    "skills": { "value": 85, "by": "YaeMiko" },
+                    "bursts": { "value": 24, "by": "Columbina" },
+                    "picked": [{ "key": "Mavuika", "times": 17 }]
                 }] }
             })
         );

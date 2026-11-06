@@ -25,7 +25,7 @@ use teyvatme_core::decode::{
     self, AppliedData, DataReplacement, DataVerdict, KeyReport, SnifferEvent, SnifferStats,
 };
 use teyvatme_core::good::{GiAbyss, GiCommissions, GiRealm, GiResin, GiTasks, GiWeeklyBosses};
-use teyvatme_core::live::{Action, BatchAnswer, ImportAnswer, LiveSync, Reason};
+use teyvatme_core::live::{Action, AttachAnswer, AttachRequest, BatchAnswer, ImportAnswer, LiveSync, Reason};
 use teyvatme_core::player_data::{ExportSettings, PlayerData};
 use teyvatme_core::recording;
 use teyvatme_core::wish::hub::{WishHub, take_wish_events};
@@ -573,7 +573,8 @@ impl Decoder {
     }
 
     /// What live sync sends now: a snapshot it asked for (`S`, a ticket and
-    /// the GOOD JSON) or a batch (`B` and the GOOD-X delta JSON).
+    /// the GOOD JSON), a batch (`B` and the GOOD-X delta JSON) or an attach
+    /// (`A` and the request JSON, for `/irminsul/attach`).
     pub fn live_tick(&self, live_enabled: bool) -> Result<Option<String>> {
         let mut state = state_ready(&self.state);
         let Some(state) = state.as_mut() else {
@@ -605,7 +606,41 @@ impl Decoder {
                 );
                 Some(format!("B\n{}", serde_json::to_string(&delta)?))
             }
+            Action::Attach { session } => {
+                let uid = data.gi_player().and_then(|p| p.uid);
+                match (uid, data.gi_endgame()) {
+                    (Some(uid), Some(gi_endgame)) => {
+                        log::info!("live sync: sending the endgame parts (attach)");
+                        let request = AttachRequest {
+                            v: 1,
+                            uid,
+                            session,
+                            gi_endgame,
+                        };
+                        Some(format!("A\n{}", serde_json::to_string(&request)?))
+                    }
+                    _ => {
+                        live.attach_answered(AttachAnswer::Dropped, now);
+                        None
+                    }
+                }
+            }
         })
+    }
+
+    /// The attach request finished: its HTTP status (0: no answer, -1:
+    /// signed out).
+    pub fn attach_answered(&self, status: i32) {
+        let answer = match u16::try_from(status) {
+            Ok(status) => AttachAnswer::of(status),
+            Err(_) => AttachAnswer::Dropped,
+        };
+        log::info!("live sync: attach answer {answer:?}");
+        self.state
+            .lock()
+            .unwrap()
+            .live
+            .attach_answered(answer, now_ms());
     }
 
     /// The snapshot upload `ticket` finished: the tracker's answer when it
@@ -896,6 +931,9 @@ fn apply(
         state.live.note_full_send();
     }
     state.live.note_change(noted + applied.live_updates);
+    if applied.endgame {
+        state.live.note_endgame_change();
+    }
     let first = state.data_at.is_none() || state.updated == Updated::default();
     if applied.items {
         state.updated.items = Some(at);
