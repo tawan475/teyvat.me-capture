@@ -300,6 +300,12 @@ export interface GiTasks {
     bought: boolean
     fates: { item: GoodKey; currency: GoodKey; cost: number; bought: number; limit?: number }[]
   }
+  /**
+   * (1.17.23) The Parametric Transformer's recharge: when it was last used and when it is ready again
+   * (`readyAt` = `usedAt` + its 166-hour recharge). Every login says it, and so does each use (then
+   * sent live). Absent on an account that never used one.
+   */
+  transformer?: { usedAt: UnixSeconds; readyAt: UnixSeconds }
 }
 
 // ── gi_collections ─────────────────────────────────────── [shipped]

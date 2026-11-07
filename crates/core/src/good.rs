@@ -893,6 +893,19 @@ pub struct GiTasks {
     /// Paimon's Bargains as the game last showed it (Capture 1.17.2).
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub bargains: Option<GiBargains>,
+    /// The Parametric Transformer's recharge (Capture 1.17.23).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub transformer: Option<GiTransformer>,
+}
+
+/// `gi_tasks.transformer`: when the Parametric Transformer was last used and
+/// when it is ready again (unix seconds; ready = used + its 166-hour
+/// recharge). Every login says it, and so does each use.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GiTransformer {
+    pub used_at: u32,
+    pub ready_at: u32,
 }
 
 /// `gi_tasks.bargains`: Paimon's Bargains as opening it (or a purchase
@@ -981,6 +994,7 @@ impl GiTasks {
             && self.respawns.is_none()
             && self.resin_spent.is_none()
             && self.bargains.is_none()
+            && self.transformer.is_none()
     }
 }
 
@@ -1396,6 +1410,7 @@ mod tests {
                 respawns: None,
                 resin_spent: None,
                 bargains: None,
+                transformer: None,
             }),
             gi_collections: Some(GiCollections {
                 spincrystals: Some(vec![141001, 141002]),

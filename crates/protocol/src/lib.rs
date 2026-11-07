@@ -118,10 +118,11 @@ pub use crate::routine::{
     ABYSS_FLOOR_IDS, ABYSS_STARS_PER_FLOOR, AbyssPeriod, COMMISSION_REWARD_IDS, CommissionProgress,
     DAILY_TASK_IDS, DailyCommissions, EXPEDITION_HOURS, EXPEDITION_IDS, Expedition, HomeResources,
     MAX_ABYSS_FLOORS, MAX_DAILY_TASKS, MAX_EXPEDITION_STATE, MAX_REALM_CURRENCY, MAX_RESIN,
-    MAX_RESIN_SPENT, MAX_WELKIN_DAYS, ResinClock, WeekResin, matches_avatar_expedition_notify,
-    matches_daily_task_data_notify, matches_daily_task_notify, matches_home_resource_notify,
-    matches_recharge_data_notify, matches_resin_change_notify, matches_tower_all_data_rsp,
-    matches_week_active_notify,
+    MAX_RESIN_SPENT, MAX_WELKIN_DAYS, ResinClock, TRANSFORMER_COOLDOWN_SECS, TRANSFORMER_ITEM_ID,
+    TransformerState, WeekResin, matches_avatar_expedition_notify, matches_daily_task_data_notify,
+    matches_daily_task_notify, matches_home_resource_notify, matches_recharge_data_notify,
+    matches_resin_change_notify, matches_tower_all_data_rsp, matches_transformer_cool_down,
+    matches_transformer_notify, matches_week_active_notify,
 };
 pub use crate::shop::{
     ACQUAINT_FATE, Bargains, FateStock, INTERTWINED_FATE, MASTERLESS_STARDUST,
@@ -1844,6 +1845,12 @@ pub enum CommandMatch {
     /// The Blessing of the Welkin Moon's days left: see
     /// [`matches_recharge_packet`].
     Welkin(u32),
+    /// The Parametric Transformer's last use and recharge, as every login
+    /// sends it: see [`matches_transformer_notify`].
+    Transformer(TransformerState),
+    /// The Parametric Transformer was just used, at this unix time (the
+    /// widget cooldown notify): see [`matches_transformer_cool_down`].
+    TransformerUsed(u32),
     /// A resin clock *candidate*: see [`matches_resin_change_notify`]; the
     /// caller believes it only beside the resin it holds.
     ResinClock(ResinClock),
@@ -1959,6 +1966,8 @@ impl CommandMatch {
             Self::Expeditions(_) => "expeditions",
             Self::HomeResources(_) => "realm currency",
             Self::Welkin(_) => "welkin",
+            Self::Transformer(_) => "parametric transformer",
+            Self::TransformerUsed(_) => "parametric transformer used",
             Self::ResinClock(_) => "resin clock",
             Self::Records(_) => "records",
             Self::TeamUpdate(_) => "team update",
@@ -2158,6 +2167,12 @@ pub fn classify_command(game_command: &GameCommand) -> Option<CommandMatch> {
     }
     if let Some(days) = matches_recharge_packet(game_command) {
         claims.push(CommandMatch::Welkin(days));
+    }
+    if let Some(state) = matches_transformer_notify(&game_command.proto_data) {
+        claims.push(CommandMatch::Transformer(state));
+    }
+    if let Some(at) = matches_transformer_cool_down(&game_command.proto_data) {
+        claims.push(CommandMatch::TransformerUsed(at));
     }
     if let Some(clock) = matches_resin_change_notify(&game_command.proto_data) {
         claims.push(CommandMatch::ResinClock(clock));
