@@ -159,10 +159,22 @@ fn replay_to_file(recording_path: &Path, out: &Path) -> Result<()> {
         .with_game_data_sha(monitor::embedded_game_data_sha());
     let sniffer = GameSniffer::new().set_initial_keys(monitor::load_keys()?);
     let mut replay = Replay::new(sniffer, player_data);
+    // Debug aid: `TEYVATME_REPLAY_HANDOVER_AT=<frame>` hands the session over
+    // to a fresh sniffer and player data at that frame, through the same
+    // bytes the app writes at exit, so an export can be compared with the
+    // uncut replay's.
+    let handover_at: Option<u64> = std::env::var("TEYVATME_REPLAY_HANDOVER_AT")
+        .ok()
+        .and_then(|at| at.parse().ok());
 
     loop {
         match recording.next_frame() {
-            Ok(Some(frame)) => replay.feed(frame),
+            Ok(Some(frame)) => {
+                replay.feed(frame);
+                if handover_at == Some(replay.frames) {
+                    replay.hand_over()?;
+                }
+            }
             Ok(None) => break,
             Err(e) => {
                 // Nothing after a corrupt block can be trusted to line up, but
@@ -550,6 +562,46 @@ impl Replay {
     }
 
     /// Decode one recorded frame, as the live sniffer thread would.
+    /// Hand the running session over to a fresh sniffer and player data, as
+    /// a restart of the app does, through the file format itself.
+    fn hand_over(&mut self) -> Result<()> {
+        let Some(sniffer) = self.sniffer.handover() else {
+            tracing::warn!(
+                frame = self.frames,
+                "no live session to hand over at this frame; continuing uncut"
+            );
+            return Ok(());
+        };
+        let handover = teyvatme_core::handover::SessionHandover {
+            v: teyvatme_core::handover::SessionHandover::VERSION,
+            written_ms: 0,
+            game_data: None,
+            sniffer,
+            player: self.player_data.handover(),
+            live: None,
+        };
+        let bytes = handover.to_bytes()?;
+        let handover = teyvatme_core::handover::SessionHandover::from_bytes(&bytes)
+            .context("the hand-over does not read back")?;
+        let mut sniffer = GameSniffer::new().set_initial_keys(monitor::load_keys()?);
+        anyhow::ensure!(
+            sniffer.resume(handover.sniffer),
+            "the fresh sniffer refused the hand-over"
+        );
+        // The fresh sniffer counts its resets from zero: not a new connection.
+        self.generation = sniffer.session_generation();
+        self.sniffer = sniffer;
+        self.player_data.reset();
+        let unreadable = self.player_data.resume(handover.player);
+        tracing::info!(
+            frame = self.frames,
+            bytes = bytes.len(),
+            unreadable,
+            "handed the session over to a fresh sniffer and player data"
+        );
+        Ok(())
+    }
+
     fn feed(&mut self, frame: RecordedFrame) {
         self.frames += 1;
         let Some(data) = recording::as_ethernet(frame.link_type, frame.data) else {

@@ -118,6 +118,53 @@ impl std::error::Error for DecodeError {}
 
 type Result<T> = std::result::Result<T, DecodeError>;
 
+/// Layout version of [`TcpDecoder::state_bytes`].
+const STATE_VERSION: u8 = 1;
+
+fn put_u16s(out: &mut Vec<u8>, values: &[u16]) {
+    for value in values {
+        out.extend_from_slice(&value.to_le_bytes());
+    }
+}
+
+/// Little-endian reader over [`TcpDecoder::state_bytes`].
+struct StateReader<'a> {
+    bytes: &'a [u8],
+    at: usize,
+}
+
+impl StateReader<'_> {
+    fn take(&mut self, n: usize) -> Option<&[u8]> {
+        let slice = self.bytes.get(self.at..self.at.checked_add(n)?)?;
+        self.at += n;
+        Some(slice)
+    }
+
+    fn u8(&mut self) -> Option<u8> {
+        self.take(1).map(|b| b[0])
+    }
+
+    fn u16(&mut self) -> Option<u16> {
+        self.take(2).map(|b| u16::from_le_bytes([b[0], b[1]]))
+    }
+
+    fn u32(&mut self) -> Option<u32> {
+        self.take(4)
+            .map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+    }
+
+    fn array<const N: usize>(&mut self) -> Option<[u8; N]> {
+        self.take(N)?.try_into().ok()
+    }
+
+    fn u16s(&mut self, into: &mut [u16]) -> Option<()> {
+        for cell in into {
+            *cell = self.u16()?;
+        }
+        Some(())
+    }
+}
+
 /// One stream's decoder: the model state both ends keep in step.
 ///
 /// Created in the reset state, which is what a new connection starts from.
@@ -142,6 +189,71 @@ impl TcpDecoder {
         Self {
             models: Box::new(Models::new()),
         }
+    }
+
+    /// The model state as bytes, for the session hand-over
+    /// ([`crate::GameSniffer::handover`]): what [`Self::from_state_bytes`]
+    /// rebuilds a decoder from, in step with the sender exactly as this one
+    /// is. About 70 KB.
+    pub fn state_bytes(&self) -> Vec<u8> {
+        let m = &*self.models;
+        let mut out = Vec::with_capacity(72 * 1024);
+        out.push(STATE_VERSION);
+        for rank in &m.literal_ranks {
+            out.extend_from_slice(&rank.sym);
+            put_u16s(&mut out, &rank.p);
+        }
+        put_u16s(&mut out, &m.literal_order0.count);
+        out.extend_from_slice(&m.literal_order0.sum.to_le_bytes());
+        for rank in &m.lit_match_ranks {
+            out.extend_from_slice(&rank.sym);
+            out.extend_from_slice(&rank.any.to_le_bytes());
+            put_u16s(&mut out, &rank.p);
+        }
+        put_u16s(&mut out, &m.lit_match_order0.count);
+        out.extend_from_slice(&m.lit_match_order0.sum.to_le_bytes());
+        put_u16s(&mut out, &m.match_flag);
+        for row in &m.len.unary {
+            put_u16s(&mut out, row);
+        }
+        put_u16s(&mut out, &m.len.tree);
+        put_u16s(&mut out, &m.len.first);
+        out
+    }
+
+    /// A decoder in the state [`Self::state_bytes`] described, or `None` for
+    /// bytes of another version or length.
+    pub fn from_state_bytes(bytes: &[u8]) -> Option<Self> {
+        let mut r = StateReader { bytes, at: 0 };
+        if r.u8()? != STATE_VERSION {
+            return None;
+        }
+        let mut m = Models::new();
+        for rank in &mut m.literal_ranks {
+            rank.sym = r.array::<8>()?;
+            r.u16s(&mut rank.p)?;
+        }
+        r.u16s(&mut m.literal_order0.count)?;
+        m.literal_order0.sum = r.u32()?;
+        for rank in &mut m.lit_match_ranks {
+            rank.sym = r.array::<4>()?;
+            rank.any = r.u16()?;
+            r.u16s(&mut rank.p)?;
+        }
+        r.u16s(&mut m.lit_match_order0.count)?;
+        m.lit_match_order0.sum = r.u32()?;
+        r.u16s(&mut m.match_flag)?;
+        for row in &mut m.len.unary {
+            r.u16s(row)?;
+        }
+        r.u16s(&mut m.len.tree)?;
+        r.u16s(&mut m.len.first)?;
+        if r.at != bytes.len() {
+            return None;
+        }
+        Some(Self {
+            models: Box::new(m),
+        })
     }
 
     /// Decode the next message of the stream: `comp` as sent, `raw_len` the

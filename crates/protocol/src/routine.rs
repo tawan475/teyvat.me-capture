@@ -22,6 +22,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::ops::RangeInclusive;
 
 use protobuf::UnknownValueRef::{Fixed32, Fixed64, LengthDelimited, Varint};
+use serde::{Deserialize, Serialize};
 
 use crate::unk_util::MIN_PLAUSIBLE_FINISH_TIMESTAMP;
 use crate::wire::{self, Value};
@@ -69,7 +70,7 @@ pub const MAX_REALM_CURRENCY: u32 = 100_000;
 pub const MAX_WELKIN_DAYS: u32 = 400;
 
 /// Today's Daily Commissions (`WorldOwnerDailyTaskNotify`).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DailyCommissions {
     /// Commissions in today's list.
     pub total: u32,
@@ -79,7 +80,7 @@ pub struct DailyCommissions {
 }
 
 /// The Spiral Abyss period now running (`TowerAllDataRsp`).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AbyssPeriod {
     /// When the period began, in unix seconds.
     pub start: u32,
@@ -92,7 +93,7 @@ pub struct AbyssPeriod {
 }
 
 /// One character's expedition (`AvatarExpeditionDataNotify`).
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Expedition {
     /// The character's avatar guid, as `AvatarInfo.guid` has it.
     pub avatar_guid: u64,
@@ -121,7 +122,7 @@ impl Expedition {
 }
 
 /// The Serenitea Pot's stores (`HomeResourceNotify`).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HomeResources {
     /// Realm currency waiting in the Jar of Riches.
     pub realm_currency: u32,
@@ -701,7 +702,7 @@ pub const MAX_RESIN: u32 = 2_000;
 /// Its shape -- a unix time beside one or two small numbers -- is a dozen
 /// messages' shape, so this is a candidate only: the caller believes it when
 /// one of the numbers is exactly the resin the player properties hold.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResinClock {
     /// Unix seconds of the next +1.
     pub next_at: u32,

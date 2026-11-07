@@ -7,16 +7,18 @@ use std::collections::HashMap;
 use std::io::{BufWriter, Write};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
-use std::sync::{Arc, mpsc as blocking_mpsc};
+use std::sync::{Arc, Mutex, mpsc as blocking_mpsc};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow};
 use base64::prelude::*;
 use chrono::prelude::*;
 use flate2::read::GzDecoder;
+use teyvatme_core::handover::SessionHandover;
 use teyvatme_game_data::AnimeGameData;
 use teyvatme_protocol::{
-    CommandMatch, ConnectionPacket, GameCommand, GamePacket, GameSniffer, KeyState, PacketDirection,
+    CommandMatch, ConnectionPacket, GameCommand, GamePacket, GameSniffer, KeyState,
+    PacketDirection, SnifferHandover,
 };
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio::task::{JoinError, JoinHandle};
@@ -441,6 +443,23 @@ struct SnifferThread {
     /// When the newest game process started (unix ms; 0 = none running), for
     /// [`GameSniffer::set_game_started_ms`].
     game_started_ms: Arc<AtomicU64>,
+    /// What the sniffer leaves for the next run when the thread ends: the
+    /// running connection ([`GameSniffer::handover`]), or nothing.
+    handover: Arc<Mutex<Option<SnifferHandover>>>,
+    join: Option<std::thread::JoinHandle<()>>,
+}
+
+impl SnifferThread {
+    /// End the thread (its sender dropped) and take what it handed over.
+    fn finish(mut self) -> Option<SnifferHandover> {
+        drop(self.packet_tx);
+        if let Some(join) = self.join.take()
+            && join.join().is_err()
+        {
+            tracing::error!("the packet decoding thread panicked");
+        }
+        self.handover.lock().ok()?.take()
+    }
 }
 
 /// Move packet decoding off the monitor's `select!` loop.
@@ -460,8 +479,10 @@ fn spawn_sniffer_thread(
     let thread_queued = Arc::clone(&queued);
     let game_started_ms = Arc::new(AtomicU64::new(0));
     let thread_game_started = Arc::clone(&game_started_ms);
+    let handover = Arc::new(Mutex::new(None));
+    let thread_handover = Arc::clone(&handover);
 
-    std::thread::Builder::new()
+    let join = std::thread::Builder::new()
         .name("teyvatme-sniffer".to_string())
         .spawn(move || {
             let mut last_generation = sniffer.session_generation();
@@ -541,6 +562,9 @@ fn spawn_sniffer_thread(
                     }
                 }
             }
+            if let Ok(mut slot) = thread_handover.lock() {
+                *slot = sniffer.handover();
+            }
             tracing::info!("sniffer thread exiting");
         })
         .context("Unable to start the packet decoding thread")?;
@@ -549,6 +573,8 @@ fn spawn_sniffer_thread(
         packet_tx,
         queued,
         game_started_ms,
+        handover,
+        join: Some(join),
     })
 }
 
@@ -896,9 +922,32 @@ impl Monitor {
     ) -> Result<Self> {
         let mut app_state = AppStateManager::new(state_tx.borrow().clone(), state_tx.clone());
         let game_data = get_database(&mut app_state, &mut ui_message_rx).await?;
-        let player_data = PlayerData::new(game_data).with_game_data_sha(embedded_game_data_sha());
+        let mut player_data =
+            PlayerData::new(game_data).with_game_data_sha(embedded_game_data_sha());
         let keys = load_keys()?;
-        let sniffer = GameSniffer::new().set_initial_keys(keys);
+        let mut sniffer = GameSniffer::new().set_initial_keys(keys);
+        let mut live = LiveSync::new();
+        // The previous run handed its game connection over (an update's
+        // relaunch, say): pick it up instead of waiting for the next login.
+        let resumed = crate::session::take(now_ms()).and_then(|handover| {
+            if !sniffer.resume(handover.sniffer) {
+                return None;
+            }
+            let (items, characters) = handover.player.counts();
+            let unreadable = player_data.resume(handover.player);
+            let journal = handover
+                .live
+                .is_some_and(|live_handover| live.resume(live_handover));
+            tracing::info!(
+                items,
+                characters,
+                unreadable,
+                journal,
+                age_s = now_ms().saturating_sub(handover.written_ms) / 1_000,
+                "resumed the game session the previous run handed over"
+            );
+            Some(())
+        });
         let (packet_tx, packet_rx) = mpsc::unbounded_channel();
         let (decoded_tx, decoded_rx) = mpsc::unbounded_channel();
         let (automation_retry_tx, automation_retry_rx) = mpsc::unbounded_channel();
@@ -942,7 +991,7 @@ impl Monitor {
         let compatible_capture = saved_state_rx.borrow().compatible_capture;
         app_state.update_compatible_capture(compatible_capture);
 
-        Ok(Self {
+        let mut monitor = Self {
             app_state,
             player_data,
             data_replacement: DataReplacement::default(),
@@ -986,7 +1035,7 @@ impl Monitor {
             pcapng,
             ctx,
             wish_hub: None,
-            live: LiveSync::new(),
+            live,
             live_tx,
             live_rx,
             presence: Heartbeat::new(),
@@ -994,7 +1043,89 @@ impl Monitor {
             link_tx,
             link_rx,
             tracker_alerts,
-        })
+        };
+        if resumed.is_some() {
+            monitor.publish_resumed();
+        }
+        Ok(monitor)
+    }
+
+    /// Show the resumed account as captured (the tiles, Today, "Capture
+    /// done") without exporting it again: the previous run did. The
+    /// automation's cycle is dated before the resumed data so a later world
+    /// change exports as it does within one run, and its signature is the
+    /// resumed one so nothing goes up for the resume itself.
+    fn publish_resumed(&mut self) {
+        let cycle = Instant::now();
+        let now = instant_after(Some(cycle));
+        let parts = self.player_data.login_parts();
+        let mut updated = DataUpdated::new();
+        if parts.items {
+            updated.items_updated = Some(now);
+        }
+        if parts.characters {
+            updated.characters_updated = Some(now);
+        }
+        if parts.achievements {
+            updated.achievements_updated = Some(now);
+            updated.achievements_updated_time = Some(chrono::Local::now());
+        }
+        self.automation_cycle_started_at = Some(cycle);
+        self.automation_last_signature = Some((
+            updated.items_updated,
+            updated.characters_updated,
+            updated.achievements_updated,
+        ));
+        self.capture_timestamp_ms = Some(Local::now().timestamp_millis());
+        let player = self.player_data.gi_player();
+        let counts = self.player_data.held_counts();
+        let tasks = self
+            .player_data
+            .gi_tasks(chrono::Utc::now().timestamp().max(0) as u64);
+        let anecdotes = self.player_data.recorded_anecdotes();
+        self.app_state
+            .update_captured(updated, player, Some(counts), tasks, anecdotes);
+        self.app_state.update_capture_done(true);
+        let _ = self.toast_tx.send(Event::info(
+            Topic::Capture,
+            tr("Picked the running game session up again · no new login needed"),
+        ));
+    }
+
+    /// Leave the running game connection and the account for the next run
+    /// (`crate::session`): a clean exit while the session key is live. The
+    /// decoding thread ends here either way; nothing is written without a
+    /// key, or without any account data to apply the connection's changes to.
+    fn write_handover(&mut self) {
+        let Some(sniffer) = self.sniffer.take() else {
+            return;
+        };
+        let Some(sniffer_handover) = sniffer.finish() else {
+            tracing::info!("no live game connection to hand over");
+            return;
+        };
+        if !self.player_data.login_parts().items {
+            tracing::info!("a live game connection but no account data yet: nothing handed over");
+            return;
+        }
+        let player = self.player_data.handover();
+        let (items, characters) = player.counts();
+        let handover = SessionHandover {
+            v: SessionHandover::VERSION,
+            written_ms: now_ms(),
+            game_data: embedded_game_data_sha().map(str::to_string),
+            sniffer: sniffer_handover,
+            player,
+            live: self.live.handover(),
+        };
+        match crate::session::write(&handover) {
+            Ok(()) => tracing::info!(
+                items,
+                characters,
+                "wrote the session hand-over for the next run"
+            ),
+            Err(e) => tracing::warn!("could not write the session hand-over: {e:#}"),
+        }
     }
 
     /// Hand wish history keys and wishes to `hub`.
@@ -1171,6 +1302,7 @@ impl Monitor {
         // the replacement executable on the self-update path. Releasing the
         // device here is what keeps the two processes from fighting over it.
         self.stop_capture().await;
+        self.write_handover();
     }
 
     async fn handle_ui_msg(&mut self, msg: Message) {

@@ -23,8 +23,9 @@
 //! debounce, tagged `reason: "change"`.
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
-use crate::delta::{self, GoodDelta, Keyed, Sum};
+use crate::delta::{self, GoodDelta, Keyed, Path, Sum};
 use crate::good::{GiCapture, GiCaptureJournal, Good};
 
 /// No batch sooner than this after the previous one (except a big one).
@@ -140,6 +141,27 @@ struct BatchFlight {
     keyed: Keyed,
     /// Changes noted when its export was built: what it covers.
     pending_at_build: usize,
+}
+
+/// Live sync's place in the running login, as the session hand-over carries
+/// it ([`LiveSync::handover`] / [`LiveSync::resume`]): the login and the
+/// tracker's journal with the state it holds, so the next process's batches
+/// continue the journal instead of starting with a resync snapshot.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct LiveHandover {
+    session: String,
+    world: u32,
+    journal: Option<JournalHandover>,
+    pending: usize,
+    last_sent_ms: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+struct JournalHandover {
+    base: String,
+    seq: u64,
+    entries: Vec<(Path, Value)>,
+    hints: Vec<(Path, Value)>,
 }
 
 /// What the monitor should do now.
@@ -416,6 +438,48 @@ impl LiveSync {
             && self.wanted.is_none()
             && self.snapshot_flight.is_none()
             && now_ms >= self.attach_retry_at_ms
+    }
+
+    /// The login and journal, for the session hand-over; `None` before a
+    /// login's snapshot named the session.
+    pub fn handover(&self) -> Option<LiveHandover> {
+        let login = self.login.as_ref()?;
+        Some(LiveHandover {
+            session: login.session.clone(),
+            world: login.world,
+            journal: self.journal.as_ref().map(|journal| JournalHandover {
+                base: journal.base.clone(),
+                seq: journal.seq,
+                entries: journal.keyed.entries.clone().into_iter().collect(),
+                hints: journal.keyed.hints.clone().into_iter().collect(),
+            }),
+            pending: self.pending,
+            last_sent_ms: self.last_sent_ms,
+        })
+    }
+
+    /// Continue the login another process handed over: its session for the
+    /// snapshots and attaches, its journal for the batches. Fresh senders
+    /// only (`false` otherwise).
+    pub fn resume(&mut self, handover: LiveHandover) -> bool {
+        if self.login.is_some() || self.journal.is_some() {
+            return false;
+        }
+        self.login = Some(Login {
+            session: handover.session,
+            world: handover.world,
+        });
+        self.journal = handover.journal.map(|journal| Journal {
+            base: journal.base,
+            seq: journal.seq,
+            keyed: Keyed {
+                entries: journal.entries.into_iter().collect(),
+                hints: journal.hints.into_iter().collect(),
+            },
+        });
+        self.pending = handover.pending;
+        self.last_sent_ms = handover.last_sent_ms;
+        true
     }
 
     /// Some account data changed (`count` entries, an estimate).
@@ -840,6 +904,49 @@ mod tests {
             Action::Batch(delta) => *delta,
             other => panic!("expected a batch, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn a_handed_over_journal_continues_in_a_fresh_sender() {
+        let mut live = live_at(0);
+        live.note_change(5);
+        let batch = sent(live.tick(true, 15_000, export(with_materials(5))));
+        assert_eq!(batch.seq, 1);
+        live.batch_answered(
+            BatchAnswer::Stored {
+                collapse: false,
+                watching: false,
+            },
+            15_100,
+        );
+        assert_eq!(LiveSync::new().handover(), None, "nothing before a login");
+
+        let handover = live.handover().expect("a logged-in sender hands over");
+        let json = serde_json::to_vec(&handover).unwrap();
+        let back: LiveHandover = serde_json::from_slice(&json).unwrap();
+        assert_eq!(back, handover);
+
+        // The next process: same session, same journal, the next batch is
+        // seq 2 against what the tracker holds (no resync snapshot).
+        let mut resumed = LiveSync::new();
+        assert!(resumed.resume(back.clone()));
+        assert!(!resumed.resume(back), "a sender with a login keeps it");
+        assert!(resumed.is_live(15_200));
+        assert_eq!(resumed.automation_reason(true, 15_200), None);
+        // One small change: due after the lone-change wait, as within a run.
+        resumed.note_change(1);
+        assert_eq!(
+            resumed.tick(true, 30_200, export(with_materials(6))),
+            Action::Nothing
+        );
+        let batch = sent(resumed.tick(true, 140_000, export(with_materials(6))));
+        assert_eq!(batch.seq, 2);
+        assert_eq!(batch.base, "k1");
+        assert_eq!(batch.changes.len(), 1, "only the one material that moved");
+        assert_eq!(
+            resumed.capture(Reason::World).unwrap().session,
+            live.capture(Reason::World).unwrap().session
+        );
     }
 
     #[test]

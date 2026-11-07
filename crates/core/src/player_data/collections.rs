@@ -8,6 +8,7 @@
 
 use std::collections::BTreeMap;
 
+use serde::{Deserialize, Serialize};
 use teyvatme_protocol::{
     AranaraState, ArchiveTab, AvatarWardrobe, DefeatCount, EndingState, EventInfo, Handbook,
     HandbookProgress, HandbookState, HangoutChapter, HomeComfort, MusicSong, ParentQuests,
@@ -18,7 +19,7 @@ use super::PlayerData;
 use crate::good;
 
 /// Each part as the game last sent it; `None` until it did.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub(super) struct CollectionsState {
     pub archive: Option<BTreeMap<ArchiveTab, Vec<u32>>>,
     pub defeats: Option<BTreeMap<u32, DefeatCount>>,

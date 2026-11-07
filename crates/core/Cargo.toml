@@ -23,6 +23,9 @@ test-support = []
 teyvatme-game-data = { path = "../game-data", default-features = false }
 anyhow = "1.0.99"
 teyvatme-protocol = { path = "../protocol" }
+# The session hand-over carries items and characters as protobuf bytes.
+base64 = "0.22"
+protobuf = "3.7.1"
 chrono = "0.4.42"
 # The live sync session id (live.rs).
 getrandom = "0.3.4"

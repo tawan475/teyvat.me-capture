@@ -46,6 +46,7 @@ use std::ops::RangeInclusive;
 
 use protobuf::Message;
 use protobuf::UnknownValueRef::{Fixed32, Fixed64, LengthDelimited, Varint};
+use serde::{Deserialize, Serialize};
 
 use crate::r#gen::protos::Unk;
 use crate::unk_util::MIN_PLAUSIBLE_FINISH_TIMESTAMP;
@@ -84,7 +85,7 @@ const REWARD_TARGET_COUNT: u64 = 10;
 const MIN_REWARD_ID: u64 = 1_000;
 
 /// One anecdote the player has met.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Anecdote {
     pub id: u32,
     /// 3 = recorded, 2 = in progress, 0 = idle again (a repeatable one).
@@ -95,7 +96,7 @@ pub struct Anecdote {
 }
 
 /// The reward track: ten recorded anecdotes per exchange.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AnecdoteReward {
     /// Which exchange is next.
     pub index: u32,
@@ -106,7 +107,7 @@ pub struct AnecdoteReward {
 }
 
 /// The book's wish: the NPC the player asked to hear about.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AnecdoteWish {
     /// `None` when no wish is active.
     pub npc_id: Option<u32>,
@@ -115,7 +116,7 @@ pub struct AnecdoteWish {
 }
 
 /// Everything an `AnecdoteGetDataRsp` says.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AnecdoteData {
     /// In wire order; ids are unique.
     pub anecdotes: Vec<Anecdote>,

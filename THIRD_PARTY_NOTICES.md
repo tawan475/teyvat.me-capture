@@ -51,6 +51,14 @@ emmachase, vendored and changed (`crates/pktmon/VENDORED.md`). MIT; its
 licence and copyright notice are in `crates/pktmon/LICENSE` (Copyright (c)
 2025 emmachase).
 
+## mhy-kcp
+
+`crates/mhy-kcp` is [mhy-kcp](https://github.com/hashblen/mhy-kcp) by hashblen
+(a fork of [kcp](https://github.com/Matrix-Zhang/kcp) 0.6.0 by Matrix and
+Y. T. Chung) at revision `1acf4ba5`, vendored and changed
+(`crates/mhy-kcp/VENDORED.md`). MIT; its licence and copyright notice are in
+`crates/mhy-kcp/LICENSE` (Copyright (c) 2017 Zhang Cheng).
+
 ## auto-artifactarium and reliquary
 
 `crates/protocol` started as auto-artifactarium

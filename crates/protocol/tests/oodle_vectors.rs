@@ -90,6 +90,47 @@ fn check_stream(name: &str) -> (usize, usize, usize) {
     kinds
 }
 
+/// A decoder rebuilt from its state bytes half-way through a stream decodes
+/// the rest exactly as the one that ran from the start (the session hand-over).
+#[test]
+fn state_bytes_resume_a_stream_half_way() {
+    let path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/oodle/login_then_traffic.ontv.gz");
+    let messages = read_vectors(&path);
+    let half = messages.len() / 2;
+    assert!(half > 0);
+
+    let mut whole = TcpDecoder::new();
+    for message in &messages[..half] {
+        whole.decode(&message.sent, message.raw.len()).unwrap();
+    }
+    let bytes = whole.state_bytes();
+    let mut resumed = TcpDecoder::from_state_bytes(&bytes).expect("the state bytes read back");
+    assert_eq!(
+        resumed.state_bytes(),
+        bytes,
+        "a round trip keeps every cell"
+    );
+    for (i, message) in messages[half..].iter().enumerate() {
+        let a = whole.decode(&message.sent, message.raw.len()).unwrap();
+        let b = resumed.decode(&message.sent, message.raw.len()).unwrap();
+        assert!(
+            a == message.raw && b == message.raw,
+            "message {} after the hand-over",
+            half + i
+        );
+    }
+
+    assert!(TcpDecoder::from_state_bytes(&[]).is_none());
+    assert!(TcpDecoder::from_state_bytes(&bytes[..bytes.len() - 1]).is_none());
+    let mut other = bytes.clone();
+    other[0] = 99;
+    assert!(
+        TcpDecoder::from_state_bytes(&other).is_none(),
+        "another version is refused"
+    );
+}
+
 #[test]
 fn tiny_messages() {
     let (_, _, verbatim) = check_stream("tiny_messages");

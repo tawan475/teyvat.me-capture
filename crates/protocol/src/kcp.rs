@@ -28,7 +28,28 @@ pub(crate) struct KcpSniffer {
     time_start: Instant,
     foreign: ForeignTally,
     progress: Progress,
+    /// Made by [`Self::resume`] without a position and no datagram seen yet:
+    /// the first one sets where receiving starts.
+    join_pending: bool,
+    /// Made by [`Self::resume`] with the previous process's position and
+    /// nothing delivered since: a gap the capture missed around the restart
+    /// would stall it forever, so after [`GAP_SKIP_AFTER`] datagrams of new
+    /// pushes with no delivery it skips to the lowest buffered one.
+    gap_watch: bool,
 }
+
+/// The receive position and buffered pushes of a sniffer, handed to the next
+/// process ([`KcpSniffer::held`] / [`KcpSniffer::resume`]).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct KcpHeld {
+    pub(crate) rcv_nxt: u32,
+    /// `(sn, frg, data)`, in sequence order.
+    pub(crate) pushes: Vec<(u32, u8, Vec<u8>)>,
+}
+
+/// Datagrams with new pushes and no delivery after which a resumed sniffer
+/// gives up on the gap before them.
+pub(crate) const GAP_SKIP_AFTER: u32 = 6;
 
 /// Whether the conversation is getting anywhere, for diagnosing a stall.
 #[derive(Default)]
@@ -161,6 +182,52 @@ impl KcpSniffer {
             time_start: Instant::now(),
             foreign: ForeignTally::default(),
             progress: Progress::default(),
+            join_pending: false,
+            gap_watch: false,
+        }
+    }
+
+    /// A sniffer for a conversation already under way (the session hand-over
+    /// of [`crate::GameSniffer::resume`]). With `held`, it continues exactly
+    /// where the previous process stood: its position and the pushes it had
+    /// buffered, so nothing in flight at the exit is lost; a gap the capture
+    /// missed around the restart is given up on after [`GAP_SKIP_AFTER`]
+    /// stalled datagrams. Without, it starts at the lowest push of the first
+    /// datagram it sees. Either way a message cut by the join fails the
+    /// magic check and is dropped by the lane's probation.
+    #[instrument(skip(held))]
+    pub(crate) fn resume(conv_id: u32, held: Option<KcpHeld>) -> Self {
+        let Some(held) = held else {
+            debug!("created a kcp instance joining mid-stream at the first push seen");
+            return KcpSniffer {
+                join_pending: true,
+                ..Self::new(conv_id)
+            };
+        };
+        let mut sniffer = KcpSniffer {
+            gap_watch: true,
+            ..Self::new(conv_id)
+        };
+        sniffer.kcp.set_rcv_nxt(held.rcv_nxt);
+        for (sn, frg, data) in &held.pushes {
+            let segment = standard_push(conv_id, *sn, *frg, data);
+            if let Err(e) = sniffer.kcp.input(&segment) {
+                debug!(sn, "a held push was refused: {e}");
+            }
+        }
+        debug!(
+            rcv_nxt = held.rcv_nxt,
+            pushes = held.pushes.len(),
+            "created a kcp instance at the previous process's position"
+        );
+        sniffer
+    }
+
+    /// The position and buffered pushes, for the hand-over.
+    pub(crate) fn held(&self) -> KcpHeld {
+        KcpHeld {
+            rcv_nxt: self.kcp.resume_point(),
+            pushes: self.kcp.held_pushes(),
         }
     }
 
@@ -181,6 +248,16 @@ impl KcpSniffer {
         // reprocess to discard bytes 4..8 of every segment
         let segments = reformat_kcp_segments(segments);
         let newest = highest_push_sn(&segments);
+        if self.join_pending
+            && let Some(first) = lowest_push_sn(&segments)
+        {
+            self.join_pending = false;
+            debug!(
+                sn = first,
+                "joining the conversation at its first push seen"
+            );
+            self.kcp.set_rcv_nxt(first);
+        }
 
         match self.kcp.input(&segments) {
             Ok(size) => trace!(size, "input successful"),
@@ -212,6 +289,26 @@ impl KcpSniffer {
         }
 
         self.progress.note(self.conv_id, newest, !recv.is_empty());
+        if self.gap_watch {
+            if !recv.is_empty() {
+                self.gap_watch = false;
+            } else if self.progress.new_without_delivery >= GAP_SKIP_AFTER
+                && let Some(lowest) = self.kcp.lowest_buffered_sn()
+            {
+                self.gap_watch = false;
+                warn!(
+                    conv = self.conv_id,
+                    from = self.kcp.rcv_nxt(),
+                    to = lowest,
+                    "resumed conversation: the segments before the buffered ones never came \
+                     (missed around the restart); skipping to what is held"
+                );
+                self.kcp.set_rcv_nxt(lowest);
+                if let Err(e) = self.kcp.input(&[]) {
+                    debug!("could not move the held segments on: {e}");
+                }
+            }
+        }
         recv
     }
 
@@ -326,6 +423,49 @@ const KCP_CMD_WINS: u8 = 84;
 /// That function only emits segments whose header and content fit, so this
 /// walk cannot run off the end; the bounds are still checked rather than
 /// assumed.
+/// One standard-layout push segment (conv, cmd, frg, wnd, ts, sn, una, len,
+/// data), as the kcp crate's `input` reads it: how a resumed sniffer is fed
+/// the pushes the previous process held.
+fn standard_push(conv: u32, sn: u32, frg: u8, data: &[u8]) -> Vec<u8> {
+    let mut segment = Vec::with_capacity(KCP_OVERHEAD + data.len());
+    segment.extend_from_slice(&conv.to_le_bytes());
+    segment.push(KCP_CMD_PUSH);
+    segment.push(frg);
+    segment.extend_from_slice(&RCV_WND.to_le_bytes());
+    segment.extend_from_slice(&0u32.to_le_bytes());
+    segment.extend_from_slice(&sn.to_le_bytes());
+    segment.extend_from_slice(&0u32.to_le_bytes());
+    segment.extend_from_slice(&(data.len() as u32).to_le_bytes());
+    segment.extend_from_slice(data);
+    segment
+}
+
+/// The lowest push sequence number in a reformatted (standard-layout)
+/// datagram, where a resumed sniffer starts receiving.
+fn lowest_push_sn(standard: &[u8]) -> Option<u32> {
+    let mut lowest: Option<u32> = None;
+    let mut i = 0usize;
+    while standard.len().saturating_sub(i) >= KCP_OVERHEAD {
+        let field = |offset: usize| {
+            u32::from_le_bytes(standard[i + offset..i + offset + 4].try_into().unwrap())
+        };
+        let cmd = standard[i + 4];
+        let sn = field(12);
+        let len = field(20) as usize;
+        if cmd == KCP_CMD_PUSH {
+            lowest = Some(lowest.map_or(sn, |low| low.min(sn)));
+        }
+        match i
+            .checked_add(KCP_OVERHEAD)
+            .and_then(|end| end.checked_add(len))
+        {
+            Some(next) => i = next,
+            None => break,
+        }
+    }
+    lowest
+}
+
 fn highest_push_sn(standard: &[u8]) -> Option<u32> {
     let mut highest: Option<u32> = None;
     let mut i = 0usize;

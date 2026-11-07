@@ -9,6 +9,7 @@
 
 use std::collections::BTreeMap;
 
+use serde::{Deserialize, Serialize};
 use teyvatme_game_data::{Endgame, TheaterDifficulty};
 use teyvatme_protocol::{AbyssRecord, StygianRecord, TheaterDetail};
 
@@ -16,11 +17,12 @@ use super::PlayerData;
 use crate::good;
 
 /// Each part as the game last sent it; `None` until it did.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub(super) struct EndgameState {
     pub theater: Option<TheaterProgress>,
     /// By season and whether the run was co-op (a season has at most one
     /// record of each).
+    #[serde(default, with = "crate::handover::option_pairs")]
     pub stygian: Option<BTreeMap<(u32, bool), good::GiStygianRecord>>,
     /// The Spiral Abyss's record book by period.
     pub abyss: Option<BTreeMap<u32, good::GiAbyssRecord>>,
@@ -33,7 +35,7 @@ pub(super) struct EndgameState {
 }
 
 /// The Theater's state for the season running.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(super) struct TheaterProgress {
     pub season: u32,
     /// `RoleCombatDifficultyExcelConfigData.difficultyId`, if chosen yet.
@@ -47,7 +49,7 @@ pub(super) struct TheaterProgress {
     pub max_stars: Option<u32>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(super) struct TheaterStars {
     pub stars: u32,
     pub acts: Vec<u32>,

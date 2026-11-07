@@ -51,6 +51,7 @@ use std::ops::RangeInclusive;
 
 use protobuf::Message;
 use protobuf::UnknownValueRef::{Fixed32, Fixed64, LengthDelimited, Varint};
+use serde::{Deserialize, Serialize};
 
 use crate::r#gen::protos::Unk;
 
@@ -372,7 +373,7 @@ pub struct GachaRecordLink {
 
 /// The weapon banner's Epitomized Path: the weapon charted and its Fate
 /// Points (`GachaInfo.wish_item_id` / `wish_progress` / `wish_max_progress`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EpitomizedPath {
     /// The charted weapon's id; the caller checks it against the game data.
     pub item_id: u32,

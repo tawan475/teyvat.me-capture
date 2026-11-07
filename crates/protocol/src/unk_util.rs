@@ -37,6 +37,7 @@ use base64::prelude::BASE64_STANDARD;
 use protobuf::Message;
 use protobuf::UnknownValueRef::*;
 use rsa::{Pkcs1v15Encrypt, RsaPrivateKey};
+use serde::{Deserialize, Serialize};
 
 use crate::r#gen::protos::{AvatarInfo, Item, Unk};
 
@@ -138,7 +139,7 @@ pub fn matches_get_player_token_rsp(
 }
 
 /// One achievement, as recovered from an `AchievementAllDataNotify`.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Achievement {
     pub id: u32,
     pub status: u32,
