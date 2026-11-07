@@ -893,7 +893,7 @@ pub struct GiTasks {
     /// Paimon's Bargains as the game last showed it (Capture 1.17.2).
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub bargains: Option<GiBargains>,
-    /// The Parametric Transformer's recharge (Capture 1.17.23).
+    /// The Parametric Transformer's recharge (Capture 1.17.24).
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub transformer: Option<GiTransformer>,
 }
