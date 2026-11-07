@@ -689,6 +689,98 @@ pub fn matches_recharge_data_notify(data: &[u8]) -> Option<u32> {
     (days <= u64::from(MAX_WELKIN_DAYS)).then_some(days as u32)
 }
 
+// ----------------------------------------------------- parametric transformer
+
+/// The Parametric Transformer's item id (a gadget kept in the bag).
+pub const TRANSFORMER_ITEM_ID: u64 = 220_021;
+
+/// The Parametric Transformer's recharge: 166 hours, the same since it came
+/// in 1.4. The login message carries it, and it is what tells that message
+/// apart (see [`matches_transformer_notify`]).
+pub const TRANSFORMER_COOLDOWN_SECS: u64 = 597_600;
+
+/// The most lone numbers the login message is believed to hold: 7.2 sends 2
+/// (when, and the recharge), 4 while one stands placed in the world (its
+/// entity id and an active flag besides).
+const MAX_TRANSFORMER_FIELDS: usize = 6;
+
+/// The Parametric Transformer's recharge as the game last said it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TransformerState {
+    /// When it was last used (unix seconds): the recharge counts from here.
+    pub used_at: u32,
+    /// The recharge (seconds).
+    pub cooldown: u32,
+}
+
+/// Recover the Parametric Transformer's last use from the message the server
+/// sends with every login's data (7.2: command 22775, `{1: used at, 6:
+/// 597600}`; while one stands placed, `{1, 3: its entity, 6, 12: 1}`), or
+/// `None` if this is not one.
+///
+/// The shape: only lone numbers (at most six), one of
+/// them exactly [`TRANSFORMER_COOLDOWN_SECS`] and exactly one a unix time.
+/// An account that never used one sends no time, and is not read.
+pub fn matches_transformer_notify(data: &[u8]) -> Option<TransformerState> {
+    let fields = varint_fields(data)?;
+    if fields.len() < 2 || fields.len() > MAX_TRANSFORMER_FIELDS {
+        return None;
+    }
+    let values: Vec<u64> = fields.into_values().collect();
+    if values
+        .iter()
+        .filter(|v| **v == TRANSFORMER_COOLDOWN_SECS)
+        .count()
+        != 1
+    {
+        return None;
+    }
+    let times: Vec<u64> = values.into_iter().filter(|v| is_timestamp(*v)).collect();
+    let [used_at] = times.as_slice() else {
+        return None;
+    };
+    Some(TransformerState {
+        used_at: *used_at as u32,
+        cooldown: TRANSFORMER_COOLDOWN_SECS as u32,
+    })
+}
+
+/// Recover the Parametric Transformer's last use from the widget cooldown
+/// notify the server sends when one is used (7.2: command 6894, `{3: {5:
+/// 220021, 14: used at in ms}}`, the 7.1 `WidgetCoolDownNotify`), or `None`
+/// if it holds no entry for the Transformer.
+///
+/// The shape: every field a list of small entries, each only lone numbers
+/// (an item id, a time in milliseconds, at most one more); exactly one entry
+/// names [`TRANSFORMER_ITEM_ID`], beside exactly one millisecond time.
+pub fn matches_transformer_cool_down(data: &[u8]) -> Option<u32> {
+    let msg = parse(data)?;
+    let mut found = None;
+    for values in msg.values() {
+        for value in values {
+            let entry = varint_fields(as_bytes(value)?)?;
+            if entry.is_empty() || entry.len() > 3 {
+                return None;
+            }
+            if !entry.values().any(|v| *v == TRANSFORMER_ITEM_ID) {
+                continue;
+            }
+            let times: Vec<u64> = entry
+                .values()
+                .filter(|v| **v >= 1_000 && is_timestamp(**v / 1_000))
+                .copied()
+                .collect();
+            let [ms] = times.as_slice() else {
+                return None;
+            };
+            if found.replace((*ms / 1_000) as u32).is_some() {
+                return None;
+            }
+        }
+    }
+    found
+}
+
 // ------------------------------------------------------------------- resin
 
 /// Original Resin a candidate may name: refills can take it past the natural
@@ -944,6 +1036,71 @@ mod tests {
 
     fn cat(parts: &[Vec<u8>]) -> Vec<u8> {
         parts.concat()
+    }
+
+    // -- parametric transformer ----------------------------------------------
+
+    #[test]
+    fn the_transformer_login_message_gives_its_last_use() {
+        // 7.2's two shapes: at rest, and while one stands placed.
+        let at_rest = cat(&[v(1, 1_794_084_743), v(6, 597_600)]);
+        let placed = cat(&[
+            v(1, 1_792_543_719),
+            v(3, 536_892_388),
+            v(6, 597_600),
+            v(12, 1),
+        ]);
+        assert_eq!(
+            matches_transformer_notify(&at_rest),
+            Some(TransformerState {
+                used_at: 1_794_084_743,
+                cooldown: 597_600,
+            })
+        );
+        assert_eq!(
+            matches_transformer_notify(&placed).map(|s| s.used_at),
+            Some(1_792_543_719)
+        );
+        // Another recharge, no time, two times, or anything but numbers: not it.
+        assert_eq!(
+            matches_transformer_notify(&cat(&[v(1, 1_794_084_743), v(6, 600)])),
+            None
+        );
+        assert_eq!(
+            matches_transformer_notify(&cat(&[v(6, 597_600), v(2, 7)])),
+            None
+        );
+        assert_eq!(
+            matches_transformer_notify(&cat(&[
+                v(1, 1_794_084_743),
+                v(2, 1_794_084_800),
+                v(6, 597_600)
+            ])),
+            None
+        );
+        assert_eq!(
+            matches_transformer_notify(&cat(&[v(1, 1_794_084_743), b(2, &v(6, 597_600))])),
+            None
+        );
+    }
+
+    #[test]
+    fn the_widget_cool_down_names_the_transformer_when_it_is_used() {
+        // 7.2: {3: {5: 220021, 14: ms}}.
+        let used = b(3, &cat(&[v(5, 220_021), v(14, 1_794_084_732_000)]));
+        assert_eq!(matches_transformer_cool_down(&used), Some(1_794_084_732));
+        // Another widget's cooldown beside it is skipped.
+        let two = cat(&[
+            b(3, &cat(&[v(5, 220_004), v(14, 1_794_084_000_000)])),
+            used.clone(),
+        ]);
+        assert_eq!(matches_transformer_cool_down(&two), Some(1_794_084_732));
+        // Only another widget, or the id without a time: nothing.
+        let other = b(3, &cat(&[v(5, 220_004), v(14, 1_794_084_000_000)]));
+        assert_eq!(matches_transformer_cool_down(&other), None);
+        assert_eq!(matches_transformer_cool_down(&b(3, &v(5, 220_021))), None);
+        // A message of other shapes holding the id: not it.
+        assert_eq!(matches_transformer_cool_down(&v(5, 220_021)), None);
     }
 
     // -- resin clock ----------------------------------------------------------

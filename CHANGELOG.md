@@ -20,6 +20,12 @@ Each release's section is its GitHub release notes (`.github/workflows/release.y
   one. A crash writes nothing.
 - The KCP crate is vendored (`crates/mhy-kcp`, MIT) for the one setter the
   resume needs.
+- The Parametric Transformer's recharge is captured: `gi_tasks.transformer`
+  = when it was last used and when it is ready again (166 hours later).
+  Every login says it (a small message holding the time and the 166-hour
+  recharge), and so does each use (the widget cooldown notify, sent live),
+  so the tracker's Planner task can count down by itself. Verified on two
+  recordings: both read the same use and ready time.
 
 ## 1.17.22
 

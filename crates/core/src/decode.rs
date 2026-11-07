@@ -167,6 +167,7 @@ impl DataReplacement {
                         | CommandMatch::QuestUpdate(_)
                         | CommandMatch::Party(_)
                         | CommandMatch::Bargains(_)
+                        | CommandMatch::TransformerUsed(_)
                         | CommandMatch::ShopGoods(_)
                         | CommandMatch::Theater(_)
                         | CommandMatch::StygianRecords(_)
@@ -453,6 +454,17 @@ pub fn apply_commands(
                 tracing::info!("Found Welkin Moon days");
                 player_data.process_routine(RoutinePart::Welkin(days));
                 applied.routine = true;
+            }
+            CommandMatch::Transformer(found) => {
+                tracing::info!(used_at = found.used_at, "Found the Parametric Transformer");
+                player_data.process_routine(RoutinePart::Transformer(found));
+                applied.routine = true;
+            }
+            CommandMatch::TransformerUsed(used_at) => {
+                tracing::info!(used_at, "Found a Parametric Transformer use");
+                player_data.process_routine(RoutinePart::TransformerUsed(used_at));
+                applied.routine = true;
+                applied.live_updates += 1;
             }
             CommandMatch::Quests(found) => {
                 tracing::info!(

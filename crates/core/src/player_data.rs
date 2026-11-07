@@ -18,7 +18,7 @@ use teyvatme_protocol::{
     ANECDOTE_AREA_IDS, ANECDOTE_IDS, AbyssPeriod, AnecdoteData, Bargains, BossList,
     CommissionProgress, DailyCommissions, EpitomizedPath, Expedition, HomeResources,
     MAX_ANECDOTE_FINISH_COUNT, MAX_ANECDOTE_STATE, MAX_ANECDOTES, RecordsMessage, ResinClock,
-    ShopEntry, WeekResin,
+    ShopEntry, TransformerState, WeekResin,
 };
 
 use crate::good::{self, fake_uninitialized_4th_line};
@@ -643,6 +643,10 @@ pub enum RoutinePart {
     ResinSpent(WeekResin),
     /// Paimon's Bargains, as opening it showed it.
     Bargains(Bargains),
+    /// The Parametric Transformer's last use and recharge, from the login.
+    Transformer(TransformerState),
+    /// The Parametric Transformer was just used, at this unix time.
+    TransformerUsed(u32),
 }
 
 /// The planner's routine as captured: each part `None` until its message
@@ -665,6 +669,9 @@ struct Routine {
     resin_spent: Option<(u32, u32, u32)>,
     /// Paimon's Bargains and when the game last said it (unix seconds).
     bargains: Option<(Bargains, u32)>,
+    /// The Parametric Transformer's last use and recharge.
+    #[serde(default)]
+    transformer: Option<TransformerState>,
 }
 
 /// Commission progress candidates (command id, reward id) followed while
@@ -1101,6 +1108,15 @@ impl PlayerData {
             RoutinePart::Bargains(found) => {
                 let at = self.clock_secs.unwrap_or_default() as u32;
                 self.routine.bargains = Some((found, at));
+            }
+            RoutinePart::Transformer(found) => self.routine.transformer = Some(found),
+            RoutinePart::TransformerUsed(used_at) => {
+                // The use itself carries no recharge: the one held, else the game's.
+                let cooldown = self.routine.transformer.map_or(
+                    teyvatme_protocol::TRANSFORMER_COOLDOWN_SECS as u32,
+                    |held| held.cooldown,
+                );
+                self.routine.transformer = Some(TransformerState { used_at, cooldown });
             }
             RoutinePart::Resin(clock) => {
                 // A three-number shape a dozen messages share: believed only
@@ -1652,6 +1668,13 @@ impl PlayerData {
                 .as_ref()
                 .filter(|(_, at)| plausible_time(u64::from(*at), now_secs))
                 .and_then(|(found, at)| self.export_bargains(found, *at)),
+            transformer: routine
+                .transformer
+                .filter(|state| plausible_time(u64::from(state.used_at), now_secs))
+                .map(|state| good::GiTransformer {
+                    used_at: state.used_at,
+                    ready_at: state.used_at.saturating_add(state.cooldown),
+                }),
         };
         (!tasks.is_empty()).then_some(tasks)
     }
@@ -4749,6 +4772,35 @@ mod tests {
         .flat_map(|g| b(4, g))
         .collect();
         [b(9, &shop), v(7, 1001)].concat()
+    }
+
+    #[test]
+    fn the_transformer_exports_its_last_use_and_when_it_is_ready() {
+        let mut data = PlayerData::new(TestGameData::default().build());
+        data.set_clock(NOW_SECS);
+        let transformer =
+            |data: &PlayerData| data.export_tasks(NOW_SECS).and_then(|t| t.transformer);
+        assert_eq!(transformer(&data), None);
+        // The login's state.
+        let used = (NOW_SECS - 3 * 86_400) as u32;
+        data.process_routine(RoutinePart::Transformer(TransformerState {
+            used_at: used,
+            cooldown: 597_600,
+        }));
+        assert_eq!(
+            transformer(&data),
+            Some(good::GiTransformer {
+                used_at: used,
+                ready_at: used + 597_600,
+            })
+        );
+        // A use later in the session restarts the recharge.
+        let now = (NOW_SECS - 60) as u32;
+        data.process_routine(RoutinePart::TransformerUsed(now));
+        assert_eq!(transformer(&data).map(|t| t.ready_at), Some(now + 597_600));
+        // A time that can't be (ahead of the clock) is left out.
+        data.process_routine(RoutinePart::TransformerUsed((NOW_SECS + 2 * 86_400) as u32));
+        assert_eq!(transformer(&data), None);
     }
 
     #[test]
