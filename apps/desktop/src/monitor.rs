@@ -37,7 +37,9 @@ use crate::link::{Alerts, AlertsAnswer, Command, Heartbeat, PresenceOutcome, Pre
 use crate::live::{
     Action, AttachAnswer, AttachRequest, BatchAnswer, ImportAnswer, LiveSync, Reason,
 };
-use crate::player_data::{ExportReport, ExportSettings, PlayerData};
+use crate::player_data::{
+    ExportReport, ExportSettings, LOGIN_COMPLETE_QUIET_MS, LoginParts, PlayerData,
+};
 use crate::signin::{AuthStatus, TrackerAuth, UploadCredential};
 use crate::{AppState, DataUpdated, Message, State};
 
@@ -54,6 +56,14 @@ const AUTOMATION_EXPLORE_WAIT: Duration = Duration::from_secs(12);
 /// New data restarts a countdown only this long after it began, so a stream
 /// of changes cannot hold the export back.
 const AUTOMATION_MAX_WAIT: Duration = Duration::from_secs(20);
+
+/// Once every part of the login is held (`LoginParts::complete`: bag,
+/// characters, achievements, world, commissions, anecdotes, exploration)
+/// the burst is over and the countdown waits only this long after the
+/// last new data, in place of the 5 s quiet and the 12 s exploration
+/// wait. Measured logins exported 12-20 s after the bag before, with the
+/// login's own data done at 7-10 s.
+const LOGIN_COMPLETE_QUIET: Duration = Duration::from_millis(LOGIN_COMPLETE_QUIET_MS);
 
 /// Whole-request timeout for a tracker call that only asks a question.
 ///
@@ -1032,12 +1042,11 @@ impl Monitor {
                 break;
             }
 
-            let explore_held = self.player_data.has_exploration_points();
+            let login = self.player_data.login_parts();
             let sleep_fut = async {
                 if let Some(pending_since) = self.automation_pending_since {
                     let armed_at = self.automation_armed_at.unwrap_or(pending_since);
-                    let rem =
-                        automation_wait(pending_since, armed_at, explore_held, Instant::now());
+                    let rem = automation_wait(pending_since, armed_at, login, Instant::now());
                     if !rem.is_zero() {
                         tokio::time::sleep(rem).await;
                     }
@@ -1049,7 +1058,7 @@ impl Monitor {
             let settle_fut = async {
                 match (self.settle_pending_since, self.settle_armed_at) {
                     (Some(pending), Some(armed)) => {
-                        let rem = automation_wait(pending, armed, explore_held, Instant::now());
+                        let rem = automation_wait(pending, armed, login, Instant::now());
                         if !rem.is_zero() {
                             tokio::time::sleep(rem).await;
                         }
@@ -2041,7 +2050,10 @@ impl Monitor {
     }
 
     async fn execute_automation_export(&mut self) {
-        tracing::info!("Executing background automation export!");
+        tracing::info!(
+            login_missing = ?self.player_data.login_parts().missing(),
+            "Executing background automation export!"
+        );
         self.automation_pending_since = None;
         let saved_state = self.upload_state();
         let plan = AutomationPlan::for_state(&saved_state);
@@ -2910,17 +2922,22 @@ fn instant_after(floor: Option<Instant>) -> Instant {
 /// `check_automation_trigger` refuses every later attempt for the same data, and
 /// the data itself only changes at the next login.
 ///
-/// How long a pending countdown still waits: [`AUTOMATION_DEBOUNCE`] after
-/// the last new data and, until the world's exploration points are held,
-/// [`AUTOMATION_EXPLORE_WAIT`] after it began.
+/// How long a pending countdown still waits: [`LOGIN_COMPLETE_QUIET`] after
+/// the last new data once every part of the login is held; else
+/// [`AUTOMATION_DEBOUNCE`] after it and, until the world's exploration
+/// points are held, [`AUTOMATION_EXPLORE_WAIT`] after it began.
 fn automation_wait(
     pending_since: Instant,
     armed_at: Instant,
-    explore_held: bool,
+    login: LoginParts,
     now: Instant,
 ) -> Duration {
-    let quiet = AUTOMATION_DEBOUNCE.saturating_sub(now.saturating_duration_since(pending_since));
-    if explore_held {
+    let since_data = now.saturating_duration_since(pending_since);
+    if login.complete() {
+        return LOGIN_COMPLETE_QUIET.saturating_sub(since_data);
+    }
+    let quiet = AUTOMATION_DEBOUNCE.saturating_sub(since_data);
+    if login.exploration {
         return quiet;
     }
     quiet.max(AUTOMATION_EXPLORE_WAIT.saturating_sub(now.saturating_duration_since(armed_at)))
@@ -3321,22 +3338,68 @@ pub(crate) mod tests {
     fn a_countdown_waits_for_the_burst_and_the_exploration() {
         let start = Instant::now();
         let at = |s: u64| start + Duration::from_secs(s);
+        let explored = LoginParts {
+            exploration: true,
+            ..LoginParts::default()
+        };
+        let nothing = LoginParts::default();
         // Exploration held: 5 s after the last data.
         assert_eq!(
-            automation_wait(start, start, true, at(2)),
+            automation_wait(start, start, explored, at(2)),
             Duration::from_secs(3)
         );
-        assert_eq!(automation_wait(start, start, true, at(6)), Duration::ZERO);
+        assert_eq!(
+            automation_wait(start, start, explored, at(6)),
+            Duration::ZERO
+        );
         // Not yet: until 12 s from the start, whichever ends later.
         assert_eq!(
-            automation_wait(start, start, false, at(6)),
+            automation_wait(start, start, nothing, at(6)),
             Duration::from_secs(6)
         );
         assert_eq!(
-            automation_wait(at(10), start, false, at(11)),
+            automation_wait(at(10), start, nothing, at(11)),
             Duration::from_secs(4)
         );
-        assert_eq!(automation_wait(start, start, false, at(13)), Duration::ZERO);
+        assert_eq!(
+            automation_wait(start, start, nothing, at(13)),
+            Duration::ZERO
+        );
+        // Every part of the login held: 3 s after the last data, whatever
+        // the age of the countdown.
+        let complete = LoginParts {
+            items: true,
+            characters: true,
+            achievements: true,
+            world: true,
+            commissions: true,
+            anecdotes: true,
+            exploration: true,
+        };
+        assert!(complete.complete());
+        assert_eq!(
+            automation_wait(start, start, complete, at(1)),
+            Duration::from_secs(2)
+        );
+        assert_eq!(
+            automation_wait(start, start, complete, at(3)),
+            Duration::ZERO
+        );
+        assert_eq!(
+            automation_wait(at(7), start, complete, at(8)),
+            Duration::from_secs(2)
+        );
+        // One part short (a new account without the Travel Accounts book):
+        // the old waits.
+        let short = LoginParts {
+            anecdotes: false,
+            ..complete
+        };
+        assert_eq!(short.missing(), vec!["anecdotes"]);
+        assert_eq!(
+            automation_wait(start, start, short, at(3)),
+            Duration::from_secs(2)
+        );
         // New data restarts it, for 20 s at most.
         assert_eq!(rearmed(start, start, at(7)), at(7));
         assert_eq!(rearmed(at(19), start, at(21)), at(19));

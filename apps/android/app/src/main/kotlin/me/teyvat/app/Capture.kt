@@ -171,6 +171,8 @@ data class Summary(
     val gameData: String? = null,
     val events: List<ActivityEvent> = emptyList(),
     val wish: WishInfo = WishInfo(),
+    /** Every part of the login is held: the automation waits 3 s after the last data, not 5. */
+    val loginComplete: Boolean = false,
 ) {
     val captured get() = dataAt != null
 
@@ -193,6 +195,7 @@ data class Summary(
                 phase = o.optString("phase", "waiting"),
                 missedByRestart = o.optBoolean("missedByRestart"),
                 alreadyOpen = o.optBoolean("alreadyOpen"),
+                loginComplete = o.optBoolean("loginComplete"),
                 keyAt = o.long("keyAt"),
                 dataVersion = o.optLong("dataVersion"),
                 updatedItems = updated?.long("items"),

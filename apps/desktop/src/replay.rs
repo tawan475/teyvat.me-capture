@@ -189,7 +189,11 @@ fn replay_to_file(recording_path: &Path, out: &Path) -> Result<()> {
             .with_context(|| format!("cannot create the directory {}", dir.display()))?;
     }
     std::fs::write(out, json).with_context(|| format!("cannot write {}", out.display()))?;
-    tracing::info!("wrote the export to {}", out.display());
+    tracing::info!(
+        login_missing = ?replay.player_data.login_parts().missing(),
+        "wrote the export to {}",
+        out.display()
+    );
     Ok(())
 }
 
@@ -784,7 +788,14 @@ impl Replay {
                 journal.live.note_endgame_change();
             }
             if let Some(ns) = at {
-                journal.automation_at = Some(ns / 1_000_000 + JOURNAL_DEBOUNCE_MS);
+                // The desktop's quiet: 3 s once the login's parts are all
+                // held, 5 s before.
+                let quiet = if self.player_data.login_parts().complete() {
+                    teyvatme_core::player_data::LOGIN_COMPLETE_QUIET_MS
+                } else {
+                    JOURNAL_DEBOUNCE_MS
+                };
+                journal.automation_at = Some(ns / 1_000_000 + quiet);
             }
         }
         if applied.any() {

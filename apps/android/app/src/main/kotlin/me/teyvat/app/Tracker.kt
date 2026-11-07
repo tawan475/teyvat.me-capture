@@ -393,7 +393,7 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
             retryAt = 0L
             backoff = 0L
         }
-        if (now - dataAt < Exports.DEBOUNCE_MS) return
+        if (now - dataAt < Exports.debounceMs(summary)) return
         lastSignature = signature
         upload(dataAt, manual = false, live = live)
     }

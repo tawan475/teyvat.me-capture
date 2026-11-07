@@ -2,6 +2,19 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.17.22
+
+- The login's snapshot goes up sooner. The export used to wait 5 s of
+  quiet after the last packet and at least 12 s for the exploration
+  points, 20 s at most, so a login's snapshot started 12-20 s after the
+  bag arrived while the login's own data was in after 7-10 s. Now Capture
+  ticks off the parts a login sends (bag, characters, achievements, the
+  world, commissions, the Travel Accounts book, the exploration points)
+  and, once every one is held, exports 3 s after the last packet: about
+  9-13 s after the bag. A login missing a part (an account without the
+  book, a message the matchers did not recognise) keeps the old waits.
+  Same on Android, for the upload and the auto-export file.
+
 ## 1.17.21
 
 - Stygian Onslaught records reach the tracker as soon as the record screen
