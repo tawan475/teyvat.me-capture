@@ -78,6 +78,11 @@ const PICTURE_IDS: std::ops::RangeInclusive<u64> = 1..=99_999_999;
 /// player of a message wears one (picture ids reach into this range too).
 const FRAME_IDS: std::ops::RangeInclusive<u64> = 100_000..=100_999;
 
+/// `ProfilePicture`'s picture field (the same in every client 6.3-7.2: 1
+/// avatar, 2 costume, 3 picture, 4 frame); used only when the values can't
+/// settle it.
+const PICTURE_FIELD: u32 = 3;
+
 /// A nickname's length in characters (the game allows 14; room for more).
 const MAX_NICKNAME_CHARS: usize = 64;
 
@@ -409,7 +414,10 @@ fn picture(bytes: &[u8]) -> Option<BTreeMap<u32, u64>> {
 /// Settle which field of the players' picture submessages is the picture:
 /// the one every player has (a frame is optional: the default one is left
 /// out); when every player also wears a frame, the field whose values are
-/// all frame-sized beside one that is not. Otherwise no pictures are read.
+/// all frame-sized beside one that is not. When both are frame-sized (a
+/// quest picture, 100010-100300, beside a frame) the picture is the
+/// `ProfilePicture` field the game has used since 6.3, 3 (`PICTURE_FIELD`).
+/// Otherwise no pictures are read.
 fn settle_pictures(records: &mut [StygianRecord]) {
     let maps = || {
         records
@@ -430,7 +438,8 @@ fn settle_pictures(records: &mut [StygianRecord]) {
         [a, b] => match (frame_sized(a), frame_sized(b)) {
             (true, false) => Some(*b),
             (false, true) => Some(*a),
-            _ => None,
+            (true, true) => everywhere.contains(&PICTURE_FIELD).then_some(PICTURE_FIELD),
+            (false, false) => None,
         },
         _ => None,
     };
@@ -1577,6 +1586,26 @@ mod tests {
                 (10000107, Some(90), Some(0)),
             ]
         );
+    }
+
+    #[test]
+    fn a_quest_picture_beside_a_frame_is_still_the_picture() {
+        // Every player wears a frame and a picture of frame size (a quest
+        // one): the values can't tell them apart, the picture field can.
+        let solo = record_72(
+            &[player_72(ME, 1, None, 100_230)],
+            &[fight_72(
+                1,
+                40,
+                &[team_72(ME, &[avatar_72(10000052, 90, 0, 4)])],
+            )],
+        );
+        let mut body = Vec::new();
+        field_bytes(13, &solo, &mut body);
+        let mut data = Vec::new();
+        field_bytes(9, &body, &mut data);
+        let found = matches_stygian_records(&data).unwrap();
+        assert_eq!(found[0].players[0].picture, Some(100_230));
     }
 
     #[test]
