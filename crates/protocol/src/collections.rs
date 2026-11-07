@@ -2065,21 +2065,29 @@ const NAME_CARD_IDS: RangeInclusive<u64> = 210_001..=210_999;
 /// A UID: nine or ten digits.
 const UID_RANGE: RangeInclusive<u64> = 100_000_000..=4_294_967_295;
 
+/// The picture's numbers by field. `ProfilePicture` has kept the same field
+/// numbers in every client from 6.3 to 7.2 (1 avatar, 2 costume, 3 picture,
+/// 4 frame), and its values can't tell the parts apart: picture ids run from
+/// 1 (the Traveler, 11/21 in an outfit) to 900004, and the quest and event
+/// ones (100010-100300, 200010-200011) sit among the frames (100000-100021)
+/// and the costumes (2xxxxx). Telling them apart by value lost every one of
+/// those (the plain Traveler showed instead).
 fn profile_picture(bytes: &[u8]) -> Option<ProfilePicture> {
     let msg = parse(bytes)?;
     let mut out = ProfilePicture::default();
-    for values in msg.values() {
+    for (tag, values) in &msg {
         let value = single_varint(values)?;
-        let slot = match value {
-            1_000..=99_999 => &mut out.id,
-            100_000..=199_999 => &mut out.frame_id,
-            200_000..=999_999 => &mut out.costume_id,
-            10_000_000..=10_999_999 => &mut out.avatar_id,
+        let (slot, range) = match *tag {
+            1 => (&mut out.avatar_id, 10_000_000..=10_999_999),
+            2 => (&mut out.costume_id, 1..=99_999_999),
+            3 => (&mut out.id, 1..=99_999_999),
+            4 => (&mut out.frame_id, 1..=99_999_999),
             _ => return None,
         };
-        if slot.replace(value as u32).is_some() {
+        if !range.contains(&value) {
             return None;
         }
+        *slot = Some(value as u32);
     }
     (out.id.is_some() || out.avatar_id.is_some()).then_some(out)
 }
@@ -2490,6 +2498,32 @@ mod tests {
         let picture = profile_picture(&[v(1, 10_000_046), v(2, 204_601)].concat()).unwrap();
         assert_eq!(picture.avatar_id, Some(10_000_046));
         assert_eq!(picture.costume_id, Some(204_601));
+        // Pictures whose ids look like other parts (7.2 data): the Traveler in
+        // an outfit (11), a character under 1000 (Amber, 100), a quest picture
+        // among the frames (100010) and an event one among the costumes
+        // (200010), each with or without a frame.
+        for (id, frame) in [
+            (11, None),
+            (2, Some(100_011)),
+            (100, Some(100_016)),
+            (100_010, Some(100_011)),
+            (100_020, None),
+            (200_010, Some(100_000)),
+        ] {
+            let bytes = [v(3, id), frame.map(|f| v(4, f)).unwrap_or_default()].concat();
+            assert_eq!(
+                profile_picture(&bytes),
+                Some(ProfilePicture {
+                    id: Some(id as u32),
+                    frame_id: frame.map(|f| f as u32),
+                    ..Default::default()
+                }),
+                "{id}"
+            );
+        }
+        // An unknown field or a character id out of range: not a picture.
+        assert_eq!(profile_picture(&[v(3, 1001), v(5, 7)].concat()), None);
+        assert_eq!(profile_picture(&v(1, 1001)), None);
         // A list of details (a friend list) or no name card: another message.
         assert_eq!(
             matches_social_detail(&[b(6, &detail), b(6, &detail)].concat()),

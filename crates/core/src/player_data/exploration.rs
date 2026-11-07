@@ -382,6 +382,12 @@ impl PlayerData {
         self.exploration.explore.is_some()
     }
 
+    /// Whether the scene requests have named whose world the player is in
+    /// (the login's world enter, 4 s after the bag).
+    pub fn world_known(&self) -> bool {
+        self.exploration.world.owner.is_some()
+    }
+
     /// Whether the scene requests say the player is in another player's
     /// world (co-op).
     fn in_another_world(&self) -> bool {

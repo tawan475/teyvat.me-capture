@@ -695,6 +695,55 @@ struct CommissionGuess {
     ruled_out: bool,
 }
 
+/// The parts a login sends, in the order they come (7.1-7.2: the bag,
+/// characters and achievements within a second, the world enter and the
+/// commissions 4 s later, the Travel Accounts book at 6 s, the exploration
+/// points with the enemies defeated at 7 s; a second scene's at 10 s).
+/// Once every one is held the login's data is complete and a snapshot
+/// need only wait [`LOGIN_COMPLETE_QUIET_MS`] of quiet for the tail; a
+/// part missing (a new account without the book, a part the matchers did
+/// not recognise) keeps the apps' longer waits, which is what every login
+/// got before 1.17.22.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct LoginParts {
+    pub items: bool,
+    pub characters: bool,
+    pub achievements: bool,
+    /// Whose world the player is in (the scene requests at the world enter).
+    pub world: bool,
+    pub commissions: bool,
+    pub anecdotes: bool,
+    /// The exploration points (`has_exploration_points`).
+    pub exploration: bool,
+}
+
+/// How long a snapshot waits after the last new data once the login's
+/// parts are all held: the burst is over, only its tail (a second scene's
+/// exploration, 3.4 s after the first in the logs) may still come.
+pub const LOGIN_COMPLETE_QUIET_MS: u64 = 3_000;
+
+impl LoginParts {
+    pub fn complete(self) -> bool {
+        self.missing().is_empty()
+    }
+
+    /// The parts not held yet, named for the log.
+    pub fn missing(self) -> Vec<&'static str> {
+        [
+            (self.items, "items"),
+            (self.characters, "characters"),
+            (self.achievements, "achievements"),
+            (self.world, "world"),
+            (self.commissions, "commissions"),
+            (self.anecdotes, "anecdotes"),
+            (self.exploration, "exploration"),
+        ]
+        .into_iter()
+        .filter_map(|(held, name)| (!held).then_some(name))
+        .collect()
+    }
+}
+
 pub struct PlayerData {
     game_data: AnimeGameData,
     achievements: HashMap<u32, Achievement>,
@@ -1892,6 +1941,20 @@ impl PlayerData {
         )
     }
 
+    /// Which of the login's parts are held: the apps' snapshot timing waits
+    /// for the login's whole burst only while one is missing.
+    pub fn login_parts(&self) -> LoginParts {
+        LoginParts {
+            items: !self.items.is_empty(),
+            characters: !self.characters.is_empty(),
+            achievements: !self.achievements.is_empty(),
+            world: self.world_known(),
+            commissions: self.routine.commissions.is_some(),
+            anecdotes: self.anecdotes.is_some(),
+            exploration: self.exploration.explore.is_some(),
+        }
+    }
+
     /// Items held, of every kind (what a full send is measured against).
     pub fn item_count(&self) -> usize {
         self.items.len()
@@ -2767,6 +2830,62 @@ mod tests {
         // An empty database: every game data lookup misses, which is exactly the
         // post-version-bump case the export report exists for.
         PlayerData::new(AnimeGameData::new())
+    }
+
+    #[test]
+    fn the_login_parts_are_held_one_message_at_a_time() {
+        let mut data = player_data();
+        let parts = data.login_parts();
+        assert!(!parts.complete());
+        assert_eq!(
+            parts.missing(),
+            vec![
+                "items",
+                "characters",
+                "achievements",
+                "world",
+                "commissions",
+                "anecdotes",
+                "exploration"
+            ]
+        );
+        data.process_anecdotes(&AnecdoteData {
+            anecdotes: Vec::new(),
+            unlocked_areas: Vec::new(),
+            reward: None,
+            wish: None,
+        });
+        data.process_routine(RoutinePart::Commissions(DailyCommissions {
+            total: 4,
+            finished: Some(4),
+        }));
+        let parts = data.login_parts();
+        assert!(parts.anecdotes && parts.commissions && !parts.complete());
+        assert_eq!(
+            parts.missing(),
+            vec![
+                "items",
+                "characters",
+                "achievements",
+                "world",
+                "exploration"
+            ]
+        );
+        // A new login clears them with the rest.
+        data.reset();
+        assert_eq!(data.login_parts(), LoginParts::default());
+        // The checklist itself.
+        let complete = LoginParts {
+            items: true,
+            characters: true,
+            achievements: true,
+            world: true,
+            commissions: true,
+            anecdotes: true,
+            exploration: true,
+        };
+        assert!(complete.complete());
+        assert!(complete.missing().is_empty());
     }
 
     /// A hand-built game-data database: the inside of each map as a JSON

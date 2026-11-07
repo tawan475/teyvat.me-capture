@@ -41,6 +41,11 @@ object Exports {
     private const val FOLDER = "Teyvat.me"
     /** The desktop's automation debounce: this long after the last new data. */
     const val DEBOUNCE_MS = 5_000L
+    /** The debounce once every part of the login is held (the decoder's `loginComplete`): the burst is over. */
+    const val LOGIN_COMPLETE_QUIET_MS = 3_000L
+
+    /** How long after the last new data the automation acts on this summary. */
+    fun debounceMs(summary: Summary): Long = if (summary.loginComplete) LOGIN_COMPLETE_QUIET_MS else DEBOUNCE_MS
 
     /** `teyvatme_wishes_<yyyy-MM-dd_HH-mm>.json`: a UIGF file. */
     fun wishFileName(at: Long = System.currentTimeMillis()): String =
@@ -223,7 +228,7 @@ class AutoExporter(private val context: Context, private val prefs: Prefs, priva
         if (Exports.problem(summary, settings.filters) != null) return
         val signature = listOf(summary.login, summary.updatedItems, summary.updatedCharacters, summary.updatedAchievements)
         if (signature == lastSignature) return
-        if (busy || System.currentTimeMillis() - dataAt < Exports.DEBOUNCE_MS) return
+        if (busy || System.currentTimeMillis() - dataAt < Exports.debounceMs(summary)) return
         lastSignature = signature
         busy = true
         scope.launch {

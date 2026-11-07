@@ -26,7 +26,7 @@ use teyvatme_core::decode::{
 };
 use teyvatme_core::good::{GiAbyss, GiCommissions, GiRealm, GiResin, GiTasks, GiWeeklyBosses};
 use teyvatme_core::live::{Action, AttachAnswer, AttachRequest, BatchAnswer, ImportAnswer, LiveSync, Reason};
-use teyvatme_core::player_data::{ExportSettings, PlayerData};
+use teyvatme_core::player_data::{ExportSettings, LOGIN_COMPLETE_QUIET_MS, LoginParts, PlayerData};
 use teyvatme_core::recording;
 use teyvatme_core::wish::hub::{WishHub, take_wish_events};
 use teyvatme_game_data::AnimeGameData;
@@ -186,6 +186,10 @@ pub struct Summary {
     pub events: Vec<Event>,
     /// The wish card ([`Wishes::summary`]), filled in by the decoder.
     pub wish: Option<WishSummary>,
+    /// Every part of the login is held (`LoginParts::complete`): the app's
+    /// automated upload and auto-export wait `LOGIN_COMPLETE_QUIET_MS`
+    /// after the last data instead of their 5 s.
+    pub login_complete: bool,
 }
 
 /// What a frame from the tee is.
@@ -208,10 +212,11 @@ struct Connection {
     recovery_failed: bool,
 }
 
-/// "Capture done" ([`State::settled`]), the desktop's snapshot timing: quiet
-/// this long after the last data, the exploration points (sent 4-8 s after
-/// the bag) awaited up to `SETTLE_EXPLORE_MS`, done after `SETTLE_MAX_MS`
-/// whatever comes.
+/// "Capture done" ([`State::settled`]), the desktop's snapshot timing: once
+/// every part of the login is held (`LoginParts::complete`) quiet for
+/// `LOGIN_COMPLETE_QUIET_MS` after the last data; else quiet this long,
+/// the exploration points (sent 4-8 s after the bag) awaited up to
+/// `SETTLE_EXPLORE_MS`, done after `SETTLE_MAX_MS` whatever comes.
 const SETTLE_QUIET_MS: u64 = 5_000;
 const SETTLE_EXPLORE_MS: u64 = 12_000;
 const SETTLE_MAX_MS: u64 = 25_000;
@@ -349,10 +354,20 @@ impl State {
         }
     }
 
+    /// Which of the login's parts are held (`LoginParts`).
+    fn login_parts(&self) -> LoginParts {
+        self.player_data
+            .as_ref()
+            .map(PlayerData::login_parts)
+            .unwrap_or_default()
+    }
+
     /// Whether this login's data has settled, as the desktop decides it:
-    /// quiet for [`SETTLE_QUIET_MS`] once the bag and characters are in,
-    /// waiting for the exploration points up to [`SETTLE_EXPLORE_MS`], at
-    /// most [`SETTLE_MAX_MS`]. Once true, true until a new login.
+    /// quiet for [`LOGIN_COMPLETE_QUIET_MS`] once every part of the login
+    /// is held; else quiet for [`SETTLE_QUIET_MS`] once the bag and
+    /// characters are in, waiting for the exploration points up to
+    /// [`SETTLE_EXPLORE_MS`], at most [`SETTLE_MAX_MS`]. Once true, true
+    /// until a new login.
     fn settled(&self, now: u64) -> bool {
         if self.settled.get() {
             return true;
@@ -360,13 +375,14 @@ impl State {
         let (Some(from), Some(last)) = (self.settle_from, self.data_at) else {
             return false;
         };
-        let explore = self
-            .player_data
-            .as_ref()
-            .is_some_and(|data| data.has_exploration_points());
+        let login = self.login_parts();
         let since = now.saturating_sub(from);
-        let quiet = now.saturating_sub(last) >= SETTLE_QUIET_MS;
-        let done = (quiet && (explore || since >= SETTLE_EXPLORE_MS)) || since >= SETTLE_MAX_MS;
+        let done = if login.complete() {
+            now.saturating_sub(last) >= LOGIN_COMPLETE_QUIET_MS || since >= SETTLE_MAX_MS
+        } else {
+            let quiet = now.saturating_sub(last) >= SETTLE_QUIET_MS;
+            (quiet && (login.exploration || since >= SETTLE_EXPLORE_MS)) || since >= SETTLE_MAX_MS
+        };
         if done {
             self.settled.set(true);
         }
@@ -399,6 +415,7 @@ impl State {
             game_data: embedded_game_data_sha(),
             events: self.events.iter().cloned().collect(),
             wish: None,
+            login_complete: self.login_parts().complete(),
         }
     }
 
