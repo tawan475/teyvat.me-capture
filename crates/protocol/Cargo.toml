@@ -31,7 +31,9 @@ required-features = ["cli"]
 [dependencies]
 base64 = "0.22"
 etherparse = "0.16.0"
-kcp = { git = "https://github.com/hashblen/mhy-kcp", rev = "1acf4ba5938ff91f7f2d2a31e16bf1f8d2db9c8f" }
+# Vendored (crates/mhy-kcp): the session hand-over needs a receive-sequence setter.
+kcp = { path = "../mhy-kcp" }
+serde = { version = "1.0.219", features = ["derive"] }
 protobuf = "3.7.1"
 rand_mt = "4.2"
 tracing = "0.1"

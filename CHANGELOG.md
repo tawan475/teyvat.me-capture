@@ -2,6 +2,25 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.17.23
+
+- Restarting Teyvat.me no longer needs a new login. Updating mid-session
+  (and closing or quitting the app, then starting it again within two
+  minutes) used to lose the game session: the key that decrypts it and the
+  account data the later changes apply to lived only in the process, so
+  nothing decoded until the game was logged in again. A clean exit now
+  hands the running session to the next start: the key and conversation
+  (with the packets held in flight and the decompressor's state), the
+  account as captured and live sync's journal, in `session-handover.json`
+  in the data folder, deleted once read. The next start carries on as if
+  nothing happened; the first messages after the gap are checked against
+  the key before anything is believed, and a file that does not match (a
+  new login meanwhile, too old) is ignored. Verified on a recording cut at
+  four points, inside the login burst too: the export equals the uncut
+  one. A crash writes nothing.
+- The KCP crate is vendored (`crates/mhy-kcp`, MIT) for the one setter the
+  resume needs.
+
 ## 1.17.22
 
 - The login's snapshot goes up sooner. The export used to wait 5 s of

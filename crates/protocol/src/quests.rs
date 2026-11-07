@@ -36,6 +36,7 @@ use std::ops::RangeInclusive;
 
 use protobuf::Message;
 use protobuf::UnknownValueRef::{LengthDelimited, Varint};
+use serde::{Deserialize, Serialize};
 
 use crate::r#gen::protos::Unk;
 
@@ -51,7 +52,7 @@ pub const MIN_PARENT_QUESTS: usize = 20;
 pub const MAX_PARENT_QUESTS: usize = 20_000;
 
 /// The parent quests as the login listed them, ids ascending.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ParentQuests {
     pub finished: Vec<u32>,
     /// Accepted, not finished.

@@ -22,6 +22,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::ops::RangeInclusive;
 
 use protobuf::UnknownValueRef::{Fixed32, Fixed64, LengthDelimited, Varint};
+use serde::{Deserialize, Serialize};
 
 use crate::wire::{self, Value};
 
@@ -160,7 +161,7 @@ fn only_tag(entries: &[Entry], skip: &[u32], ok: impl Fn(&[u64]) -> bool) -> Opt
 /// The Archive's tabs. Each tab's codex ids live in their own block
 /// (`10 010 002` is a quest, `30 211 101` the weapon 11101...), which is how
 /// an id list is told to be one tab's.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum ArchiveTab {
     Quests,
     LivingBeings,
@@ -258,7 +259,7 @@ pub fn matches_codex_notify(data: &[u8]) -> Option<BTreeMap<ArchiveTab, Vec<u32>
 const MAX_LIVING_BEINGS: usize = 10_000;
 
 /// One Living Being's counts (`QueryCodexMonsterBeKilledNumRsp`).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DefeatCount {
     pub defeated: u32,
     pub captured: u32,
@@ -329,7 +330,7 @@ pub fn matches_codex_kill_count(data: &[u8]) -> Option<BTreeMap<u32, DefeatCount
 // ----------------------------------------------------------------- handbook
 
 /// `Investigation.State` / `InvestigationTarget.State`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum HandbookState {
     InProgress,
     /// Done, its reward not taken yet.
@@ -348,7 +349,7 @@ impl HandbookState {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HandbookProgress {
     pub progress: u32,
     pub total: u32,
@@ -356,14 +357,14 @@ pub struct HandbookProgress {
 }
 
 /// One target of a Handbook chapter.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HandbookTarget {
     pub chapter: u32,
     pub progress: HandbookProgress,
 }
 
 /// The Adventurer Handbook (`PlayerInvestigationAllInfoNotify`).
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Handbook {
     /// By chapter id.
     pub chapters: BTreeMap<u32, HandbookProgress>,
@@ -515,14 +516,14 @@ const MAX_TCG_CARDS: usize = 5_000;
 /// The most proficiency a card can have (7.1: 64 seen).
 const MAX_TCG_PROFICIENCY: u64 = 10_000;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TcgCard {
     pub count: u32,
     /// 0 when the card has none (or the game sent none).
     pub proficiency: u32,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TcgDeck {
     /// The player's own text.
     pub name: String,
@@ -532,7 +533,7 @@ pub struct TcgDeck {
 }
 
 /// The TCG collection (`GCGDSDataNotify`).
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TcgCollection {
     /// By card id.
     pub cards: BTreeMap<u32, TcgCard>,
@@ -744,7 +745,7 @@ fn tcg_cards(list: &[Entry]) -> Option<BTreeMap<u32, TcgCard>> {
 // ------------------------------------------------------------------ aranara
 
 /// `AranaraCollectionState`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AranaraState {
     None,
     Collectable,
@@ -827,7 +828,7 @@ const MIN_GUID: u64 = 1 << 32;
 const EXPIRY: RangeInclusive<u64> = 1_577_836_800..=u32::MAX as u64;
 
 /// One weapon skin the player holds (`_AvatarWeaponSkinDataNotify`).
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WeaponSkin {
     pub id: u32,
     /// The avatar guids wearing it.
@@ -915,7 +916,7 @@ const MAX_WARDROBE: usize = 2_000;
 const MAX_TEAMS: usize = 100;
 
 /// One saved team.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SavedTeam {
     /// The player's own text.
     pub name: String,
@@ -924,7 +925,7 @@ pub struct SavedTeam {
 
 /// What `AvatarDataNotify` holds beside the characters: the outfits, wind
 /// gliders and sprint trails owned, and the saved teams.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AvatarWardrobe {
     pub gliders: Vec<u32>,
     pub outfits: Vec<u32>,
@@ -1124,7 +1125,7 @@ const HANGOUT_CHAPTER_IDS: RangeInclusive<u64> = 100_000..=999_999;
 const MAX_HANGOUTS: usize = 1_000;
 
 /// `CoopReward.State` (one reward per ending).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EndingState {
     /// Seen, its reward not taken yet.
     Unclaimed,
@@ -1135,7 +1136,7 @@ pub enum EndingState {
 }
 
 /// One Hangout Event chapter (`CoopDataNotify`).
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HangoutChapter {
     /// `CoopChapter.State` (0 closed, 1 conditions not met, 2 open, 3
     /// accepted), when it could be told apart from the ending counts.
@@ -1291,7 +1292,7 @@ const MONSTER_IDS: RangeInclusive<u64> = 20_000_000..=99_999_999;
 const MAX_BOSSES: usize = 2_000;
 
 /// The weekly bosses' resin discounts (`WeeklyBossResinDiscountInfo`).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WeeklyDiscounts {
     /// Discounts used this week (`discount_num`: 3 all evening on a 7.1
     /// account whose game said 0 of 3 left).
@@ -1311,7 +1312,7 @@ impl WeeklyDiscounts {
 }
 
 /// The bosses and elites of the Adventurer Handbook (`GetInvestigationMonsterRsp`).
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BossList {
     /// By the Handbook's monster id: when each spot respawns next (unix
     /// seconds; a time already past means it is up).
@@ -1439,7 +1440,7 @@ const EVENT_IDS: RangeInclusive<u64> = 1_000..=99_999;
 const MAX_EVENTS: usize = 500;
 
 /// One progress counter of an event (`ActivityWatcherInfo`).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EventWatcher {
     pub progress: u32,
     pub total: u32,
@@ -1447,7 +1448,7 @@ pub struct EventWatcher {
 }
 
 /// One event running (`ActivityInfo`).
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EventInfo {
     pub schedule: u32,
     /// When it opened and closes (unix seconds).
@@ -1595,7 +1596,7 @@ pub fn matches_activity_info_rsp(data: &[u8]) -> Option<BTreeMap<u32, EventInfo>
 const MAX_COMFORT: u64 = 10_000_000;
 
 /// One realm's comfort (`HomeModuleComfortInfo`).
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HomeComfort {
     /// The mansion's comfort.
     pub mansion: u32,
@@ -1662,7 +1663,7 @@ pub fn matches_home_comfort_notify(data: &[u8]) -> Option<BTreeMap<u32, HomeComf
 const TCG_LEVEL_IDS: RangeInclusive<u64> = 10_000..=999_999;
 
 /// The TCG challenges cleared (`GCGLevelChallengeNotify`).
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TcgChallenges {
     /// By level id: the challenge ids finished in it (empty: played, none).
     pub levels: BTreeMap<u32, Vec<u32>>,
@@ -1767,7 +1768,7 @@ pub fn matches_tcg_tavern(data: &[u8]) -> Option<BTreeMap<u32, Vec<u32>>> {
 // --------------------------------------------------------------- music game
 
 /// One song of the music game (`_MusicGameBookAllDataNotify`).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MusicSong {
     /// Best score; 0 when never played.
     pub score: u32,
@@ -1919,7 +1920,7 @@ pub fn matches_beyond_cosmetic_notify(data: &[u8]) -> Option<BTreeMap<u32, u32>>
 // ------------------------------------------------------------------ sign-in
 
 /// One login event's calendar (`SignInInfo`).
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SignIn {
     /// Days signed in.
     pub days: u32,
@@ -2034,7 +2035,7 @@ pub fn player_nickname(data: &[u8]) -> Option<String> {
 }
 
 /// A profile picture as the game sends it; every part optional.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProfilePicture {
     /// `ProfilePictureExcelConfigData` id (7.1: 1001...).
     pub id: Option<u32>,
@@ -2048,7 +2049,7 @@ pub struct ProfilePicture {
 /// One player's profile card (`SocialDetail` in `GetPlayerSocialDetailRsp`,
 /// 7.1: command 25989; the game asks for the player's own at login, and for
 /// others' when their profile is opened).
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SocialProfile {
     pub uid: u32,
     /// The card's texts by tag: the nickname and, when set, the signature.

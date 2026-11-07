@@ -172,7 +172,7 @@ impl GoodDelta {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Keyed {
     pub entries: BTreeMap<Path, Value>,
-    hints: BTreeMap<Path, Value>,
+    pub(crate) hints: BTreeMap<Path, Value>,
 }
 
 fn path(parts: &[&str]) -> Path {

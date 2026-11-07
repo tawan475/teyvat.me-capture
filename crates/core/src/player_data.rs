@@ -647,7 +647,7 @@ pub enum RoutinePart {
 
 /// The planner's routine as captured: each part `None` until its message
 /// arrives.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 struct Routine {
     commissions: Option<DailyCommissions>,
     abyss: Option<AbyssPeriod>,
@@ -678,14 +678,15 @@ const COMMISSION_AGREEMENTS: u32 = 3;
 /// shape is a dozen messages' shape (see [`CommissionProgress`]), so only
 /// candidates of the learned command and reward id are believed. Kept across
 /// logins: the id is the same day after day.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 struct CommissionReward {
     learned: Option<(u16, u32)>,
+    #[serde(with = "crate::handover::pairs")]
     guesses: BTreeMap<(u16, u32), CommissionGuess>,
 }
 
 /// What one candidate (command id, reward id) said so far.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 struct CommissionGuess {
     /// Times its count was the held list's.
     agreed: u32,
@@ -693,6 +694,54 @@ struct CommissionGuess {
     last: Option<u32>,
     /// Its count fell, but not to a new day's 0: it is some other message.
     ruled_out: bool,
+}
+
+/// The held account, as the session hand-over carries it between two runs of
+/// the app ([`PlayerData::handover`] / [`PlayerData::resume`]). Items and
+/// characters are their protobuf bytes (base64, so the file is JSON); the
+/// rest is the state as held. Fields are private: the layout is the app's
+/// own, versioned by `crate::handover::SessionHandover::v`.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PlayerHandover {
+    achievements: HashMap<u32, Achievement>,
+    /// (avatar id, `AvatarInfo` bytes).
+    characters: Vec<(u32, String)>,
+    /// (item id, guid, `Item` bytes).
+    items: Vec<(u32, u64, String)>,
+    properties: HashMap<u32, u64>,
+    anecdotes: Option<AnecdoteData>,
+    routine: Routine,
+    character_equip_guid_map: HashMap<u64, u32>,
+    clock_secs: Option<u64>,
+    pending_resin: Option<ResinClock>,
+    nickname: Option<String>,
+    profiles: Vec<teyvatme_protocol::SocialProfile>,
+    spincrystals: Option<Vec<u32>>,
+    collections: collections::CollectionsState,
+    exploration: exploration::ExplorationState,
+    endgame: endgame::EndgameState,
+    commission_reward: CommissionReward,
+}
+
+impl PlayerHandover {
+    /// Items and characters carried (diagnostics).
+    pub fn counts(&self) -> (usize, usize) {
+        (self.items.len(), self.characters.len())
+    }
+}
+
+fn proto_b64(message: &impl protobuf::Message) -> Option<String> {
+    use base64::Engine;
+    message
+        .write_to_bytes()
+        .ok()
+        .map(|bytes| base64::prelude::BASE64_STANDARD.encode(bytes))
+}
+
+fn proto_from_b64<M: protobuf::Message>(text: &str) -> Option<M> {
+    use base64::Engine;
+    let bytes = base64::prelude::BASE64_STANDARD.decode(text).ok()?;
+    M::parse_from_bytes(&bytes).ok()
 }
 
 /// The parts a login sends, in the order they come (7.1-7.2: the bag,
@@ -1941,6 +1990,83 @@ impl PlayerData {
         )
     }
 
+    /// The held account as the session hand-over carries it (see
+    /// `crate::handover`): everything a login filled in, so the next
+    /// process applies the connection's changes to the same state.
+    pub fn handover(&self) -> PlayerHandover {
+        PlayerHandover {
+            achievements: self.achievements.clone(),
+            characters: self
+                .characters
+                .iter()
+                .filter_map(|(id, info)| Some((*id, proto_b64(info)?)))
+                .collect(),
+            items: self
+                .items
+                .iter()
+                .filter_map(|((id, guid), item)| Some((*id, *guid, proto_b64(item)?)))
+                .collect(),
+            properties: self.properties.clone(),
+            anecdotes: self.anecdotes.clone(),
+            routine: self.routine.clone(),
+            character_equip_guid_map: self.character_equip_guid_map.clone(),
+            clock_secs: self.clock_secs,
+            pending_resin: self.pending_resin.clone(),
+            nickname: self.nickname.clone(),
+            profiles: self.profiles.clone(),
+            spincrystals: self.spincrystals.clone(),
+            collections: self.collections.clone(),
+            exploration: self.exploration.clone(),
+            endgame: self.endgame.clone(),
+            commission_reward: self.commission_reward.clone(),
+        }
+    }
+
+    /// Take the account another process handed over, in place of whatever
+    /// this one holds (nothing, at start). An item or character that does
+    /// not read back is left out and counted in the answer.
+    pub fn resume(&mut self, handover: PlayerHandover) -> usize {
+        let mut unreadable = 0;
+        self.achievements = handover.achievements;
+        self.characters = handover
+            .characters
+            .into_iter()
+            .filter_map(|(id, bytes)| match proto_from_b64::<AvatarInfo>(&bytes) {
+                Some(info) => Some((id, info)),
+                None => {
+                    unreadable += 1;
+                    None
+                }
+            })
+            .collect();
+        self.items = handover
+            .items
+            .into_iter()
+            .filter_map(|(id, guid, bytes)| match proto_from_b64::<Item>(&bytes) {
+                Some(item) => Some(((id, guid), item)),
+                None => {
+                    unreadable += 1;
+                    None
+                }
+            })
+            .collect();
+        self.uid_cache.set(None);
+        self.properties = handover.properties;
+        self.anecdotes = handover.anecdotes;
+        self.routine = handover.routine;
+        self.character_equip_guid_map = handover.character_equip_guid_map;
+        self.clock_secs = handover.clock_secs;
+        self.pending_resin = handover.pending_resin;
+        self.nickname = handover.nickname;
+        self.profiles = handover.profiles;
+        self.spincrystals = handover.spincrystals;
+        self.collections = handover.collections;
+        self.exploration = handover.exploration;
+        self.endgame = handover.endgame;
+        self.commission_reward = handover.commission_reward;
+        unreadable
+    }
+
     /// Which of the login's parts are held: the apps' snapshot timing waits
     /// for the login's whole burst only while one is missing.
     pub fn login_parts(&self) -> LoginParts {
@@ -2830,6 +2956,53 @@ mod tests {
         // An empty database: every game data lookup misses, which is exactly the
         // post-version-bump case the export report exists for.
         PlayerData::new(AnimeGameData::new())
+    }
+
+    #[test]
+    fn a_handed_over_account_exports_the_same() {
+        let mut data = player_data();
+        data.process_items(&[
+            material_item(106, 0, 160),
+            material_item(104001, 1, 3),
+            material_item(104003, 7, 12),
+        ]);
+        data.process_characters(&[avatar(10000021, &[1, 2]), avatar(10000022, &[3])]);
+        data.process_achievements(&[Achievement {
+            id: 80001,
+            status: 3,
+            finish_timestamp: Some(1_700_000_000),
+            progress: Some((1, 1)),
+        }]);
+        data.process_anecdotes(&AnecdoteData {
+            anecdotes: Vec::new(),
+            unlocked_areas: vec![1, 2],
+            reward: None,
+            wish: None,
+        });
+        data.process_routine(RoutinePart::Commissions(DailyCommissions {
+            total: 4,
+            finished: Some(2),
+        }));
+        let (before, _) = data.export_at(&ExportSettings::for_tracker(), 1_700_000_000_000);
+
+        let handover = data.handover();
+        assert_eq!(handover.counts(), (3, 2));
+        let json = serde_json::to_vec(&handover).unwrap();
+        let back: PlayerHandover = serde_json::from_slice(&json).unwrap();
+        assert_eq!(back, handover);
+
+        let mut resumed = player_data();
+        assert_eq!(resumed.resume(back), 0);
+        assert_eq!(resumed.login_parts(), data.login_parts());
+        let (after, _) = resumed.export_at(&ExportSettings::for_tracker(), 1_700_000_000_000);
+        assert_eq!(
+            serde_json::to_value(&after).unwrap(),
+            serde_json::to_value(&before).unwrap()
+        );
+        assert_eq!(
+            resumed.character_equip_guid_map,
+            data.character_equip_guid_map
+        );
     }
 
     #[test]

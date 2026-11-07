@@ -31,6 +31,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use serde::{Deserialize, Serialize};
 use teyvatme_game_data::Exploration;
 use teyvatme_protocol::{Record, RecordsMessage, SceneRequest};
 
@@ -49,7 +50,7 @@ const MAX_OCULI: u64 = 1_000;
 const MAX_EXPLORE_POINTS: u64 = 1_000_000;
 
 /// What the exploration messages said, each part as its last reply did.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub(super) struct ExplorationState {
     /// City → (level, oculi).
     pub statues: Option<BTreeMap<u32, (u32, u32)>>,
@@ -75,9 +76,11 @@ const SCENE_REQUEST_SCENES: usize = 3;
 const MAX_WATCHED_REQUESTS: usize = 32;
 
 /// What the client's scene requests said.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub(super) struct WorldWatch {
-    /// (command id, owner) → the game data's scenes asked about.
+    /// (command id, owner) → the game data's scenes asked about. Not handed
+    /// over (tuple keys; the next scene requests fill it again).
+    #[serde(skip)]
     requests: BTreeMap<(u16, u32), BTreeSet<u32>>,
     /// The owner the latest believed request named.
     owner: Option<u32>,

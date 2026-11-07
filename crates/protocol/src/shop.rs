@@ -20,6 +20,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use protobuf::Message;
 use protobuf::UnknownValueRef::{LengthDelimited, Varint};
+use serde::{Deserialize, Serialize};
 
 use crate::r#gen::protos::Unk;
 
@@ -56,7 +57,7 @@ const MAX_LIMIT: u64 = 1_000;
 const FLAG_SHARE: f64 = 0.9;
 
 /// One goods entry of a shop list, as its shape gives it.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ShopEntry {
     /// Its lone numbers by field number: its id, limit, bought count, level
     /// range, times...
@@ -194,7 +195,7 @@ pub fn matches_shop_purchase(data: &[u8]) -> Option<Vec<ShopEntry>> {
 }
 
 /// One Fate on sale in Paimon's Bargains this month.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FateStock {
     pub goods_id: u32,
     /// [`INTERTWINED_FATE`] or [`ACQUAINT_FATE`].
@@ -210,7 +211,7 @@ pub struct FateStock {
 }
 
 /// Where Paimon's Bargains keeps what, learned from its goods.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct Layout {
     /// The goods item's field and its cost's.
     item: u32,
@@ -224,7 +225,7 @@ struct Layout {
 }
 
 /// Paimon's Bargains as the game last sent it.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Bargains {
     /// The Fates on sale for Stardust and Starglitter, by currency then item.
     pub fates: Vec<FateStock>,

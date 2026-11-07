@@ -24,6 +24,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use protobuf::UnknownValueRef::{Fixed32, Fixed64, LengthDelimited, Varint};
+use serde::{Deserialize, Serialize};
 
 use crate::wire::{self, Value};
 
@@ -89,7 +90,7 @@ const MAX_NICKNAME_CHARS: usize = 64;
 /// The Imaginarium Theater's season state, as its message holds it: the
 /// season's window and the small numbers and lists beside it. Which season
 /// and difficulty they are is settled against the game data by the caller.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TheaterDetail {
     /// The season's opening, unix seconds (04:00 server time on the first).
     pub start: u64,
@@ -122,7 +123,7 @@ impl TheaterDetail {
 
 /// One Stygian Onslaught record: a season's run at a difficulty, as the
 /// game keeps it (solo, or a co-op run with the players of that team).
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StygianRecord {
     /// `LeyLineChallengeExcelConfigData.scheduleId`.
     pub schedule: u32,
@@ -137,7 +138,7 @@ pub struct StygianRecord {
 }
 
 /// One player of a record, as the game's record screen shows them.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StygianPlayer {
     pub uid: u64,
     /// The position, 1-4: the game's 1P, 2P, 3P, 4P.
@@ -153,7 +154,7 @@ pub struct StygianPlayer {
 }
 
 /// One boss of a record.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StygianFight {
     /// Seconds.
     pub time: u32,
@@ -175,13 +176,13 @@ pub struct StygianFight {
 /// character's total damage), the avatars are not: when the two differ,
 /// which goes with which is not on the wire in any form a reshuffled field
 /// number cannot swap, so `by` is given only when both name one character.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Figure {
     pub value: u64,
     pub by: Option<u32>,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StygianTeam {
     pub uid: u64,
     pub avatars: Vec<u32>,
@@ -199,7 +200,7 @@ pub struct StygianTeam {
 /// characters leave out (a 0 is left off the wire, and C0 characters are in
 /// nearly every list). The element is 1-8 and always there too, which is
 /// why a list without a single C0 character gives no constellations.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StygianMember {
     pub id: u32,
     pub level: Option<u32>,
@@ -836,7 +837,7 @@ const MAX_ABYSS_PICKED: usize = 32;
 
 /// One period of the Spiral Abyss's record book (the Challenge Summary),
 /// as the game keeps it.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AbyssRecord {
     /// `TowerScheduleExcelConfigData.scheduleId`.
     pub schedule: u32,

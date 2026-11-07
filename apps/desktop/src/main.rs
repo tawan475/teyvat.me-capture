@@ -38,6 +38,7 @@ mod monitor;
 mod notify;
 mod replay;
 mod replay_live;
+mod session;
 mod signin;
 mod ui;
 mod update;

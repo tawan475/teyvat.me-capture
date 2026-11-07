@@ -68,6 +68,7 @@ use protobuf::Message;
 use protobuf::UnknownValueRef::{Fixed32, Fixed64, LengthDelimited, Varint};
 use rsa::RsaPrivateKey;
 use rsa::pkcs1::DecodeRsaPrivateKey;
+use serde::{Deserialize, Serialize};
 use tracing::{debug, info, info_span, instrument, trace, warn};
 
 use crate::Key::Dispatch;
@@ -106,7 +107,7 @@ pub use crate::gacha::{
     matches_get_gacha_info_rsp,
 };
 use crate::r#gen::protos::{AvatarInfo, Item, PacketHead, PropValue, Unk, prop_value};
-use crate::kcp::{KcpSniffer, SegmentHead, segment_head};
+use crate::kcp::{KcpHeld, KcpSniffer, SegmentHead, segment_head};
 use crate::oodle::TcpDecoder;
 pub use crate::quests::{
     MAX_PARENT_QUEST_UPDATE, MAX_PARENT_QUESTS, MIN_PARENT_QUESTS, PARENT_QUEST_IDS, ParentQuests,
@@ -570,6 +571,49 @@ pub enum Key {
     Session(Vec<u8>),
 }
 
+/// What a sniffer needs to pick its running connection up again in another
+/// process: the session hand-over a clean exit writes and the next start
+/// reads ([`GameSniffer::handover`] / [`GameSniffer::resume`]). The key
+/// decrypts; the lanes name the conversation and carry each direction's
+/// decompressor state; the time seeds let a later reconnect's key be found
+/// as before. Personal data (it decrypts the account's traffic): kept on the
+/// machine only, deleted once read.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SnifferHandover {
+    /// Layout version (1).
+    pub v: u32,
+    /// The session key.
+    key: Vec<u8>,
+    last_time_seed: Option<u64>,
+    time_anchors: Vec<u64>,
+    /// Sent, then received.
+    lanes: [Option<LaneHandover>; 2],
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct LaneHandover {
+    conv: u32,
+    /// The receive position, and the pushes buffered at it (`(sn, frg,
+    /// data)`): the next process holds what this one held. Absent in a
+    /// hand-over without them: it then joins at the first push it sees.
+    #[serde(default)]
+    rcv_nxt: Option<u32>,
+    #[serde(default)]
+    pushes: Vec<(u32, u8, Vec<u8>)>,
+    /// [`TcpDecoder::state_bytes`], when a compressed message had come.
+    decompressor: Option<Vec<u8>>,
+    decompressor_broken: bool,
+}
+
+impl SnifferHandover {
+    pub const VERSION: u32 = 1;
+
+    /// The conversation the lanes were bound to (diagnostics).
+    pub fn conversation(&self) -> Option<u32> {
+        self.lanes.iter().flatten().map(|lane| lane.conv).next()
+    }
+}
+
 /// Which key a [`GameSniffer`] holds for the current connection, as reported
 /// by [`GameSniffer::key_state`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -669,6 +713,11 @@ struct Lane {
     /// of the stream state is lost with it, so every later compressed message
     /// would decode to garbage and is skipped until the lane binds anew.
     decompressor_broken: bool,
+    /// Resumed from a hand-over and nothing decrypted yet: a message the
+    /// session key does not open is dropped without a word, because joining
+    /// mid-stream can cut the first message, and a cut message must not count
+    /// as the key dying. Over with the first message that does decrypt.
+    probation: bool,
 }
 
 struct Candidate {
@@ -764,6 +813,92 @@ impl GameSniffer {
     pub fn set_initial_keys(mut self, initial_keys: HashMap<u16, Vec<u8>>) -> Self {
         self.initial_keys = initial_keys;
         self
+    }
+
+    /// The running connection, to be picked up again by [`Self::resume`] in
+    /// another process: `None` unless the session key is live and a lane is
+    /// bound (nothing worth handing over before that).
+    pub fn handover(&self) -> Option<SnifferHandover> {
+        let Some(Key::Session(key)) = &self.key else {
+            return None;
+        };
+        let lane = |lane: &Lane| {
+            lane.kcp.as_ref().map(|kcp| {
+                let held = kcp.held();
+                LaneHandover {
+                    conv: kcp.conv_id,
+                    rcv_nxt: Some(held.rcv_nxt),
+                    pushes: held.pushes,
+                    decompressor: lane.decompressor.as_ref().map(TcpDecoder::state_bytes),
+                    decompressor_broken: lane.decompressor_broken,
+                }
+            })
+        };
+        let lanes = [lane(&self.sent), lane(&self.recv)];
+        if lanes.iter().all(Option::is_none) {
+            return None;
+        }
+        Some(SnifferHandover {
+            v: SnifferHandover::VERSION,
+            key: key.clone(),
+            last_time_seed: self.last_time_seed,
+            time_anchors: self.time_anchors.clone(),
+            lanes,
+        })
+    }
+
+    /// Pick up the connection another process handed over: the session key
+    /// is installed, each lane binds its conversation mid-stream (receiving
+    /// from the first push it sees) with its decompressor state, and nothing
+    /// is counted against the key until a message decrypts (the lane's
+    /// probation). A connection that has since ended is handled as any ended
+    /// one: the next login's handshake resets the session. Fresh sniffers
+    /// only (`false` otherwise, nothing changed).
+    pub fn resume(&mut self, handover: SnifferHandover) -> bool {
+        if handover.v != SnifferHandover::VERSION
+            || self.key.is_some()
+            || self.sent.kcp.is_some()
+            || self.recv.kcp.is_some()
+        {
+            return false;
+        }
+        let [sent, recv] = handover.lanes;
+        let lane = |lane: Option<LaneHandover>| {
+            lane.map_or_else(Lane::default, |lane| Lane {
+                kcp: Some(KcpSniffer::resume(
+                    lane.conv,
+                    lane.rcv_nxt.map(|rcv_nxt| KcpHeld {
+                        rcv_nxt,
+                        pushes: lane.pushes,
+                    }),
+                )),
+                proven: true,
+                candidate: None,
+                decompressor: lane
+                    .decompressor
+                    .as_deref()
+                    .and_then(TcpDecoder::from_state_bytes),
+                decompressor_broken: lane.decompressor_broken
+                    || lane
+                        .decompressor
+                        .is_some_and(|bytes| TcpDecoder::from_state_bytes(&bytes).is_none()),
+                probation: true,
+            })
+        };
+        self.sent = lane(sent);
+        self.recv = lane(recv);
+        self.announced_conv = self
+            .sent
+            .kcp
+            .as_ref()
+            .or(self.recv.kcp.as_ref())
+            .map(|kcp| kcp.conv_id);
+        self.key = Some(Key::Session(handover.key));
+        self.last_time_seed = handover.last_time_seed;
+        self.time_anchors = handover.time_anchors;
+        self.time_anchors.truncate(MAX_TIME_ANCHORS);
+        info!(conv = ?self.announced_conv, "resumed the game connection from a session hand-over");
+        true
     }
 
     /// Tell the sniffer when the game process started (unix ms), or that no
@@ -1169,6 +1304,16 @@ impl GameSniffer {
                 "kcp message too short to be a game command"
             );
             return Vec::new();
+        }
+
+        if self.lane(direction).probation {
+            let opens = matches!(&self.key, Some(Key::Session(key)) if magic_matches(key, &data));
+            if !opens {
+                debug!("resumed lane: a message the session key does not open; dropped");
+                return Vec::new();
+            }
+            self.lane(direction).probation = false;
+            debug!("resumed lane: the session key opens its messages");
         }
 
         if !self.ensure_key(&data) {
@@ -4148,6 +4293,142 @@ mod tests {
 
         assert_eq!(sniffer.session_generation(), generation);
         assert!(matches!(sniffer.key, Some(Key::Session(_))));
+    }
+
+    #[test]
+    fn a_handed_over_connection_resumes_in_a_fresh_sniffer() {
+        // The first process logs in and decodes a few messages.
+        let mut first = connected_sniffer();
+        let mut conn = Conn::new(122_486);
+        let combined = 0x1111;
+        assert_eq!(
+            log_in(
+                &mut first,
+                &mut conn,
+                LOGIN_MS,
+                client_draw(LOGIN_MS, 0),
+                combined
+            ),
+            vec![SESSION_MESSAGE]
+        );
+        let key = new_key_from_seed(combined);
+        assert_eq!(
+            command_ids(&mut first, conn.server_message(&key, 2)),
+            vec![2]
+        );
+        assert_eq!(
+            command_ids(&mut first, conn.server_message(&key, 3)),
+            vec![3]
+        );
+        assert_eq!(
+            GameSniffer::new().handover(),
+            None,
+            "nothing to hand over before a key"
+        );
+
+        // It exits: the hand-over names the key and the conversation.
+        let handover = first.handover().expect("a live session hands over");
+        assert_eq!(handover.conversation(), Some(conn.conv));
+
+        // A second process picks it up mid-stream. A message under another
+        // key first (the join cut one, say) is dropped without touching the
+        // key; the next real one decodes, and the connection is bound.
+        let mut second = connected_sniffer();
+        assert!(second.resume(handover.clone()));
+        assert!(
+            !second.resume(handover),
+            "a sniffer that holds a connection does not resume another"
+        );
+        assert_eq!(second.key_state(), KeyState::Session);
+        let other_key = new_key_from_seed(0x2222);
+        assert_eq!(
+            command_ids(&mut second, conn.server_message(&other_key, 4)),
+            Vec::<u16>::new()
+        );
+        assert_eq!(second.key_state(), KeyState::Session);
+        assert_eq!(
+            command_ids(&mut second, conn.server_message(&key, 5)),
+            vec![5]
+        );
+        assert_eq!(
+            command_ids(&mut second, conn.server_message(&key, 6)),
+            vec![6]
+        );
+        assert_eq!(
+            second.bound_conversation(PacketDirection::Received),
+            Some(conn.conv)
+        );
+        // Probation is over: an undecryptable message now counts as before.
+        assert_eq!(
+            command_ids(&mut second, conn.server_message(&other_key, 7)),
+            Vec::<u16>::new()
+        );
+        assert_eq!(second.session_failures, 1);
+    }
+
+    #[test]
+    fn pushes_buffered_at_the_exit_survive_the_hand_over() {
+        let mut first = connected_sniffer();
+        let mut conn = Conn::new(122_486);
+        let combined = 0x1111;
+        assert_eq!(
+            log_in(
+                &mut first,
+                &mut conn,
+                LOGIN_MS,
+                client_draw(LOGIN_MS, 0),
+                combined
+            ),
+            vec![SESSION_MESSAGE]
+        );
+        let key = new_key_from_seed(combined);
+        // Message 9 arrives before message 8 (reordered on the wire): the
+        // first process buffers it, waiting for 8.
+        let eight = conn.server_message(&key, 8);
+        let nine = conn.server_message(&key, 9);
+        assert_eq!(command_ids(&mut first, nine), Vec::<u16>::new());
+
+        let handover = first.handover().expect("a live session hands over");
+        let mut second = connected_sniffer();
+        assert!(second.resume(handover));
+        // 8 arrives in the second process: both deliver, in order.
+        assert_eq!(command_ids(&mut second, eight), vec![8, 9]);
+        assert_eq!(
+            command_ids(&mut second, conn.server_message(&key, 10)),
+            vec![10]
+        );
+    }
+
+    #[test]
+    fn a_gap_missed_around_the_restart_is_given_up_on() {
+        let mut first = connected_sniffer();
+        let mut conn = Conn::new(122_486);
+        let combined = 0x1111;
+        log_in(
+            &mut first,
+            &mut conn,
+            LOGIN_MS,
+            client_draw(LOGIN_MS, 0),
+            combined,
+        );
+        let key = new_key_from_seed(combined);
+        let handover = first.handover().unwrap();
+        let mut second = connected_sniffer();
+        assert!(second.resume(handover));
+        // The next message (the one the first process waited for) was sent
+        // while neither process captured: every later message buffers, until
+        // the sniffer gives the gap up and delivers from what it holds.
+        let _lost = conn.server_message(&key, 20);
+        let mut delivered = Vec::new();
+        for id in 21..21 + 2 * crate::kcp::GAP_SKIP_AFTER as u16 {
+            delivered.extend(command_ids(&mut second, conn.server_message(&key, id)));
+        }
+        assert!(!delivered.is_empty(), "the gap is given up on");
+        assert_eq!(
+            delivered[0], 21,
+            "delivery resumes from the lowest held push"
+        );
+        assert!(!delivered.contains(&20));
     }
 
     #[test]

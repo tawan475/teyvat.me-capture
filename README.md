@@ -67,7 +67,11 @@ Optimizer and most other tools read it. No account or sign-in needed;
 
 If Genshin was already in the world when Teyvat.me started, it says
 **Launch missed**: go back to the title screen and enter again, or restart the
-game.
+game. The one exception is Teyvat.me's own restart: when it closes cleanly
+while a session is being captured (an update's restart, closing the window,
+Quit), it keeps the running session in its data folder and picks it up again
+if started within two minutes, so no new login is needed. A crash keeps
+nothing.
 
 </details>
 
