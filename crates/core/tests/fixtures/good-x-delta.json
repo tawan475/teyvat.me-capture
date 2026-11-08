@@ -91,7 +91,8 @@
       },
       "unlockedAreas": [1, 2],
       "reward": { "index": 0, "progress": 4, "target": 10 }
-    }
+    },
+    "gi_collections": { "quests": { "finished": [1001], "active": [1003] } }
   },
   "delta": {
     "format": "GOOD-X-delta",
@@ -165,7 +166,9 @@
       ["set", ["gi_characters", "Nahida", "obtainedAt"], 1792000050],
       ["set", ["achievements", "81219"], 1792000000],
       ["set", ["anecdotes", "100002"], { "state": 3, "finishCount": 1 }],
-      ["set", ["gi_anecdotes", "reward"], { "index": 0, "progress": 5, "target": 10 }]
+      ["set", ["gi_anecdotes", "reward"], { "index": 0, "progress": 5, "target": 10 }],
+      ["set", ["quests", "1003"], 1],
+      ["set", ["quests", "1004"], 0]
     ],
     "sum": {
       "characters": 3,
@@ -274,6 +277,7 @@
       },
       "unlockedAreas": [1, 2],
       "reward": { "index": 0, "progress": 5, "target": 10 }
-    }
+    },
+    "gi_collections": { "quests": { "finished": [1001, 1003], "active": [1004] } }
   }
 }

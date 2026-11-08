@@ -4,6 +4,10 @@ Each release's section is its GitHub release notes (`.github/workflows/release.y
 
 ## 1.17.25
 
+- Quests finished or accepted during a session go up with live sync as they
+  happen (`quests.<id>`: 1 finished, 0 accepted), so the tracker's World
+  Quests list ticks a quest off within seconds instead of at the next
+  snapshot. Trackers that don't know the path ignore it.
 - An achievement update that differs from the login's list only by a
   progress pair the list did not carry (7.2 sends `1/1` on finished ones)
   no longer counts as new data: a change is a status, a finish time or a

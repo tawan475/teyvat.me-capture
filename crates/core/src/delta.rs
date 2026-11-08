@@ -278,6 +278,21 @@ impl Keyed {
                 }
             }
         }
+        // Parent quests one by one (1.17.25): 1 = finished, 0 = accepted and
+        // not finished. A finish mid-session is one `set`, so the tracker's
+        // World Quests list moves with the batch, not the next snapshot.
+        if let Some(quests) = good.get("gi_collections").and_then(|c| c.get("quests")) {
+            for (list, state) in [("active", 0), ("finished", 1)] {
+                for id in quests
+                    .get(list)
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                {
+                    entries.insert(path(&["quests", &id.to_string()]), json!(state));
+                }
+            }
+        }
     }
 
     fn hint(&self, at: &Path, value: &Value) -> Option<Value> {
@@ -717,6 +732,21 @@ mod tests {
                 ),
             ]
         );
+    }
+
+    #[test]
+    fn a_quest_goes_one_by_one_finished_or_accepted() {
+        let quests = |finished: &[u32], active: &[u32]| json!({ "gi_collections": { "quests": { "finished": finished, "active": active } } });
+        let old = keyed(good(quests(&[1001], &[1003])));
+        let new = keyed(good(quests(&[1001, 1003], &[1004])));
+        assert_eq!(
+            diff(&old, &new),
+            vec![
+                Change::Set(path(&["quests", "1003"]), json!(1)),
+                Change::Set(path(&["quests", "1004"]), json!(0)),
+            ]
+        );
+        assert!(diff(&new, &new.clone()).is_empty());
     }
 
     #[test]
