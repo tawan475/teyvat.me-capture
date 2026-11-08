@@ -14,7 +14,9 @@ Each release's section is its GitHub release notes (`.github/workflows/release.y
   sections (1.17.24 to 1.17.25 added the quests) no longer turns the first
   batch into a whole snapshot: those sections take the state as it is, and
   everything the older journal keyed keeps going up as batches, the
-  restart's gap included.
+  restart's gap included. A hand-over written by 1.17.25 says no layout and
+  is taken as the older one, so on that one update a quest finished in the
+  last minutes before the restart reaches the tracker with the next snapshot.
 - Android has no hand-over (an app update drops the VPN and the game logs in
   again), so nothing changes there.
 

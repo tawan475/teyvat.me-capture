@@ -358,6 +358,7 @@ pub(crate) mod tests {
 
     #[test]
     fn the_list_says_which_parent_quests_are_finished() {
+        let _guard = crate::learned_test_lock();
         let found = matches_finished_parent_quest_notify(&notify(&sample())).unwrap();
         assert_eq!(found.finished.len() + found.active.len(), 30);
         assert_eq!(found.active, vec![1_000, 1_035, 1_070, 1_105, 1_140, 1_175]);
@@ -366,6 +367,7 @@ pub(crate) mod tests {
 
     #[test]
     fn the_state_alone_is_not_finished() {
+        let _guard = crate::learned_test_lock();
         // 7.1 had two entries with the state but not the flag.
         let mut entries = sample();
         entries.push([v(14, 9_001), v(5, 1), v(15, 1_790_000_000)].concat());
@@ -375,6 +377,7 @@ pub(crate) mod tests {
 
     #[test]
     fn other_lists_are_not_quests() {
+        let _guard = crate::learned_test_lock();
         // Too short.
         assert_eq!(
             matches_finished_parent_quest_notify(&notify(&sample()[..10])),

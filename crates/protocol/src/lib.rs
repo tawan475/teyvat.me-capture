@@ -186,8 +186,9 @@ pub fn forget_learned_tags() {
     restore_learned_tags(&LearnedTags::default());
 }
 
-/// Tests that read or set the learned field numbers hold this: they are
-/// process-wide and the tests run in parallel.
+/// Tests that read or set the learned field numbers hold this (decoding a
+/// full list sets them too): they are process-wide and the tests run in
+/// parallel.
 #[cfg(test)]
 pub(crate) fn learned_test_lock() -> std::sync::MutexGuard<'static, ()> {
     static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());

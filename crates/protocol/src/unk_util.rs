@@ -1241,6 +1241,7 @@ pub(crate) mod tests {
 
     #[test]
     fn decodes_an_account_that_owns_the_sentinel_achievement() {
+        let _guard = crate::learned_test_lock();
         let data = achievement_packet(80001, 120);
         let achievements = matches_achievement_all_data_notify(&data).expect("should match");
 
@@ -1257,6 +1258,7 @@ pub(crate) mod tests {
     /// in teyvatme: no field equal to 80014 anywhere in the dump.
     #[test]
     fn decodes_an_account_that_does_not_own_the_sentinel_achievement() {
+        let _guard = crate::learned_test_lock();
         let data = achievement_packet(90001, 120);
         let sentinel = varint(SENTINEL_ACHIEVEMENT_ID);
         assert!(
@@ -1273,6 +1275,7 @@ pub(crate) mod tests {
     /// the achievement list. It used to take the whole packet down with it.
     #[test]
     fn ignores_the_reward_taken_goal_id_list_sibling() {
+        let _guard = crate::learned_test_lock();
         let packed: Vec<u8> = (80001u64..80040).flat_map(varint).collect();
         let mut data = field_bytes(TAG_REWARD_TAKEN, &packed);
         data.extend(achievement_packet(80001, 120));
@@ -1288,6 +1291,7 @@ pub(crate) mod tests {
     /// them for entries would report nonsense.
     #[test]
     fn ignores_a_prepended_packet_header() {
+        let _guard = crate::learned_test_lock();
         let mut header = packet(&[
             field_varint(1, 12345),             // packet_id
             field_varint(6, 1_700_000_000_000), // sent_ms
@@ -1308,6 +1312,7 @@ pub(crate) mod tests {
     /// the choice must not depend on hash iteration order.
     #[test]
     fn status_tag_choice_is_deterministic_with_two_small_fields() {
+        let _guard = crate::learned_test_lock();
         let entries: Vec<Vec<u8>> = achievement_entries(80001, 120)
             .into_iter()
             .map(|mut entry| {
@@ -1340,6 +1345,7 @@ pub(crate) mod tests {
     /// work today working.
     #[test]
     fn falls_back_to_the_sentinel_when_no_field_is_unique() {
+        let _guard = crate::learned_test_lock();
         let mut entries = achievement_entries(80001, 120);
         // Duplicate one id so the id field is no longer unique across the list.
         entries[119] = achievement_entry(80001, 1, 5, None);
@@ -1383,6 +1389,7 @@ pub(crate) mod tests {
 
     #[test]
     fn rejects_a_payload_of_short_groups() {
+        let _guard = crate::learned_test_lock();
         // Long enough to be considered, but no group reaches the entry floor.
         let mut data = achievement_packet(80001, 9);
         data.extend(field_bytes(20, &vec![b'x'; MIN_ACHIEVEMENT_PAYLOAD_LEN]));
@@ -1424,6 +1431,7 @@ pub(crate) mod tests {
 
     #[test]
     fn decodes_the_7_1_layout() {
+        let _guard = crate::learned_test_lock();
         let entries: Vec<Vec<u8>> = (0..200u64)
             .map(|i| {
                 let finished = i % 40 != 0;
@@ -1563,6 +1571,7 @@ pub(crate) mod tests {
     /// constant and a unique id, which is all the structural test asked for.
     #[test]
     fn rejects_the_beyond_cosmetic_data_notify_shape() {
+        let _guard = crate::learned_test_lock();
         let entries: Vec<Vec<u8>> = (0..128u64)
             .map(|i| cosmetic_entry(270_002 + i, 1, 1_700_000_000 + (i % 21) * 86_400))
             .collect();
@@ -1606,6 +1615,7 @@ pub(crate) mod tests {
     /// the list, and are exported as they are.
     #[test]
     fn a_few_odd_entries_do_not_cost_the_list() {
+        let _guard = crate::learned_test_lock();
         let mut entries = achievement_entries(80001, 120);
         for i in 0..5 {
             // An id past the range, and a timestamp on an unfinished entry.
@@ -1626,6 +1636,7 @@ pub(crate) mod tests {
 
     #[test]
     fn achievement_entries_survive_a_trailing_non_list_group() {
+        let _guard = crate::learned_test_lock();
         let mut data = achievement_packet(80001, 120);
         // A repeated field of nested messages: shape-rejected, but only for
         // itself.

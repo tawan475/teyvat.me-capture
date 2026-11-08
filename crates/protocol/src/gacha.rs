@@ -819,6 +819,7 @@ mod tests {
 
     #[test]
     fn a_ten_pull_is_read_with_its_banner() {
+        let _guard = crate::learned_test_lock();
         assert_eq!(
             matches_do_gacha_rsp(&do_gacha_rsp(301, &ten_pull())),
             Some(GachaWish {
@@ -830,6 +831,7 @@ mod tests {
 
     #[test]
     fn a_single_pull_on_each_banner_is_read() {
+        let _guard = crate::learned_test_lock();
         for banner in GACHA_TYPES {
             let wish = matches_do_gacha_rsp(&do_gacha_rsp(
                 u64::from(banner),
@@ -848,6 +850,7 @@ mod tests {
 
     #[test]
     fn wish_field_numbers_are_found_rather_than_assumed() {
+        let _guard = crate::learned_test_lock();
         let mut out = Vec::new();
         out.extend(field_varint(2, 224));
         out.extend(field_varint(4, 1));
@@ -879,6 +882,7 @@ mod tests {
 
     #[test]
     fn two_banner_like_scalars_leave_the_banner_unknown_until_one_answer_was_clear() {
+        let _guard = crate::learned_test_lock();
         // Fields no other test's answer puts the banner on, so whatever
         // another test taught stays out of this one.
         let payload = do_gacha_rsp_on(901, 302, &[(902, 200)]);
@@ -893,6 +897,7 @@ mod tests {
 
     #[test]
     fn a_clear_answer_teaches_the_banner_field_for_the_ambiguous_ones() {
+        let _guard = crate::learned_test_lock();
         // The 7.2 case: a wish count reaching 200 beside the banner.
         let clear = do_gacha_rsp_on(1, 301, &[(1464, 199)]);
         assert_eq!(matches_do_gacha_rsp(&clear).unwrap().gacha_type, Some(301));
@@ -918,6 +923,7 @@ mod tests {
 
     #[test]
     fn a_failed_wish_is_not_a_wish() {
+        let _guard = crate::learned_test_lock();
         // An error answer: a retcode and nothing else.
         assert_eq!(matches_do_gacha_rsp(&field_varint(4, 10_101)), None);
         assert_eq!(matches_do_gacha_rsp(&do_gacha_rsp(301, &[])), None);
@@ -925,12 +931,14 @@ mod tests {
 
     #[test]
     fn pull_counts_other_than_one_and_ten_are_refused() {
+        let _guard = crate::learned_test_lock();
         let three: Vec<Vec<u8>> = (0..3).map(|n| gacha_item(13_301 + n, false)).collect();
         assert_eq!(matches_do_gacha_rsp(&do_gacha_rsp(301, &three)), None);
     }
 
     #[test]
     fn a_banner_type_the_game_does_not_have_is_refused() {
+        let _guard = crate::learned_test_lock();
         assert_eq!(
             matches_do_gacha_rsp(&do_gacha_rsp(303, &[gacha_item(15_401, false)])),
             None
@@ -939,6 +947,7 @@ mod tests {
 
     #[test]
     fn an_item_list_without_the_wish_currency_is_not_a_wish() {
+        let _guard = crate::learned_test_lock();
         // The same pull list beside scalars that are not a wish's.
         let payload = [
             field_varint(1, 301),
@@ -951,6 +960,7 @@ mod tests {
 
     #[test]
     fn an_item_hint_list_is_not_a_wish() {
+        let _guard = crate::learned_test_lock();
         // ItemAddHintNotify-like: items carried directly, not wrapped, beside
         // the same scalars a wish has.
         let hint = |id: u64| {
@@ -974,6 +984,7 @@ mod tests {
 
     #[test]
     fn a_banner_list_is_not_a_wish() {
+        let _guard = crate::learned_test_lock();
         // GetGachaInfoRsp-like: entries with strings and timestamps.
         let info = [
             field_varint(2, 301),
@@ -995,6 +1006,7 @@ mod tests {
 
     #[test]
     fn an_entry_whose_item_is_not_a_character_or_weapon_is_refused() {
+        let _guard = crate::learned_test_lock();
         // A material (Mora) where the pulled item should be.
         assert_eq!(
             matches_do_gacha_rsp(&do_gacha_rsp(301, &[gacha_item(202, false)])),
@@ -1014,6 +1026,7 @@ mod tests {
 
     #[test]
     fn a_second_list_or_a_fixed_width_field_is_not_a_wish() {
+        let _guard = crate::learned_test_lock();
         let mut payload = do_gacha_rsp(301, &[gacha_item(15_401, false)]);
         payload.extend(field_bytes(20, &gacha_item(15_402, false)));
         assert_eq!(matches_do_gacha_rsp(&payload), None);
@@ -1026,6 +1039,7 @@ mod tests {
 
     #[test]
     fn the_wish_and_key_matchers_do_not_claim_each_other() {
+        let _guard = crate::learned_test_lock();
         let key = authkey_rsp("webview_gacha", "hk4e_global", &synthetic_authkey());
         let wish = do_gacha_rsp(301, &ten_pull());
         assert_eq!(matches_do_gacha_rsp(&key), None);
@@ -1204,6 +1218,7 @@ mod tests {
 
     #[test]
     fn the_other_wish_messages_are_not_a_banner_list() {
+        let _guard = crate::learned_test_lock();
         assert_eq!(
             matches_get_gacha_info_rsp(&do_gacha_rsp(301, &ten_pull())),
             None
@@ -1270,6 +1285,7 @@ mod tests {
 
     #[test]
     fn garbage_is_neither() {
+        let _guard = crate::learned_test_lock();
         for payload in [
             &b""[..],
             &[0xff, 0xff, 0xff],
