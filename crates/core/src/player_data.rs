@@ -995,6 +995,11 @@ impl PlayerData {
     /// list held and none goes back (a lower status, or a finish time lost):
     /// a list of other small records reads this way too. The game re-sends
     /// unchanged ones, so most change nothing.
+    ///
+    /// Changed means the status, the finish time or a known progress moved.
+    /// An update can carry a progress pair the full list did not (7.2 sends
+    /// `1/1` on finished ones): that is kept, but on its own it is not a
+    /// change, so a re-send differing only in it counts as no new data.
     pub fn apply_achievement_updates(&mut self, updates: &[Achievement]) -> usize {
         let forward = updates.iter().all(|update| {
             self.achievements.get(&update.id).is_some_and(|held| {
@@ -1010,12 +1015,20 @@ impl PlayerData {
             let Some(held) = self.achievements.get_mut(&update.id) else {
                 continue;
             };
+            let moved = update.status != held.status
+                || update.finish_timestamp != held.finish_timestamp
+                || matches!(
+                    (held.progress, update.progress),
+                    (Some(was), Some(now)) if was != now
+                );
             let next = Achievement {
                 progress: update.progress.or(held.progress),
                 ..update.clone()
             };
             if *held != next {
                 *held = next;
+            }
+            if moved {
                 changed += 1;
             }
         }
@@ -6129,6 +6142,46 @@ mod tests {
         assert_eq!(
             data.apply_achievement_updates(&[achievement(80002, 3, Some(1_700_000_000))]),
             0
+        );
+    }
+
+    #[test]
+    fn a_progress_pair_the_full_list_lacked_is_kept_but_is_no_change() {
+        let mut data = player_data();
+        data.process_achievements(&[
+            achievement(80001, 3, Some(1_700_000_000)),
+            Achievement {
+                progress: Some((3, 10)),
+                ..achievement(80002, 1, None)
+            },
+        ]);
+        // The game's re-send of a long-finished one, now with `1/1`: kept,
+        // not counted (the export would be rebuilt for nothing).
+        let resent = Achievement {
+            progress: Some((1, 1)),
+            ..achievement(80001, 3, Some(1_700_000_000))
+        };
+        assert_eq!(
+            data.apply_achievement_updates(std::slice::from_ref(&resent)),
+            0
+        );
+        assert_eq!(data.achievements[&80001], resent);
+        assert_eq!(data.apply_achievement_updates(&[resent]), 0);
+        // Real progress counts.
+        let progressed = Achievement {
+            progress: Some((4, 10)),
+            ..achievement(80002, 1, None)
+        };
+        assert_eq!(data.apply_achievement_updates(&[progressed]), 1);
+        assert_eq!(data.achievements[&80002].progress, Some((4, 10)));
+        // So do a finish and a claim.
+        assert_eq!(
+            data.apply_achievement_updates(&[achievement(80002, 2, Some(1_794_094_240))]),
+            1
+        );
+        assert_eq!(
+            data.apply_achievement_updates(&[achievement(80002, 3, Some(1_794_094_240))]),
+            1
         );
     }
 

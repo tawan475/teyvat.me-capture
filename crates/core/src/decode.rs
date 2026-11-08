@@ -477,11 +477,12 @@ pub fn apply_commands(
             }
             CommandMatch::QuestUpdate(update) => {
                 // Believed against the login's list only (the shape is a
-                // common one); it rides along with the next export.
+                // common one); live sync sends each as `quests.<id>`.
                 let (finished, accepted) = player_data.apply_quest_update(&update);
                 if finished + accepted > 0 {
                     tracing::info!(finished, accepted, "Found parent quests moving");
                     applied.routine = true;
+                    applied.live_updates += finished + accepted;
                 }
             }
             CommandMatch::Archive(found) => {

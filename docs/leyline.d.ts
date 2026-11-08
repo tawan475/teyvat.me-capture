@@ -662,6 +662,7 @@ export interface DeltaSum {
  *   gi_anecdotes.unlockedAreas|reward|wish            that value; del
  *   gi_tasks.<part>                                   that part whole; del
  *   gi_wardrobe.teams|currentTeam                     the saved teams whole / the slot in use; del
+ *   quests.<id>                                       a parent quest: 1 finished, 0 accepted; del
  * Unknown paths are ignored, never an error.
  */
 export type DeltaChange =
