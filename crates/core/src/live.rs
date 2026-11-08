@@ -124,6 +124,10 @@ struct Journal {
     seq: u64,
     /// The state it holds: the snapshot plus every stored batch.
     keyed: Keyed,
+    /// The [`delta::LAYOUT`] `keyed` is in: older after a hand-over from an
+    /// older Capture, until the first export seeds the sections added since
+    /// ([`LiveSync::seed`]).
+    layout: u32,
 }
 
 /// A snapshot upload in flight.
@@ -154,6 +158,14 @@ pub struct LiveHandover {
     journal: Option<JournalHandover>,
     pending: usize,
     last_sent_ms: u64,
+    /// The tracker's last word on a tab watching (else the first lone
+    /// change after the resume waits the lone-change time).
+    #[serde(default)]
+    watching: bool,
+    /// Endgame records waiting for their attach (else lost until the next
+    /// login).
+    #[serde(default)]
+    attach_wanted: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -162,6 +174,10 @@ struct JournalHandover {
     seq: u64,
     entries: Vec<(Path, Value)>,
     hints: Vec<(Path, Value)>,
+    /// [`delta::LAYOUT`] the entries were keyed by; absent before 1.17.26
+    /// (layout 1 or 2, taken as another one).
+    #[serde(default)]
+    layout: Option<u32>,
 }
 
 /// What the monitor should do now.
@@ -452,9 +468,12 @@ impl LiveSync {
                 seq: journal.seq,
                 entries: journal.keyed.entries.clone().into_iter().collect(),
                 hints: journal.keyed.hints.clone().into_iter().collect(),
+                layout: Some(delta::LAYOUT),
             }),
             pending: self.pending,
             last_sent_ms: self.last_sent_ms,
+            watching: self.watching,
+            attach_wanted: self.attach_wanted,
         })
     }
 
@@ -476,10 +495,47 @@ impl LiveSync {
                 entries: journal.entries.into_iter().collect(),
                 hints: journal.hints.into_iter().collect(),
             },
+            // Keyed by an older Capture's layout (absent before 1.17.26:
+            // layout 1): the sections added since are seeded from the first
+            // export, else 1.17.24's journal against 1.17.25's export read
+            // as 2,452 added quests, a whole snapshot. A newer layout than
+            // ours is left to the diff, as any journal is.
+            layout: journal.layout.unwrap_or(1).min(delta::LAYOUT),
         });
         self.pending = handover.pending;
         self.last_sent_ms = handover.last_sent_ms;
+        self.watching = handover.watching;
+        self.attach_wanted = handover.attach_wanted;
         true
+    }
+
+    /// The handed-over journal was keyed by an older layout and waits for
+    /// the state as it is now ([`Self::seed`]).
+    pub fn needs_seed(&self) -> bool {
+        self.journal
+            .as_ref()
+            .is_some_and(|journal| journal.layout < delta::LAYOUT)
+    }
+
+    /// Seed the handed-over journal's sections that its older layout never
+    /// keyed from `current` (the state as it is now): they then read as
+    /// unchanged, and the next batch carries only what the older layout
+    /// keyed and moved (the restart gap's changes included).
+    pub fn seed(&mut self, current: &Keyed) {
+        if let Some(journal) = self.journal.as_mut()
+            && journal.layout < delta::LAYOUT
+        {
+            let seeded = journal
+                .keyed
+                .seed_sections_added_after(journal.layout, current);
+            tracing::info!(
+                from = journal.layout,
+                to = delta::LAYOUT,
+                seeded,
+                "live sync: the handed-over journal was keyed by an older layout; the sections added since now hold the state as it is"
+            );
+            journal.layout = delta::LAYOUT;
+        }
     }
 
     /// Some account data changed (`count` entries, an estimate).
@@ -598,6 +654,7 @@ impl LiveSync {
                     base,
                     seq: 0,
                     keyed,
+                    layout: delta::LAYOUT,
                 });
             }
             None => {
@@ -688,6 +745,17 @@ impl LiveSync {
             self.batch_flight = Some(flight);
             return Action::Batch(Box::new(delta));
         }
+        // A hand-over's journal from an older layout: seed what it never
+        // keyed from this export before anything is diffed.
+        let mut export = Some(export);
+        let mut exported = None;
+        if self.needs_seed() {
+            let Some(current) = export.take().and_then(|export| export()) else {
+                return Action::Nothing;
+            };
+            self.seed(&current.1);
+            exported = Some(current);
+        }
         if self.pending == 0 {
             return Action::Nothing;
         }
@@ -695,7 +763,8 @@ impl LiveSync {
         if self.pending < BIG_BATCH && (since < BATCH_SPACING_MS || now_ms < self.recheck_at_ms) {
             return Action::Nothing;
         }
-        let Some((good, keyed)) = export() else {
+        let Some((good, keyed)) = exported.or_else(|| export.take().and_then(|export| export()))
+        else {
             return Action::Nothing;
         };
         let journal = self.journal.as_ref().expect("is_live checked it");
@@ -921,7 +990,13 @@ mod tests {
         );
         assert_eq!(LiveSync::new().handover(), None, "nothing before a login");
 
+        live.note_endgame_change();
         let handover = live.handover().expect("a logged-in sender hands over");
+        assert_eq!(
+            handover.journal.as_ref().unwrap().layout,
+            Some(delta::LAYOUT)
+        );
+        assert!(handover.attach_wanted && !handover.watching);
         let json = serde_json::to_vec(&handover).unwrap();
         let back: LiveHandover = serde_json::from_slice(&json).unwrap();
         assert_eq!(back, handover);
@@ -932,7 +1007,15 @@ mod tests {
         assert!(resumed.resume(back.clone()));
         assert!(!resumed.resume(back), "a sender with a login keeps it");
         assert!(resumed.is_live(15_200));
+        assert!(!resumed.needs_seed(), "the same layout: nothing to seed");
+        assert!(resumed.attach_wanted && !resumed.watching);
         assert_eq!(resumed.automation_reason(true, 15_200), None);
+        // The pending attach goes first.
+        assert!(matches!(
+            resumed.tick(true, 15_200, || panic!("no export for an attach")),
+            Action::Attach { .. }
+        ));
+        resumed.attach_answered(AttachAnswer::Stored, 15_300);
         // One small change: due after the lone-change wait, as within a run.
         resumed.note_change(1);
         assert_eq!(
@@ -947,6 +1030,84 @@ mod tests {
             resumed.capture(Reason::World).unwrap().session,
             live.capture(Reason::World).unwrap().session
         );
+    }
+
+    #[test]
+    fn a_journal_keyed_by_an_older_layout_is_seeded_not_collapsed() {
+        let mut live = live_at(0);
+        live.note_change(5);
+        let batch = sent(live.tick(true, 15_000, export(with_materials(5))));
+        assert_eq!(batch.seq, 1);
+        live.batch_answered(
+            BatchAnswer::Stored {
+                collapse: false,
+                watching: true,
+            },
+            15_100,
+        );
+        let mut handover = live.handover().unwrap();
+        // Written by 1.17.24: keyed before the quests had entries.
+        handover.journal.as_mut().unwrap().layout = Some(1);
+        let json = serde_json::to_vec(&handover).unwrap();
+        let back: LiveHandover = serde_json::from_slice(&json).unwrap();
+
+        let mut resumed = LiveSync::new();
+        assert!(resumed.resume(back));
+        assert!(resumed.needs_seed());
+        assert!(resumed.watching);
+        // The export holds 2,452 quests the old journal never keyed, and one
+        // material that moved in the restart gap: the quests are seeded, the
+        // material is the batch (not 2,453 changes and a collapse).
+        let mut current = with_materials(5);
+        current.materials.insert("Thing0".to_owned(), 2);
+        current.gi_collections = Some(crate::good::GiCollections {
+            quests: Some(crate::good::GiQuests {
+                finished: (1..=2_160).collect(),
+                active: (10_001..=10_292).collect(),
+            }),
+            ..Default::default()
+        });
+        resumed.note_change(1);
+        let batch = sent(resumed.tick(true, 140_000, export(current.clone())));
+        assert_eq!(batch.seq, 2);
+        assert_eq!(batch.base, "k1");
+        assert_eq!(batch.changes.len(), 1, "the material alone");
+        assert!(!resumed.needs_seed());
+        // From here a finished quest is one change, as within a run.
+        resumed.batch_answered(
+            BatchAnswer::Stored {
+                collapse: false,
+                watching: true,
+            },
+            140_100,
+        );
+        let mut later = current.clone();
+        let quests = later
+            .gi_collections
+            .as_mut()
+            .unwrap()
+            .quests
+            .as_mut()
+            .unwrap();
+        quests.finished.push(10_001);
+        quests.active.retain(|id| *id != 10_001);
+        resumed.note_change(1);
+        let batch = sent(resumed.tick(true, 160_000, export(later)));
+        assert_eq!(batch.seq, 3);
+        assert_eq!(batch.changes.len(), 1, "the one quest that finished");
+
+        // No layout recorded (written by 1.17.25 or before): layout 1.
+        let mut json: serde_json::Value = serde_json::to_value(&handover).unwrap();
+        json["journal"].as_object_mut().unwrap().remove("layout");
+        let old: LiveHandover = serde_json::from_value(json).unwrap();
+        let mut fresh = LiveSync::new();
+        assert!(fresh.resume(old));
+        assert!(fresh.needs_seed());
+        // A newer layout than ours (a downgrade) is left to the diff.
+        handover.journal.as_mut().unwrap().layout = Some(delta::LAYOUT + 1);
+        let mut downgraded = LiveSync::new();
+        assert!(downgraded.resume(handover));
+        assert!(!downgraded.needs_seed());
     }
 
     #[test]

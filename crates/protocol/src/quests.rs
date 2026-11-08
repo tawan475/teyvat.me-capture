@@ -205,14 +205,30 @@ pub fn matches_finished_parent_quest_notify(data: &[u8]) -> Option<ParentQuests>
 
 /// The entries' field numbers as the last login's list showed them: an
 /// update's one or two entries are too few to tell them apart by their values.
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct QuestTags {
-    id: u32,
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(crate) struct QuestTags {
+    pub(crate) id: u32,
     /// Every flag field; a quest is finished only when it carries all of them.
-    flags: Vec<u32>,
+    pub(crate) flags: Vec<u32>,
 }
 
 static LEARNED_QUEST_TAGS: std::sync::Mutex<Option<QuestTags>> = std::sync::Mutex::new(None);
+
+/// The quest entries' field numbers as learned so far (for the session
+/// hand-over).
+pub(crate) fn learned_quest_tags() -> Option<QuestTags> {
+    LEARNED_QUEST_TAGS
+        .lock()
+        .map_or(None, |learned| learned.clone())
+}
+
+/// Set the learned field numbers: another process's, or `None` as a fresh
+/// process has.
+pub(crate) fn restore_quest_tags(tags: Option<QuestTags>) {
+    if let Ok(mut learned) = LEARNED_QUEST_TAGS.lock() {
+        *learned = tags;
+    }
+}
 
 /// The most entries believed in one update.
 pub const MAX_PARENT_QUEST_UPDATE: usize = 50;
@@ -285,7 +301,7 @@ pub fn matches_parent_quest_update(data: &[u8]) -> Option<ParentQuests> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     fn varint(mut value: u64) -> Vec<u8> {
@@ -307,7 +323,7 @@ mod tests {
         out
     }
 
-    fn b(tag: u32, payload: &[u8]) -> Vec<u8> {
+    pub(crate) fn b(tag: u32, payload: &[u8]) -> Vec<u8> {
         let mut out = varint((u64::from(tag) << 3) | 2);
         out.extend(varint(payload.len() as u64));
         out.extend_from_slice(payload);
@@ -316,7 +332,7 @@ mod tests {
 
     /// One entry in 7.1's layout: id 14, finished 4, state 5 (1 = finished),
     /// accept time 15, sub-quests 13 (`{quest_id 5, state 3}`), a key 22.
-    fn quest(id: u64, finished: bool, children: u64) -> Vec<u8> {
+    pub(crate) fn quest(id: u64, finished: bool, children: u64) -> Vec<u8> {
         let mut out = v(14, id);
         if finished {
             out.extend(v(4, 1));
@@ -342,6 +358,7 @@ mod tests {
 
     #[test]
     fn the_list_says_which_parent_quests_are_finished() {
+        let _guard = crate::learned_test_lock();
         let found = matches_finished_parent_quest_notify(&notify(&sample())).unwrap();
         assert_eq!(found.finished.len() + found.active.len(), 30);
         assert_eq!(found.active, vec![1_000, 1_035, 1_070, 1_105, 1_140, 1_175]);
@@ -350,6 +367,7 @@ mod tests {
 
     #[test]
     fn the_state_alone_is_not_finished() {
+        let _guard = crate::learned_test_lock();
         // 7.1 had two entries with the state but not the flag.
         let mut entries = sample();
         entries.push([v(14, 9_001), v(5, 1), v(15, 1_790_000_000)].concat());
@@ -359,6 +377,7 @@ mod tests {
 
     #[test]
     fn other_lists_are_not_quests() {
+        let _guard = crate::learned_test_lock();
         // Too short.
         assert_eq!(
             matches_finished_parent_quest_notify(&notify(&sample()[..10])),
@@ -382,12 +401,18 @@ mod tests {
     }
 
     /// The login's list, read first so the update knows the field numbers.
-    fn learn() {
+    pub(crate) fn learn() {
         matches_finished_parent_quest_notify(&notify(&sample())).unwrap();
+    }
+
+    /// One finished parent quest's update, in that list's layout.
+    pub(crate) fn update(id: u64) -> Vec<u8> {
+        b(2, &quest(id, true, 2))
     }
 
     #[test]
     fn a_finished_quest_in_an_update_is_read_with_the_lists_field_numbers() {
+        let _guard = crate::learned_test_lock();
         learn();
         // Finished, with its sub-quests, in the 7.1 layout.
         let update = b(2, &quest(77_225, true, 2));
@@ -424,6 +449,7 @@ mod tests {
 
     #[test]
     fn an_id_and_a_time_alone_prove_nothing() {
+        let _guard = crate::learned_test_lock();
         learn();
         // What a just-accepted quest looks like, and a dozen other messages.
         let bare = b(2, &[v(14, 77_681), v(15, 1_790_000_000)].concat());
@@ -441,6 +467,7 @@ mod tests {
 
     #[test]
     fn other_messages_are_not_quest_updates() {
+        let _guard = crate::learned_test_lock();
         learn();
         // Sub-quests of another parent.
         let stranger = b(

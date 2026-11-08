@@ -98,6 +98,17 @@ struct Captured {
     game_version: Option<String>,
 }
 
+/// [`Captured`] for the session hand-over: the banner links come with the
+/// Wish screen and the client's version only with the login, so without
+/// them the next process's link would lack `game_version` until the next
+/// login (the game's own link carries it). The key itself is not here: it is
+/// kept in memory only.
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct WishHandover {
+    banners: Vec<GachaRecordLink>,
+    game_version: Option<String>,
+}
+
 impl Captured {
     /// The link parts for a key arriving now, for the account `uid`.
     ///
@@ -187,6 +198,35 @@ impl WishHub {
     pub fn new_login(&self) {
         *self.login_uid.lock().unwrap() = None;
         self.clear();
+    }
+
+    /// The link parts captured this login, for the next process (`None`
+    /// when nothing was).
+    pub fn handover(&self) -> Option<WishHandover> {
+        let captured = self.captured.lock().unwrap();
+        if captured.banners.is_empty() && captured.game_version.is_none() {
+            return None;
+        }
+        Some(WishHandover {
+            banners: captured.banners.clone(),
+            game_version: captured.game_version.clone(),
+        })
+    }
+
+    /// Take over the link parts another process captured this login.
+    pub fn resume(&self, handover: WishHandover) {
+        let banner_list = !handover.banners.is_empty();
+        let client_version = handover.game_version.is_some();
+        {
+            let mut captured = self.captured.lock().unwrap();
+            captured.banners = handover.banners;
+            captured.game_version = handover.game_version;
+        }
+        self.seen_tx.send_modify(|seen| {
+            seen.banner_list |= banner_list;
+            seen.client_version |= client_version;
+        });
+        (self.notify)();
     }
 
     fn clear(&self) {
@@ -425,6 +465,31 @@ mod tests {
     }
 
     const UID: Option<u32> = Some(811_111_111);
+
+    #[test]
+    fn the_link_parts_are_handed_over_to_the_next_process() {
+        let (hub, _key_rx, _triggers) = hub_with(Arc::new(|| {}));
+        assert_eq!(hub.handover(), None, "nothing captured yet");
+        hub.forward(
+            vec![
+                WishEvent::ClientVersion("OSRELWin7.1.0_R1_S2_D3".to_owned()),
+                WishEvent::Banners(vec![banner(301, "cccc")]),
+            ],
+            UID,
+        );
+        let handover = hub.handover().expect("the version and a banner");
+        let json = serde_json::to_vec(&handover).unwrap();
+        let back: WishHandover = serde_json::from_slice(&json).unwrap();
+        assert_eq!(back, handover);
+
+        let (next, _key_rx, _triggers) = hub_with(Arc::new(|| {}));
+        next.resume(back);
+        let link = next.captured.lock().unwrap().link_parts(UID);
+        assert_eq!(link.game_version.as_deref(), Some("OSRELWin7.1.0_R1_S2_D3"));
+        assert!(link.record_query.is_some());
+        let seen = next.seen_tx.borrow().clone();
+        assert!(seen.banner_list && seen.client_version && !seen.wish_key);
+    }
 
     #[test]
     fn what_the_session_showed_is_counted_and_the_ui_is_repainted() {

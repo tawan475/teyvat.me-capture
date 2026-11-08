@@ -236,12 +236,19 @@ fn replay_journal_to_file(
     let sniffer = GameSniffer::new().set_initial_keys(monitor::load_keys()?);
     let mut replay = Replay::new(sniffer, player_data);
     replay.journal = Some(JournalSim::new(BufWriter::new(file), tracker));
+    // The same debug aid as the export replay's.
+    let handover_at: Option<u64> = std::env::var("TEYVATME_REPLAY_HANDOVER_AT")
+        .ok()
+        .and_then(|at| at.parse().ok());
 
     loop {
         match recording.next_frame() {
             Ok(Some(frame)) => {
                 let at = frame.timestamp_ns;
                 replay.feed(frame);
+                if handover_at == Some(replay.frames) {
+                    replay.hand_over()?;
+                }
                 if let Some(ns) = at {
                     replay.advance_journal(ns / 1_000_000)?;
                 }
@@ -578,12 +585,19 @@ impl Replay {
             game_data: None,
             sniffer,
             player: self.player_data.handover(),
-            live: None,
+            live: self
+                .journal
+                .as_ref()
+                .and_then(|journal| journal.live.handover()),
+            wish: None,
+            resin_alerted: None,
         };
         let bytes = handover.to_bytes()?;
         let handover = teyvatme_core::handover::SessionHandover::from_bytes(&bytes)
             .context("the hand-over does not read back")?;
         let mut sniffer = GameSniffer::new().set_initial_keys(monitor::load_keys()?);
+        // A new process knows none of the field numbers the login taught.
+        teyvatme_protocol::forget_learned_tags();
         anyhow::ensure!(
             sniffer.resume(handover.sniffer),
             "the fresh sniffer refused the hand-over"
@@ -593,6 +607,12 @@ impl Replay {
         self.sniffer = sniffer;
         self.player_data.reset();
         let unreadable = self.player_data.resume(handover.player);
+        if let Some(journal) = &mut self.journal {
+            // The live sender starts fresh too, as the next process's does.
+            journal.live = LiveSync::new();
+            let resumed = handover.live.is_some_and(|live| journal.live.resume(live));
+            tracing::info!(resumed, "handed the live journal over");
+        }
         tracing::info!(
             frame = self.frames,
             bytes = bytes.len(),

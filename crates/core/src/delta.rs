@@ -29,6 +29,18 @@ pub const DELTA_FORMAT: &str = "GOOD-X-delta";
 pub const MAX_CHANGES: usize = 2_000;
 /// At most this many bytes of JSON per batch.
 pub const MAX_BYTES: usize = 512 * 1024;
+/// The shape the keyed state gives a GOOD (which paths exist): bumped
+/// whenever that changes, because a journal keyed by another layout cannot
+/// be diffed against this one (every path the new layout adds would read as
+/// a change). 1: up to 1.17.24; 2: parent quests one by one (`quests.<id>`).
+pub const LAYOUT: u32 = 2;
+/// The top-level sections (`path[0]`) each layout added, oldest first. A
+/// journal keyed by an older layout has no entries under them, so a hand-over
+/// seeds them from the first export instead of reading them as changes
+/// ([`Keyed::seed_sections_added_after`]); everything the older layout keyed
+/// keeps diffing. A layout that reshapes existing paths cannot be listed
+/// here: it is left to the diff (and the whole-snapshot rule).
+pub const LAYOUT_ADDED: &[(u32, &str)] = &[(2, "quests")];
 
 /// A GOOD path: every part a string (contract v1).
 pub type Path = Vec<String>;
@@ -173,6 +185,38 @@ impl GoodDelta {
 pub struct Keyed {
     pub entries: BTreeMap<Path, Value>,
     pub(crate) hints: BTreeMap<Path, Value>,
+}
+
+impl Keyed {
+    /// Copy from `current` every entry and hint under a section that a layout
+    /// after `layout` (up to [`LAYOUT`]) added. The number of entries copied.
+    pub fn seed_sections_added_after(&mut self, layout: u32, current: &Keyed) -> usize {
+        let sections: Vec<&str> = LAYOUT_ADDED
+            .iter()
+            .filter(|(added, _)| *added > layout && *added <= LAYOUT)
+            .map(|(_, section)| *section)
+            .collect();
+        if sections.is_empty() {
+            return 0;
+        }
+        let added = |path: &Path| {
+            path.first()
+                .is_some_and(|root| sections.contains(&root.as_str()))
+        };
+        let mut count = 0;
+        for (path, value) in &current.entries {
+            if added(path) {
+                self.entries.insert(path.clone(), value.clone());
+                count += 1;
+            }
+        }
+        for (path, value) in &current.hints {
+            if added(path) {
+                self.hints.insert(path.clone(), value.clone());
+            }
+        }
+        count
+    }
 }
 
 fn path(parts: &[&str]) -> Path {

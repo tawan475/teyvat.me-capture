@@ -864,6 +864,9 @@ pub struct Monitor {
     /// The resin clock and the highest amount the resin alert was last sent
     /// for on it.
     resin_alerted: Option<(crate::good::GiResin, u32)>,
+    /// The wish link's parts a hand-over carried, until the wish hub is
+    /// attached ([`Self::with_wish_hub`]).
+    resumed_wish: Option<teyvatme_core::wish::hub::WishHandover>,
     automation_pending_since: Option<Instant>,
     /// When the pending countdown began (`automation_pending_since` moves on
     /// with new data).
@@ -943,10 +946,12 @@ impl Monitor {
                 characters,
                 unreadable,
                 journal,
+                seed = live.needs_seed(),
+                wish = handover.wish.is_some(),
                 age_s = now_ms().saturating_sub(handover.written_ms) / 1_000,
                 "resumed the game session the previous run handed over"
             );
-            Some(())
+            Some((handover.wish, handover.resin_alerted))
         });
         let (packet_tx, packet_rx) = mpsc::unbounded_channel();
         let (decoded_tx, decoded_rx) = mpsc::unbounded_channel();
@@ -1024,7 +1029,10 @@ impl Monitor {
             capture_timestamp_ms: None,
             settle_pending_since: None,
             settle_armed_at: None,
-            resin_alerted: None,
+            resin_alerted: resumed
+                .as_ref()
+                .and_then(|(_, resin_alerted)| *resin_alerted),
+            resumed_wish: resumed.as_ref().and_then(|(wish, _)| wish.clone()),
             automation_pending_since: None,
             automation_armed_at: None,
             automation_last_signature: None,
@@ -1077,6 +1085,13 @@ impl Monitor {
             updated.achievements_updated,
         ));
         self.capture_timestamp_ms = Some(Local::now().timestamp_millis());
+        if self.live.needs_seed() {
+            // A hand-over from an older Capture's journal layout: the sections
+            // it never keyed take the resumed state now, so the first change
+            // after the resume is a batch, not a whole snapshot.
+            let (_, _, keyed) = self.player_data.live_export(now_ms());
+            self.live.seed(&keyed);
+        }
         let player = self.player_data.gi_player();
         let counts = self.player_data.held_counts();
         let tasks = self
@@ -1117,6 +1132,8 @@ impl Monitor {
             sniffer: sniffer_handover,
             player,
             live: self.live.handover(),
+            wish: self.wish_hub.as_ref().and_then(|hub| hub.handover()),
+            resin_alerted: self.resin_alerted,
         };
         match crate::session::write(&handover) {
             Ok(()) => tracing::info!(
@@ -1130,6 +1147,9 @@ impl Monitor {
 
     /// Hand wish history keys and wishes to `hub`.
     pub(crate) fn with_wish_hub(mut self, hub: crate::wish_history::WishHub) -> Self {
+        if let Some(wish) = self.resumed_wish.take() {
+            hub.resume(wish);
+        }
         self.wish_hub = Some(hub);
         self
     }

@@ -349,13 +349,13 @@ fn achievement_candidate_groups(msg: &Unk) -> BTreeMap<u32, Vec<Entry>> {
 }
 
 /// The tags identified inside one candidate list.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct AchievementTags {
-    id: u32,
-    status: u32,
-    finish_timestamp: u32,
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(crate) struct AchievementTags {
+    pub(crate) id: u32,
+    pub(crate) status: u32,
+    pub(crate) finish_timestamp: u32,
     /// `(current, total)`: see [`progress_tags`].
-    progress: Option<(Option<u32>, u32)>,
+    pub(crate) progress: Option<(Option<u32>, u32)>,
 }
 
 /// The progress fields among the tags left once id, status and time are
@@ -707,6 +707,22 @@ pub fn try_match_achievement_all_data_notify(
 /// two entries, too few to tell the fields apart by their values.
 static LEARNED_ACHIEVEMENT_TAGS: std::sync::Mutex<Option<AchievementTags>> =
     std::sync::Mutex::new(None);
+
+/// The achievement entries' field numbers as learned so far (for the
+/// session hand-over).
+pub(crate) fn learned_achievement_tags() -> Option<AchievementTags> {
+    LEARNED_ACHIEVEMENT_TAGS
+        .lock()
+        .map_or(None, |learned| *learned)
+}
+
+/// Set the learned field numbers: another process's, or `None` as a fresh
+/// process has.
+pub(crate) fn restore_achievement_tags(tags: Option<AchievementTags>) {
+    if let Ok(mut learned) = LEARNED_ACHIEVEMENT_TAGS.lock() {
+        *learned = tags;
+    }
+}
 
 /// Recover the achievements an `AchievementUpdateNotify` (7.1 id 5513)
 /// changed, or `None` if this is not one. The game sends one whenever an
@@ -1116,7 +1132,7 @@ pub fn matches_avatars_all_data_notify(data: &[u8]) -> Option<Vec<AvatarInfo>> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::r#gen::protos::{Equip, Material, PropValue, Weapon};
 
@@ -1205,6 +1221,19 @@ mod tests {
         achievements.iter().map(|a| a.id).collect()
     }
 
+    /// The login's list, read so the update matcher knows the field numbers.
+    pub(crate) fn learn() {
+        matches_achievement_all_data_notify(achievement_packet(80_001, 120)).unwrap();
+    }
+
+    /// One finished achievement's update, in that list's layout.
+    pub(crate) fn update(id: u64) -> Vec<u8> {
+        packet(&[field_bytes(
+            TAG_LIST,
+            &achievement_entry(id, 2, 4, Some(1_790_000_000)),
+        )])
+    }
+
     #[test]
     fn achievement_packet_fixture_is_big_enough_to_be_considered() {
         assert!(achievement_packet(80001, 120).len() >= MIN_ACHIEVEMENT_PAYLOAD_LEN);
@@ -1212,6 +1241,7 @@ mod tests {
 
     #[test]
     fn decodes_an_account_that_owns_the_sentinel_achievement() {
+        let _guard = crate::learned_test_lock();
         let data = achievement_packet(80001, 120);
         let achievements = matches_achievement_all_data_notify(&data).expect("should match");
 
@@ -1228,6 +1258,7 @@ mod tests {
     /// in teyvatme: no field equal to 80014 anywhere in the dump.
     #[test]
     fn decodes_an_account_that_does_not_own_the_sentinel_achievement() {
+        let _guard = crate::learned_test_lock();
         let data = achievement_packet(90001, 120);
         let sentinel = varint(SENTINEL_ACHIEVEMENT_ID);
         assert!(
@@ -1244,6 +1275,7 @@ mod tests {
     /// the achievement list. It used to take the whole packet down with it.
     #[test]
     fn ignores_the_reward_taken_goal_id_list_sibling() {
+        let _guard = crate::learned_test_lock();
         let packed: Vec<u8> = (80001u64..80040).flat_map(varint).collect();
         let mut data = field_bytes(TAG_REWARD_TAKEN, &packed);
         data.extend(achievement_packet(80001, 120));
@@ -1259,6 +1291,7 @@ mod tests {
     /// them for entries would report nonsense.
     #[test]
     fn ignores_a_prepended_packet_header() {
+        let _guard = crate::learned_test_lock();
         let mut header = packet(&[
             field_varint(1, 12345),             // packet_id
             field_varint(6, 1_700_000_000_000), // sent_ms
@@ -1279,6 +1312,7 @@ mod tests {
     /// the choice must not depend on hash iteration order.
     #[test]
     fn status_tag_choice_is_deterministic_with_two_small_fields() {
+        let _guard = crate::learned_test_lock();
         let entries: Vec<Vec<u8>> = achievement_entries(80001, 120)
             .into_iter()
             .map(|mut entry| {
@@ -1311,6 +1345,7 @@ mod tests {
     /// work today working.
     #[test]
     fn falls_back_to_the_sentinel_when_no_field_is_unique() {
+        let _guard = crate::learned_test_lock();
         let mut entries = achievement_entries(80001, 120);
         // Duplicate one id so the id field is no longer unique across the list.
         entries[119] = achievement_entry(80001, 1, 5, None);
@@ -1354,6 +1389,7 @@ mod tests {
 
     #[test]
     fn rejects_a_payload_of_short_groups() {
+        let _guard = crate::learned_test_lock();
         // Long enough to be considered, but no group reaches the entry floor.
         let mut data = achievement_packet(80001, 9);
         data.extend(field_bytes(20, &vec![b'x'; MIN_ACHIEVEMENT_PAYLOAD_LEN]));
@@ -1395,6 +1431,7 @@ mod tests {
 
     #[test]
     fn decodes_the_7_1_layout() {
+        let _guard = crate::learned_test_lock();
         let entries: Vec<Vec<u8>> = (0..200u64)
             .map(|i| {
                 let finished = i % 40 != 0;
@@ -1534,6 +1571,7 @@ mod tests {
     /// constant and a unique id, which is all the structural test asked for.
     #[test]
     fn rejects_the_beyond_cosmetic_data_notify_shape() {
+        let _guard = crate::learned_test_lock();
         let entries: Vec<Vec<u8>> = (0..128u64)
             .map(|i| cosmetic_entry(270_002 + i, 1, 1_700_000_000 + (i % 21) * 86_400))
             .collect();
@@ -1577,6 +1615,7 @@ mod tests {
     /// the list, and are exported as they are.
     #[test]
     fn a_few_odd_entries_do_not_cost_the_list() {
+        let _guard = crate::learned_test_lock();
         let mut entries = achievement_entries(80001, 120);
         for i in 0..5 {
             // An id past the range, and a timestamp on an unfinished entry.
@@ -1597,6 +1636,7 @@ mod tests {
 
     #[test]
     fn achievement_entries_survive_a_trailing_non_list_group() {
+        let _guard = crate::learned_test_lock();
         let mut data = achievement_packet(80001, 120);
         // A repeated field of nested messages: shape-rejected, but only for
         // itself.

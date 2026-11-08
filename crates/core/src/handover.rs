@@ -73,8 +73,10 @@ pub mod option_pairs {
     }
 }
 
+use crate::good::GiResin;
 use crate::live::LiveHandover;
 use crate::player_data::PlayerHandover;
+use crate::wish::hub::WishHandover;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SessionHandover {
@@ -88,6 +90,13 @@ pub struct SessionHandover {
     pub sniffer: SnifferHandover,
     pub player: PlayerHandover,
     pub live: Option<LiveHandover>,
+    /// The wish link's parts captured this login (since 1.17.26).
+    #[serde(default)]
+    pub wish: Option<WishHandover>,
+    /// The resin alert already sent on the current resin clock, so it is not
+    /// sent again (since 1.17.26).
+    #[serde(default)]
+    pub resin_alerted: Option<(GiResin, u32)>,
 }
 
 impl SessionHandover {
