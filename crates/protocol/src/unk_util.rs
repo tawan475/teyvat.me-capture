@@ -349,13 +349,13 @@ fn achievement_candidate_groups(msg: &Unk) -> BTreeMap<u32, Vec<Entry>> {
 }
 
 /// The tags identified inside one candidate list.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct AchievementTags {
-    id: u32,
-    status: u32,
-    finish_timestamp: u32,
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(crate) struct AchievementTags {
+    pub(crate) id: u32,
+    pub(crate) status: u32,
+    pub(crate) finish_timestamp: u32,
     /// `(current, total)`: see [`progress_tags`].
-    progress: Option<(Option<u32>, u32)>,
+    pub(crate) progress: Option<(Option<u32>, u32)>,
 }
 
 /// The progress fields among the tags left once id, status and time are
@@ -707,6 +707,22 @@ pub fn try_match_achievement_all_data_notify(
 /// two entries, too few to tell the fields apart by their values.
 static LEARNED_ACHIEVEMENT_TAGS: std::sync::Mutex<Option<AchievementTags>> =
     std::sync::Mutex::new(None);
+
+/// The achievement entries' field numbers as learned so far (for the
+/// session hand-over).
+pub(crate) fn learned_achievement_tags() -> Option<AchievementTags> {
+    LEARNED_ACHIEVEMENT_TAGS
+        .lock()
+        .map_or(None, |learned| *learned)
+}
+
+/// Set the learned field numbers: another process's, or `None` as a fresh
+/// process has.
+pub(crate) fn restore_achievement_tags(tags: Option<AchievementTags>) {
+    if let Ok(mut learned) = LEARNED_ACHIEVEMENT_TAGS.lock() {
+        *learned = tags;
+    }
+}
 
 /// Recover the achievements an `AchievementUpdateNotify` (7.1 id 5513)
 /// changed, or `None` if this is not one. The game sends one whenever an
@@ -1116,7 +1132,7 @@ pub fn matches_avatars_all_data_notify(data: &[u8]) -> Option<Vec<AvatarInfo>> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::r#gen::protos::{Equip, Material, PropValue, Weapon};
 
@@ -1203,6 +1219,19 @@ mod tests {
 
     fn ids(achievements: &[Achievement]) -> Vec<u32> {
         achievements.iter().map(|a| a.id).collect()
+    }
+
+    /// The login's list, read so the update matcher knows the field numbers.
+    pub(crate) fn learn() {
+        matches_achievement_all_data_notify(achievement_packet(80_001, 120)).unwrap();
+    }
+
+    /// One finished achievement's update, in that list's layout.
+    pub(crate) fn update(id: u64) -> Vec<u8> {
+        packet(&[field_bytes(
+            TAG_LIST,
+            &achievement_entry(id, 2, 4, Some(1_790_000_000)),
+        )])
     }
 
     #[test]

@@ -348,6 +348,21 @@ pub fn matches_do_gacha_rsp(data: &[u8]) -> Option<GachaWish> {
 /// counter equals a banner type too (`None` until one was seen).
 static LEARNED_GACHA_TYPE_TAG: std::sync::Mutex<Option<u32>> = std::sync::Mutex::new(None);
 
+/// The banner's field number as learned so far (for the session hand-over).
+pub(crate) fn learned_gacha_type_tag() -> Option<u32> {
+    LEARNED_GACHA_TYPE_TAG
+        .lock()
+        .map_or(None, |learned| *learned)
+}
+
+/// Set the learned field number: another process's, or `None` as a fresh
+/// process has.
+pub(crate) fn restore_gacha_type_tag(tag: Option<u32>) {
+    if let Ok(mut learned) = LEARNED_GACHA_TYPE_TAG.lock() {
+        *learned = tag;
+    }
+}
+
 /// The most banners believed in one banner list.
 const MAX_BANNERS: usize = 64;
 
@@ -361,7 +376,7 @@ const MAX_RECORD_QUERY_LEN: usize = 1024;
 /// When the player opens the history, the game adds its own parameters and
 /// the key to that link's query and calls the wish history API with it; this
 /// is the query, verbatim.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GachaRecordLink {
     /// The banner, one of [`GACHA_TYPES`]; `None` when it could not be told.
     pub gacha_type: Option<u32>,

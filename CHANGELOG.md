@@ -2,6 +2,22 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.17.26
+
+- A Capture that restarted mid-session (an update installing itself, say)
+  picked the game session up again but not the field numbers the login's
+  lists had taught it, so achievement and quest updates went unread until
+  the next login. The session hand-over carries them now, with the wish
+  link's banner query and client version, live sync's watching state, a
+  records attach still pending and the resin alert already sent.
+- A hand-over written by an older Capture whose live journal keyed fewer
+  sections (1.17.24 to 1.17.25 added the quests) no longer turns the first
+  batch into a whole snapshot: those sections take the state as it is, and
+  everything the older journal keyed keeps going up as batches, the
+  restart's gap included.
+- Android has no hand-over (an app update drops the VPN and the game logs in
+  again), so nothing changes there.
+
 ## 1.17.25
 
 - Quests finished or accepted during a session go up with live sync as they

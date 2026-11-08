@@ -145,6 +145,56 @@ fn bytes_as_hex(bytes: &[u8]) -> String {
 
 pub mod r#gen;
 
+/// The field numbers the login's lists taught this process: the achievement
+/// entries' (for `AchievementUpdateNotify`), the parent quest entries' (for
+/// the quest updates) and the wish banner's in `DoGachaRsp`. An update's one
+/// or two entries are too few to learn them from, so a process that never
+/// saw the lists reads no update; a session hand-over carries them
+/// ([`SnifferHandover`]) so the next process reads updates before its own
+/// login.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LearnedTags {
+    #[serde(default)]
+    achievements: Option<unk_util::AchievementTags>,
+    #[serde(default)]
+    quests: Option<quests::QuestTags>,
+    #[serde(default)]
+    gacha_type: Option<u32>,
+}
+
+/// What this process has learned so far.
+pub fn learned_tags() -> LearnedTags {
+    LearnedTags {
+        achievements: unk_util::learned_achievement_tags(),
+        quests: quests::learned_quest_tags(),
+        gacha_type: gacha::learned_gacha_type_tag(),
+    }
+}
+
+/// Take over another process's learned field numbers (every part, a missing
+/// one included).
+pub fn restore_learned_tags(tags: &LearnedTags) {
+    unk_util::restore_achievement_tags(tags.achievements);
+    quests::restore_quest_tags(tags.quests.clone());
+    gacha::restore_gacha_type_tag(tags.gacha_type);
+}
+
+/// Forget them all, as a fresh process has: a replay and test aid for proving
+/// what a hand-over into a new process carries. Never for the app itself.
+#[doc(hidden)]
+pub fn forget_learned_tags() {
+    restore_learned_tags(&LearnedTags::default());
+}
+
+/// Tests that read or set the learned field numbers hold this: they are
+/// process-wide and the tests run in parallel.
+#[cfg(test)]
+pub(crate) fn learned_test_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    LOCK.lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 mod anecdotes;
 mod collections;
 mod connection;
@@ -589,6 +639,11 @@ pub struct SnifferHandover {
     time_anchors: Vec<u64>,
     /// Sent, then received.
     lanes: [Option<LaneHandover>; 2],
+    /// The field numbers the login's lists taught ([`LearnedTags`]). Absent
+    /// in a hand-over from before them: the next process then reads no
+    /// achievement or quest update until its own login.
+    #[serde(default)]
+    learned: Option<LearnedTags>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -845,6 +900,7 @@ impl GameSniffer {
             last_time_seed: self.last_time_seed,
             time_anchors: self.time_anchors.clone(),
             lanes,
+            learned: Some(learned_tags()),
         })
     }
 
@@ -862,6 +918,11 @@ impl GameSniffer {
             || self.recv.kcp.is_some()
         {
             return false;
+        }
+        // Before any message is judged: an update right after the resume
+        // must read with the login's field numbers.
+        if let Some(learned) = &handover.learned {
+            restore_learned_tags(learned);
         }
         let [sent, recv] = handover.lanes;
         let lane = |lane: Option<LaneHandover>| {
@@ -4308,6 +4369,65 @@ mod tests {
 
         assert_eq!(sniffer.session_generation(), generation);
         assert!(matches!(sniffer.key, Some(Key::Session(_))));
+    }
+
+    #[test]
+    fn a_hand_over_carries_the_field_numbers_the_login_taught() {
+        let _guard = crate::learned_test_lock();
+        // A fresh process knows none; the login's lists teach them.
+        forget_learned_tags();
+        assert_eq!(learned_tags(), LearnedTags::default());
+        crate::quests::tests::learn();
+        unk_util::tests::learn();
+        let tags = learned_tags();
+        assert!(tags.achievements.is_some() && tags.quests.is_some());
+        let quest_update = crate::quests::tests::update(77_225);
+        let achievement_update = unk_util::tests::update(81_041);
+        assert!(matches_parent_quest_update(&quest_update).is_some());
+        assert!(matches_achievement_update_notify(&achievement_update).is_some());
+
+        // The first process hands over: the tags ride along, through JSON.
+        let mut first = connected_sniffer();
+        let mut conn = Conn::new(122_486);
+        let combined = 0x1111;
+        let _ = log_in(
+            &mut first,
+            &mut conn,
+            LOGIN_MS,
+            client_draw(LOGIN_MS, 0),
+            combined,
+        );
+        let handover = first.handover().expect("a live session hands over");
+        assert_eq!(handover.learned, Some(tags.clone()));
+        let json = serde_json::to_vec(&handover).unwrap();
+        let back: SnifferHandover = serde_json::from_slice(&json).unwrap();
+        assert_eq!(back, handover);
+
+        // The next process starts knowing nothing: no update reads...
+        forget_learned_tags();
+        assert_eq!(matches_parent_quest_update(&quest_update), None);
+        assert_eq!(matches_achievement_update_notify(&achievement_update), None);
+        // ...until it resumes the hand-over.
+        let mut second = connected_sniffer();
+        assert!(second.resume(back));
+        assert_eq!(learned_tags(), tags);
+        assert_eq!(
+            matches_parent_quest_update(&quest_update).unwrap().finished,
+            vec![77_225]
+        );
+        assert_eq!(
+            matches_achievement_update_notify(&achievement_update).unwrap()[0].id,
+            81_041
+        );
+
+        // A hand-over from before the tags leaves what the process knows alone.
+        let mut json: serde_json::Value = serde_json::to_value(&handover).unwrap();
+        json.as_object_mut().unwrap().remove("learned");
+        let old: SnifferHandover = serde_json::from_value(json).unwrap();
+        assert_eq!(old.learned, None);
+        let mut third = connected_sniffer();
+        assert!(third.resume(old));
+        assert_eq!(learned_tags(), tags);
     }
 
     #[test]

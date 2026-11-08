@@ -5775,7 +5775,7 @@ dependencies = [
 
 [[package]]
 name = "teyvatme"
-version = "1.17.25"
+version = "1.17.26"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5879,6 +5879,7 @@ dependencies = [
  "rand_mt",
  "rsa",
  "serde",
+ "serde_json",
  "tracing",
 ]
 
