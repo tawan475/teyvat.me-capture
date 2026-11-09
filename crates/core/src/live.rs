@@ -539,8 +539,21 @@ impl LiveSync {
     }
 
     /// Some account data changed (`count` entries, an estimate).
+    ///
+    /// The export is not rebuilt for it: the next tick looks when the batch
+    /// spacing allows (`recheck_at_ms`), so a stream of small changes (Mora
+    /// after every pickup, five a second in a fight) costs one export per
+    /// spacing, not one per change. Before 1.17.27 every change zeroed the
+    /// recheck time: ~3,000 full exports an hour on a real account.
     pub fn note_change(&mut self, count: usize) {
         self.pending = self.pending.saturating_add(count.max(1));
+    }
+
+    /// A change worth a batch at once came (a character's level, talent,
+    /// constellation or gear, as the monitor saw it; see
+    /// [`delta::is_important`]): look as soon as the spacing allows instead
+    /// of at the next scheduled look.
+    pub fn note_important_change(&mut self) {
         self.recheck_at_ms = 0;
     }
 
@@ -1111,6 +1124,50 @@ mod tests {
     }
 
     #[test]
+    fn a_stream_of_small_changes_builds_one_export_per_spacing() {
+        use std::cell::Cell;
+        let mut live = live_at(0);
+        live.note_change(5);
+        sent(live.tick(true, 15_000, export(with_materials(5))));
+        live.batch_answered(
+            BatchAnswer::Stored {
+                collapse: false,
+                watching: false,
+            },
+            15_100,
+        );
+        // Mora moves after every pickup: a change every 200 ms for a minute,
+        // each a tick. The export is built at most once per batch spacing,
+        // not once per change (the whole account, keyed and diffed each time).
+        let builds = Cell::new(0);
+        let mut good = with_materials(5);
+        for i in 0..300u64 {
+            let now = 15_200 + i * 200;
+            good.materials.insert("Mora".to_owned(), 1_000 + i as u32);
+            live.note_change(1);
+            let action = live.tick(true, now, || {
+                builds.set(builds.get() + 1);
+                Some((good.clone(), keyed(&good)))
+            });
+            assert_eq!(
+                action,
+                Action::Nothing,
+                "a lone material change is not due at {now}"
+            );
+        }
+        // 60 s of changes: the export is looked at every 15 s at most (the
+        // pending estimate passes NORMAL_BATCH, so each look diffs).
+        assert!(
+            builds.get() <= 4,
+            "built {} exports in a minute",
+            builds.get()
+        );
+        // The lone-change wait is up: one batch with the material as it is.
+        let batch = sent(live.tick(true, 15_100 + LONE_CHANGE_MS, export(good.clone())));
+        assert_eq!(batch.changes.len(), 1);
+    }
+
+    #[test]
     fn afk_sends_nothing() {
         let mut live = live_at(0);
         assert_eq!(live.next_tick_ms(true, 1_000), None);
@@ -1168,11 +1225,22 @@ mod tests {
             live.tick(true, 25_000, || panic!("no export before the next look")),
             Action::Nothing
         );
-        // New data is looked at now.
+        // New data waits for that look too: looking means building and
+        // diffing the whole account, and a fight moves Mora five times a
+        // second (before 1.17.27 every change was looked at at once: ~3,000
+        // exports an hour on a real account).
         live.note_change(1);
-        assert_eq!(live.next_tick_ms(true, 25_000), Some(25_000));
-        assert_eq!(live.tick(true, 25_000, export(good(101))), Action::Nothing);
-        assert_eq!(live.next_tick_ms(true, 25_000), Some(40_000));
+        assert_eq!(live.next_tick_ms(true, 25_000), Some(35_000));
+        assert_eq!(
+            live.tick(true, 25_000, || panic!("no export before the next look")),
+            Action::Nothing
+        );
+        assert_eq!(live.tick(true, 35_000, export(good(101))), Action::Nothing);
+        assert_eq!(live.next_tick_ms(true, 35_000), Some(50_000));
+        // A character change is looked at as soon as the spacing allows.
+        live.note_important_change();
+        assert_eq!(live.next_tick_ms(true, 36_000), Some(36_000));
+        assert_eq!(live.tick(true, 36_000, export(good(101))), Action::Nothing);
         let batch = sent(live.tick(true, 120_000, export(good(101))));
         assert_eq!(batch.changes.len(), 1);
     }

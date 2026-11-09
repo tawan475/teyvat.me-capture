@@ -1903,6 +1903,11 @@ impl Monitor {
             self.live.note_full_send();
         }
         self.live.note_change(noted + applied.live_updates);
+        if applied.characters {
+            // A level, talent, constellation or gear change: worth a batch
+            // as soon as the spacing allows (item changes wait for it).
+            self.live.note_important_change();
+        }
         if applied.endgame {
             self.live.note_endgame_change();
         }
@@ -3408,6 +3413,45 @@ pub(crate) fn load_keys() -> Result<HashMap<u16, Vec<u8>>> {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+
+    /// Times one live export (GOOD + keyed) and one diff on a real account:
+    /// `TEYVATME_HANDOVER_BENCH=<session-handover.json> cargo test --release
+    /// -p teyvatme export_cost -- --ignored --nocapture`. Personal data stays
+    /// on the machine; nothing is written.
+    #[test]
+    #[ignore]
+    fn export_cost_on_a_handed_over_account() {
+        let Ok(path) = std::env::var("TEYVATME_HANDOVER_BENCH") else {
+            return;
+        };
+        let bytes = std::fs::read(path).expect("the hand-over file");
+        let handover =
+            teyvatme_core::handover::SessionHandover::from_bytes(&bytes).expect("reads back");
+        let mut player = PlayerData::new(super::load_game_data().unwrap());
+        let unreadable = player.resume(handover.player);
+        let (items, characters) = (player.item_count(), player.held_counts());
+        eprintln!("items={items} counts={characters:?} unreadable={unreadable}");
+        let now = super::now_ms();
+        let mut keyed_first = None;
+        for round in 0..3 {
+            let t = std::time::Instant::now();
+            let (good, _, keyed) = player.live_export(now);
+            let export_ms = t.elapsed().as_secs_f64() * 1_000.0;
+            let t = std::time::Instant::now();
+            let json = serde_json::to_vec(&good).unwrap();
+            let json_ms = t.elapsed().as_secs_f64() * 1_000.0;
+            let t = std::time::Instant::now();
+            let changes =
+                teyvatme_core::delta::diff(keyed_first.get_or_insert(keyed.clone()), &keyed);
+            let diff_ms = t.elapsed().as_secs_f64() * 1_000.0;
+            eprintln!(
+                "round {round}: export+keyed {export_ms:.1} ms, json {json_ms:.1} ms ({} KB), diff {diff_ms:.1} ms ({} changes, {} keyed entries)",
+                json.len() / 1024,
+                changes.len(),
+                keyed.entries.len()
+            );
+        }
+    }
 
     #[test]
     fn the_resin_alert_is_due_when_the_clock_reaches_it() {

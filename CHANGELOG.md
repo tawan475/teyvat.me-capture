@@ -2,6 +2,16 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.17.27
+
+- Live sync no longer rebuilds the whole account export for every small
+  change. A fight moves Mora several times a second, and each move made
+  Capture export, key and diff the entire account: about 3,000 times an hour
+  on a large account, 46 ms each, a good part of the CPU Capture used during
+  play. Changes are now looked at once per batch spacing (15 s), a character
+  change as soon as the spacing allows. What goes up and when is otherwise
+  unchanged.
+
 ## 1.17.26
 
 - A Capture that restarted mid-session (an update installing itself, say)
