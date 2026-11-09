@@ -1354,67 +1354,74 @@ fn start_async_runtime(
     );
     let mut updater_state_rx = state_rx.clone();
     let updater_ctx = egui_ctx.clone();
-    let monitor_handle = thread::spawn(move || {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+    // Named, like the sniffer's thread: a per-thread CPU reading (Process
+    // Explorer, PowerShell) then says which thread is working. On 2026-11-10
+    // this one held 102 of the process's 167 CPU seconds, the per-change
+    // exports live sync used to build (1.17.27 stopped them).
+    let monitor_handle = thread::Builder::new()
+        .name("teyvatme-monitor".into())
+        .spawn(move || {
+            let rt = tokio::runtime::Runtime::new().unwrap();
 
-        rt.block_on(async {
-            let monitor_ctx = updater_ctx.clone();
-            // Notify egui of state changes. This has to be running *before* the
-            // update check: the check pushes the "update available" prompt
-            // through `state_tx`, and without a repainter listening the window
-            // sat on "Checking for Teyvat.me updates" until the user happened to
-            // move the pointer over it.
-            tokio::spawn(async move {
-                loop {
-                    let _ = updater_state_rx.changed().await;
-                    updater_ctx.request_repaint();
-                }
+            rt.block_on(async {
+                let monitor_ctx = updater_ctx.clone();
+                // Notify egui of state changes. This has to be running *before* the
+                // update check: the check pushes the "update available" prompt
+                // through `state_tx`, and without a repainter listening the window
+                // sat on "Checking for Teyvat.me updates" until the user happened to
+                // move the pointer over it.
+                tokio::spawn(async move {
+                    loop {
+                        let _ = updater_state_rx.changed().await;
+                        updater_ctx.request_repaint();
+                    }
+                });
+
+                // The updater checks at once and then now and then, in the
+                // background: capture starts without waiting on it.
+                let update_ctx = monitor_ctx.clone();
+                tokio::spawn(async move {
+                    while repaint_on_update.changed().await.is_ok() {
+                        update_ctx.request_repaint();
+                    }
+                });
+                tokio::spawn(run_updater(
+                    update_status_tx,
+                    update_rx,
+                    cancel_token.clone(),
+                    toast_tx.clone(),
+                    Arc::clone(&install_lock),
+                    crate::update::AutoInstall(saved_state_rx.clone()),
+                ));
+
+                // Wish history from the keys; ends with the monitor.
+                tokio::spawn(wish_sync.run());
+
+                tracing::info!("Starting monitor");
+                let monitor = match Monitor::new(
+                    cancel_token,
+                    state_tx,
+                    ui_message_rx,
+                    log_packets_rx,
+                    capture_backend,
+                    capture_source,
+                    saved_state_rx,
+                    toast_tx,
+                    tracker_auth,
+                    monitor_ctx,
+                )
+                .await
+                {
+                    Ok(monitor) => monitor.with_wish_hub(wish_hub),
+                    Err(e) => {
+                        tracing::error!("error loading monitor task: {e}");
+                        return;
+                    }
+                };
+                monitor.run().await;
             });
-
-            // The updater checks at once and then now and then, in the
-            // background: capture starts without waiting on it.
-            let update_ctx = monitor_ctx.clone();
-            tokio::spawn(async move {
-                while repaint_on_update.changed().await.is_ok() {
-                    update_ctx.request_repaint();
-                }
-            });
-            tokio::spawn(run_updater(
-                update_status_tx,
-                update_rx,
-                cancel_token.clone(),
-                toast_tx.clone(),
-                Arc::clone(&install_lock),
-                crate::update::AutoInstall(saved_state_rx.clone()),
-            ));
-
-            // Wish history from the keys; ends with the monitor.
-            tokio::spawn(wish_sync.run());
-
-            tracing::info!("Starting monitor");
-            let monitor = match Monitor::new(
-                cancel_token,
-                state_tx,
-                ui_message_rx,
-                log_packets_rx,
-                capture_backend,
-                capture_source,
-                saved_state_rx,
-                toast_tx,
-                tracker_auth,
-                monitor_ctx,
-            )
-            .await
-            {
-                Ok(monitor) => monitor.with_wish_hub(wish_hub),
-                Err(e) => {
-                    tracing::error!("error loading monitor task: {e}");
-                    return;
-                }
-            };
-            monitor.run().await;
-        });
-    });
+        })
+        .expect("the monitor thread starts");
     tracing::info!("started tokio");
     (
         ui_message_tx,

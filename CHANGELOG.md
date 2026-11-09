@@ -2,6 +2,11 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.17.28
+
+- The monitor thread is named `teyvatme-monitor`, like the sniffer's, so a
+  per-thread CPU reading says which thread is working.
+
 ## 1.17.27
 
 - Live sync no longer rebuilds the whole account export for every small
