@@ -2,6 +2,16 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.17.28
+
+- The monitor thread is named `teyvatme-monitor`, like the sniffer's, so a
+  per-thread CPU reading says which thread is working.
+- Stygian Onslaught records name the character behind each figure even when
+  the Strongest Single Strike and the Highest Total Damage were two
+  characters (7.2's field layout, read off the game's Battle Records
+  Review). Before, a fight like that showed no portrait for either; another
+  version's layout keeps that until it is learned the same way.
+
 ## 1.17.27
 
 - Live sync no longer rebuilds the whole account export for every small

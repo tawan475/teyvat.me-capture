@@ -175,7 +175,9 @@ pub struct StygianFight {
 /// The numbers are told apart by value (one strike is never more than one
 /// character's total damage), the avatars are not: when the two differ,
 /// which goes with which is not on the wire in any form a reshuffled field
-/// number cannot swap, so `by` is given only when both name one character.
+/// number cannot swap, so `by` is given only when both name one character,
+/// or when the fields are a layout read off the game's own screen
+/// (`STYGIAN_FIGURE_LAYOUTS`).
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Figure {
     pub value: u64,
@@ -579,6 +581,26 @@ struct FightRead {
     damage: Option<Figure>,
 }
 
+/// A fight's figure fields as one client version sends them: the strike's
+/// avatar and value, then the highest damage's.
+struct FigureLayout {
+    strike: (u32, u32),
+    damage: (u32, u32),
+}
+
+/// The figure layouts read off the game's own Battle Records Review. 7.2
+/// (2026-11-11, the user's Wavebinder fight: Strongest Single Strike
+/// 1,443,510 by Odette, Highest Total Damage Dealt 24,079,465 by Mitya):
+/// avatars on 3 (strike) and 8 (damage), values on 12 (strike) and 10
+/// (damage). Every version renumbers fields; a fight whose four fields are
+/// not a listed layout keeps the older rule (a character only when both
+/// figures are one character's), so a new layout loses the portraits
+/// instead of swapping them, until it is learned the same way.
+const STYGIAN_FIGURE_LAYOUTS: [FigureLayout; 1] = [FigureLayout {
+    strike: (3, 12),
+    damage: (8, 10),
+}];
+
 /// Read a fight's figures: a submessage of exactly four lone numbers, two
 /// avatar ids and two values, or `None` if `bytes` is not that (the
 /// equipment guid list and a team are the other submessages of a fight).
@@ -586,15 +608,44 @@ fn fight_figures(bytes: &[u8]) -> Option<(Figure, Figure)> {
     let fields = wire::fields(bytes)?;
     let mut avatars = Vec::new();
     let mut values = Vec::new();
-    for field in fields.values() {
+    let mut by_tag = BTreeMap::new();
+    for (tag, field) in &fields {
         match field.as_slice() {
             [Varint(v)] if AVATAR_IDS.contains(v) => avatars.push(*v as u32),
             [Varint(v)] if *v >= 1 => values.push(*v),
             _ => return None,
         }
+        if let [Varint(v)] = field.as_slice() {
+            by_tag.insert(*tag, *v);
+        }
     }
     if avatars.len() != 2 || values.len() != 2 {
         return None;
+    }
+    // A known layout names each figure's character; the values must still
+    // read the right way round (one strike is never more than a total).
+    for layout in &STYGIAN_FIGURE_LAYOUTS {
+        let get = |tag: u32| by_tag.get(&tag).copied();
+        if let (Some(sa), Some(sv), Some(da), Some(dv)) = (
+            get(layout.strike.0),
+            get(layout.strike.1),
+            get(layout.damage.0),
+            get(layout.damage.1),
+        ) && AVATAR_IDS.contains(&sa)
+            && AVATAR_IDS.contains(&da)
+            && sv <= dv
+        {
+            return Some((
+                Figure {
+                    value: sv,
+                    by: Some(sa as u32),
+                },
+                Figure {
+                    value: dv,
+                    by: Some(da as u32),
+                },
+            ));
+        }
     }
     values.sort_unstable();
     let by = (avatars[0] == avatars[1]).then_some(avatars[0]);
@@ -1093,6 +1144,53 @@ fn settle_abyss(reads: Vec<AbyssRecordRead>) -> Option<Vec<AbyssRecord>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_7_2_figure_layout_names_each_figures_character() {
+        // The 7.2 layout, the user's Wavebinder fight: two characters.
+        let mut bytes = Vec::new();
+        field_varint(3, 10_000_150, &mut bytes);
+        field_varint(8, 10_000_136, &mut bytes);
+        field_varint(10, 24_079_465, &mut bytes);
+        field_varint(12, 1_443_510, &mut bytes);
+        let (strike, damage) = fight_figures(&bytes).unwrap();
+        assert_eq!(
+            strike,
+            Figure {
+                value: 1_443_510,
+                by: Some(10_000_150)
+            }
+        );
+        assert_eq!(
+            damage,
+            Figure {
+                value: 24_079_465,
+                by: Some(10_000_136)
+            }
+        );
+
+        // Another layout (a renumbered version): the values are still told
+        // apart, the characters only when they are one.
+        let mut other = Vec::new();
+        field_varint(2, 10_000_150, &mut other);
+        field_varint(5, 10_000_136, &mut other);
+        field_varint(7, 24_079_465, &mut other);
+        field_varint(9, 1_443_510, &mut other);
+        let (strike, damage) = fight_figures(&other).unwrap();
+        assert_eq!((strike.value, strike.by), (1_443_510, None));
+        assert_eq!((damage.value, damage.by), (24_079_465, None));
+
+        // The 7.2 fields with the values the wrong way round are not that
+        // layout: the older rule decides.
+        let mut swapped = Vec::new();
+        field_varint(3, 10_000_150, &mut swapped);
+        field_varint(8, 10_000_136, &mut swapped);
+        field_varint(10, 1_443_510, &mut swapped);
+        field_varint(12, 24_079_465, &mut swapped);
+        let (strike, damage) = fight_figures(&swapped).unwrap();
+        assert_eq!((strike.by, damage.by), (None, None));
+        assert_eq!((strike.value, damage.value), (1_443_510, 24_079_465));
+    }
 
     fn varint(mut value: u64, out: &mut Vec<u8>) {
         loop {
