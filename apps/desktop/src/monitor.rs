@@ -930,9 +930,16 @@ impl Monitor {
         let keys = load_keys()?;
         let mut sniffer = GameSniffer::new().set_initial_keys(keys);
         let mut live = LiveSync::new();
+        let mut game_detector = SystemProcessDetector::new();
         // The previous run handed its game connection over (an update's
-        // relaunch, say): pick it up instead of waiting for the next login.
+        // relaunch, say): pick it up instead of waiting for the next login,
+        // but only while the game is still running (it may have closed
+        // during the restart; the file is deleted either way).
         let resumed = crate::session::take(now_ms()).and_then(|handover| {
+            if !game_watch::ProcessDetector::game_running(&mut game_detector) {
+                tracing::info!("a session hand-over, but the game is not running: not resumed");
+                return None;
+            }
             if !sniffer.resume(handover.sniffer) {
                 return None;
             }
@@ -1019,7 +1026,7 @@ impl Monitor {
             capture_failures: 0,
             capture_silence: CaptureSilence::default(),
             game_watch: GameWatch::default(),
-            game_detector: SystemProcessDetector::new(),
+            game_detector,
             game_poll,
             saved_state_rx,
             toast_tx,
@@ -1121,6 +1128,13 @@ impl Monitor {
         };
         if !self.player_data.login_parts().items {
             tracing::info!("a live game connection but no account data yet: nothing handed over");
+            return;
+        }
+        // A key outlives the game: closing Genshin ends the session even
+        // though nothing told the sniffer, and a next start that picked it
+        // up said "Picked the running game session up again" with no game.
+        if !self.game_watch.game_running() {
+            tracing::info!("the game is not running: nothing handed over");
             return;
         }
         let player = self.player_data.handover();

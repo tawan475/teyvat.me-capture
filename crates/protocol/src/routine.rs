@@ -1510,6 +1510,7 @@ mod tests {
 
     #[test]
     fn each_routine_message_is_claimed_by_its_own_matcher_only() {
+        let _guard = crate::learned_test_lock();
         use crate::{CommandMatch, classify_command};
         // No other matcher may claim it too (that logs a warning).
         let kind = |payload: &[u8]| {

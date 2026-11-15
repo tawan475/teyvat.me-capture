@@ -572,6 +572,14 @@ impl LiveSync {
             let seq = self.journal.as_ref().map_or(0, |journal| journal.seq);
             self.logout_login = Some((login, seq));
             self.wanted = Some(Reason::Logout);
+        } else {
+            // Nothing to send for it, and nothing can journal without a
+            // login: the next one opens its own. Kept, it made every later
+            // change (Mora after a pickup, five a second) build and diff the
+            // whole export and find no login to batch it under, over and
+            // over (a 2026-11-15 log: 330 exports a second for 1 h 42 min).
+            self.journal = None;
+            self.pending = 0;
         }
     }
 
@@ -701,6 +709,9 @@ impl LiveSync {
         {
             return Some(self.retry_at_ms.max(now_ms));
         }
+        // Without a login there is nothing to batch or attach under: a tick
+        // could only build an export to throw away.
+        self.login.as_ref()?;
         if self.attach_wanted && !self.attach_flight && self.wanted.is_none() {
             return Some(self.attach_retry_at_ms.max(now_ms));
         }
@@ -751,6 +762,10 @@ impl LiveSync {
             };
         }
         if !live_enabled || !self.is_live(now_ms) || self.wanted.is_some() {
+            return Action::Nothing;
+        }
+        if self.login.is_none() {
+            self.pending = 0;
             return Action::Nothing;
         }
         if let Some(flight) = self.unacked.take() {
@@ -1165,6 +1180,54 @@ mod tests {
         // The lone-change wait is up: one batch with the material as it is.
         let batch = sent(live.tick(true, 15_100 + LONE_CHANGE_MS, export(good.clone())));
         assert_eq!(batch.changes.len(), 1);
+    }
+
+    #[test]
+    fn a_connection_that_ended_with_nothing_open_builds_no_more_exports() {
+        use std::cell::Cell;
+        let mut live = live_at(0);
+        // The game closes (or the connection drops) before any batch: the
+        // journal had nothing open, so no logout snapshot is wanted.
+        live.note_connection_ended();
+        assert_eq!(live.automation_reason(true, 1_000), Some(Reason::Change));
+        // Property updates keep arriving (the next account's login, say).
+        let builds = Cell::new(0);
+        for i in 0..100u64 {
+            live.note_change(1);
+            let now = 20_000 + i * 3;
+            assert_eq!(live.next_tick_ms(true, now), None, "nothing to wake for");
+            let action = live.tick(true, now, || {
+                builds.set(builds.get() + 1);
+                Some((
+                    with_materials(i as usize + 1),
+                    keyed(&with_materials(i as usize + 1)),
+                ))
+            });
+            assert_eq!(action, Action::Nothing);
+        }
+        assert_eq!(builds.get(), 0, "no export without a login");
+        // The next login's full send opens a new journal as before.
+        live.note_full_send();
+        assert_eq!(live.automation_reason(true, 30_000), Some(Reason::Login));
+    }
+
+    #[test]
+    fn an_open_journal_still_sends_its_logout_snapshot() {
+        let mut live = live_at(0);
+        live.note_change(5);
+        sent(live.tick(true, 15_000, export(with_materials(5))));
+        live.batch_answered(
+            BatchAnswer::Stored {
+                collapse: false,
+                watching: false,
+            },
+            15_100,
+        );
+        live.note_connection_ended();
+        assert_eq!(
+            live.tick(true, 15_200, || panic!("the snapshot builds its own")),
+            Action::Snapshot(Reason::Logout)
+        );
     }
 
     #[test]

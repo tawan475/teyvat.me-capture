@@ -2,6 +2,17 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.17.29
+
+- Fixed a loop that could keep Capture busy for hours: when a game
+  connection ended before live sync had sent anything, every later change
+  made it build and compare the whole account export, hundreds of times a
+  second, until the next login's data arrived. It cost CPU, wrote a log of
+  over a gigabyte, and left Capture holding hundreds of MB of memory.
+- "Picked the running game session up again" no longer appears when the
+  game isn't running: a session is handed to the next start only while
+  Genshin is open, and a start that finds the game closed drops it.
+
 ## 1.17.28
 
 - The monitor thread is named `teyvatme-monitor`, like the sniffer's, so a
