@@ -5106,6 +5106,7 @@ mod tests {
 
     #[test]
     fn the_login_property_snapshot_still_matches() {
+        let _guard = crate::learned_test_lock();
         let entries: Vec<(u32, Vec<u8>)> = LOGIN_PROPERTIES
             .iter()
             .map(|&(key, value)| (key, wire_prop(key, value)))
@@ -5140,6 +5141,7 @@ mod tests {
     /// and folded into the player's properties.
     #[test]
     fn a_list_of_ids_in_the_shape_of_a_property_map_is_rejected() {
+        let _guard = crate::learned_test_lock();
         // However the value is encoded, it reads back as its own key.
         let encodings: [fn(u32) -> Vec<u8>; 3] = [
             |key| prop_val(key, i64::from(key)),
@@ -5334,6 +5336,7 @@ mod tests {
 
     #[test]
     fn a_single_property_update_is_recognised() {
+        let _guard = crate::learned_test_lock();
         // What the game sends after a domain reward: Mora alone.
         let mora = property_command(&[(10016, prop_val(10016, 1_234_567))]);
 
@@ -5353,6 +5356,7 @@ mod tests {
 
     #[test]
     fn a_full_page_is_still_a_page() {
+        let _guard = crate::learned_test_lock();
         let entries: Vec<(u32, Vec<u8>)> = (10_010..=10_016u32)
             .map(|key| (key, prop_val(key, 3)))
             .collect();
@@ -5395,6 +5399,7 @@ mod tests {
 
     #[test]
     fn a_property_update_inside_a_union_is_taken_with_its_own_id() {
+        let _guard = crate::learned_test_lock();
         let update = property_packet(&[(10016, prop_val(10016, 141_000))]);
         let other = field_varint(2, 77);
         let union = command(union_packet(&[
@@ -5419,6 +5424,7 @@ mod tests {
 
     #[test]
     fn what_is_not_a_union_is_left_alone() {
+        let _guard = crate::learned_test_lock();
         assert!(union_commands(&command(item_packet(3))).is_none());
         // The list beside another field.
         let mut beside = union_packet(&[union_entry(21436, Some(&[]))]);
@@ -5464,6 +5470,7 @@ mod tests {
 
     #[test]
     fn an_inventory_is_recognised_and_claimed_only_once() {
+        let _guard = crate::learned_test_lock();
         let command = command(item_packet(40));
 
         let items = matches_item_packet(&command).expect("should match");
@@ -5480,6 +5487,7 @@ mod tests {
     /// number (5 -> 6 for the inventory and 6 -> 7 for the roster in 7.1).
     #[test]
     fn the_lists_are_recognised_on_any_field_number() {
+        let _guard = crate::learned_test_lock();
         for tag in LIST_TAGS {
             let store = command(item_packet_on(tag, 40));
             match classify_command(&store) {
@@ -5591,6 +5599,7 @@ mod tests {
 
     #[test]
     fn a_command_that_matches_nothing_is_classified_as_nothing() {
+        let _guard = crate::learned_test_lock();
         assert!(classify_command(&command(field_varint(1, 1))).is_none());
     }
 
@@ -5622,6 +5631,7 @@ mod tests {
 
     #[test]
     fn a_store_item_change_notify_yields_its_items() {
+        let _guard = crate::learned_test_lock();
         let command = command(change_packet(&[
             item_entry(104_013, guid(TEST_UID, 77)),
             weapon_entry(11_509, guid(TEST_UID, 78)),
@@ -5639,6 +5649,7 @@ mod tests {
 
     #[test]
     fn ten_changed_items_are_the_inventory_matchers() {
+        let _guard = crate::learned_test_lock();
         // Ten or more is the full-send matcher's list (it upserts the same way),
         // so the two never both claim one command.
         let entries: Vec<Vec<u8>> = (0..10)
@@ -5717,6 +5728,7 @@ mod tests {
 
     #[test]
     fn a_delete_notify_yields_its_guid_list() {
+        let _guard = crate::learned_test_lock();
         let guids = [guid(800_123_456, 17), guid(800_123_456, 4096)];
         let command = command(delete_packet(&guids));
 
@@ -5758,6 +5770,7 @@ mod tests {
 
     #[test]
     fn a_weapon_promote_reply_is_not_a_delete_notify() {
+        let _guard = crate::learned_test_lock();
         // WeaponPromoteRsp {target_weapon_guid = 1, cur_promote_level = 5,
         // old_promote_level = 11} (retcode 0 is left off).
         let mut payload = field_varint(1, guid(800_123_456, 77));
@@ -5840,6 +5853,7 @@ mod tests {
 
     #[test]
     fn a_message_carrying_submessages_is_not_a_delete_notify() {
+        let _guard = crate::learned_test_lock();
         // An inventory has a blob per item; a delete notify has exactly one.
         let command = command(item_packet(40));
         assert!(matches_item_del_packet(&command).is_none());

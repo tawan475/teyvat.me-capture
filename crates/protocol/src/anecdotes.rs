@@ -777,6 +777,7 @@ mod tests {
 
     #[test]
     fn the_command_is_classified_as_anecdotes_and_nothing_else() {
+        let _guard = crate::learned_test_lock();
         let payload = encode(LAYOUT_7_1, &sample());
         let warned = warnings(|| match classify_command(&command(&payload)) {
             Some(CommandMatch::Anecdotes(data)) => assert_eq!(data, sample()),

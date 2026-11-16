@@ -691,6 +691,7 @@ mod tests {
 
     #[test]
     fn the_key_answer_is_classified_as_a_key_and_nothing_else() {
+        let _guard = crate::learned_test_lock();
         let payload = authkey_rsp("webview_gacha", "hk4e_global", &synthetic_authkey());
         match classify_command(&command(9681, &payload)) {
             Some(CommandMatch::AuthKey(key)) => assert!(key.is_wish_history_key()),
@@ -914,6 +915,7 @@ mod tests {
 
     #[test]
     fn the_wish_answer_is_classified_as_a_wish_and_nothing_else() {
+        let _guard = crate::learned_test_lock();
         let payload = do_gacha_rsp(400, &ten_pull());
         match classify_command(&command(21670, &payload)) {
             Some(CommandMatch::Wish(wish)) => assert_eq!(wish.gacha_type, Some(400)),
@@ -1185,6 +1187,7 @@ mod tests {
 
     #[test]
     fn the_banner_list_is_classified_as_such_and_nothing_else() {
+        let _guard = crate::learned_test_lock();
         let payload = gacha_info_rsp(&[gacha_info(301, 301, ID_301)]);
         match classify_command(&command(29811, &payload)) {
             Some(CommandMatch::GachaInfo(links)) => assert_eq!(links.len(), 1),
@@ -1249,6 +1252,7 @@ mod tests {
 
     #[test]
     fn the_client_version_is_read_from_the_token_request() {
+        let _guard = crate::learned_test_lock();
         assert_eq!(
             matches_client_version(&token_req(VERSION)).as_deref(),
             Some(VERSION)
