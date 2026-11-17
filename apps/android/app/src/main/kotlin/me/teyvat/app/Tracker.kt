@@ -109,6 +109,13 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
     val state: StateFlow<TrackerState> = stateFlow.asStateFlow()
     private val lastFlow = MutableStateFlow<UploadResult?>(null)
     val lastUpload: StateFlow<UploadResult?> = lastFlow.asStateFlow()
+    private val uploadedAccountFlow = MutableStateFlow<Pair<String, Long>?>(null)
+    /**
+     * The account the latest stored snapshot went to: (the API address it
+     * was sent to, the account's id), from the import answer's `account.id`.
+     * A sign-in that routes uploads by UID opens that account's pages with it.
+     */
+    val uploadedAccount: StateFlow<Pair<String, Long>?> = uploadedAccountFlow.asStateFlow()
     private val revokedFlow = MutableStateFlow(false)
     /** The tracker ended this sign-in (signed out on the website): "Signed out, sign in again". */
     val revoked: StateFlow<Boolean> = revokedFlow.asStateFlow()
@@ -454,7 +461,10 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
                         export.substringBefore('\n').toLong() to export.substringAfter('\n')
                     }
                     ticket = t
-                    withCredential { credential -> postGood(credential, json, capturedAt) }
+                    val api = Links.trackerApi
+                    withCredential { credential -> postGood(credential, json, capturedAt) }.also { answer ->
+                        uploadedAccountId(answer)?.let { uploadedAccountFlow.value = api to it }
+                    }
                 }
             }
             uploadingFlow.value = false
@@ -867,3 +877,7 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
         }
     }
 }
+
+/** The account id an import answer names (`account.id`, the hosted tracker's), if any. */
+internal fun uploadedAccountId(answer: JSONObject?): Long? =
+    answer?.optJSONObject("account")?.optLong("id", 0L)?.takeIf { it > 0L }

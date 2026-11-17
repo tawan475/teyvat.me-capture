@@ -122,6 +122,8 @@ data class TrackerView(
     val capturedUid: Long? = null,
     val key: me.teyvat.app.ImportKey = me.teyvat.app.ImportKey(),
     val api: String = Links.DEFAULT_TRACKER_API,
+    /** The account the latest snapshot was stored under, on this tracker. */
+    val uploadedAccount: Long? = null,
     /** The last stored live sync batch. */
     val lastLive: LiveResult? = null,
     /** The sign-in page while the browser is open on it. */
@@ -787,7 +789,13 @@ private fun TrackerRow(tracker: TrackerView, actions: HomeActions) {
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 val link = when (state) {
-                    is TrackerState.SignedIn -> state.who.dashboardUrl.takeIf { it.startsWith("http") } ?: Links.trackerSite
+                    // A sign-in that routes by UID opens the account the latest
+                    // snapshot went to, once one has, rather than the list.
+                    is TrackerState.SignedIn -> tracker.uploadedAccount
+                        ?.takeIf { state.who.scope != "account" }
+                        ?.let { "${Links.trackerSite}/app/a/$it" }
+                        ?: state.who.dashboardUrl.takeIf { it.startsWith("http") }
+                        ?: Links.trackerSite
                     else -> Links.trackerSite
                 }
                 Row(

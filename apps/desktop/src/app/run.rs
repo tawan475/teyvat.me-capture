@@ -552,11 +552,22 @@ impl TeyvatmeApp {
         url.strip_suffix("/api").unwrap_or(url).to_owned()
     }
 
-    /// The signed-in user's dashboard, or the key's account's.
+    /// The signed-in user's dashboard, or the key's account's. A user-wide
+    /// sign-in (uploads go by UID) opens the account the latest snapshot
+    /// was stored under, once one has been, rather than the account list.
     pub(super) fn dashboard_url(&self) -> Option<String> {
         match &*self.auth_status_rx.borrow() {
             crate::signin::AuthStatus::SignedIn { whoami, .. } => {
-                whoami.as_ref().and_then(|w| w.dashboard_url.clone())
+                let fixed = whoami
+                    .as_ref()
+                    .filter(|w| w.scope == crate::signin::UploadScope::Account)
+                    .and_then(|w| w.dashboard_url.clone());
+                fixed
+                    .or_else(|| {
+                        crate::monitor::uploaded_account(&self.saved_state.tracker_api_url)
+                            .map(|id| format!("{}/app/a/{id}", self.tracker_site()))
+                    })
+                    .or_else(|| whoami.as_ref().and_then(|w| w.dashboard_url.clone()))
             }
             _ => self
                 .tracker_account

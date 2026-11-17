@@ -2,6 +2,12 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.17.30
+
+- The teyvat.me link on the home screen opens the account your latest
+  snapshot went to, not the list of all your accounts, when you are
+  signed in with uploads going to the account matching the game's UID.
+
 ## 1.17.29
 
 - Fixed a loop that could keep Capture busy for hours: when a game
