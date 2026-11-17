@@ -234,6 +234,7 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
         val revoked by tracker.revoked.collectAsState()
         val importKey by tracker.importKey.collectAsState()
         val lastLive by tracker.lastLive.collectAsState()
+        val uploadedAccount by tracker.uploadedAccount.collectAsState()
         val signInUrl by tracker.signInUrl.collectAsState()
         val trackerAlerts by tracker.alerts.collectAsState()
         // whoami on resume only (the desktop's rule): while the game runs every
@@ -242,6 +243,7 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
             trackerState, lastUpload, uploading, settings.trackerUpload, settings.sendWishes, settings.liveSync,
             revoked = revoked, capturedUid = summary.player?.uid, key = importKey, api = Links.trackerApi,
             lastLive = lastLive, signInUrl = signInUrl, alerts = trackerAlerts,
+            uploadedAccount = uploadedAccount?.takeIf { it.first == Links.trackerApi }?.second,
         )
         val update by updater.state.collectAsState()
         Scaffold(

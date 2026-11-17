@@ -2398,6 +2398,7 @@ impl Monitor {
         let ctx = self.ctx.clone();
         let toast_tx = self.toast_tx.clone();
         let host = destination_host(&self.saved_state_rx.borrow());
+        let api = self.saved_state_rx.borrow().tracker_api_url.clone();
         let captured_at = self.capture_timestamp_ms;
         let allowed = uploads_allowed(&self.capture_source);
 
@@ -2424,6 +2425,9 @@ impl Monitor {
                     }
                 }
             };
+            if let Ok(body) = &result {
+                note_uploaded_account(&api, body);
+            }
             if let Some(ticket) = live_ticket {
                 let answer = result.as_ref().ok().map(|body| ImportAnswer::parse(body));
                 let _ = live_tx.send(LiveEvent::Snapshot { ticket, answer });
@@ -3181,6 +3185,40 @@ async fn join_capture(
     }
 }
 
+/// The account the latest stored snapshot went to: (the tracker API address
+/// it was sent to, the account's id). The hosted tracker names it in every
+/// import answer (`account.id`), so a user-wide sign-in (uploads routed by
+/// UID) can still open that account's pages instead of the account list.
+static UPLOADED_ACCOUNT: Mutex<Option<(String, i64)>> = Mutex::new(None);
+
+/// The account id an import answer names (`account.id`, the hosted
+/// tracker's), if any.
+fn import_account_id(body: &str) -> Option<i64> {
+    let value: serde_json::Value = serde_json::from_str(body).ok()?;
+    value
+        .get("account")?
+        .get("id")?
+        .as_i64()
+        .filter(|id| *id > 0)
+}
+
+/// Remember the account a snapshot sent to `api` was stored under.
+fn note_uploaded_account(api: &str, body: &str) {
+    if let Some(id) = import_account_id(body)
+        && let Ok(mut held) = UPLOADED_ACCOUNT.lock()
+    {
+        *held = Some((api.to_owned(), id));
+    }
+}
+
+/// The account the latest snapshot sent to `api` went to.
+pub(crate) fn uploaded_account(api: &str) -> Option<i64> {
+    let held = UPLOADED_ACCOUNT.lock().ok()?;
+    held.as_ref()
+        .filter(|(sent_to, _)| sent_to == api)
+        .map(|(_, id)| *id)
+}
+
 /// The tracker's snapshot import endpoint for a configured base URL.
 pub(crate) fn import_url(base_url: &str) -> String {
     format!(
@@ -3427,6 +3465,26 @@ pub(crate) fn load_keys() -> Result<HashMap<u16, Vec<u8>>> {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+    #[test]
+    fn an_import_answer_names_its_account() {
+        let body = r#"{"status":"created","snapshotId":5,"account":{"id":11,"name":"Main","uid":"812345678","created":false}}"#;
+        assert_eq!(super::import_account_id(body), Some(11));
+        // The old backend's wrapper and odd answers name none.
+        assert_eq!(
+            super::import_account_id(r#"{"status":201,"data":{}}"#),
+            None
+        );
+        assert_eq!(super::import_account_id(r#"{"account":{"id":0}}"#), None);
+        assert_eq!(super::import_account_id("not json"), None);
+
+        super::note_uploaded_account("https://tracker.test/api", body);
+        assert_eq!(
+            super::uploaded_account("https://tracker.test/api"),
+            Some(11)
+        );
+        // Another tracker address never borrows it.
+        assert_eq!(super::uploaded_account("https://other.test/api"), None);
+    }
 
     /// Times one live export (GOOD + keyed) and one diff on a real account:
     /// `TEYVATME_HANDOVER_BENCH=<session-handover.json> cargo test --release
