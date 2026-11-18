@@ -2124,11 +2124,20 @@ impl PlayerData {
 
     /// How much of each class is held, for the apps' captured-account tiles:
     /// read from what is held rather than built from an export, so it is
-    /// cheap enough to refresh after every change. An export can come out a
-    /// few lower (it skips what the game data has no key for).
+    /// cheap enough to refresh after every change. Characters count only
+    /// owned avatars, excluding TPS placeholders, just like the export.
+    /// An export can still come out lower (unknown keys or export minimums).
     pub fn held_counts(&self) -> ExportCounts {
+        let tps_avatar_ids = tps_avatar_ids(&self.game_data);
         let mut counts = ExportCounts {
-            characters: self.characters.len(),
+            characters: self
+                .characters
+                .values()
+                .filter(|avatar| {
+                    avatar.avatar_type == AVATAR_TYPE_FORMAL
+                        && !tps_avatar_ids.contains(&avatar.avatar_id)
+                })
+                .count(),
             achievements: self
                 .achievements
                 .values()
@@ -3645,6 +3654,54 @@ mod tests {
         let keys: Vec<&str> = characters.iter().map(|c| c.key.as_str()).collect();
         assert_eq!(keys, ["HuTao"]);
         assert!(report.is_empty(), "{}", report.summary());
+    }
+
+    #[test]
+    fn held_character_count_excludes_mirrors_trials_and_tps_placeholders() {
+        let mut data = player_data_with(r#""10000046": "Hu Tao", "10000005": "Traveler""#, "", "");
+        let non_formal = |avatar_id, avatar_type| {
+            let mut copy = character(avatar_id, &[]);
+            copy.avatar_type = avatar_type;
+            copy
+        };
+        data.process_characters(&[
+            character(10000046, &[]),
+            character(10000005, &[]),
+            character(TPS_AVATAR_ID_MALE, &[]),
+            character(TPS_AVATAR_ID_FEMALE, &[]),
+            non_formal(10000060, 3),
+            non_formal(10000030, 3),
+            non_formal(10000075, 2),
+            non_formal(10000015, 0),
+        ]);
+
+        assert_eq!(data.characters.len(), 8);
+        assert_eq!(data.held_counts().characters, 2);
+        let mut report = ExportReport::default();
+        assert_eq!(
+            data.export_genshin_optimizer_characters(&settings(), &mut report)
+                .len(),
+            2
+        );
+    }
+
+    #[test]
+    fn held_character_count_uses_game_data_placeholder_ids() {
+        let mut data = PlayerData::new(
+            TestGameData {
+                tps_avatar_ids: Some((10000999, 10000998)),
+                ..Default::default()
+            }
+            .build(),
+        );
+        data.process_characters(&[
+            avatar(10000005, &[]),
+            avatar(10000999, &[]),
+            avatar(10000998, &[]),
+        ]);
+
+        // Counting owned avatars does not require a known export key or level.
+        assert_eq!(data.held_counts().characters, 1);
     }
 
     #[test]
