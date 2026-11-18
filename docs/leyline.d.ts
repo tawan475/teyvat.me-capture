@@ -91,6 +91,13 @@ export interface Leyline {
   gi_tasks?: GiTasks
   /** [shipped] Why this snapshot was taken (live sync). Tracker uploads only. */
   gi_capture?: GiCapture
+  /**
+   * [1.18] The parts the user does not share (Settings › Sharing), `[]` when
+   * everything is shared; absent from older builds. Tracker uploads only.
+   * A part named here is left out of the upload: for `characters`,
+   * `weapons`, `artifacts` and `materials` the key itself is absent.
+   */
+  gi_off?: GiOffPart[]
   /** [shipped] What the player has collected. */
   gi_collections?: GiCollections
   /** [shipped] What the characters own and wear, and the saved teams. */
@@ -734,3 +741,29 @@ export interface WishCursor {
 //      most other parts leave a 0 out.
 // 4.9 gi_tasks.expeditions is a list (sorted by doneAt) though each has a unique id;
 //     by the Record rule it would be Record<IdKey, {...}>.
+
+// ── gi_off ──────────────────────────────────────────────────────── [1.18]
+
+/** A part a tracker upload can leave out. Names are only ever appended. */
+export type GiOffPart =
+  | 'characters'
+  | 'weapons'
+  | 'artifacts'
+  | 'materials'
+  /** gi_player: nickname, signature, birthday, nameCard, profilePicture. */
+  | 'gi_player.profile'
+  /** gi_player: everything else; also gi_tasks.resin and gi_tasks.resinSpent. */
+  | 'gi_player.numbers'
+  | 'gi_characters'
+  /** With gi_achievement_times and gi_achievement_progress. */
+  | 'gi_achievements'
+  | 'gi_anecdotes'
+  | 'gi_tasks'
+  | 'gi_endgame'
+  | 'gi_exploration'
+  | 'gi_collections'
+  | 'gi_wardrobe'
+  /** Also gi_tasks.realm. */
+  | 'gi_teapot'
+  | 'gi_events'
+  | 'gi_miliastra'
