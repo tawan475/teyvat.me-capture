@@ -4,6 +4,16 @@ Each release's section is its GitHub release notes (`.github/workflows/release.y
 
 ## 1.18.0
 
+- **Settings › Sharing** (new, also on Android): choose which parts of your
+  account go to teyvat.me. Everything is shared until you change it, as
+  before. Presets Everything / Builds only / Custom, and a switch for each of
+  17 parts: characters, weapons, artifacts, materials, your profile, the
+  account numbers, and each kind of progress. A part that is off never leaves
+  your device, in a snapshot or in live sync, and teyvat.me is told which
+  parts are off so its pages can say "Not shared by Capture". Files saved to
+  a folder keep following Settings › Export. Other trackers (a self-hosted or
+  older one) may refuse or show empty data for an upload with characters,
+  weapons, artifacts or materials off.
 - Updates are verified before they install: the download must match the
   checksum in the release's `SHA256SUMS.txt`, and that list must carry the
   project's signature (`SHA256SUMS.txt.minisig`, minisign) for that exact
