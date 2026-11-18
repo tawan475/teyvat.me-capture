@@ -70,25 +70,32 @@ fn nav_item(
     let (rect, response) =
         ui.allocate_exact_size(vec2(ui.available_width(), 36.0), egui::Sense::click());
     let response = response.on_hover_cursor(egui::CursorIcon::PointingHand);
+    let feel = widgets::feel(ui, &response, false);
     let painter = ui.painter();
-    if selected || response.hovered() {
-        let fill = if selected {
-            pal.over
-        } else {
-            pal.over.gamma_multiply(0.6)
-        };
-        painter.rect_filled(rect, egui::CornerRadius::same(6), fill);
-    }
-    if selected {
+    let fill = if selected { pal.over } else { feel.fill(&pal) };
+    painter.rect_filled(rect, egui::CornerRadius::same(6), fill);
+    // The selected page's accent bar; a shorter, faint one under the pointer.
+    let (bar_height, bar_color) = if selected {
+        (16.0, pal.ac_tx)
+    } else {
+        (12.0, pal.ac_tx.gamma_multiply(0.45 * feel.hover))
+    };
+    if selected || feel.hover > 0.0 {
         let bar = egui::Rect::from_center_size(
             egui::pos2(rect.left() + 1.5, rect.center().y),
-            vec2(3.0, 16.0),
+            vec2(3.0, bar_height),
         );
-        painter.rect_filled(bar, egui::CornerRadius::same(2), pal.ac_tx);
+        painter.rect_filled(bar, egui::CornerRadius::same(2), bar_color);
     }
-    let ink = if selected { pal.tx } else { pal.tx2 };
+    let ink = if selected {
+        pal.tx
+    } else {
+        feel.ink(&pal, pal.tx2)
+    };
+    // The icon leans 2 px toward its page under the pointer.
+    let nudge = if selected { 0.0 } else { 2.0 * feel.hover };
     let icon_rect = egui::Rect::from_center_size(
-        egui::pos2(rect.left() + 22.0, rect.center().y),
+        egui::pos2(rect.left() + 22.0 + nudge, rect.center().y),
         egui::Vec2::splat(16.0),
     );
     icons::image(icon, 16.0, ink).paint_at(ui, icon_rect);

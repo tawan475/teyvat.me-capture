@@ -12,6 +12,8 @@
 //! clicks the language picker 2 s in (an input event inside the app, not the
 //! system's mouse); `TEYVATME_PREVIEW_TRAY=1` goes to the tray 3 s in and
 //! comes back 12 s in, through the tray's own code.
+//! `TEYVATME_PREVIEW_POINTER=x,y[,down]` holds the pointer at that point (in
+//! points), pressed with `down`, for shots of hover and press.
 
 use std::time::{Duration, Instant};
 
@@ -45,6 +47,30 @@ impl TeyvatmeApp {
 
     /// `TEYVATME_PREVIEW_OPEN=language`: one click on the picker, 2 s in.
     pub(super) fn preview_click(&mut self, raw_input: &mut egui::RawInput) {
+        // `TEYVATME_PREVIEW_POINTER=x,y[,down]`: the pointer held there (and
+        // the button held down with `down`), for shots of hover and press.
+        if let Ok(at) = std::env::var("TEYVATME_PREVIEW_POINTER") {
+            let parts: Vec<&str> = at.split(',').collect();
+            if let [x, y, rest @ ..] = parts.as_slice()
+                && let (Ok(x), Ok(y)) = (x.trim().parse::<f32>(), y.trim().parse::<f32>())
+            {
+                let pos = egui::pos2(x, y);
+                raw_input.events.push(egui::Event::PointerMoved(pos));
+                static DOWN: std::sync::atomic::AtomicBool =
+                    std::sync::atomic::AtomicBool::new(false);
+                if rest.first() == Some(&"down")
+                    && self.started_at.elapsed() > Duration::from_secs(2)
+                    && !DOWN.swap(true, std::sync::atomic::Ordering::Relaxed)
+                {
+                    raw_input.events.push(egui::Event::PointerButton {
+                        pos,
+                        button: egui::PointerButton::Primary,
+                        pressed: true,
+                        modifiers: egui::Modifiers::NONE,
+                    });
+                }
+            }
+        }
         static CLICKED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
         if std::env::var("TEYVATME_PREVIEW_OPEN").as_deref() != Ok("language")
             || self.started_at.elapsed() < Duration::from_secs(2)

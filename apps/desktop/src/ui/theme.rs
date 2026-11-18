@@ -48,6 +48,10 @@ pub struct Palette {
     pub scrim: Color32,
     pub card_shadow: Color32,
     pub overlay_shadow: Color32,
+    /// The soft fill under a control the pointer is on, and while it is
+    /// pressed (see `widgets::feel`).
+    pub hover: Color32,
+    pub press: Color32,
 }
 
 const fn hex(rgb: u32) -> Color32 {
@@ -102,6 +106,8 @@ pub const LIGHT: Palette = Palette {
     scrim: rgba(15, 23, 42, 0.45),
     card_shadow: rgba(15, 23, 42, 0.06),
     overlay_shadow: rgba(15, 23, 42, 0.18),
+    hover: rgba(15, 23, 42, 0.045),
+    press: rgba(15, 23, 42, 0.09),
 };
 
 pub const DARK: Palette = Palette {
@@ -136,6 +142,8 @@ pub const DARK: Palette = Palette {
     scrim: rgba(2, 6, 23, 0.60),
     card_shadow: rgba(0, 0, 0, 0.30),
     overlay_shadow: rgba(0, 0, 0, 0.45),
+    hover: rgba(241, 245, 249, 0.06),
+    press: rgba(241, 245, 249, 0.11),
 };
 
 /// The palette of the theme egui is drawing in.
@@ -439,7 +447,7 @@ fn visuals(theme: Theme, p: &Palette) -> Visuals {
     for (state, fill, stroke) in [
         (&mut w.noninteractive, p.card, p.line),
         (&mut w.inactive, p.card, p.line2),
-        (&mut w.hovered, p.over, p.line2),
+        (&mut w.hovered, p.over, p.ac_tx),
         (&mut w.active, p.over, p.ac_tx),
         (&mut w.open, p.over, p.line2),
     ] {

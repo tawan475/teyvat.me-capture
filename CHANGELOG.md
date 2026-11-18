@@ -2,6 +2,14 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.18.0
+
+- Every control answers the pointer: a soft fill on hover, hovered text and
+  borders in the accent colour, and a small give when pressed. Switch rows
+  light up across the card, since clicking anywhere on them flips the
+  switch, and the side list shows a faint accent bar before you click.
+  Buttons, segments and switches show a focus ring when reached with Tab.
+
 ## 1.17.32
 
 - The Characters tile counts only the characters you own: trial copies and
