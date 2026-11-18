@@ -2,6 +2,14 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.17.32
+
+- The Characters tile counts only the characters you own: trial copies and
+  the Traveler placeholders are left out, as the export already did (#70,
+  thanks badmin-c).
+- With "Install updates by itself" off, quitting no longer installs a
+  waiting update; it installs only when you click Update now (#74).
+
 ## 1.17.31
 
 - The export now lists the Lunar Arcana cards you hold, with how many
