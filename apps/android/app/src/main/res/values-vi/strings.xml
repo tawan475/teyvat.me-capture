@@ -238,6 +238,26 @@
 
     <!-- Updates -->
     <string name="section_updates">Cập nhật</string>
+    <string name="update_mode_label">Khi có phiên bản mới</string>
+    <string name="update_mode_install">Tự động cài đặt</string>
+    <string name="update_mode_install_line">Tải về và kiểm tra; chạm “Cài đặt ngay”</string>
+    <string name="update_mode_tell">Chỉ báo cho tôi</string>
+    <string name="update_mode_tell_line">Kiểm tra mỗi giờ; tải về khi bạn chạm “Tải xuống”</string>
+    <string name="update_mode_never">Không bao giờ kiểm tra</string>
+    <string name="update_mode_never_line">Chỉ “Kiểm tra cập nhật” mới hỏi GitHub</string>
+    <string name="update_never_line">Bạn đang dùng %s · không tự kiểm tra</string>
+    <string name="update_found">Đã có %1$s · bạn đang dùng %2$s</string>
+    <string name="update_found_line">Bạn đang dùng %s · chưa tải gì về</string>
+    <string name="update_download">Tải xuống</string>
+    <string name="update_then_checks">Sau đó sẽ kiểm tra checksum và chữ ký</string>
+    <string name="update_verifying">Đang kiểm tra %s…</string>
+    <string name="update_verifying_line">Checksum và chữ ký của bản tải về</string>
+    <string name="update_ready_line">Đã kiểm tra · chạm “Cài đặt ngay”; Android hỏi một lần</string>
+    <string name="update_unverified">Chưa cài bản cập nhật %s: không xác minh được</string>
+    <string name="update_unverified_line">Chưa cài %s: không xác minh được</string>
+    <string name="update_unverified_short">Chưa cài: không xác minh được</string>
+    <string name="update_get_from_release_page">Tải từ trang phát hành</string>
+    <string name="release_page">Trang phát hành</string>
     <string name="update_check">Kiểm tra cập nhật</string>
     <string name="update_checking">Đang kiểm tra…</string>
     <string name="update_up_to_date">Đã là bản mới nhất · %s</string>

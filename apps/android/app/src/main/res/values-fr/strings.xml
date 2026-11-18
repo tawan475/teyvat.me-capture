@@ -238,6 +238,26 @@
 
     <!-- Updates -->
     <string name="section_updates">Mises à jour</string>
+    <string name="update_mode_label">Quand une nouvelle version sort</string>
+    <string name="update_mode_install">Installer automatiquement</string>
+    <string name="update_mode_install_line">La télécharge et la vérifie ; touche « Installer maintenant »</string>
+    <string name="update_mode_tell">Me prévenir seulement</string>
+    <string name="update_mode_tell_line">Recherche toutes les heures ; télécharge quand tu touches « Télécharger »</string>
+    <string name="update_mode_never">Ne jamais rechercher</string>
+    <string name="update_mode_never_line">Seul « Rechercher des mises à jour » interroge GitHub</string>
+    <string name="update_never_line">Tu as %s · pas de recherche automatique</string>
+    <string name="update_found">%1$s est sortie · tu as %2$s</string>
+    <string name="update_found_line">Tu as %s · rien de téléchargé pour l\'instant</string>
+    <string name="update_download">Télécharger</string>
+    <string name="update_then_checks">Ensuite, la somme de contrôle et la signature sont vérifiées</string>
+    <string name="update_verifying">Vérification de %s…</string>
+    <string name="update_verifying_line">La somme de contrôle et la signature du téléchargement</string>
+    <string name="update_ready_line">Vérifiée · touche « Installer maintenant » ; Android demande une fois</string>
+    <string name="update_unverified">Mise à jour %s non installée : elle n\'a pas pu être vérifiée</string>
+    <string name="update_unverified_line">%s non installée : elle n\'a pas pu être vérifiée</string>
+    <string name="update_unverified_short">Non installée : elle n\'a pas pu être vérifiée</string>
+    <string name="update_get_from_release_page">Récupère-la sur la page de la version</string>
+    <string name="release_page">Page de la version</string>
     <string name="update_check">Rechercher des mises à jour</string>
     <string name="update_checking">Recherche…</string>
     <string name="update_up_to_date">À jour · %s</string>

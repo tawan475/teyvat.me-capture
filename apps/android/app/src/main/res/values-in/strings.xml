@@ -238,6 +238,26 @@
 
     <!-- Updates -->
     <string name="section_updates">Pembaruan</string>
+    <string name="update_mode_label">Saat versi baru rilis</string>
+    <string name="update_mode_install">Pasang otomatis</string>
+    <string name="update_mode_install_line">Mengunduh dan memeriksanya; ketuk “Pasang sekarang”</string>
+    <string name="update_mode_tell">Beri tahu saja</string>
+    <string name="update_mode_tell_line">Memeriksa tiap jam; mengunduh saat kamu mengetuk “Unduh”</string>
+    <string name="update_mode_never">Jangan pernah periksa</string>
+    <string name="update_mode_never_line">Hanya “Periksa pembaruan” yang menghubungi GitHub</string>
+    <string name="update_never_line">Versi kamu %s · tidak memeriksa sendiri</string>
+    <string name="update_found">%1$s sudah rilis · versi kamu %2$s</string>
+    <string name="update_found_line">Versi kamu %s · belum ada yang diunduh</string>
+    <string name="update_download">Unduh</string>
+    <string name="update_then_checks">Lalu checksum dan tanda tangannya diperiksa</string>
+    <string name="update_verifying">Memeriksa %s…</string>
+    <string name="update_verifying_line">Checksum dan tanda tangan unduhan</string>
+    <string name="update_ready_line">Sudah diperiksa · ketuk “Pasang sekarang”; Android bertanya sekali</string>
+    <string name="update_unverified">Pembaruan %s tidak dipasang: tidak bisa diverifikasi</string>
+    <string name="update_unverified_line">%s tidak dipasang: tidak bisa diverifikasi</string>
+    <string name="update_unverified_short">Tidak dipasang: tidak bisa diverifikasi</string>
+    <string name="update_get_from_release_page">Ambil dari halaman rilis</string>
+    <string name="release_page">Halaman rilis</string>
     <string name="update_check">Periksa pembaruan</string>
     <string name="update_checking">Memeriksa…</string>
     <string name="update_up_to_date">Sudah terbaru · %s</string>

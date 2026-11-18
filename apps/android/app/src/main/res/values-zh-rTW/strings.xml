@@ -238,6 +238,26 @@
 
     <!-- Updates -->
     <string name="section_updates">更新</string>
+    <string name="update_mode_label">有新版本時</string>
+    <string name="update_mode_install">自動安裝</string>
+    <string name="update_mode_install_line">下載並驗證；輕觸「立即安裝」</string>
+    <string name="update_mode_tell">僅通知我</string>
+    <string name="update_mode_tell_line">每小時檢查一次；輕觸「下載」後下載</string>
+    <string name="update_mode_never">永不檢查</string>
+    <string name="update_mode_never_line">僅「檢查更新」會連線至 GitHub</string>
+    <string name="update_never_line">目前為 %s · 不會自動檢查</string>
+    <string name="update_found">%1$s 已發布 · 目前為 %2$s</string>
+    <string name="update_found_line">目前為 %s · 尚未下載</string>
+    <string name="update_download">下載</string>
+    <string name="update_then_checks">接著驗證檢查碼與簽章</string>
+    <string name="update_verifying">正在驗證 %s…</string>
+    <string name="update_verifying_line">下載檔案的檢查碼與簽章</string>
+    <string name="update_ready_line">已驗證 · 輕觸「立即安裝」；Android 只詢問一次</string>
+    <string name="update_unverified">更新 %s 未安裝：無法驗證</string>
+    <string name="update_unverified_line">%s 未安裝：無法驗證</string>
+    <string name="update_unverified_short">未安裝：無法驗證</string>
+    <string name="update_get_from_release_page">請從發布頁面取得</string>
+    <string name="release_page">發布頁面</string>
     <string name="update_check">檢查更新</string>
     <string name="update_checking">正在檢查…</string>
     <string name="update_up_to_date">已是最新版本 · %s</string>

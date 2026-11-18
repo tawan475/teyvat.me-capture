@@ -238,6 +238,26 @@
 
     <!-- Updates -->
     <string name="section_updates">업데이트</string>
+    <string name="update_mode_label">새 버전이 나오면</string>
+    <string name="update_mode_install">자동으로 설치</string>
+    <string name="update_mode_install_line">다운로드하고 검증합니다. ‘지금 설치’를 탭하세요</string>
+    <string name="update_mode_tell">알림만</string>
+    <string name="update_mode_tell_line">1시간마다 확인하고, ‘다운로드’를 탭하면 다운로드합니다</string>
+    <string name="update_mode_never">확인 안 함</string>
+    <string name="update_mode_never_line">‘업데이트 확인’을 누를 때만 GitHub에 확인합니다</string>
+    <string name="update_never_line">현재 %s · 자동으로 확인하지 않습니다</string>
+    <string name="update_found">%1$s 출시 · 현재 %2$s</string>
+    <string name="update_found_line">현재 %s · 아직 다운로드한 것이 없습니다</string>
+    <string name="update_download">다운로드</string>
+    <string name="update_then_checks">그다음 체크섬과 서명을 검증합니다</string>
+    <string name="update_verifying">%s 검증 중…</string>
+    <string name="update_verifying_line">다운로드의 체크섬과 서명</string>
+    <string name="update_ready_line">검증됨 · ‘지금 설치’를 탭하세요. Android가 한 번만 묻습니다</string>
+    <string name="update_unverified">업데이트 %s 설치 안 됨: 검증하지 못했습니다</string>
+    <string name="update_unverified_line">%s 설치 안 됨: 검증하지 못했습니다</string>
+    <string name="update_unverified_short">설치 안 됨: 검증하지 못했습니다</string>
+    <string name="update_get_from_release_page">릴리스 페이지에서 받으세요</string>
+    <string name="release_page">릴리스 페이지</string>
     <string name="update_check">업데이트 확인</string>
     <string name="update_checking">확인 중…</string>
     <string name="update_up_to_date">최신 버전 · %s</string>

@@ -238,6 +238,26 @@
 
     <!-- Updates -->
     <string name="section_updates">更新</string>
+    <string name="update_mode_label">有新版本时</string>
+    <string name="update_mode_install">自动安装</string>
+    <string name="update_mode_install_line">下载并校验；点按“立即安装”</string>
+    <string name="update_mode_tell">仅通知我</string>
+    <string name="update_mode_tell_line">每小时检查一次；点按“下载”后下载</string>
+    <string name="update_mode_never">从不检查</string>
+    <string name="update_mode_never_line">仅“检查更新”会访问 GitHub</string>
+    <string name="update_never_line">当前为 %s · 不会自动检查</string>
+    <string name="update_found">%1$s 已发布 · 当前为 %2$s</string>
+    <string name="update_found_line">当前为 %s · 尚未下载</string>
+    <string name="update_download">下载</string>
+    <string name="update_then_checks">随后校验校验和与签名</string>
+    <string name="update_verifying">正在校验 %s…</string>
+    <string name="update_verifying_line">下载文件的校验和与签名</string>
+    <string name="update_ready_line">已校验 · 点按“立即安装”；Android 只询问一次</string>
+    <string name="update_unverified">更新 %s 未安装：无法验证</string>
+    <string name="update_unverified_line">%s 未安装：无法验证</string>
+    <string name="update_unverified_short">未安装：无法验证</string>
+    <string name="update_get_from_release_page">请从发布页面获取</string>
+    <string name="release_page">发布页面</string>
     <string name="update_check">检查更新</string>
     <string name="update_checking">正在检查…</string>
     <string name="update_up_to_date">已是最新 · %s</string>

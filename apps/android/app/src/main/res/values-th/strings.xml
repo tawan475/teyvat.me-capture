@@ -238,6 +238,26 @@
 
     <!-- Updates -->
     <string name="section_updates">อัปเดต</string>
+    <string name="update_mode_label">เมื่อมีเวอร์ชันใหม่ออก</string>
+    <string name="update_mode_install">ติดตั้งอัตโนมัติ</string>
+    <string name="update_mode_install_line">ดาวน์โหลดและตรวจสอบ แล้วแตะ “ติดตั้งเลย”</string>
+    <string name="update_mode_tell">แจ้งให้ทราบเท่านั้น</string>
+    <string name="update_mode_tell_line">ตรวจทุกชั่วโมง และดาวน์โหลดเมื่อคุณแตะ “ดาวน์โหลด”</string>
+    <string name="update_mode_never">ไม่ตรวจหาเลย</string>
+    <string name="update_mode_never_line">ติดต่อ GitHub เฉพาะเมื่อกด “ตรวจหาอัปเดต”</string>
+    <string name="update_never_line">เวอร์ชันของคุณ %s · ไม่ตรวจหาเอง</string>
+    <string name="update_found">%1$s ออกแล้ว · เวอร์ชันของคุณ %2$s</string>
+    <string name="update_found_line">เวอร์ชันของคุณ %s · ยังไม่ได้ดาวน์โหลดอะไร</string>
+    <string name="update_download">ดาวน์โหลด</string>
+    <string name="update_then_checks">จากนั้นจะตรวจสอบเช็กซัมและลายเซ็น</string>
+    <string name="update_verifying">กำลังตรวจสอบ %s…</string>
+    <string name="update_verifying_line">เช็กซัมและลายเซ็นของไฟล์ที่ดาวน์โหลด</string>
+    <string name="update_ready_line">ตรวจสอบแล้ว · แตะ “ติดตั้งเลย” Android จะถามครั้งเดียว</string>
+    <string name="update_unverified">ไม่ได้ติดตั้งอัปเดต %s: ยืนยันความถูกต้องไม่ได้</string>
+    <string name="update_unverified_line">ไม่ได้ติดตั้ง %s: ยืนยันความถูกต้องไม่ได้</string>
+    <string name="update_unverified_short">ไม่ได้ติดตั้ง: ยืนยันความถูกต้องไม่ได้</string>
+    <string name="update_get_from_release_page">ดาวน์โหลดจากหน้ารีลีส</string>
+    <string name="release_page">หน้ารีลีส</string>
     <string name="update_check">ตรวจหาอัปเดต</string>
     <string name="update_checking">กำลังตรวจ…</string>
     <string name="update_up_to_date">เป็นรุ่นล่าสุด · %s</string>

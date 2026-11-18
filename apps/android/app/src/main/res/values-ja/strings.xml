@@ -238,6 +238,26 @@
 
     <!-- Updates -->
     <string name="section_updates">アップデート</string>
+    <string name="update_mode_label">新しいバージョンが公開されたとき</string>
+    <string name="update_mode_install">自動でインストール</string>
+    <string name="update_mode_install_line">ダウンロードして検証します。「今すぐインストール」をタップしてください</string>
+    <string name="update_mode_tell">通知のみ</string>
+    <string name="update_mode_tell_line">1時間ごとに確認し、「ダウンロード」をタップするとダウンロードします</string>
+    <string name="update_mode_never">確認しない</string>
+    <string name="update_mode_never_line">「アップデートを確認」を押したときだけ GitHub に問い合わせます</string>
+    <string name="update_never_line">現在 %s · 自動では確認しません</string>
+    <string name="update_found">%1$s が公開されました · 現在 %2$s</string>
+    <string name="update_found_line">現在 %s · まだ何もダウンロードしていません</string>
+    <string name="update_download">ダウンロード</string>
+    <string name="update_then_checks">その後、チェックサムと署名を検証します</string>
+    <string name="update_verifying">%s を検証中…</string>
+    <string name="update_verifying_line">ダウンロードのチェックサムと署名</string>
+    <string name="update_ready_line">検証済み · 「今すぐインストール」をタップ。Android が一度だけ確認します</string>
+    <string name="update_unverified">アップデート %s はインストールされませんでした：検証できませんでした</string>
+    <string name="update_unverified_line">%s はインストールされませんでした：検証できませんでした</string>
+    <string name="update_unverified_short">インストールされませんでした：検証できませんでした</string>
+    <string name="update_get_from_release_page">リリースページから入手してください</string>
+    <string name="release_page">リリースページ</string>
     <string name="update_check">アップデートを確認</string>
     <string name="update_checking">確認中…</string>
     <string name="update_up_to_date">最新です · %s</string>

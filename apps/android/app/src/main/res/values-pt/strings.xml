@@ -238,6 +238,26 @@
 
     <!-- Updates -->
     <string name="section_updates">Atualizações</string>
+    <string name="update_mode_label">Quando sair uma versão nova</string>
+    <string name="update_mode_install">Instalar automaticamente</string>
+    <string name="update_mode_install_line">Baixa e verifica; toque em “Instalar agora”</string>
+    <string name="update_mode_tell">Só me avisar</string>
+    <string name="update_mode_tell_line">Procura a cada hora; baixa quando você toca em “Baixar”</string>
+    <string name="update_mode_never">Nunca procurar</string>
+    <string name="update_mode_never_line">Só “Verificar atualizações” consulta o GitHub</string>
+    <string name="update_never_line">Você tem %s · não procura sozinho</string>
+    <string name="update_found">%1$s saiu · você tem %2$s</string>
+    <string name="update_found_line">Você tem %s · nada baixado ainda</string>
+    <string name="update_download">Baixar</string>
+    <string name="update_then_checks">Depois verifica o checksum e a assinatura</string>
+    <string name="update_verifying">Verificando %s…</string>
+    <string name="update_verifying_line">O checksum e a assinatura do download</string>
+    <string name="update_ready_line">Verificada · toque em “Instalar agora”; o Android pergunta uma vez</string>
+    <string name="update_unverified">Atualização %s não instalada: não foi possível verificá-la</string>
+    <string name="update_unverified_line">%s não instalada: não foi possível verificá-la</string>
+    <string name="update_unverified_short">Não instalada: não foi possível verificá-la</string>
+    <string name="update_get_from_release_page">Baixe na página da versão</string>
+    <string name="release_page">Página da versão</string>
     <string name="update_check">Verificar atualizações</string>
     <string name="update_checking">Verificando…</string>
     <string name="update_up_to_date">Atualizado · %s</string>

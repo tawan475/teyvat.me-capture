@@ -238,6 +238,26 @@
 
     <!-- Updates -->
     <string name="section_updates">Aggiornamenti</string>
+    <string name="update_mode_label">Quando esce una nuova versione</string>
+    <string name="update_mode_install">Si installa da sola</string>
+    <string name="update_mode_install_line">La scarica e la verifica; tocca «Installa ora»</string>
+    <string name="update_mode_tell">Avvisami soltanto</string>
+    <string name="update_mode_tell_line">Cerca ogni ora; scarica quando tocchi «Scarica»</string>
+    <string name="update_mode_never">Non cercare mai</string>
+    <string name="update_mode_never_line">Solo «Cerca aggiornamenti» chiede a GitHub</string>
+    <string name="update_never_line">Hai la %s · non cerca da sola</string>
+    <string name="update_found">È uscita la %1$s · hai la %2$s</string>
+    <string name="update_found_line">Hai la %s · ancora nulla di scaricato</string>
+    <string name="update_download">Scarica</string>
+    <string name="update_then_checks">Poi verifica checksum e firma</string>
+    <string name="update_verifying">Verifica di %s…</string>
+    <string name="update_verifying_line">Checksum e firma del download</string>
+    <string name="update_ready_line">Verificata · tocca «Installa ora»; Android lo chiede una volta</string>
+    <string name="update_unverified">Aggiornamento %s non installato: non è stato possibile verificarlo</string>
+    <string name="update_unverified_line">%s non installata: non è stato possibile verificarla</string>
+    <string name="update_unverified_short">Non installata: non è stato possibile verificarla</string>
+    <string name="update_get_from_release_page">Scaricala dalla pagina di rilascio</string>
+    <string name="release_page">Pagina di rilascio</string>
     <string name="update_check">Cerca aggiornamenti</string>
     <string name="update_checking">Ricerca…</string>
     <string name="update_up_to_date">Aggiornata · %s</string>

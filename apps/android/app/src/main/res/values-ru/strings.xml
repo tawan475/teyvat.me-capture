@@ -238,6 +238,26 @@
 
     <!-- Updates -->
     <string name="section_updates">Обновления</string>
+    <string name="update_mode_label">Когда выходит новая версия</string>
+    <string name="update_mode_install">Устанавливать самому</string>
+    <string name="update_mode_install_line">Скачивает и проверяет; нажмите «Установить сейчас»</string>
+    <string name="update_mode_tell">Только сообщать</string>
+    <string name="update_mode_tell_line">Проверяет каждый час; скачивает, когда вы нажмёте «Скачать»</string>
+    <string name="update_mode_never">Никогда не проверять</string>
+    <string name="update_mode_never_line">К GitHub обращается только «Проверить обновления»</string>
+    <string name="update_never_line">У вас %s · сам не проверяет</string>
+    <string name="update_found">Вышла %1$s · у вас %2$s</string>
+    <string name="update_found_line">У вас %s · пока ничего не скачано</string>
+    <string name="update_download">Скачать</string>
+    <string name="update_then_checks">Затем проверяются контрольная сумма и подпись</string>
+    <string name="update_verifying">Проверка %s…</string>
+    <string name="update_verifying_line">Контрольная сумма и подпись загрузки</string>
+    <string name="update_ready_line">Проверено · нажмите «Установить сейчас»; Android спросит один раз</string>
+    <string name="update_unverified">Обновление %s не установлено: его не удалось проверить</string>
+    <string name="update_unverified_line">%s не установлена: её не удалось проверить</string>
+    <string name="update_unverified_short">Не установлено: не удалось проверить</string>
+    <string name="update_get_from_release_page">Скачайте со страницы релиза</string>
+    <string name="release_page">Страница релиза</string>
     <string name="update_check">Проверить обновления</string>
     <string name="update_checking">Проверка…</string>
     <string name="update_up_to_date">Последняя версия · %s</string>

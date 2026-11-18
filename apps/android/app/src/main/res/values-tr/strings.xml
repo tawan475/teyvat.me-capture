@@ -238,6 +238,26 @@
 
     <!-- Updates -->
     <string name="section_updates">Güncellemeler</string>
+    <string name="update_mode_label">Yeni bir sürüm çıktığında</string>
+    <string name="update_mode_install">Kendiliğinden yükle</string>
+    <string name="update_mode_install_line">İndirir ve denetler; “Şimdi yükle”ye dokun</string>
+    <string name="update_mode_tell">Yalnızca haber ver</string>
+    <string name="update_mode_tell_line">Her saat denetler; “İndir”e dokunduğunda indirir</string>
+    <string name="update_mode_never">Hiç denetleme</string>
+    <string name="update_mode_never_line">GitHub\'a yalnızca “Güncellemeleri denetle” sorar</string>
+    <string name="update_never_line">Sende %s var · kendiliğinden denetlemez</string>
+    <string name="update_found">%1$s çıktı · sende %2$s var</string>
+    <string name="update_found_line">Sende %s var · henüz bir şey indirilmedi</string>
+    <string name="update_download">İndir</string>
+    <string name="update_then_checks">Sonra sağlama toplamını ve imzayı denetler</string>
+    <string name="update_verifying">%s denetleniyor…</string>
+    <string name="update_verifying_line">İndirmenin sağlama toplamı ve imzası</string>
+    <string name="update_ready_line">Denetlendi · “Şimdi yükle”ye dokun; Android bir kez sorar</string>
+    <string name="update_unverified">%s güncellemesi yüklenmedi: doğrulanamadı</string>
+    <string name="update_unverified_line">%s yüklenmedi: doğrulanamadı</string>
+    <string name="update_unverified_short">Yüklenmedi: doğrulanamadı</string>
+    <string name="update_get_from_release_page">Sürüm sayfasından indir</string>
+    <string name="release_page">Sürüm sayfası</string>
     <string name="update_check">Güncellemeleri denetle</string>
     <string name="update_checking">Denetleniyor…</string>
     <string name="update_up_to_date">Güncel · %s</string>
