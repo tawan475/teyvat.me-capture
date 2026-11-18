@@ -247,6 +247,11 @@ pub struct GiTheater {
     pub max_stars: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub starred_acts: Option<Vec<u32>>,
+    /// The Lunar Arcana held, since 1.17.31: card number (1-22, the card's
+    /// row in `RoleCombatTarotCardExcelConfigData`) to copies held; empty
+    /// when none are.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub arcana: Option<BTreeMap<u32, u32>>,
 }
 
 /// The Stygian Onslaught's records, as the game lists them when its menu
@@ -1478,6 +1483,7 @@ mod tests {
                     stars: Some(12),
                     max_stars: Some(12),
                     starred_acts: Some((1..=10).collect()),
+                    arcana: Some(BTreeMap::from([(6, 1), (7, 2)])),
                 }),
                 stygian: Some(GiStygian {
                     records: vec![GiStygianRecord {
@@ -1795,7 +1801,8 @@ mod tests {
             serde_json::json!({
                 "theater": {
                     "season": 31, "difficulty": 129, "level": 5, "acts": 10,
-                    "stars": 12, "maxStars": 12, "starredActs": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+                    "stars": 12, "maxStars": 12, "starredActs": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+                    "arcana": {"6": 1, "7": 2}
                 },
                 "stygian": { "records": [{
                     "season": 5269012, "difficulty": 6, "at": 1790972494, "coop": true,

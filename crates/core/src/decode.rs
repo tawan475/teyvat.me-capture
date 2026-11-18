@@ -589,6 +589,10 @@ pub fn apply_commands(
                         acts = detail.acts_cleared(),
                         stars,
                         of = of.flatten(),
+                        arcana = detail
+                            .arcana
+                            .as_ref()
+                            .map(|held| held.values().sum::<u32>()),
                         "Found the Theater's season state"
                     );
                     applied.routine = true;

@@ -5516,6 +5516,7 @@ mod tests {
         let hard = TheaterDetail {
             start: 1_793_476_800,
             end: 1_796_068_799,
+            arcana: None,
             small: vec![31, 8, 19, 2, 7, 127, 8, 1, 8, 1],
             lists: vec![
                 vec![1, 2, 3, 4, 5, 6, 7, 8],
@@ -5538,6 +5539,7 @@ mod tests {
         let lunar = TheaterDetail {
             start: 1_793_476_800,
             end: 1_796_068_799,
+            arcana: None,
             small: vec![31, 10, 25, 3, 12, 5, 129, 2, 10, 1, 10, 1, 2],
             lists: vec![
                 vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
@@ -5612,15 +5614,21 @@ mod tests {
         let detail = TheaterDetail {
             start: 1_793_476_800,
             end: 1_796_068_799,
+            arcana: None,
             small: vec![10, 25, 31, 2, 129],
             lists: vec![vec![1, 2, 3, 4, 5, 6, 7], vec![1, 2], vec![3, 6, 9, 12]],
+        };
+        let detail = TheaterDetail {
+            arcana: Some(BTreeMap::from([(2, 1), (7, 2), (22, 1)])),
+            ..detail
         };
         assert!(data.apply_theater(&detail));
         let json = serde_json::to_value(data.export_at(&settings(), NOW_SECS * 1000).0).unwrap();
         assert_eq!(
             json["gi_endgame"],
             serde_json::json!({"theater": {
-                "season": 31, "difficulty": 129, "level": 5, "acts": 7, "maxStars": 12
+                "season": 31, "difficulty": 129, "level": 5, "acts": 7, "maxStars": 12,
+                "arcana": {"2": 1, "7": 2, "22": 1}
             }})
         );
 
@@ -5629,6 +5637,7 @@ mod tests {
         let detail = TheaterDetail {
             start: 1_793_476_800 + 13 * 3600,
             end: 1_796_068_799 + 13 * 3600,
+            arcana: None,
             small: vec![24, 10, 31, 2],
             lists: vec![],
         };
@@ -5644,6 +5653,7 @@ mod tests {
         let stranger = TheaterDetail {
             start: 1_793_476_800 - 86_400 * 31,
             end: 1_793_476_799,
+            arcana: None,
             small: vec![30, 129],
             lists: vec![],
         };
@@ -5651,6 +5661,7 @@ mod tests {
         let unnamed = TheaterDetail {
             start: 1_793_476_800,
             end: 1_796_068_799,
+            arcana: None,
             small: vec![10, 129],
             lists: vec![],
         };

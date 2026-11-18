@@ -501,6 +501,13 @@ export interface GiTheater {
   maxStars?: number
   /** The acts whose star was earned, ascending (with `stars`; the extra bouts' stars count in `stars` only). */
   starredActs?: number[]
+  /**
+   * The Lunar Arcana cards held (Capture 1.17.31+): card number → copies held. The number is the
+   * card's place in RoleCombatTarotCardExcelConfigData, its Roman numeral and its icon
+   * UI_RoleCombat_Tarot_NN (1 The Magician … 22 The Fool). `{}` when none are held; absent when the
+   * game's message did not carry the list clearly.
+   */
+  arcana?: Record<string, number>
 }
 
 export interface GiStygian {

@@ -47,6 +47,10 @@ pub(super) struct TheaterProgress {
     /// The stars the difficulty offers (its acts and extra bouts), when the
     /// game data knows the row.
     pub max_stars: Option<u32>,
+    /// The Lunar Arcana held (card number to copies), when the message told
+    /// them; `default` so a hand-over from 1.17.30 still reads.
+    #[serde(default)]
+    pub arcana: Option<BTreeMap<u32, u32>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -203,6 +207,7 @@ impl PlayerData {
             max_stars: row
                 .filter(|row| row.acts > 0)
                 .map(|row| row.acts + row.extras),
+            arcana: detail.arcana.clone(),
         };
         if self.endgame.theater.as_ref() != Some(&next) {
             self.endgame.theater = Some(next);
@@ -444,6 +449,7 @@ impl PlayerData {
             stars: t.stars.as_ref().map(|s| s.stars),
             max_stars: t.max_stars,
             starred_acts: t.stars.as_ref().map(|s| s.acts.clone()),
+            arcana: t.arcana.clone(),
         });
         let stygian = self
             .endgame

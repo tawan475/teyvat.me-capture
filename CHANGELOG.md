@@ -2,6 +2,13 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.17.31
+
+- The export now lists the Lunar Arcana cards you hold, with how many
+  copies of each (`gi_endgame.theater.arcana`), read from the Theater data
+  the game sends at every login. A collection page on teyvat.me can show
+  them.
+
 ## 1.17.30
 
 - The teyvat.me link on the home screen opens the account your latest
