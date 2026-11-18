@@ -246,6 +246,15 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
             uploadedAccount = uploadedAccount?.takeIf { it.first == Links.trackerApi }?.second,
         )
         val update by updater.state.collectAsState()
+        // A refused update: the snackbar says so once, with its release page.
+        val unverified = (update as? UpdateState.Unverified)?.version
+        androidx.compose.runtime.LaunchedEffect(unverified) {
+            if (unverified != null) {
+                snack(getString(R.string.update_unverified, unverified), getString(R.string.release_page)) {
+                    openUrl(Updater.releasePage(unverified))
+                }
+            }
+        }
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
             topBar = {
@@ -401,7 +410,8 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
 
     override fun updateInstallNow() {
         when (updater.state.value) {
-            is UpdateState.Failed -> updater.check()
+            is UpdateState.Failed, is UpdateState.Unverified -> updater.check()
+            is UpdateState.Found -> updater.downloadNow()
             is UpdateState.NeedsPermission -> updateAllow()
             else -> updater.installNow()
         }
@@ -439,9 +449,9 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
         }
     }
 
-    override fun setAutoUpdate(on: Boolean) {
-        prefs.update { it.copy(autoUpdate = on) }
-        if (on) updater.check(manual = false)
+    override fun setUpdateMode(mode: UpdateMode) {
+        prefs.update { it.copy(updateMode = mode) }
+        updater.modeChanged()
     }
 
     override fun checkForUpdates() = updater.check()

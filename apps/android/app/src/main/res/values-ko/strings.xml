@@ -238,8 +238,6 @@
 
     <!-- Updates -->
     <string name="section_updates">업데이트</string>
-    <string name="update_auto">자동 업데이트</string>
-    <string name="update_auto_line">새 릴리스는 자동으로 내려받습니다(체크섬으로 확인). 설치는 \'지금 설치\'를 누르세요</string>
     <string name="update_check">업데이트 확인</string>
     <string name="update_checking">확인 중…</string>
     <string name="update_up_to_date">최신 버전 · %s</string>

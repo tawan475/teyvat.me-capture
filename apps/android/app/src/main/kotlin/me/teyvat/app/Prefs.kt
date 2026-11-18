@@ -102,8 +102,8 @@ data class Settings(
     val sendWishes: Boolean = true,
     /** Between snapshots, send what changed as you play (the tracker's switch decides too). */
     val liveSync: Boolean = true,
-    /** Download and install new releases by themselves. */
-    val autoUpdate: Boolean = true,
+    /** What the app does about new releases (Settings › Updates). */
+    val updateMode: UpdateMode = UpdateMode.Install,
     /** The Quick Settings tile also opens Genshin when it starts capture. */
     val tileOpensGame: Boolean = false,
     /** A notification when resin reaches [resinAlertAt] (off by default). */
@@ -144,7 +144,7 @@ class Prefs(context: Context) {
             trackerUpload = store.getBoolean("tracker_upload", true),
             sendWishes = store.getBoolean("send_wishes", true),
             liveSync = store.getBoolean("live_sync", true),
-            autoUpdate = store.getBoolean("auto_update", true),
+            updateMode = UpdateMode.of(store.getString("update_mode", null), store.getBoolean("auto_update", true)),
             tileOpensGame = store.getBoolean("tile_opens_game", false),
             resinAlert = store.getBoolean("resin_alert", false),
             resinAlertAt = store.getInt("resin_alert_at", 160),
@@ -169,10 +169,31 @@ class Prefs(context: Context) {
             .putBoolean("tracker_upload", s.trackerUpload)
             .putBoolean("send_wishes", s.sendWishes)
             .putBoolean("live_sync", s.liveSync)
-            .putBoolean("auto_update", s.autoUpdate)
+            .putString("update_mode", s.updateMode.name)
+            // For a build from before the three choices.
+            .putBoolean("auto_update", s.updateMode == UpdateMode.Install)
             .putBoolean("tile_opens_game", s.tileOpensGame)
             .putBoolean("resin_alert", s.resinAlert)
             .putInt("resin_alert_at", s.resinAlertAt)
             .apply()
+    }
+}
+
+/**
+ * What the app does about new releases, as on the desktop:
+ * [Install] checks every hour, downloads and checks one it finds, and
+ * waits for Install now; [Tell] checks every hour and shows it, downloading
+ * only on Download; [Never] asks GitHub only from Check for updates.
+ */
+enum class UpdateMode {
+    Install,
+    Tell,
+    Never,
+    ;
+
+    companion object {
+        /** The saved choice; before it existed, the old switch: on = [Install], off = [Tell] (never [Never]). */
+        fun of(name: String?, auto: Boolean): UpdateMode =
+            entries.firstOrNull { it.name == name } ?: if (auto) Install else Tell
     }
 }

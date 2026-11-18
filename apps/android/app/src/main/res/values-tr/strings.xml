@@ -238,8 +238,6 @@
 
     <!-- Updates -->
     <string name="section_updates">Güncellemeler</string>
-    <string name="update_auto">Otomatik güncelle</string>
-    <string name="update_auto_line">Yeni sürümler kendiliğinden indirilir (sağlama toplamıyla denetlenir); yüklemek için Şimdi yükle\'ye dokunun</string>
     <string name="update_check">Güncellemeleri denetle</string>
     <string name="update_checking">Denetleniyor…</string>
     <string name="update_up_to_date">Güncel · %s</string>

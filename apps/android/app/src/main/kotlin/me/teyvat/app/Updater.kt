@@ -31,7 +31,17 @@ import org.json.JSONObject
 sealed class UpdateState {
     data object Idle : UpdateState()
     data object Checking : UpdateState()
+    /** A newer release, nothing downloaded: Tell me only, or Never check after Check for updates. Download fetches it. */
+    data class Found(val version: String) : UpdateState()
     data class Downloading(val version: String, val percent: Int) : UpdateState()
+    /** Downloaded: its checksum and signature are being checked. */
+    data class Verifying(val version: String) : UpdateState()
+    /**
+     * The download did not pass its checks (checksum, signature): nothing
+     * is installed, and the app's own checks leave this release alone until
+     * a newer one, a restart or Check for updates.
+     */
+    data class Unverified(val version: String) : UpdateState()
     /**
      * Downloaded and checked; it goes in only when the user taps Install now
      * (an install started in the background had Play Protect's scan pop up
@@ -53,9 +63,12 @@ sealed class UpdateState {
 
 /**
  * The desktop's updater for the phone: the newest GitHub release's
- * `teyvatme-android.apk`, checked against its `SHA256SUMS.txt`, installed
- * with Android's PackageInstaller. Checking and downloading run on their
- * own (when updating automatically is on); installing only ever starts from
+ * `teyvatme-android.apk`, checked against its `SHA256SUMS.txt` and that
+ * list's minisign signature ([NativeBridge.updateHash], the desktop's own
+ * check), installed with Android's PackageInstaller. What runs by itself
+ * follows [UpdateMode]: checking and downloading (Install by itself), only
+ * checking (Tell me only: Download fetches it), or nothing (Never check:
+ * only Check for updates asks GitHub). Installing only ever starts from
  * Install now, with the app open. On Android 12+ an update this app installs
  * needs no further tap once the app installed itself before; otherwise
  * Android shows its one-tap Update screen.
@@ -69,6 +82,12 @@ class Updater(
     val state: StateFlow<UpdateState> = stateFlow.asStateFlow()
     private var job: Job? = null
     private var lastCheck = 0L
+
+    /** The release [UpdateState.Found] names, for Download. */
+    private var found: Release? = null
+
+    /** A version whose download was refused: not tried again by the app's own checks. In memory only. */
+    private var refused: String? = null
     private val dir get() = File(context.cacheDir, "update").apply { mkdirs() }
 
     init {
@@ -81,7 +100,7 @@ class Updater(
         scope.launch {
             delay(5_000)
             while (true) {
-                if (prefs.value.autoUpdate) check(manual = false)
+                if (checksAlone(prefs.value.updateMode)) check(manual = false)
                 delay(CHECK_EVERY_MS)
             }
         }
@@ -102,14 +121,45 @@ class Updater(
                 return@launch
             }
             if (release == null || !newer(release.version, BuildConfig.VERSION_NAME)) {
+                found = null
                 stateFlow.value = if (manual) UpdateState.UpToDate else UpdateState.Idle
                 return@launch
             }
-            download(release)
+            // Check for updates tries a refused release again; the timer doesn't.
+            if (manual) refused = null
+            if (refused == release.version) {
+                stateFlow.value = UpdateState.Unverified(release.version)
+                return@launch
+            }
+            if (downloadsAlone(prefs.value.updateMode)) {
+                download(release)
+            } else {
+                found = release
+                stateFlow.value = UpdateState.Found(release.version)
+            }
         }
     }
 
-    private class Release(val version: String, val apk: String, val sums: String)
+    /** Download (the card's button): fetch and check the release [UpdateState.Found] names. */
+    fun downloadNow() {
+        if (job?.isActive == true) return
+        val release = found ?: return check()
+        if (stateFlow.value !is UpdateState.Found) return
+        job = scope.launch { download(release) }
+    }
+
+    /** The setting changed: a found release downloads now under Install by itself. */
+    fun modeChanged() {
+        when {
+            stateFlow.value is UpdateState.Found && downloadsAlone(prefs.value.updateMode) -> downloadNow()
+            checksAlone(prefs.value.updateMode) -> check(manual = false)
+        }
+    }
+
+    private class Release(val version: String, val apk: String, val sums: String, val signature: String?)
+
+    /** The download was refused by its checks, not by the network. */
+    private class Unverified : IOException("The update could not be verified")
 
     private fun latest(): Release? {
         val o = JSONObject(get(LATEST_URL).toString(Charsets.UTF_8))
@@ -117,14 +167,16 @@ class Updater(
         val assets = o.getJSONArray("assets")
         var apk: String? = null
         var sums: String? = null
+        var signature: String? = null
         for (i in 0 until assets.length()) {
             val a = assets.getJSONObject(i)
             when (a.getString("name")) {
                 APK_ASSET -> apk = a.getString("browser_download_url")
                 SUMS_ASSET -> sums = a.getString("browser_download_url")
+                SIGNATURE_ASSET -> signature = a.getString("browser_download_url")
             }
         }
-        return if (apk != null && sums != null) Release(version, apk, sums) else null
+        return if (apk != null && sums != null) Release(version, apk, sums, signature) else null
     }
 
     private suspend fun download(release: Release) {
@@ -132,23 +184,37 @@ class Updater(
         val ok = withContext(Dispatchers.IO) {
             runCatching {
                 val sums = get(release.sums).toString(Charsets.UTF_8)
-                val want = sums.lineSequence()
-                    .map { it.trim().split(Regex("\\s+"), limit = 2) }
-                    .firstOrNull { it.size == 2 && it[1].trimStart('*') == APK_ASSET }
-                    ?.get(0)?.lowercase() ?: throw IOException("$APK_ASSET is not in $SUMS_ASSET")
+                // A release without a signature has an empty one: refused.
+                val signature = release.signature?.let { get(it).toString(Charsets.UTF_8) } ?: ""
+                // The list is this version's, signed by us, and names the APK.
+                val want = NativeBridge.updateHash(sums, signature, release.version, APK_ASSET) ?: throw Unverified()
                 if (!file.exists() || sha256(file) != want) {
                     stateFlow.value = UpdateState.Downloading(release.version, 0)
                     val part = File(dir, file.name + ".part")
                     fetch(release.apk, part) { percent -> stateFlow.value = UpdateState.Downloading(release.version, percent) }
+                    stateFlow.value = UpdateState.Verifying(release.version)
                     if (sha256(part) != want) {
                         part.delete()
-                        throw IOException("The download does not match its checksum")
+                        Log.e(TAG, "update ${release.version} refused: the download does not match its checksum")
+                        throw Unverified()
                     }
                     part.renameTo(file)
                 }
             }
         }
+        found = null
         ok.onFailure { e ->
+            if (e is Unverified) {
+                // One message whatever the cause (the log has it), and the
+                // release is left alone by the app's own checks.
+                refused = release.version
+                file.delete()
+                stateFlow.value = UpdateState.Unverified(release.version)
+                NativeBridge.noteLink(
+                    "error", context.getString(R.string.update_unverified, release.version), releasePage(release.version),
+                )
+                return
+            }
             Log.w(TAG, "update download failed: $e")
             stateFlow.value = UpdateState.Failed(release.version, e.message ?: e.javaClass.simpleName)
             NativeBridge.note("error", context.getString(R.string.update_failed, e.message ?: ""))
@@ -366,7 +432,19 @@ class Updater(
         private const val LATEST_URL = "https://api.github.com/repos/tawan475/teyvat.me-capture/releases/latest"
         private const val APK_ASSET = "teyvatme-android.apk"
         private const val SUMS_ASSET = "SHA256SUMS.txt"
-        private const val CHECK_EVERY_MS = 6 * 60 * 60_000L
+        private const val SIGNATURE_ASSET = "SHA256SUMS.txt.minisig"
+
+        /** Hourly, as the desktop (and as the setting's text says). */
+        private const val CHECK_EVERY_MS = 60 * 60_000L
+
+        /** Whether the timer asks GitHub: not under Never check. */
+        fun checksAlone(mode: UpdateMode) = mode != UpdateMode.Never
+
+        /** Whether a release that was found downloads by itself: only under Install by itself. */
+        fun downloadsAlone(mode: UpdateMode) = mode == UpdateMode.Install
+
+        /** The page of one release, for a download by hand. */
+        fun releasePage(version: String) = "https://github.com/tawan475/teyvat.me-capture/releases/tag/v$version"
         private const val EXTRA_VERSION = "version"
         private const val EXTRA_SESSION = "session"
 

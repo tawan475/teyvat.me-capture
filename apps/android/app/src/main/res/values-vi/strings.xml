@@ -238,8 +238,6 @@
 
     <!-- Updates -->
     <string name="section_updates">Cập nhật</string>
-    <string name="update_auto">Tự động cập nhật</string>
-    <string name="update_auto_line">Bản mới tự tải về (kiểm tra bằng checksum); chạm Cài đặt ngay để cài đặt</string>
     <string name="update_check">Kiểm tra cập nhật</string>
     <string name="update_checking">Đang kiểm tra…</string>
     <string name="update_up_to_date">Đã là bản mới nhất · %s</string>

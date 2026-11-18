@@ -243,8 +243,26 @@
 
     <!-- Updates -->
     <string name="section_updates">Updates</string>
-    <string name="update_auto">Update automatically</string>
-    <string name="update_auto_line">New releases download by themselves (checked against their checksums); tap Install now to install</string>
+    <string name="update_mode_label">When a new version is out</string>
+    <string name="update_mode_install">Install by itself</string>
+    <string name="update_mode_install_line">Downloads and checks it; tap Install now</string>
+    <string name="update_mode_tell">Tell me only</string>
+    <string name="update_mode_tell_line">Checks every hour; downloads when you tap Download</string>
+    <string name="update_mode_never">Never check</string>
+    <string name="update_mode_never_line">Only Check for updates asks GitHub</string>
+    <string name="update_never_line">You have %s · it doesn\'t check by itself</string>
+    <string name="update_found">%1$s is out · you have %2$s</string>
+    <string name="update_found_line">You have %s · nothing downloaded yet</string>
+    <string name="update_download">Download</string>
+    <string name="update_then_checks">Then it checks the checksum and signature</string>
+    <string name="update_verifying">Checking %s…</string>
+    <string name="update_verifying_line">The download\'s checksum and signature</string>
+    <string name="update_ready_line">Checked · tap Install now; Android asks once</string>
+    <string name="update_unverified">Update %s not installed: it couldn\'t be verified</string>
+    <string name="update_unverified_line">%s not installed: it couldn\'t be verified</string>
+    <string name="update_unverified_short">Not installed: it couldn\'t be verified</string>
+    <string name="update_get_from_release_page">Get it from the release page</string>
+    <string name="release_page">Release page</string>
     <string name="update_check">Check for updates</string>
     <string name="update_checking">Checking…</string>
     <string name="update_up_to_date">Up to date · %s</string>

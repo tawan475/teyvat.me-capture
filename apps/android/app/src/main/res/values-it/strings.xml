@@ -238,8 +238,6 @@
 
     <!-- Updates -->
     <string name="section_updates">Aggiornamenti</string>
-    <string name="update_auto">Aggiorna automaticamente</string>
-    <string name="update_auto_line">Le nuove versioni si scaricano da sole (verificate con i checksum); tocca Installa ora per installare</string>
     <string name="update_check">Cerca aggiornamenti</string>
     <string name="update_checking">Ricerca…</string>
     <string name="update_up_to_date">Aggiornata · %s</string>

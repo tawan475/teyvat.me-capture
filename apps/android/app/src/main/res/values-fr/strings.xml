@@ -238,8 +238,6 @@
 
     <!-- Updates -->
     <string name="section_updates">Mises à jour</string>
-    <string name="update_auto">Mise à jour automatique</string>
-    <string name="update_auto_line">Les nouvelles versions se téléchargent seules (vérifiées par leurs sommes de contrôle) ; touchez Installer maintenant pour installer</string>
     <string name="update_check">Rechercher des mises à jour</string>
     <string name="update_checking">Recherche…</string>
     <string name="update_up_to_date">À jour · %s</string>

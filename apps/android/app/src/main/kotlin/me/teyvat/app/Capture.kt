@@ -144,7 +144,7 @@ data class WishInfo(
     val sync: WishSync = WishSync(),
 )
 
-data class ActivityEvent(val at: Long, val kind: String, val text: String) {
+data class ActivityEvent(val at: Long, val kind: String, val text: String, val link: String? = null) {
     val isError get() = kind == "error"
 }
 
@@ -250,7 +250,12 @@ data class Summary(
                 events = buildList {
                     for (i in 0 until (events?.length() ?: 0)) {
                         val e = events!!.getJSONObject(i)
-                        add(ActivityEvent(e.optLong("at"), e.optString("kind"), nativeEventText(e.optString("text"))))
+                        add(
+                            ActivityEvent(
+                                e.optLong("at"), e.optString("kind"), nativeEventText(e.optString("text")),
+                                e.optString("link").ifEmpty { null },
+                            ),
+                        )
                     }
                 },
             )

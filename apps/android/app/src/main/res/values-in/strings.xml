@@ -238,8 +238,6 @@
 
     <!-- Updates -->
     <string name="section_updates">Pembaruan</string>
-    <string name="update_auto">Perbarui otomatis</string>
-    <string name="update_auto_line">Rilis baru diunduh sendiri (dicek dengan checksum); ketuk Pasang sekarang untuk memasang</string>
     <string name="update_check">Periksa pembaruan</string>
     <string name="update_checking">Memeriksa…</string>
     <string name="update_up_to_date">Sudah terbaru · %s</string>

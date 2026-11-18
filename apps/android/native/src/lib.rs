@@ -1068,7 +1068,67 @@ pub extern "system" fn Java_me_teyvat_app_NativeBridge_note(
         "error" => "error",
         _ => "info",
     };
-    decoder::get().note(kind, &text);
+    decoder::get().note(kind, &text, None);
+}
+
+/// `NativeBridge.noteLink(kind, text, link)`: [`Java_me_teyvat_app_NativeBridge_note`]
+/// with a page the activity list links (an update's release page).
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_me_teyvat_app_NativeBridge_noteLink(
+    mut env: JNIEnv,
+    _class: JClass,
+    kind: JString,
+    text: JString,
+    link: JString,
+) {
+    let (Some(kind), Some(text), Some(link)) = (
+        java_string(&mut env, &kind),
+        java_string(&mut env, &text),
+        java_string(&mut env, &link),
+    ) else {
+        return;
+    };
+    let kind = if kind == "error" { "error" } else { "info" };
+    decoder::get().note(kind, &text, Some(link));
+}
+
+/// `NativeBridge.updateHash(sums, signature, version, asset)`: the SHA-256
+/// (hex) the release's signed `SHA256SUMS.txt` lists for `asset`, or null
+/// when the list is not signed for that version by one of our keys or lacks
+/// the file (`teyvatme_core::verify`, the desktop's own check). `signature`
+/// is the `.minisig` file's text, empty when the release has none.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_me_teyvat_app_NativeBridge_updateHash(
+    mut env: JNIEnv,
+    _class: JClass,
+    sums: JString,
+    signature: JString,
+    version: JString,
+    asset: JString,
+) -> jstring {
+    let (Some(sums), Some(signature), Some(version), Some(asset)) = (
+        java_string(&mut env, &sums),
+        java_string(&mut env, &signature),
+        java_string(&mut env, &version),
+        java_string(&mut env, &asset),
+    ) else {
+        return std::ptr::null_mut();
+    };
+    use teyvatme_core::verify;
+    let signature = (!signature.trim().is_empty()).then_some(signature.as_str());
+    match verify::expected_hash(
+        sums.as_bytes(),
+        signature,
+        &version,
+        &asset,
+        verify::UPDATE_KEYS,
+    ) {
+        Ok(hash) => java_result(&env, Some(hash)),
+        Err(e) => {
+            log::error!("update {version} refused: {e}");
+            std::ptr::null_mut()
+        }
+    }
 }
 
 /// `NativeBridge.wishUrl()`: the game's wish history link for this login's

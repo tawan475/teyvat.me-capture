@@ -25,7 +25,9 @@ use teyvatme_core::decode::{
     self, AppliedData, DataReplacement, DataVerdict, KeyReport, SnifferEvent, SnifferStats,
 };
 use teyvatme_core::good::{GiAbyss, GiCommissions, GiRealm, GiResin, GiTasks, GiWeeklyBosses};
-use teyvatme_core::live::{Action, AttachAnswer, AttachRequest, BatchAnswer, ImportAnswer, LiveSync, Reason};
+use teyvatme_core::live::{
+    Action, AttachAnswer, AttachRequest, BatchAnswer, ImportAnswer, LiveSync, Reason,
+};
 use teyvatme_core::player_data::{ExportSettings, LOGIN_COMPLETE_QUIET_MS, LoginParts, PlayerData};
 use teyvatme_core::recording;
 use teyvatme_core::wish::hub::{WishHub, take_wish_events};
@@ -56,6 +58,9 @@ pub struct Event {
     /// `ok`, `error` or `info`.
     pub kind: &'static str,
     pub text: String,
+    /// A page about it (the release page of an update that was refused).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub link: Option<String>,
 }
 
 /// What the home screen shows about the game, decided from its connection
@@ -287,6 +292,15 @@ impl State {
     }
 
     fn event(&mut self, kind: &'static str, text: impl Into<String>) {
+        self.event_with_link(kind, text, None);
+    }
+
+    fn event_with_link(
+        &mut self,
+        kind: &'static str,
+        text: impl Into<String>,
+        link: Option<String>,
+    ) {
         let text = text.into();
         log::info!("activity: {text}");
         if self.events.len() == EVENTS {
@@ -296,6 +310,7 @@ impl State {
             at: now_ms(),
             kind,
             text,
+            link,
         });
     }
 
@@ -521,8 +536,8 @@ impl Decoder {
     }
 
     /// An event from the app (an export, a capture start or stop).
-    pub fn note(&self, kind: &'static str, text: &str) {
-        self.state.lock().unwrap().event(kind, text);
+    pub fn note(&self, kind: &'static str, text: &str, link: Option<String>) {
+        self.state.lock().unwrap().event_with_link(kind, text, link);
     }
 
     pub fn summary_json(&self) -> String {

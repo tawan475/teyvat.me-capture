@@ -12,6 +12,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import me.teyvat.app.Whoami
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -82,7 +85,8 @@ interface SettingsActions {
     fun openActivity()
     fun setRecordCapture(on: Boolean)
     fun openAbout()
-    fun setAutoUpdate(on: Boolean)
+    fun setUpdateMode(mode: me.teyvat.app.UpdateMode)
+    fun updateInstallNow()
     fun setTileOpensGame(on: Boolean)
     fun setResinAlert(on: Boolean)
     fun setResinAlertAt(value: Int)
@@ -177,23 +181,60 @@ fun SettingsScreen(
     }
     SectionLabel(stringResource(R.string.section_updates))
     Group {
-        SwitchRow(
-            stringResource(R.string.update_auto), stringResource(R.string.update_auto_line), settings.autoUpdate,
-            actions::setAutoUpdate, icon = R.drawable.ic_download,
-        )
-        CardDivider()
+        val mode = settings.updateMode
+        val current = me.teyvat.app.BuildConfig.VERSION_NAME
         val line = when (update) {
             UpdateState.Checking -> stringResource(R.string.update_checking)
-            UpdateState.UpToDate -> stringResource(R.string.update_up_to_date, me.teyvat.app.BuildConfig.VERSION_NAME)
+            UpdateState.UpToDate -> stringResource(R.string.update_up_to_date, current)
+            is UpdateState.Found -> stringResource(R.string.update_found, update.version, current)
+            is UpdateState.Verifying -> stringResource(R.string.update_verifying, update.version)
+            is UpdateState.Unverified -> stringResource(R.string.update_unverified_line, update.version)
             is UpdateState.Downloading -> stringResource(R.string.update_downloading, update.version, update.percent)
             is UpdateState.Ready -> stringResource(R.string.update_ready, update.version)
             is UpdateState.Confirming -> stringResource(R.string.update_ready, update.version)
             is UpdateState.NeedsPermission -> stringResource(R.string.update_allow_line)
             is UpdateState.Installing -> stringResource(R.string.update_installing, update.version)
             is UpdateState.Failed -> stringResource(R.string.update_failed, update.error)
-            UpdateState.Idle -> me.teyvat.app.BuildConfig.VERSION_NAME
+            UpdateState.Idle ->
+                if (mode == me.teyvat.app.UpdateMode.Never) stringResource(R.string.update_never_line, current) else current
         }
-        ListRow(stringResource(R.string.update_check), line, R.drawable.ic_clock, onClick = actions::checkForUpdates)
+        // The status, and the one thing to do about it (48 dp tall).
+        val (action, onAction) = when (update) {
+            is UpdateState.Found -> stringResource(R.string.update_download) to actions::updateInstallNow
+            is UpdateState.Ready, is UpdateState.Confirming -> stringResource(R.string.update_install_now) to actions::updateInstallNow
+            is UpdateState.Unverified ->
+                stringResource(R.string.release_page) to { actions.openUrl(me.teyvat.app.Updater.releasePage(update.version)) }
+            else -> null to {}
+        }
+        ListRow(
+            stringResource(R.string.section_updates), line, R.drawable.ic_download, lineLines = 2,
+            lineColor = if (update is UpdateState.Unverified) MaterialTheme.colorScheme.error else Color.Unspecified,
+        ) {
+            if (action != null) {
+                Spacer(Modifier.width(8.dp))
+                androidx.compose.material3.Button(onClick = onAction, modifier = Modifier.heightIn(min = 48.dp)) { Text(action) }
+            }
+        }
+        Text(
+            stringResource(R.string.update_mode_label), style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 8.dp),
+        )
+        Column(Modifier.selectableGroup()) {
+            ChoiceTile(
+                stringResource(R.string.update_mode_install), stringResource(R.string.update_mode_install_line),
+                R.drawable.ic_download, mode == me.teyvat.app.UpdateMode.Install,
+            ) { actions.setUpdateMode(me.teyvat.app.UpdateMode.Install) }
+            ChoiceTile(
+                stringResource(R.string.update_mode_tell), stringResource(R.string.update_mode_tell_line),
+                R.drawable.ic_eye, mode == me.teyvat.app.UpdateMode.Tell,
+            ) { actions.setUpdateMode(me.teyvat.app.UpdateMode.Tell) }
+            ChoiceTile(
+                stringResource(R.string.update_mode_never), stringResource(R.string.update_mode_never_line),
+                R.drawable.ic_circle_x, mode == me.teyvat.app.UpdateMode.Never,
+            ) { actions.setUpdateMode(me.teyvat.app.UpdateMode.Never) }
+        }
+        CardDivider()
+        ListRow(stringResource(R.string.update_check), null, R.drawable.ic_clock, onClick = actions::checkForUpdates)
         CardDivider()
         ListRow(
             stringResource(R.string.release_notes), me.teyvat.app.BuildConfig.VERSION_NAME, R.drawable.ic_info,
@@ -693,7 +734,7 @@ fun ActivityScreen(padding: PaddingValues, events: List<ActivityEvent>) {
                 )
             }
         }
-        items(events.asReversed()) { ActivityRow(it.kind, hhmm(it.at), it.text) }
+        items(events.asReversed()) { ActivityRow(it.kind, hhmm(it.at), it.text, it.link) }
         item {
             Text(
                 stringResource(R.string.activity_footnote), style = MaterialTheme.typography.bodySmall,

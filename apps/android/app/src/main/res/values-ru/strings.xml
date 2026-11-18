@@ -238,8 +238,6 @@
 
     <!-- Updates -->
     <string name="section_updates">Обновления</string>
-    <string name="update_auto">Обновлять автоматически</string>
-    <string name="update_auto_line">Новые версии скачиваются сами (с проверкой контрольных сумм); чтобы установить, нажмите «Установить сейчас»</string>
     <string name="update_check">Проверить обновления</string>
     <string name="update_checking">Проверка…</string>
     <string name="update_up_to_date">Последняя версия · %s</string>

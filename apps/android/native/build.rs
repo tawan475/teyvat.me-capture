@@ -38,7 +38,11 @@ async fn main() -> io::Result<()> {
 
     let mut db = teyvatme_game_data::AnimeGameData::new_with_cache(&cache_path);
     let mut updated = false;
-    if db.needs_update_from(&pinned).await.map_err(io::Error::other)? {
+    if db
+        .needs_update_from(&pinned)
+        .await
+        .map_err(io::Error::other)?
+    {
         db.update_from(&pinned)
             .await
             .map_err(|e| io::Error::other(format!("unable to build the game data: {e:#}")))?;

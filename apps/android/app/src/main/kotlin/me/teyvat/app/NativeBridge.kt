@@ -48,6 +48,17 @@ object NativeBridge {
     /** An event for the activity list; [kind] is `ok`, `error` or `info`. */
     external fun note(kind: String, text: String)
 
+    /** [note], with a page the activity list links (an update's release page). */
+    external fun noteLink(kind: String, text: String, link: String)
+
+    /**
+     * The SHA-256 (hex) the release's signed `SHA256SUMS.txt` lists for
+     * [asset], or null when the list is not signed for [version] by one of
+     * the app's keys, or lacks the file. [signature] is the `.minisig`
+     * file's text, empty when the release has none. The desktop's check.
+     */
+    external fun updateHash(sums: String, signature: String, version: String, asset: String): String?
+
     /**
      * The game's wish history link for this login's key, or null. A password
      * while it lasts: never log it.

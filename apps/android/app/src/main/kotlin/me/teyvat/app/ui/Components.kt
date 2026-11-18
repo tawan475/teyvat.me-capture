@@ -16,6 +16,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -704,7 +705,8 @@ fun UpdateBanner(
 
 /** One activity line: icon, time, text. */
 @Composable
-fun ActivityRow(kind: String, time: String, text: String) {
+fun ActivityRow(kind: String, time: String, text: String, link: String? = null) {
+    val uri = androidx.compose.ui.platform.LocalUriHandler.current
     val (icon, tint) = when (kind) {
         "ok" -> R.drawable.ic_circle_check to Tm.colors.success
         "error" -> R.drawable.ic_circle_x to MaterialTheme.colorScheme.error
@@ -726,6 +728,61 @@ fun ActivityRow(kind: String, time: String, text: String) {
             color = if (kind == "error") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
             maxLines = 2, overflow = TextOverflow.Ellipsis,
         )
+    }
+    // The page to get it from by hand (a refused update), under its line.
+    if (link != null) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
+                .clickable(role = androidx.compose.ui.semantics.Role.Button) { runCatching { uri.openUri(link) } }
+                .padding(start = 88.dp, end = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TmIcon(R.drawable.ic_external_link, null, tint = MaterialTheme.colorScheme.primary, size = 16.dp)
+            Spacer(Modifier.width(8.dp))
+            Text(
+                stringResource(R.string.update_get_from_release_page), style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+    }
+}
+
+/**
+ * One choice of a few, as a tile: icon, name and what it means. The chosen
+ * one is outlined, filled and carries a check (never colour alone).
+ */
+@Composable
+fun ChoiceTile(title: String, line: String, @DrawableRes icon: Int, selected: Boolean, onClick: () -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    val shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp)
+    val ink = if (selected) scheme.onPrimaryContainer else scheme.onSurface
+    Row(
+        Modifier
+            .padding(start = 12.dp, end = 12.dp, bottom = 8.dp)
+            .fillMaxWidth()
+            .heightIn(min = 64.dp)
+            .clip(shape)
+            .background(if (selected) scheme.primaryContainer else Color.Transparent)
+            .border(if (selected) 2.dp else 1.dp, if (selected) scheme.primary else scheme.outlineVariant, shape)
+            .selectable(selected = selected, role = androidx.compose.ui.semantics.Role.RadioButton, onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        TmIcon(icon, null, tint = ink)
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                title, style = MaterialTheme.typography.bodyLarge, color = ink,
+                fontWeight = if (selected) androidx.compose.ui.text.font.FontWeight.SemiBold else null,
+            )
+            Text(line, style = MaterialTheme.typography.bodyMedium, color = if (selected) ink else scheme.onSurfaceVariant)
+        }
+        if (selected) {
+            Spacer(Modifier.width(8.dp))
+            TmIcon(R.drawable.ic_check, null, tint = ink)
+        }
     }
 }
 
