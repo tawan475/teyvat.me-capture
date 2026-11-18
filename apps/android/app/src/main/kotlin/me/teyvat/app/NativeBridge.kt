@@ -83,6 +83,14 @@ object NativeBridge {
     external fun setWishSync(on: Boolean)
 
     /**
+     * The parts tracker uploads leave out ([off]: their `gi_off` names,
+     * comma separated; empty = everything is shared), and whether uploads
+     * are placed by UID (the UID then goes even with the account numbers
+     * off). Cheap to repeat: the same set again does nothing.
+     */
+    external fun setSharing(off: String, routesByUid: Boolean)
+
+    /**
      * The tracker's snapshot (the whole account, every filter off, with live
      * sync's labels) as `"<ticket>\n<GOOD JSON>"`; "" when nothing is due
      * ([live] mode: batches carry the changes); null before data is captured.

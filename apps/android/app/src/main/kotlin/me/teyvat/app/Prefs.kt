@@ -102,6 +102,14 @@ data class Settings(
     val sendWishes: Boolean = true,
     /** Between snapshots, send what changed as you play (the tracker's switch decides too). */
     val liveSync: Boolean = true,
+    /** Settings › Sharing: the parts tracker uploads leave out, by their `gi_off` names (none: everything is shared). */
+    val sharingOff: Set<String> = emptySet(),
+    /** The Custom preset's own set, kept while Everything or Builds only is chosen. */
+    val sharingCustom: Set<String>? = null,
+    /** "Custom" was picked (it stays picked while its set equals a preset's). */
+    val sharingCustomPicked: Boolean = false,
+    /** The Sharing screen's open groups, as bits. */
+    val sharingOpen: Int = 0,
     /** What the app does about new releases (Settings › Updates). */
     val updateMode: UpdateMode = UpdateMode.Install,
     /** The Quick Settings tile also opens Genshin when it starts capture. */
@@ -144,6 +152,10 @@ class Prefs(context: Context) {
             trackerUpload = store.getBoolean("tracker_upload", true),
             sendWishes = store.getBoolean("send_wishes", true),
             liveSync = store.getBoolean("live_sync", true),
+            sharingOff = store.getStringSet("sharing_off", null)?.toSet() ?: emptySet(),
+            sharingCustom = store.getStringSet("sharing_custom", null)?.toSet(),
+            sharingCustomPicked = store.getBoolean("sharing_custom_picked", false),
+            sharingOpen = store.getInt("sharing_open", 0),
             updateMode = UpdateMode.of(store.getString("update_mode", null), store.getBoolean("auto_update", true)),
             tileOpensGame = store.getBoolean("tile_opens_game", false),
             resinAlert = store.getBoolean("resin_alert", false),
@@ -169,6 +181,10 @@ class Prefs(context: Context) {
             .putBoolean("tracker_upload", s.trackerUpload)
             .putBoolean("send_wishes", s.sendWishes)
             .putBoolean("live_sync", s.liveSync)
+            .putStringSet("sharing_off", s.sharingOff)
+            .putStringSet("sharing_custom", s.sharingCustom)
+            .putBoolean("sharing_custom_picked", s.sharingCustomPicked)
+            .putInt("sharing_open", s.sharingOpen)
             .putString("update_mode", s.updateMode.name)
             // For a build from before the three choices.
             .putBoolean("auto_update", s.updateMode == UpdateMode.Install)

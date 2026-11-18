@@ -123,7 +123,6 @@
     <string name="tracker_uploaded">✓ Caricato %s</string>
     <string name="tracker_upload_failed">Caricamento non riuscito · %s</string>
     <string name="tracker_upload_switch">Carica ogni cattura</string>
-    <string name="tracker_upload_switch_line">L\'intero account, nessun filtro</string>
     <string name="tracker_upload_off">Caricamenti disattivati</string>
     <string name="tracker_configure">Scegli dove vanno i caricamenti</string>
     <string name="tracker_configure_line">Sul sito, Impostazioni › Dispositivi</string>

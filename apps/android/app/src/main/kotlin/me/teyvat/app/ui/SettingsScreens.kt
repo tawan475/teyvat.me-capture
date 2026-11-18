@@ -81,6 +81,7 @@ interface SettingsActions {
     fun openNotificationSettings()
     fun setTheme(theme: ThemeMode)
     fun openExportSettings()
+    fun openSharing()
     fun openTeyvat()
     fun openActivity()
     fun setRecordCapture(on: Boolean)
@@ -169,6 +170,13 @@ fun SettingsScreen(
     SectionLabel(stringResource(R.string.section_export))
     Group {
         ListRow(stringResource(R.string.export_filters), null, R.drawable.ic_sliders, onClick = actions::openExportSettings) { Chevron() }
+    }
+    SectionLabel(stringResource(R.string.share_title))
+    Group {
+        ListRow(
+            stringResource(R.string.share_with, Links.trackerHost), sharingLine(settings), R.drawable.ic_shield_check,
+            onClick = actions::openSharing,
+        ) { Chevron() }
     }
     SectionLabel(stringResource(R.string.section_destinations))
     Group {
@@ -420,6 +428,7 @@ interface TeyvatActions {
     fun setTrackerUpload(on: Boolean)
     fun setSendWishes(on: Boolean)
     fun setLiveSync(on: Boolean)
+    fun openSharing()
     fun trackerSignOut()
     fun openUrl(url: String)
     fun setImportKey(key: String)
@@ -565,6 +574,12 @@ fun TeyvatScreen(padding: PaddingValues, tracker: TrackerView, captured: Boolean
                 stringResource(R.string.live_sync), stringResource(R.string.live_sync_line), tracker.liveOn && tracker.uploadOn,
                 actions::setLiveSync, icon = R.drawable.ic_refresh, enabled = tracker.uploadOn,
             )
+            CardDivider()
+            // What the uploads leave out, and the way to the screen that decides it.
+            ListRow(
+                stringResource(R.string.share_title), sharingLine(settings), R.drawable.ic_shield_check,
+                lineLines = 2, onClick = actions::openSharing,
+            ) { Chevron() }
             CardDivider()
             SwitchRow(
                 stringResource(R.string.wish_send, Links.trackerHost), stringResource(R.string.wish_send_line), settings.sendWishes,
@@ -846,4 +861,253 @@ fun NoticesScreen(padding: PaddingValues) = Scrolling(padding) {
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(16.dp),
     )
+}
+
+// -- Sharing ----------------------------------------------------------------
+
+interface SharingActions {
+    /** The parts not shared are now [off] (their `gi_off` names); [customPicked]: by a switch or the Custom preset. */
+    fun setSharing(off: Set<String>, customPicked: Boolean)
+    fun toggleSharingGroup(index: Int)
+}
+
+/** The Settings and teyvat.me rows' line: the preset and how many parts are shared, and which are not. */
+@Composable
+fun sharingLine(settings: Settings): String {
+    val off = me.teyvat.app.SharePart.off(settings.sharingOff)
+    val total = me.teyvat.app.SharePart.entries.size
+    if (off.isEmpty()) return stringResource(R.string.share_summary_all, total)
+    val names = off.map { stringResource(it.title) }.joinToString(", ")
+    return stringResource(R.string.share_summary_off, total - off.size, total, names)
+}
+
+/**
+ * Settings › Sharing: which parts of the export go to the tracker. Three
+ * presets, what the tracker receives, and a switch per part in folded
+ * groups. A change applies at once; the screen says the next upload starts
+ * a new live journal.
+ */
+@Composable
+fun SharingScreen(
+    padding: PaddingValues,
+    settings: Settings,
+    canUpload: Boolean,
+    uploadOn: Boolean,
+    routesByUid: Boolean,
+    changedAt: Long?,
+    actions: SharingActions,
+) = Scrolling(padding) {
+    val scheme = MaterialTheme.colorScheme
+    val host = Links.trackerHost
+    val parts = me.teyvat.app.SharePart
+    val off = parts.off(settings.sharingOff)
+    val offKeys = off.map { it.key }.toSet()
+    val total = me.teyvat.app.SharePart.entries.size
+    val uidKept = canUpload && routesByUid
+
+    Text(
+        stringResource(R.string.share_lead, host), style = MaterialTheme.typography.bodyMedium,
+        color = scheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+    )
+    // Nothing leaves now: the switches still work, and say from when.
+    val note = when {
+        !canUpload -> stringResource(R.string.share_signed_out)
+        !uploadOn -> stringResource(R.string.share_upload_off)
+        else -> null
+    }
+    if (note != null) SharingNote(R.drawable.ic_info, note)
+
+    // Presets: Material segmented buttons, the picked one ticked.
+    val preset = parts.preset(settings.sharingOff, settings.sharingCustomPicked)
+    val presets = listOf(
+        me.teyvat.app.SharePreset.Everything to R.string.share_preset_everything,
+        me.teyvat.app.SharePreset.Builds to R.string.share_preset_builds,
+        me.teyvat.app.SharePreset.Custom to R.string.share_preset_custom,
+    )
+    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+        presets.forEachIndexed { i, (option, label) ->
+            SegmentedButton(
+                selected = preset == option,
+                onClick = {
+                    if (option != preset) {
+                        when (option) {
+                            me.teyvat.app.SharePreset.Everything -> actions.setSharing(emptySet(), false)
+                            me.teyvat.app.SharePreset.Builds -> actions.setSharing(parts.BUILDS_ONLY_OFF, false)
+                            me.teyvat.app.SharePreset.Custom -> actions.setSharing(settings.sharingCustom ?: settings.sharingOff, true)
+                        }
+                    }
+                },
+                shape = SegmentedButtonDefaults.itemShape(i, presets.size),
+                modifier = Modifier.heightIn(min = 48.dp),
+                colors = SegmentedButtonDefaults.colors(
+                    activeContainerColor = scheme.primaryContainer,
+                    activeContentColor = scheme.onPrimaryContainer,
+                ),
+            ) { Text(stringResource(label), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        }
+    }
+    Spacer(Modifier.height(8.dp))
+
+    // What the tracker receives: the count, and a chip per part left out.
+    Group {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                stringResource(if (canUpload) R.string.share_receives else R.string.share_will_receive, host),
+                style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant,
+            )
+            Text(
+                if (off.isEmpty()) stringResource(R.string.share_all_parts, total)
+                else stringResource(R.string.share_some_parts, total - off.size, total),
+                style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold,
+            )
+            if (off.isNotEmpty()) {
+                @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+                androidx.compose.foundation.layout.FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    off.forEach { part ->
+                        val name = stringResource(part.title)
+                        // The UID still goes while uploads are placed by it.
+                        SharingChip(if (part == me.teyvat.app.SharePart.Numbers && uidKept) stringResource(R.string.share_chip_uid_kept, name) else name)
+                    }
+                }
+            }
+            Text(
+                stringResource(if (off.isEmpty()) R.string.share_told_all else R.string.share_told_off, host),
+                style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant,
+            )
+        }
+    }
+    if (changedAt != null) {
+        Spacer(Modifier.height(8.dp))
+        SharingNote(R.drawable.ic_refresh, stringResource(R.string.share_changed, hhmm(changedAt)))
+    }
+
+    parts.GROUPS.forEachIndexed { index, (name, group) ->
+        Spacer(Modifier.height(8.dp))
+        val open = settings.sharingOpen and (1 shl index) != 0
+        val groupOff = group.filter { it.key in offKeys }
+        val count = if (groupOff.isEmpty()) {
+            stringResource(R.string.share_group_count, group.size, group.size)
+        } else {
+            stringResource(
+                R.string.share_group_off, group.size - groupOff.size, group.size,
+                groupOff.map { stringResource(it.title) }.joinToString(", "),
+            )
+        }
+        Group {
+            // The header is the fold's button: a 64 dp row.
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 64.dp)
+                    .clickable(
+                        role = androidx.compose.ui.semantics.Role.Button,
+                        onClickLabel = stringResource(name),
+                    ) { actions.toggleSharingGroup(index) }
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(name), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        // Left out: told by the icon and the weight, not colour.
+                        if (groupOff.isNotEmpty()) {
+                            TmIcon(R.drawable.ic_cloud_off, null, tint = scheme.onSurface, size = 16.dp)
+                            Spacer(Modifier.width(6.dp))
+                        }
+                        Text(
+                            count, style = MaterialTheme.typography.bodyMedium,
+                            color = if (groupOff.isEmpty()) scheme.onSurfaceVariant else scheme.onSurface,
+                            fontWeight = if (groupOff.isEmpty()) null else FontWeight.SemiBold,
+                            maxLines = 2, overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+                TmIcon(if (open) R.drawable.ic_chevron_up else R.drawable.ic_chevron_down, null, tint = scheme.onSurfaceVariant)
+            }
+            if (open) {
+                group.forEach { part ->
+                    CardDivider()
+                    val shared = part.key !in offKeys
+                    SwitchRow(
+                        stringResource(part.title), stringResource(part.line), shared,
+                        { on -> actions.setSharing(if (on) offKeys - part.key else offKeys + part.key, true) },
+                    )
+                    if (!shared) {
+                        val numbers = part == me.teyvat.app.SharePart.Numbers
+                        SharingRowNote(
+                            R.drawable.ic_cloud_off,
+                            stringResource(
+                                when {
+                                    numbers && uidKept -> R.string.share_uid_kept
+                                    numbers -> R.string.share_uid_home
+                                    else -> R.string.share_not_shared
+                                },
+                            ),
+                            strong = true,
+                        )
+                        if (numbers) {
+                            if (uidKept) {
+                                SharingRowNote(R.drawable.ic_lock, stringResource(R.string.share_uid_kept_why), strong = false)
+                            } else {
+                                SharingRowNote(R.drawable.ic_info, stringResource(R.string.share_uid_home_why, host), strong = false)
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                    }
+                }
+            }
+        }
+    }
+    Spacer(Modifier.height(24.dp))
+}
+
+/** A note on the Sharing screen: an icon and a sentence on a quiet ground. */
+@Composable
+private fun SharingNote(@androidx.annotation.DrawableRes icon: Int, text: String) {
+    val scheme = MaterialTheme.colorScheme
+    Row(
+        Modifier
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .fillMaxWidth()
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+            .background(scheme.surfaceVariant)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        TmIcon(icon, null, tint = scheme.onSurfaceVariant, size = 20.dp)
+        Spacer(Modifier.width(10.dp))
+        Text(text, style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant)
+    }
+}
+
+/** A line under a part's switch: what "off" means for it. */
+@Composable
+private fun SharingRowNote(@androidx.annotation.DrawableRes icon: Int, text: String, strong: Boolean) {
+    val scheme = MaterialTheme.colorScheme
+    val ink = if (strong) scheme.onSurface else scheme.onSurfaceVariant
+    Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        TmIcon(icon, null, tint = ink, size = 16.dp)
+        Spacer(Modifier.width(6.dp))
+        Text(text, style = MaterialTheme.typography.bodyMedium, color = ink, fontWeight = if (strong) FontWeight.SemiBold else null)
+    }
+}
+
+/** A part that is left out, as a read-only chip: the cloud-off icon and its name. */
+@Composable
+private fun SharingChip(text: String) {
+    val scheme = MaterialTheme.colorScheme
+    val shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
+    Row(
+        Modifier
+            .heightIn(min = 32.dp)
+            .border(1.dp, scheme.outline, shape)
+            .padding(horizontal = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        TmIcon(R.drawable.ic_cloud_off, null, tint = scheme.onSurface, size = 14.dp)
+        Spacer(Modifier.width(6.dp))
+        Text(text, style = MaterialTheme.typography.labelLarge, color = scheme.onSurface)
+    }
 }

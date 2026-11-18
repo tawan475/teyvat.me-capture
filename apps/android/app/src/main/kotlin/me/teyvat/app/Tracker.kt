@@ -385,6 +385,7 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
         val uploadsOn = canUpload() && settings.trackerUpload
         val live = uploadsOn && settings.liveSync
         NativeBridge.setWishSync(uploadsOn && settings.sendWishes)
+        NativeBridge.setSharing(SharePart.names(settings.sharingOff), routesByUid())
         noteWishes(summary.wish.sync)
         if (!uploadsOn) return
         liveTick(live)
@@ -712,6 +713,15 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
 
     /** Whether uploads can go anywhere: signed in, or a verified import key. */
     fun canUpload() = stateFlow.value is TrackerState.SignedIn || keyFlow.value.verified
+
+    /**
+     * Whether uploads are placed by the capture's UID: signed in with "Auto
+     * (by UID)", or a user import key. Then the UID goes even with the
+     * account numbers not shared. Not known yet counts as by UID.
+     */
+    fun routesByUid(): Boolean = SharePart.routesByUid(
+        (stateFlow.value as? TrackerState.SignedIn)?.who?.scope, stateFlow.value is TrackerState.SignedIn, keyFlow.value.key,
+    )
 
     /** Runs [call] with the sign-in, else the verified import key. */
     private suspend fun <T> withCredential(call: (Credential) -> T): T {

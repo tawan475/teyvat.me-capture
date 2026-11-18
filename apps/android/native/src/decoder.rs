@@ -227,6 +227,9 @@ const SETTLE_EXPLORE_MS: u64 = 12_000;
 const SETTLE_MAX_MS: u64 = 25_000;
 
 struct State {
+    /// What tracker uploads leave out (`NativeBridge.setSharing`), given to
+    /// the player data once the game data has loaded.
+    sharing: teyvatme_core::sharing::Sharing,
     player_data: Option<PlayerData>,
     error: Option<String>,
     replacement: DataReplacement,
@@ -265,6 +268,7 @@ struct State {
 impl State {
     fn new() -> Self {
         Self {
+            sharing: Default::default(),
             player_data: None,
             error: None,
             replacement: DataReplacement::default(),
@@ -536,6 +540,26 @@ impl Decoder {
     }
 
     /// An event from the app (an export, a capture start or stop).
+    /// Which parts tracker uploads leave out. A change starts a new live
+    /// journal once the switches were left alone
+    /// (`LiveSync::note_sharing_changed`); the same set again does nothing.
+    pub fn set_sharing(&self, sharing: teyvatme_core::sharing::Sharing) {
+        let mut state = self.state.lock().unwrap();
+        if state.sharing == sharing {
+            return;
+        }
+        log::info!(
+            "the parts shared with the tracker changed: off {:?}, by uid {}",
+            sharing.off.names(),
+            sharing.routes_by_uid
+        );
+        state.sharing = sharing.clone();
+        if let Some(data) = &mut state.player_data {
+            data.set_sharing(sharing);
+        }
+        state.live.note_sharing_changed(now_ms());
+    }
+
     pub fn note(&self, kind: &'static str, text: &str, link: Option<String>) {
         self.state.lock().unwrap().event_with_link(kind, text, link);
     }
@@ -764,7 +788,7 @@ fn snapshot(state: &mut State, reason: Reason, now: u64) -> Result<(u64, String)
         note_gaps(state, &report.summary());
     }
     good.gi_capture = state.live.capture(reason);
-    let json = serde_json::to_string(&good)?;
+    let json = good.upload_json()?;
     // A manual upload with no login yet carries no capture: nothing follows it.
     let ticket = if good.gi_capture.is_some() {
         state.live.snapshot_started(reason, keyed)
@@ -781,8 +805,9 @@ fn run(rx: mpsc::Receiver<Input>, state: Arc<Mutex<State>>, wishes: &Wishes) {
     let mut sniffer = match loaded {
         Ok((game_data, keys)) => {
             let mut state = state.lock().unwrap();
-            state.player_data =
-                Some(PlayerData::new(game_data).with_game_data_sha(embedded_game_data_sha()));
+            let mut data = PlayerData::new(game_data).with_game_data_sha(embedded_game_data_sha());
+            data.set_sharing(state.sharing.clone());
+            state.player_data = Some(data);
             log::info!(
                 "decoder ready, game data {}",
                 embedded_game_data_sha().unwrap_or("unknown")

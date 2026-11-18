@@ -918,6 +918,25 @@ pub extern "system" fn Java_me_teyvat_app_NativeBridge_attachAnswered(
     decoder::get().attach_answered(status);
 }
 
+/// `NativeBridge.setSharing(off, routesByUid)`: the parts tracker uploads
+/// leave out, as `gi_off` names separated by commas (`teyvatme_core::sharing`),
+/// and whether uploads are placed by UID (the UID then always goes).
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_me_teyvat_app_NativeBridge_setSharing(
+    mut env: JNIEnv,
+    _class: JClass,
+    off: JString,
+    routes_by_uid: jboolean,
+) {
+    let Some(off) = java_string(&mut env, &off) else {
+        return;
+    };
+    decoder::get().set_sharing(teyvatme_core::sharing::Sharing {
+        off: teyvatme_core::sharing::PartsOff::from_names(off.split(',').map(str::trim)),
+        routes_by_uid: routes_by_uid != 0,
+    });
+}
+
 /// `NativeBridge.setWishSync(on)`: whether a captured wish key is synced to
 /// the tracker (signed in, uploads on, wishes on).
 #[unsafe(no_mangle)]
