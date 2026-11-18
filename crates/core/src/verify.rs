@@ -27,7 +27,10 @@ use minisign_verify::{PublicKey, Signature};
 /// line of a `minisign.pub`). A list, so a new key can ship a release ahead
 /// of retiring the old one. The secret key lives only in the repository's
 /// main-only `release` environment.
-pub const UPDATE_KEYS: &[&str] = &[];
+pub const UPDATE_KEYS: &[&str] = &[
+    // Key A4685756A7B45C5C, made 2026-11-18 (the first: releases from 1.18.0).
+    "RWRcXLSnVldopL8tuyDx/JECEMOE+3plsO4wUWOSdc1WVf3TwngzoX+I",
+];
 
 /// Why an update was refused. The apps show one message for all of them
 /// (the user's choice); the log names the cause.

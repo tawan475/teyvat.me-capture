@@ -101,12 +101,12 @@ From the [latest release](https://github.com/tawan475/teyvat.me-capture/releases
 `SHA256SUMS.txt` lists every file's checksum, and `SHA256SUMS.txt.minisig` is
 the project's [minisign](https://jedisct1.github.io/minisign/) signature over
 that list (from 1.18.0 on). The apps update themselves from this page and
-install a download only when both checks pass. To check a download by hand,
-with the public key from `UPDATE_KEYS` in
-[`crates/core/src/verify.rs`](crates/core/src/verify.rs):
+install a download only when both checks pass. To check a download by hand
+(the public key is also `UPDATE_KEYS` in
+[`crates/core/src/verify.rs`](crates/core/src/verify.rs)):
 
 ```
-minisign -Vm SHA256SUMS.txt -P <public key>
+minisign -Vm SHA256SUMS.txt -P RWRcXLSnVldopL8tuyDx/JECEMOE+3plsO4wUWOSdc1WVf3TwngzoX+I
 sha256sum -c --ignore-missing SHA256SUMS.txt
 ```
 
