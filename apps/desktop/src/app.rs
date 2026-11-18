@@ -3069,6 +3069,28 @@ mod tests {
     }
 
     #[test]
+    fn the_sharing_setting_survives_the_settings_file() {
+        use teyvatme_core::sharing::Part;
+        // As eframe stores it: RON.
+        let mut state = SavedAppState::default();
+        state.sharing_off.set_shared(Part::Profile, false);
+        state.sharing_off.set_shared(Part::Teapot, false);
+        let saved = ron::to_string(&state).unwrap();
+        let back: SavedAppState = ron::from_str(&saved).unwrap();
+        assert_eq!(back.sharing_off, state.sharing_off);
+        // A part this build does not have (the extras switch a develop
+        // build once saved) is dropped, and the file still loads.
+        let names = r#"["gi_player.profile","gi_teapot"]"#;
+        assert!(saved.contains(names), "{saved}");
+        let older = saved.replace(
+            names,
+            r#"["gi_player.profile","gi_characters","gi_teapot"]"#,
+        );
+        let back: SavedAppState = ron::from_str(&older).unwrap();
+        assert_eq!(back.sharing_off, state.sharing_off);
+    }
+
+    #[test]
     fn the_old_update_switch_becomes_the_three_way_setting() {
         // A file from before the setting has no `update_mode`.
         let mut old = serde_json::to_value(SavedAppState::default()).unwrap();

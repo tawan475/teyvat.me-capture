@@ -279,8 +279,6 @@
     <string name="share_part_profile_line">暱稱、簽名、生日、名片、頭像</string>
     <string name="share_part_numbers">帳號數值</string>
     <string name="share_part_numbers_line">UID、AR、世界等級、原粹樹脂、傳說鑰匙、體力上限</string>
-    <string name="share_part_extras">角色附加資訊</string>
-    <string name="share_part_extras_line">好感、獲得時間、角色EXP</string>
     <string name="share_part_achievements">成就</string>
     <string name="share_part_achievements_line">哪些已完成、完成時間，以及其餘的進度</string>
     <string name="share_part_anecdotes">遊逸旅帳</string>

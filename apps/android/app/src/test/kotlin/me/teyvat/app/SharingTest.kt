@@ -15,8 +15,8 @@ class SharingTest {
         assertEquals(
             listOf(
                 "characters", "weapons", "artifacts", "materials", "gi_player.profile", "gi_player.numbers",
-                "gi_characters", "gi_achievements", "gi_anecdotes", "gi_tasks", "gi_endgame", "gi_exploration",
-                "gi_collections", "gi_wardrobe", "gi_teapot", "gi_events", "gi_miliastra",
+                "gi_achievements", "gi_anecdotes", "gi_tasks", "gi_endgame", "gi_exploration", "gi_collections",
+                "gi_wardrobe", "gi_teapot", "gi_events", "gi_miliastra",
             ),
             SharePart.entries.map { it.key },
         )
@@ -33,7 +33,7 @@ class SharingTest {
         assertEquals(SharePreset.Custom, SharePart.preset(emptySet(), true))
         assertEquals(SharePreset.Everything, SharePart.preset(setOf("gi_future"), false))
         // Builds only keeps the four build sections and the account numbers.
-        assertEquals(12, SharePart.BUILDS_ONLY_OFF.size)
+        assertEquals(11, SharePart.BUILDS_ONLY_OFF.size)
         assertFalse("gi_player.numbers" in SharePart.BUILDS_ONLY_OFF)
         assertTrue("gi_player.profile" in SharePart.BUILDS_ONLY_OFF)
     }

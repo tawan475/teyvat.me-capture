@@ -279,8 +279,6 @@
     <string name="share_part_profile_line">닉네임, 자기 소개, 생일, 명함, 아이콘</string>
     <string name="share_part_numbers">계정 수치</string>
     <string name="share_part_numbers_line">UID, AR, 월드 레벨, 퓨어 레진, 전설의 열쇠, 스태미나 최대치</string>
-    <string name="share_part_extras">캐릭터 추가 정보</string>
-    <string name="share_part_extras_line">호감도, 획득 시점, 캐릭터 EXP</string>
     <string name="share_part_achievements">업적</string>
     <string name="share_part_achievements_line">달성한 업적과 달성 시점, 나머지의 진행도</string>
     <string name="share_part_anecdotes">여행 일화집</string>

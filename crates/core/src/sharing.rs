@@ -28,6 +28,8 @@ use crate::good::Good;
 /// and the settings page's.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum Part {
+    /// GOOD's `characters`, and with it `gi_characters` (friendship, when
+    /// obtained, character EXP): one switch for all of a character.
     Characters,
     Weapons,
     Artifacts,
@@ -37,7 +39,6 @@ pub enum Part {
     /// `gi_player`: UID, AR, World Level, resin and the rest; with it,
     /// `gi_tasks.resin` and `gi_tasks.resinSpent`.
     Numbers,
-    CharacterExtras,
     /// `gi_achievements`, `gi_achievement_times`, `gi_achievement_progress`.
     Achievements,
     Anecdotes,
@@ -53,14 +54,13 @@ pub enum Part {
 }
 
 impl Part {
-    pub const ALL: [Part; 17] = [
+    pub const ALL: [Part; 16] = [
         Part::Characters,
         Part::Weapons,
         Part::Artifacts,
         Part::Materials,
         Part::Profile,
         Part::Numbers,
-        Part::CharacterExtras,
         Part::Achievements,
         Part::Anecdotes,
         Part::Tasks,
@@ -91,7 +91,6 @@ impl Part {
             Part::Materials => "materials",
             Part::Profile => "gi_player.profile",
             Part::Numbers => "gi_player.numbers",
-            Part::CharacterExtras => "gi_characters",
             Part::Achievements => "gi_achievements",
             Part::Anecdotes => "gi_anecdotes",
             Part::Tasks => "gi_tasks",
@@ -112,9 +111,26 @@ impl Part {
 
 /// The parts switched off (the saved setting). Everything is shared until
 /// something is switched off, which is what uploads always did.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(transparent)]
+///
+/// Saved as the parts' [`Part::name`]s, the contract's own strings, and read
+/// leniently: a name this build does not know (one a newer build added, or
+/// a part that was folded into another) is skipped, so a settings file
+/// never fails to load over it.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct PartsOff(BTreeSet<Part>);
+
+impl Serialize for PartsOff {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_seq(self.off().map(Part::name))
+    }
+}
+
+impl<'de> Deserialize<'de> for PartsOff {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let names = Vec::<String>::deserialize(deserializer)?;
+        Ok(Self::from_names(names.iter().map(String::as_str)))
+    }
+}
 
 impl PartsOff {
     pub fn is_off(&self, part: Part) -> bool {
@@ -133,7 +149,7 @@ impl PartsOff {
         }
     }
 
-    /// How many of the 17 parts are shared.
+    /// How many of the parts are shared.
     pub fn shared_count(&self) -> usize {
         Part::ALL.len() - self.0.len()
     }
@@ -198,6 +214,7 @@ impl Sharing {
         let off = |part| self.off.is_off(part);
         if off(Part::Characters) {
             good.characters.clear();
+            good.gi_characters = None;
         }
         if off(Part::Weapons) {
             good.weapons.clear();
@@ -232,9 +249,6 @@ impl Sharing {
             if *player == crate::good::GiPlayer::default() {
                 good.gi_player = None;
             }
-        }
-        if off(Part::CharacterExtras) {
-            good.gi_characters = None;
         }
         if off(Part::Achievements) {
             good.gi_achievements = None;
@@ -297,7 +311,6 @@ mod tests {
                 "materials",
                 "gi_player.profile",
                 "gi_player.numbers",
-                "gi_characters",
                 "gi_achievements",
                 "gi_anecdotes",
                 "gi_tasks",
@@ -313,6 +326,9 @@ mod tests {
         for part in Part::ALL {
             assert_eq!(Part::from_name(part.name()), Some(part));
         }
+        // Friendship and EXP go with the characters (the user's call,
+        // 2026-11-19): there is no switch, and no name, of their own.
+        assert_eq!(Part::from_name("gi_characters"), None);
         assert_eq!(Part::from_name("gi_future"), None);
         // The enum's order is the list's (`gi_off` is written sorted by it).
         let mut sorted = Part::ALL;
@@ -324,11 +340,11 @@ mod tests {
     fn everything_is_shared_until_something_is_switched_off() {
         let mut off = PartsOff::default();
         assert!(off.all_shared());
-        assert_eq!(off.shared_count(), 17);
+        assert_eq!(off.shared_count(), 16);
         assert!(off.names().is_empty());
         off.set_shared(Part::Teapot, false);
         off.set_shared(Part::Profile, false);
-        assert_eq!(off.shared_count(), 15);
+        assert_eq!(off.shared_count(), 14);
         // In the contract's order, whatever order they were switched in.
         assert_eq!(off.names(), ["gi_player.profile", "gi_teapot"]);
         off.set_shared(Part::Teapot, true);
@@ -336,6 +352,13 @@ mod tests {
         // The saved form reads back, and unknown names are skipped.
         let saved = serde_json::to_string(&off).unwrap();
         assert_eq!(serde_json::from_str::<PartsOff>(&saved).unwrap(), off);
+        // A part this build does not have (the extras switch a develop
+        // build once saved) is dropped, not an error.
+        assert_eq!(
+            serde_json::from_str::<PartsOff>(r#"["gi_characters","gi_player.profile","gi_new"]"#)
+                .unwrap(),
+            off
+        );
         assert_eq!(
             PartsOff::from_names(["gi_teapot", "gi_future", "weapons"]).names(),
             ["weapons", "gi_teapot"]
@@ -374,12 +397,11 @@ mod tests {
     /// The top-level keys each part owns in the upload.
     fn keys(part: Part) -> &'static [&'static str] {
         match part {
-            Part::Characters => &["characters"],
+            Part::Characters => &["characters", "gi_characters"],
             Part::Weapons => &["weapons"],
             Part::Artifacts => &["artifacts"],
             Part::Materials => &["materials"],
             Part::Profile | Part::Numbers => &[],
-            Part::CharacterExtras => &["gi_characters"],
             Part::Achievements => &[
                 "gi_achievements",
                 "gi_achievement_times",
@@ -553,11 +575,10 @@ mod tests {
     /// parts under names of its own).
     fn roots(part: Part) -> &'static [&'static str] {
         match part {
-            Part::Characters => &["characters"],
+            Part::Characters => &["characters", "gi_characters"],
             Part::Weapons => &["weapons"],
             Part::Artifacts => &["artifacts"],
             Part::Materials => &["materials"],
-            Part::CharacterExtras => &["gi_characters"],
             Part::Achievements => &["achievements"],
             Part::Anecdotes => &["anecdotes", "gi_anecdotes"],
             Part::Tasks => &["gi_tasks"],

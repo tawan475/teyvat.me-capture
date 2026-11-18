@@ -279,8 +279,6 @@
     <string name="share_part_profile_line">Nickname, Signature, ulang tahun, Kartu Nama, avatar</string>
     <string name="share_part_numbers">Angka akun</string>
     <string name="share_part_numbers_line">UID, AR, Level Dunia, Resin, Kunci Story, Stamina maksimum</string>
-    <string name="share_part_extras">Ekstra karakter</string>
-    <string name="share_part_extras_line">Persahabatan, waktu didapat, Character EXP</string>
     <string name="share_part_achievements">Achievement</string>
     <string name="share_part_achievements_line">Mana yang selesai, kapan, dan progres sisanya</string>
     <string name="share_part_anecdotes">Travel Account</string>

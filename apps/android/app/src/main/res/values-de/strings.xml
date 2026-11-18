@@ -279,8 +279,6 @@
     <string name="share_part_profile_line">Nickname, Signatur, Geburtstag, Namenskärtchen, Profilbild</string>
     <string name="share_part_numbers">Kontowerte</string>
     <string name="share_part_numbers_line">UID, AR, Weltstufe, Harz, Legendenschlüssel, max. Ausdauer</string>
-    <string name="share_part_extras">Figuren-Extras</string>
-    <string name="share_part_extras_line">Freundschaft, wann erhalten, Figuren-EXP</string>
     <string name="share_part_achievements">Errungenschaften</string>
     <string name="share_part_achievements_line">Welche erledigt sind, wann, und wie weit die übrigen sind</string>
     <string name="share_part_anecdotes">Reiseberichte</string>

@@ -279,8 +279,6 @@
     <string name="share_part_profile_line">Ник, подпись, день рождения, именная карта, аватар</string>
     <string name="share_part_numbers">Показатели аккаунта</string>
     <string name="share_part_numbers_line">UID, AR, уровень мира, смола, ключи легенд, макс. выносливость</string>
-    <string name="share_part_extras">Доп. данные персонажей</string>
-    <string name="share_part_extras_line">Дружба, время получения, EXP персонажа</string>
     <string name="share_part_achievements">Достижения</string>
     <string name="share_part_achievements_line">Какие получены, когда, и насколько продвинулись остальные</string>
     <string name="share_part_anecdotes">Путевой дневник</string>

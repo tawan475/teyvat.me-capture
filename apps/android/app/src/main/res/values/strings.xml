@@ -284,8 +284,6 @@
     <string name="share_part_profile_line">Nickname, signature, birthday, name card, picture</string>
     <string name="share_part_numbers">Account numbers</string>
     <string name="share_part_numbers_line">UID, AR, World Level, resin, story keys, max stamina</string>
-    <string name="share_part_extras">Character extras</string>
-    <string name="share_part_extras_line">Friendship, when obtained, character EXP</string>
     <string name="share_part_achievements">Achievements</string>
     <string name="share_part_achievements_line">Which are done, when, and how far the rest are</string>
     <string name="share_part_anecdotes">Anecdotes</string>

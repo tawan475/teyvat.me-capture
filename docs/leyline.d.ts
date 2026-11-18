@@ -746,6 +746,7 @@ export interface WishCursor {
 
 /** A part a tracker upload can leave out. Names are only ever appended. */
 export type GiOffPart =
+  /** With gi_characters (friendship, when obtained, character EXP). */
   | 'characters'
   | 'weapons'
   | 'artifacts'
@@ -754,7 +755,6 @@ export type GiOffPart =
   | 'gi_player.profile'
   /** gi_player: everything else; also gi_tasks.resin and gi_tasks.resinSpent. */
   | 'gi_player.numbers'
-  | 'gi_characters'
   /** With gi_achievement_times and gi_achievement_progress. */
   | 'gi_achievements'
   | 'gi_anecdotes'

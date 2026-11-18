@@ -279,8 +279,6 @@
     <string name="share_part_profile_line">Pseudo, signature, anniversaire, thème, avatar</string>
     <string name="share_part_numbers">Chiffres du compte</string>
     <string name="share_part_numbers_line">UID, AR, niveau du monde, résine, clés des légendes, endurance max</string>
-    <string name="share_part_extras">Extras des personnages</string>
-    <string name="share_part_extras_line">Affinité, date d\'obtention, EXP Personnage</string>
     <string name="share_part_achievements">Succès</string>
     <string name="share_part_achievements_line">Lesquels sont terminés, quand, et où en sont les autres</string>
     <string name="share_part_anecdotes">Recueil de voyage</string>

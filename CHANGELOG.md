@@ -7,7 +7,7 @@ Each release's section is its GitHub release notes (`.github/workflows/release.y
 - **Settings › Sharing** (new, also on Android): choose which parts of your
   account go to teyvat.me. Everything is shared until you change it, as
   before. Presets Everything / Builds only / Custom, and a switch for each of
-  17 parts: characters, weapons, artifacts, materials, your profile, the
+  16 parts: characters, weapons, artifacts, materials, your profile, the
   account numbers, and each kind of progress. A part that is off never leaves
   your device, in a snapshot or in live sync, and teyvat.me is told which
   parts are off so its pages can say "Not shared by Capture". Files saved to

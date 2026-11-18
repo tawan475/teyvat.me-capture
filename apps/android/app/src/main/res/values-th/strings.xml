@@ -279,8 +279,6 @@
     <string name="share_part_profile_line">ชื่อเล่น, ลายเซ็น, วันเกิด, นามบัตร, รูปโปรไฟล์</string>
     <string name="share_part_numbers">ตัวเลขบัญชี</string>
     <string name="share_part_numbers_line">UID, AR, ระดับโลก, Resin, กุญแจในตำนาน, พลังกายสูงสุด</string>
-    <string name="share_part_extras">ข้อมูลเสริมตัวละคร</string>
-    <string name="share_part_extras_line">ความประทับใจ, เวลาที่ได้รับ, Character EXP</string>
     <string name="share_part_achievements">ความสำเร็จ</string>
     <string name="share_part_achievements_line">อันไหนสำเร็จแล้ว เมื่อไร และที่เหลือคืบหน้าแค่ไหน</string>
     <string name="share_part_anecdotes">บันทึกย่างก้าวเล่าเรื่อง</string>

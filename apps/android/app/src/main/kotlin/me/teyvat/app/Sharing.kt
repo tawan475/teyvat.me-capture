@@ -21,7 +21,6 @@ enum class SharePart(val key: String, @StringRes val title: Int, @StringRes val 
     Materials("materials", R.string.share_part_materials, R.string.share_part_materials_line),
     Profile("gi_player.profile", R.string.share_part_profile, R.string.share_part_profile_line),
     Numbers("gi_player.numbers", R.string.share_part_numbers, R.string.share_part_numbers_line),
-    CharacterExtras("gi_characters", R.string.share_part_extras, R.string.share_part_extras_line),
     Achievements("gi_achievements", R.string.share_part_achievements, R.string.share_part_achievements_line),
     Anecdotes("gi_anecdotes", R.string.share_part_anecdotes, R.string.share_part_anecdotes_line),
     Tasks("gi_tasks", R.string.share_part_tasks, R.string.share_part_tasks_line),
@@ -39,7 +38,7 @@ enum class SharePart(val key: String, @StringRes val title: Int, @StringRes val 
         val GROUPS: List<Pair<Int, List<SharePart>>> = listOf(
             R.string.share_group_builds to listOf(Characters, Weapons, Artifacts, Materials),
             R.string.share_group_account to listOf(Profile, Numbers),
-            R.string.share_group_progress to listOf(CharacterExtras, Achievements, Anecdotes, Tasks, Endgame, Exploration, Collections),
+            R.string.share_group_progress to listOf(Achievements, Anecdotes, Tasks, Endgame, Exploration, Collections),
             R.string.share_group_home to listOf(Wardrobe, Teapot, Events, Miliastra),
         )
 

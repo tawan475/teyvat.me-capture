@@ -28,7 +28,6 @@ pub(super) fn part_name(part: Part) -> &'static str {
         Part::Materials => tr("Materials"),
         Part::Profile => tr("Profile"),
         Part::Numbers => tr("Account numbers"),
-        Part::CharacterExtras => tr("Character extras"),
         Part::Achievements => tr("Achievements"),
         Part::Anecdotes => tr("Anecdotes"),
         Part::Tasks => tr("Planner tasks"),
@@ -51,7 +50,6 @@ fn part_holds(part: Part) -> &'static str {
         Part::Materials => tr("The bag's counts"),
         Part::Profile => tr("Nickname, signature, birthday, name card, picture"),
         Part::Numbers => tr("UID, AR, World Level, resin, story keys, max stamina"),
-        Part::CharacterExtras => tr("Friendship, when obtained, character EXP"),
         Part::Achievements => tr("Which are done, when, and how far the rest are"),
         Part::Anecdotes => tr("Travel Accounts: each anecdote and the stamps"),
         Part::Tasks => tr("Commissions, expeditions, weekly bosses, timers"),
@@ -70,7 +68,6 @@ const GROUPS: [&[Part]; 4] = [
     &Part::BUILDS,
     &[Part::Profile, Part::Numbers],
     &[
-        Part::CharacterExtras,
         Part::Achievements,
         Part::Anecdotes,
         Part::Tasks,

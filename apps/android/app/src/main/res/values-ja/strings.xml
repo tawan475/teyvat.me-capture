@@ -279,8 +279,6 @@
     <string name="share_part_profile_line">名前、ステータスメッセージ、誕生日、名刺、アイコン</string>
     <string name="share_part_numbers">アカウントの数値</string>
     <string name="share_part_numbers_line">UID、AR、世界ランク、天然樹脂、伝説の鍵、スタミナ上限</string>
-    <string name="share_part_extras">キャラクターの追加情報</string>
-    <string name="share_part_extras_line">好感度、入手日時、キャラクターEXP</string>
     <string name="share_part_achievements">アチーブメント</string>
     <string name="share_part_achievements_line">達成済みのものと達成日時、未達成のものの進捗</string>
     <string name="share_part_anecdotes">旅手帳</string>
