@@ -101,6 +101,12 @@ pub struct TheaterDetail {
     pub small: Vec<u64>,
     /// Every packed list of numbers (the acts cleared are one of them).
     pub lists: Vec<Vec<u64>>,
+    /// The Lunar Arcana cards held: card number (1-22, the row's place in
+    /// `RoleCombatTarotCardExcelConfigData`, its icon `UI_RoleCombat_Tarot_NN`)
+    /// to copies held. Empty when none are held; `None` when two lists could
+    /// be it: an entry `{1: card, 2: copies}`, found by that shape.
+    #[serde(default)]
+    pub arcana: Option<BTreeMap<u32, u32>>,
 }
 
 impl TheaterDetail {
@@ -258,6 +264,39 @@ fn is_month_window(start: u64, end: u64) -> bool {
         && SEASON_DAYS.contains(&(seconds / 86_400))
 }
 
+/// The most Lunar Arcana cards there are, and the most copies of one a list
+/// is believed with (the game's case holds a few; the detail's other pair
+/// lists map acts to timestamps).
+const ARCANA_CARDS: u64 = 22;
+const ARCANA_COPIES_MAX: u64 = 99;
+
+/// A repeated field of the Theater detail read as the Lunar Arcana held, or
+/// `None` if it is not that: every entry exactly `{1: card 1-22, 2: copies
+/// 1-99}`, no card twice. 7.2 sends it on field 335 of the detail, 7.1 on
+/// 1774; the field is renumbered every version, so it is found by this shape.
+fn arcana_list(values: &[Value<'_>]) -> Option<BTreeMap<u32, u32>> {
+    let mut held = BTreeMap::new();
+    for value in values {
+        let fields = wire::fields(as_bytes(value)?)?;
+        if fields.len() != 2 {
+            return None;
+        }
+        let (Some([Varint(card)]), Some([Varint(copies)])) = (
+            fields.get(&1).map(Vec::as_slice),
+            fields.get(&2).map(Vec::as_slice),
+        ) else {
+            return None;
+        };
+        if !(1..=ARCANA_CARDS).contains(card) || !(1..=ARCANA_COPIES_MAX).contains(copies) {
+            return None;
+        }
+        if held.insert(*card as u32, *copies as u32).is_some() {
+            return None;
+        }
+    }
+    (!held.is_empty()).then_some(held)
+}
+
 /// Read `bytes` as the Theater's season detail, or `None` if it is not one:
 /// two lone timestamps bounding one calendar month, a few small numbers and
 /// lists, nothing fixed-width.
@@ -266,7 +305,11 @@ fn theater_detail(bytes: &[u8]) -> Option<TheaterDetail> {
     let mut times = Vec::new();
     let mut small = Vec::new();
     let mut lists = Vec::new();
+    let mut arcana = Vec::new();
     for values in fields.values() {
+        if let Some(held) = arcana_list(values) {
+            arcana.push(held);
+        }
         match values.as_slice() {
             [Varint(v)] if SEASON_TIMES.contains(v) => times.push(*v),
             [Varint(v)] if *v < 100_000 => small.push(*v),
@@ -300,11 +343,19 @@ fn theater_detail(bytes: &[u8]) -> Option<TheaterDetail> {
     if small.is_empty() {
         return None;
     }
+    // No list is no cards held (the game leaves the field out); two lists
+    // of that shape cannot be told apart, so neither is believed.
+    let arcana = match arcana.len() {
+        0 => Some(BTreeMap::new()),
+        1 => arcana.pop(),
+        _ => None,
+    };
     Some(TheaterDetail {
         start: *start,
         end: *end,
         small,
         lists,
+        arcana,
     })
 }
 
@@ -1294,6 +1345,56 @@ mod tests {
         assert!(detail.small.contains(&31) && detail.small.contains(&129));
         // The cleared acts (7), not the rewards claimed (3).
         assert_eq!(detail.acts_cleared(), 7);
+        // The 7.1 layout's Lunar Arcana: six cards, one copy each.
+        assert_eq!(
+            detail.arcana,
+            Some(
+                [2, 3, 4, 5, 6, 8]
+                    .into_iter()
+                    .map(|card| (card, 1))
+                    .collect()
+            )
+        );
+    }
+
+    #[test]
+    fn the_lunar_arcana_held_are_read_with_their_copies() {
+        // The 7.2 layout's list on field 335: a duplicate (two of card 7)
+        // and a single card's list, which comes as one entry.
+        let mut detail = theater_detail_bytes(&[1, 2, 3], &[]);
+        for (card, copies) in [(2u64, 1u64), (7, 2), (22, 1)] {
+            field_bytes(335, &pair(card, copies), &mut detail);
+        }
+        let mut data = Vec::new();
+        field_bytes(8, &detail, &mut data);
+        // Two lists of that shape (1774 and 335): neither is believed.
+        assert_eq!(matches_theater_notify(&data).unwrap().arcana, None);
+
+        let without_7_1 = |extra: &[(u64, u64)]| {
+            let mut d = Vec::new();
+            field_varint(4, 1_796_068_799, &mut d);
+            field_varint(9, 31, &mut d);
+            field_varint(121, 1_793_476_800, &mut d);
+            for key in 1..=3u64 {
+                field_bytes(276, &pair(key, 1_719_968_007), &mut d);
+            }
+            for (card, copies) in extra {
+                field_bytes(335, &pair(*card, *copies), &mut d);
+            }
+            let mut data = Vec::new();
+            field_bytes(8, &d, &mut data);
+            matches_theater_notify(&data).unwrap().arcana
+        };
+        assert_eq!(
+            without_7_1(&[(2, 1), (7, 2), (22, 1)]),
+            Some(BTreeMap::from([(2, 1), (7, 2), (22, 1)]))
+        );
+        assert_eq!(without_7_1(&[(13, 1)]), Some(BTreeMap::from([(13, 1)])));
+        // None held: the field is left out.
+        assert_eq!(without_7_1(&[]), Some(BTreeMap::new()));
+        // Not cards: a number past 22, or no copies.
+        assert_eq!(without_7_1(&[(23, 1)]), Some(BTreeMap::new()));
+        assert_eq!(without_7_1(&[(5, 0)]), Some(BTreeMap::new()));
     }
 
     #[test]
