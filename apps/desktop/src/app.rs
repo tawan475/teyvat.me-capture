@@ -599,7 +599,8 @@ fn install_on_close(status: &UpdateStatus, restart_requested: bool, auto_install
         | UpdateStatus::UpToDate
         | UpdateStatus::Manual(_)
         | UpdateStatus::Ready(_)
-        | UpdateStatus::Failed(_) => OnClose::Close,
+        | UpdateStatus::Failed(_)
+        | UpdateStatus::Unverified(_) => OnClose::Close,
     }
 }
 

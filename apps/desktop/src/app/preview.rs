@@ -143,6 +143,7 @@ impl TeyvatmeApp {
                 "installing" => UpdateStatus::Installing(next),
                 "manual" => UpdateStatus::Manual(next),
                 "failed" => UpdateStatus::Failed("connection timed out".to_string()),
+                "unverified" => UpdateStatus::Unverified(next),
                 _ => UpdateStatus::UpToDate,
             };
             if *self.update_status.borrow() != status {

@@ -189,6 +189,8 @@ gtk = "0.18.2"
 libc = "0.2.177"
 
 [dev-dependencies]
+# Signs with a key pair made in the test (update.rs).
+minisign = "0.7"
 # The pcapng builders the replay tests use (`recording::test_support`).
 teyvatme-core = { path = "../../crates/core", features = ["test-support"] }
 # Builds the fixture tarball that `src/update.rs` unpacks. Already in the

@@ -140,6 +140,22 @@ impl TeyvatmeApp {
                                         line(ui, small_text(&event.text, pal.tx2))
                                             .on_hover_text(&event.text);
                                     });
+                                    // The page to get it from by hand (a
+                                    // refused update), under its line.
+                                    if let Some(link) = &event.link {
+                                        ui.horizontal(|ui| {
+                                            ui.add_space(58.0);
+                                            ui.add(icons::image(
+                                                icons::external_link(),
+                                                12.0,
+                                                pal.ac_tx,
+                                            ));
+                                            ui.hyperlink_to(
+                                                small_text(tr("Release page"), pal.ac_tx),
+                                                link,
+                                            );
+                                        });
+                                    }
                                 }
                             });
                     });

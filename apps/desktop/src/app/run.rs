@@ -226,6 +226,8 @@ impl TeyvatmeApp {
             let toast = self.toasts.quiet(event.kind, event.text);
             if let Some(path) = event.path {
                 toast.action(Action::Show(path)).saved();
+            } else if let Some(link) = event.link {
+                toast.action(Action::ReleasePage(link));
             }
         }
     }
@@ -476,6 +478,10 @@ impl TeyvatmeApp {
         };
         let update = match &*self.update_status.borrow() {
             UpdateStatus::Ready(v) => Some(trf("{0} installed · restart to use it", &[v])),
+            // Found under Never check: the bar alone says so.
+            UpdateStatus::Available(_) if self.saved_state.update_mode() == UpdateMode::Never => {
+                None
+            }
             UpdateStatus::Available(v) | UpdateStatus::Installing(v) => {
                 Some(trf("Update {0}", &[v]))
             }
@@ -523,7 +529,9 @@ impl TeyvatmeApp {
     fn handle_toast_action(&mut self, ctx: &Context, action: Action) {
         match action {
             Action::Show(path) => crate::autostart::reveal_file(&path),
-            Action::OpenAnyway(url) => ctx.open_url(egui::OpenUrl::new_tab(url)),
+            Action::OpenAnyway(url) | Action::ReleasePage(url) => {
+                ctx.open_url(egui::OpenUrl::new_tab(url))
+            }
             Action::RetryUpload => {
                 self.genshin_optimizer_request_export(super::OptimizerExportTarget::TrackerManual)
             }

@@ -1137,10 +1137,12 @@ impl TeyvatmeApp {
                 &[v],
             ),
             UpdateStatus::Failed(e) => trf("Couldn't update: {0}", &[e]),
+            UpdateStatus::Unverified(v) => trf("{0} not installed: it couldn't be verified", &[v]),
         };
         let mut command = None;
         let mut restart = false;
         let mut open_releases = false;
+        let mut open_page: Option<String> = None;
         card_frame(ui).show(ui, |ui| {
             ui.set_width(ui.available_width());
 {
@@ -1193,6 +1195,32 @@ impl TeyvatmeApp {
                                 false,
                             )
                             .clicked();
+                        }
+                        UpdateStatus::Unverified(v) => {
+                            if button(
+                                ui,
+                                ButtonKind::Fill,
+                                Some(icons::external_link()),
+                                tr("Release page"),
+                                false,
+                            )
+                            .on_hover_text(tr("Download it by hand from its release page"))
+                            .clicked()
+                            {
+                                open_page = Some(crate::update::release_page(v));
+                            }
+                            if button(
+                                ui,
+                                ButtonKind::Ghost,
+                                None,
+                                tr("Check for updates"),
+                                false,
+                            )
+                            .on_hover_text(tr("Downloads and checks it again"))
+                            .clicked()
+                            {
+                                command = Some(UpdateCommand::Check { manual: true });
+                            }
                         }
                         UpdateStatus::Idle | UpdateStatus::UpToDate | UpdateStatus::Failed(_) => {
                             if button(
@@ -1273,6 +1301,9 @@ impl TeyvatmeApp {
             ui.ctx().open_url(egui::OpenUrl::new_tab(
                 "https://github.com/tawan475/teyvat.me-capture/releases",
             ));
+        }
+        if let Some(page) = open_page {
+            ui.ctx().open_url(egui::OpenUrl::new_tab(page));
         }
         if restart {
             self.restart_to_update(ui);
