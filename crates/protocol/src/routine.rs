@@ -502,7 +502,13 @@ pub fn matches_avatar_expedition_notify(data: &[u8]) -> Option<Vec<Expedition>> 
     if fields.len() != 1 {
         return None;
     }
-    let values = fields.values().next()?;
+    expeditions_from(fields.values().next()?)
+}
+
+/// Read a repeated field of `{avatar guid, info}` map entries as
+/// expeditions, the fields of the info told apart by value (see
+/// [`matches_avatar_expedition_notify`]).
+fn expeditions_from(values: &[Value<'_>]) -> Option<Vec<Expedition>> {
     if values.is_empty() || values.len() > MAX_EXPEDITION_ENTRIES {
         return None;
     }
@@ -570,6 +576,121 @@ pub fn matches_avatar_expedition_notify(data: &[u8]) -> Option<Vec<Expedition>> 
             })
             .collect(),
     )
+}
+
+/// The most expedition slots believed (5 in 7.2).
+const MAX_EXPEDITION_SLOTS: u64 = 10;
+
+/// Whether `id` looks like an expedition id: a region (1-99) times 100 plus
+/// a slot (1-9), as every one is in 7.2 (101-806).
+fn expedition_id_like(id: u64) -> bool {
+    (1..=9).contains(&(id % 100)) && (1..=99).contains(&(id / 100))
+}
+
+/// Recover who is out on an expedition now from the expedition screen's
+/// `AvatarExpeditionAllDataRsp`, or `None` if it is not one.
+///
+/// The game sends it whenever the screen opens and after a reward is
+/// collected or a character sent, while the full notify
+/// ([`matches_avatar_expedition_notify`]) can come much later (issue #67).
+/// The shape (7.2 command 25536): a packed list of the expedition ids open
+/// (all distinct, each region * 100 + slot), one small number (the slots,
+/// at most 10) and, unless nobody is out, a repeated field
+/// of `{avatar guid, info}` entries, each one out (state 1-3) on one of the
+/// listed expeditions, no more of them than the slots. Nothing else.
+/// Every character out is in the list: one held as out and not listed came
+/// back and was collected.
+pub fn matches_expedition_all_data_rsp(data: &[u8]) -> Option<Vec<Expedition>> {
+    let msg = parse(data)?;
+    let mut open: Option<Vec<u64>> = None;
+    let mut slots: Option<u64> = None;
+    let mut out: Option<Vec<Expedition>> = None;
+    for values in msg.values() {
+        if let [Varint(n)] = values.as_slice()
+            && slots.is_none()
+            && (1..=MAX_EXPEDITION_SLOTS).contains(n)
+        {
+            slots = Some(*n);
+            continue;
+        }
+        if let [LengthDelimited(bytes)] = values.as_slice()
+            && open.is_none()
+            && let Some(ids) = packed_varints(bytes)
+            && !ids.is_empty()
+            && all_distinct(&ids)
+            && ids.iter().all(|id| expedition_id_like(*id))
+        {
+            open = Some(ids);
+            continue;
+        }
+        if out.is_none()
+            && let Some(found) = expeditions_from(values)
+        {
+            out = Some(found);
+            continue;
+        }
+        return None;
+    }
+    let (open, slots) = (open?, slots?);
+    let out = out.unwrap_or_default();
+    let fits = out.len() as u64 <= slots
+        && out
+            .iter()
+            .all(|e| e.is_out() && e.hours > 0 && open.contains(&u64::from(e.expedition_id)));
+    fits.then_some(out)
+}
+
+/// Recover the characters just sent from the reply to sending them on
+/// expeditions (one or several at once, "Dispatch again" too), or `None` if
+/// it is not one.
+///
+/// The shape (7.2 command 7904): two repeated fields and nothing else. One
+/// holds `{avatar guid, info}` entries, each one out (state 1-3); the other
+/// the requests, each exactly three numbers: the expedition id (region *
+/// 100 + slot), its hours ([`EXPEDITION_HOURS`]) and the avatar guid. Every
+/// request names one entry's character and expedition, and no entry is left
+/// without one. Only the characters sent are listed: the others stay as held.
+pub fn matches_expedition_start_rsp(data: &[u8]) -> Option<Vec<Expedition>> {
+    let msg = parse(data)?;
+    if msg.len() != 2 {
+        return None;
+    }
+    let mut sent: Option<Vec<Expedition>> = None;
+    let mut asked: Option<BTreeSet<(u64, u64)>> = None;
+    for values in msg.values() {
+        if sent.is_none()
+            && let Some(found) = expeditions_from(values)
+        {
+            sent = Some(found);
+            continue;
+        }
+        let mut requests = BTreeSet::new();
+        for value in values {
+            let request = varint_fields(as_bytes(value)?)?;
+            if request.len() != 3 {
+                return None;
+            }
+            let numbers: Vec<u64> = request.values().copied().collect();
+            let guid = numbers.iter().find(|n| **n > u64::from(u32::MAX))?;
+            let id = numbers.iter().find(|n| expedition_id_like(**n))?;
+            if !numbers
+                .iter()
+                .any(|n| EXPEDITION_HOURS.iter().any(|h| u64::from(*h) == *n))
+            {
+                return None;
+            }
+            requests.insert((*guid, *id));
+        }
+        if asked.replace(requests).is_some() {
+            return None;
+        }
+    }
+    let (sent, asked) = (sent?, asked?);
+    let named: BTreeSet<(u64, u64)> = sent
+        .iter()
+        .map(|e| (e.avatar_guid, u64::from(e.expedition_id)))
+        .collect();
+    (sent.iter().all(Expedition::is_out) && named == asked).then_some(sent)
 }
 
 // ------------------------------------------------------------------- realm
@@ -1343,6 +1464,123 @@ mod tests {
             &expedition(42, &[v(2, 706), v(3, 20), v(4, 1_780_000_000)]),
         );
         assert_eq!(matches_avatar_expedition_notify(&small_key), None);
+    }
+
+    /// The expedition screen's reply: the open ids, the slots and who is
+    /// out (7.2 command 25536's layout).
+    fn expedition_screen(out: &[Vec<u8>]) -> Vec<u8> {
+        let mut data = b(6, &packed(&[806, 301, 106, 703, 202, 403, 205]));
+        data.extend(v(7, 5));
+        for entry in out {
+            data.extend(b(8, entry));
+        }
+        data
+    }
+
+    fn sent(guid: u64, state: u64, id: u64) -> Vec<u8> {
+        expedition(
+            guid,
+            &[v(1, state), v(2, id), v(3, 20), v(4, 1_791_000_000)],
+        )
+    }
+
+    #[test]
+    fn the_expedition_screen_lists_who_is_out_now() {
+        let five = expedition_screen(&[
+            sent(GUID + 1, 2, 301),
+            sent(GUID + 2, 2, 106),
+            sent(GUID + 3, 2, 703),
+            sent(GUID + 4, 2, 202),
+            sent(GUID + 5, 2, 403),
+        ]);
+        let out = matches_expedition_all_data_rsp(&five).unwrap();
+        assert_eq!(out.len(), 5);
+        assert!(out.iter().all(|e| e.state == 2 && e.hours == 20));
+        assert_eq!(out[0].avatar_guid, GUID + 1);
+        assert_eq!(out[0].expedition_id, 301);
+        // One out, and nobody (every reward collected).
+        assert_eq!(
+            matches_expedition_all_data_rsp(&expedition_screen(&[sent(GUID, 1, 205)]))
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            matches_expedition_all_data_rsp(&expedition_screen(&[])),
+            Some(Vec::new())
+        );
+        // Not the screen: the notify, an expedition not open, more out than
+        // slots, a character not out, no id list.
+        assert_eq!(matches_expedition_all_data_rsp(&expeditions()), None);
+        assert_eq!(
+            matches_expedition_all_data_rsp(&expedition_screen(&[sent(GUID, 1, 504)])),
+            None
+        );
+        let six: Vec<_> = [301, 106, 703, 202, 403, 205]
+            .iter()
+            .enumerate()
+            .map(|(i, id)| sent(GUID + i as u64, 1, *id))
+            .collect();
+        assert_eq!(
+            matches_expedition_all_data_rsp(&expedition_screen(&six)),
+            None
+        );
+        assert_eq!(
+            matches_expedition_all_data_rsp(&expedition_screen(&[sent(GUID, 0, 301)])),
+            None
+        );
+        assert_eq!(matches_expedition_all_data_rsp(&v(7, 5)), None);
+        // The notify keeps reading its own shape.
+        assert_eq!(matches_avatar_expedition_notify(&five), None);
+    }
+
+    /// The reply to sending characters out (7.2 command 7904's layout): the
+    /// entries sent and the requests (id, hours, guid).
+    fn expedition_start(sent_out: &[(u64, u64)], asked: &[(u64, u64)]) -> Vec<u8> {
+        let mut data = Vec::new();
+        for (guid, id) in sent_out {
+            data.extend(b(8, &sent(*guid, 1, *id)));
+        }
+        for (guid, id) in asked {
+            data.extend(b(10, &cat(&[v(5, *id), v(12, 20), v(13, *guid)])));
+        }
+        data
+    }
+
+    #[test]
+    fn the_characters_just_sent_are_read() {
+        let two = [(GUID + 1, 101), (GUID + 2, 203)];
+        let sent_now = matches_expedition_start_rsp(&expedition_start(&two, &two)).unwrap();
+        assert_eq!(sent_now.len(), 2);
+        assert!(sent_now.iter().all(|e| e.state == 1 && e.hours == 20));
+        assert_eq!(sent_now[1].avatar_guid, GUID + 2);
+        assert_eq!(sent_now[1].expedition_id, 203);
+        // A request without its entry, or for another expedition.
+        assert_eq!(
+            matches_expedition_start_rsp(&expedition_start(&two[..1], &two)),
+            None
+        );
+        assert_eq!(
+            matches_expedition_start_rsp(&expedition_start(
+                &two,
+                &[(GUID + 1, 101), (GUID + 2, 204)]
+            )),
+            None
+        );
+        // Neither the screen nor the notify is this.
+        assert_eq!(
+            matches_expedition_start_rsp(&expedition_screen(&[sent(GUID, 1, 301)])),
+            None
+        );
+        assert_eq!(matches_expedition_start_rsp(&expeditions()), None);
+        assert_eq!(
+            matches_expedition_all_data_rsp(&expedition_start(&two, &two)),
+            None
+        );
+        assert_eq!(
+            matches_avatar_expedition_notify(&expedition_start(&two, &two)),
+            None
+        );
     }
 
     // -- realm and welkin -----------------------------------------------------

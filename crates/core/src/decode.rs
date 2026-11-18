@@ -445,6 +445,16 @@ pub fn apply_commands(
                 player_data.process_routine(RoutinePart::Expeditions(found));
                 applied.routine = true;
             }
+            CommandMatch::ExpeditionsOut(found) => {
+                tracing::info!(out = found.len(), "Found who is out on expeditions");
+                player_data.process_routine(RoutinePart::ExpeditionsOut(found));
+                applied.routine = true;
+            }
+            CommandMatch::ExpeditionsSent(found) => {
+                tracing::info!(sent = found.len(), "Found characters sent on expeditions");
+                player_data.process_routine(RoutinePart::ExpeditionsSent(found));
+                applied.routine = true;
+            }
             CommandMatch::HomeResources(found) => {
                 tracing::info!("Found realm currency");
                 player_data.process_routine(RoutinePart::Home(found));
@@ -554,7 +564,12 @@ pub fn apply_commands(
                 applied.routine = true;
             }
             CommandMatch::Bosses(found) => {
-                tracing::info!(count = found.respawns.len(), "Found the bosses' respawns");
+                tracing::info!(
+                    count = found.respawns.len(),
+                    weekly_left = found.weekly.map(|w| w.left()),
+                    weekly_limit = found.weekly.map(|w| w.limit),
+                    "Found the bosses' respawns"
+                );
                 player_data.process_routine(RoutinePart::Bosses(found));
                 applied.routine = true;
             }

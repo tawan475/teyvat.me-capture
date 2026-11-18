@@ -631,6 +631,11 @@ pub enum RoutinePart {
     Commissions(DailyCommissions),
     Abyss(AbyssPeriod),
     Expeditions(Vec<Expedition>),
+    /// Everyone out on an expedition now (the expedition screen's reply):
+    /// merged into the held list, whose others are not out.
+    ExpeditionsOut(Vec<Expedition>),
+    /// The characters just sent: added to the held list, the others kept.
+    ExpeditionsSent(Vec<Expedition>),
     Home(HomeResources),
     Welkin(u32),
     /// The banner list's Epitomized Path (`GetGachaInfoRsp`).
@@ -647,6 +652,17 @@ pub enum RoutinePart {
     Transformer(TransformerState),
     /// The Parametric Transformer was just used, at this unix time.
     TransformerUsed(u32),
+}
+
+/// Put each of `found` in `held` by its character, in place of what that
+/// character held.
+fn upsert_expeditions(held: &mut Vec<Expedition>, found: Vec<Expedition>) {
+    for e in found {
+        match held.iter_mut().find(|h| h.avatar_guid == e.avatar_guid) {
+            Some(h) => *h = e,
+            None => held.push(e),
+        }
+    }
 }
 
 /// The planner's routine as captured: each part `None` until its message
@@ -1114,6 +1130,19 @@ impl PlayerData {
             }
             RoutinePart::Abyss(found) => self.routine.abyss = Some(found),
             RoutinePart::Expeditions(found) => self.routine.expeditions = Some(found),
+            RoutinePart::ExpeditionsOut(out) => {
+                let held = self.routine.expeditions.get_or_insert_with(Vec::new);
+                // Not listed: collected, so no longer out (issue #67).
+                for e in held.iter_mut() {
+                    if e.is_out() && !out.iter().any(|o| o.avatar_guid == e.avatar_guid) {
+                        e.state = 0;
+                    }
+                }
+                upsert_expeditions(held, out);
+            }
+            RoutinePart::ExpeditionsSent(sent) => {
+                upsert_expeditions(self.routine.expeditions.get_or_insert_with(Vec::new), sent);
+            }
             RoutinePart::Home(found) => self.routine.home = Some(found),
             RoutinePart::Welkin(days) => self.routine.welkin = Some(days),
             RoutinePart::WishPath(found) => self.routine.wish_path = Some(found),
@@ -4355,6 +4384,47 @@ mod tests {
         )]));
         let json = serde_json::to_value(data.export_tasks(NOW_SECS)).unwrap();
         assert_eq!(json, serde_json::json!({ "expeditions": [] }));
+    }
+
+    #[test]
+    fn the_expedition_screen_says_who_was_collected_and_who_was_sent() {
+        // Issue #67: back and waiting, then collected with the full notify
+        // not sent again; the screen's list is what says so.
+        let start = (NOW_SECS - 30 * 3_600) as u32;
+        let mut data = player_data();
+        data.process_routine(RoutinePart::Expeditions(vec![
+            expedition(1 << 40, 2, start),
+            expedition((1 << 40) + 1, 2, start),
+            expedition((1 << 40) + 2, 0, start),
+        ]));
+        let out = |data: &PlayerData| data.export_tasks(NOW_SECS).unwrap().expeditions.unwrap();
+        assert_eq!(out(&data).len(), 2);
+        // One collected.
+        data.process_routine(RoutinePart::ExpeditionsOut(vec![expedition(
+            (1 << 40) + 1,
+            2,
+            start,
+        )]));
+        assert_eq!(out(&data).len(), 1);
+        // Every reward collected.
+        data.process_routine(RoutinePart::ExpeditionsOut(Vec::new()));
+        assert!(out(&data).is_empty());
+        // Sent again, one of them a character never held.
+        let now = NOW_SECS as u32;
+        data.process_routine(RoutinePart::ExpeditionsOut(vec![
+            expedition(1 << 40, 1, now),
+            expedition((1 << 40) + 9, 1, now),
+        ]));
+        let sent = out(&data);
+        assert_eq!(sent.len(), 2);
+        assert!(sent.iter().all(|e| e.start == now));
+        // One more sent: the others stay out.
+        data.process_routine(RoutinePart::ExpeditionsSent(vec![expedition(
+            (1 << 40) + 2,
+            1,
+            now,
+        )]));
+        assert_eq!(out(&data).len(), 3);
     }
 
     #[test]
