@@ -1137,6 +1137,166 @@ pub fn segmented<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(T,
     changed
 }
 
+/// One choice of [`choice_tiles`]: its value, icon, name and one-line meaning.
+pub type ChoiceTile<'a, T> = (T, ImageSource<'static>, &'a str, &'a str);
+
+/// Below this width per tile the tiles stack as full-width rows.
+const TILE_MIN_WIDTH: f32 = 150.0;
+
+/// A choice of a few, each a tile with an icon, a name and what it means;
+/// the chosen one is outlined and carries a check (never colour alone).
+/// Side by side while each gets [`TILE_MIN_WIDTH`], full-width rows below.
+/// Returns whether the choice changed.
+pub fn choice_tiles<T: PartialEq + Copy>(
+    ui: &mut Ui,
+    value: &mut T,
+    options: &[ChoiceTile<'_, T>],
+) -> bool {
+    const GAP: f32 = 8.0;
+    const PAD: f32 = 12.0;
+    const ICON: f32 = 18.0;
+    let pal = p(ui);
+    let count = options.len().max(1) as f32;
+    let available = ui.available_width();
+    let side_by_side = (available - GAP * (count - 1.0)) / count >= TILE_MIN_WIDTH;
+    let width = if side_by_side {
+        ((available - GAP * (count - 1.0)) / count).floor()
+    } else {
+        available
+    };
+    // In a row the texts sit beside the icon, and leave room for the check.
+    let wrap = if side_by_side {
+        width - PAD * 2.0
+    } else {
+        width - PAD * 2.0 - (ICON + 10.0) * 2.0
+    };
+    let texts: Vec<_> = options
+        .iter()
+        .map(|(option, _, name, meaning)| {
+            let name_text = if *value == *option {
+                strong_text(*name, pal.tx)
+            } else {
+                title_text(*name, pal.tx)
+            };
+            let name = WidgetText::from(name_text).into_galley(
+                ui,
+                Some(TextWrapMode::Wrap),
+                wrap,
+                egui::TextStyle::Body,
+            );
+            let meaning = WidgetText::from(secondary_text(*meaning, pal.tx2)).into_galley(
+                ui,
+                Some(TextWrapMode::Wrap),
+                wrap,
+                egui::TextStyle::Body,
+            );
+            (name, meaning)
+        })
+        .collect();
+    let text_height =
+        |(name, meaning): &(std::sync::Arc<egui::Galley>, std::sync::Arc<egui::Galley>)| {
+            name.size().y + 2.0 + meaning.size().y
+        };
+    let tallest = texts.iter().map(text_height).fold(0.0_f32, f32::max);
+    let height = if side_by_side {
+        PAD + ICON + 8.0 + tallest + PAD
+    } else {
+        0.0
+    };
+    let mut changed = false;
+    let tiles = |ui: &mut Ui| {
+        for ((option, icon, name, _), galleys) in options.iter().zip(texts) {
+            let selected = *value == *option;
+            let height = if side_by_side {
+                height
+            } else {
+                (text_height(&galleys) + 20.0).max(48.0)
+            };
+            let (rect, response) = ui.allocate_exact_size(vec2(width, height), Sense::click());
+            let response = if selected {
+                response
+            } else {
+                response.on_hover_cursor(egui::CursorIcon::PointingHand)
+            };
+            let feel = feel(ui, &response, false);
+            let shape = feel.rect(rect);
+            let corner = CornerRadius::same(10);
+            let (fill, stroke, ink, ink2) = if selected {
+                (
+                    pal.ac_con,
+                    Stroke::new(2.0_f32, pal.ac_tx),
+                    pal.ac_on,
+                    pal.ac_on,
+                )
+            } else {
+                (
+                    feel.fill(&pal),
+                    Stroke::new(1.0_f32, lerp_color(pal.line, pal.ac_tx, feel.hover)),
+                    pal.tx,
+                    pal.tx2,
+                )
+            };
+            ui.painter().rect_filled(shape, corner, fill);
+            ui.painter()
+                .rect_stroke(shape, corner, stroke, StrokeKind::Inside);
+            let (name_galley, meaning_galley) = galleys;
+            let icon_at = if side_by_side {
+                shape.min + vec2(PAD, PAD)
+            } else {
+                egui::pos2(shape.min.x + PAD, shape.center().y - ICON / 2.0)
+            };
+            icons::image(icon.clone(), ICON, ink)
+                .paint_at(ui, Rect::from_min_size(icon_at, Vec2::splat(ICON)));
+            if selected {
+                let check_at = if side_by_side {
+                    egui::pos2(shape.max.x - PAD - ICON, shape.min.y + PAD)
+                } else {
+                    egui::pos2(shape.max.x - PAD - ICON, shape.center().y - ICON / 2.0)
+                };
+                icons::image(icons::check(), ICON, ink)
+                    .paint_at(ui, Rect::from_min_size(check_at, Vec2::splat(ICON)));
+            }
+            let text_at = if side_by_side {
+                shape.min + vec2(PAD, PAD + ICON + 8.0)
+            } else {
+                egui::pos2(
+                    shape.min.x + PAD + ICON + 10.0,
+                    shape.center().y - (name_galley.size().y + 2.0 + meaning_galley.size().y) / 2.0,
+                )
+            };
+            let name_height = name_galley.size().y;
+            ui.painter().galley(text_at, name_galley, ink);
+            ui.painter()
+                .galley(text_at + vec2(0.0, name_height + 2.0), meaning_galley, ink2);
+            focus_ring(ui, &response, rect, 10.0);
+            response.widget_info(|| {
+                egui::WidgetInfo::selected(
+                    egui::WidgetType::RadioButton,
+                    ui.is_enabled(),
+                    selected,
+                    *name,
+                )
+            });
+            if response.clicked() && !selected {
+                *value = *option;
+                changed = true;
+            }
+        }
+    };
+    if side_by_side {
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = GAP;
+            tiles(ui);
+        });
+    } else {
+        ui.vertical(|ui| {
+            ui.spacing_mut().item_spacing.y = GAP;
+            tiles(ui);
+        });
+    }
+    changed
+}
+
 // ---------------------------------------------------------------------------
 // Formatting
 // ---------------------------------------------------------------------------

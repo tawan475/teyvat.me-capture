@@ -9,7 +9,7 @@ use egui::{Align, DragValue, Layout, RichText, Ui, vec2};
 use teyvatme_core::FORMAT_NAME;
 
 use super::frame::BREAKPOINT;
-use super::{AddressChange, Closing, Page, TeyvatmeApp, ThemeChoice, TrackerSignIn};
+use super::{AddressChange, Closing, Page, TeyvatmeApp, ThemeChoice, TrackerSignIn, UpdateMode};
 use crate::TracingLevel;
 use crate::clock::ClockChoice;
 use crate::i18n::{Lang, tr, trf};
@@ -1103,17 +1103,20 @@ impl TeyvatmeApp {
         use crate::update::{UpdateCommand, UpdateStatus};
         let pal = widgets::p(ui);
         let status = self.update_status.borrow().clone();
-        let highlight = matches!(status, UpdateStatus::Available(_) | UpdateStatus::Ready(_));
-        let (fill, ink, ink2) = if highlight {
-            (pal.ac_con, pal.ac_on, pal.ac_on)
-        } else {
-            (pal.card, pal.tx, pal.tx2)
-        };
+        let mode = self.saved_state.update_mode();
+        let (ink, ink2) = (pal.tx, pal.tx2);
         let line = match &status {
+            UpdateStatus::Idle | UpdateStatus::UpToDate if mode == UpdateMode::Never => trf(
+                "You have {0} · it doesn't check by itself",
+                &[&env!("CARGO_PKG_VERSION")],
+            ),
             UpdateStatus::Idle => trf("You have {0}", &[&env!("CARGO_PKG_VERSION")]),
             UpdateStatus::Checking => tr("Checking for updates").to_string(),
             UpdateStatus::UpToDate => {
                 trf("{0} · the newest version", &[&env!("CARGO_PKG_VERSION")])
+            }
+            UpdateStatus::Available(v) if mode == UpdateMode::Never => {
+                trf("{0} is out · installs only when you press Update now", &[v])
             }
             UpdateStatus::Available(v) => trf(
                 "{0} is out · you have {1}",
@@ -1126,6 +1129,9 @@ impl TeyvatmeApp {
                 trf("Installing {0} · Teyvat.me closes when it is done", &[v])
             }
             UpdateStatus::Installing(v) => trf("Installing {0} · capture keeps running", &[v]),
+            UpdateStatus::Ready(v) if self.saved_state.auto_restart => {
+                trf("{0} installed · restarts when Genshin is closed", &[v])
+            }
             UpdateStatus::Ready(v) => trf(
                 "{0} installed · restart to use it, or it starts next time",
                 &[v],
@@ -1135,17 +1141,9 @@ impl TeyvatmeApp {
         let mut command = None;
         let mut restart = false;
         let mut open_releases = false;
-        egui::Frame::new()
-            .fill(fill)
-            .stroke(if highlight {
-                egui::Stroke::NONE
-            } else {
-                egui::Stroke::new(1.0_f32, pal.line)
-            })
-            .corner_radius(egui::CornerRadius::same(12))
-            .inner_margin(egui::Margin::symmetric(16, 12))
-            .show(ui, |ui| {
-                ui.set_width(ui.available_width());
+        card_frame(ui).show(ui, |ui| {
+            ui.set_width(ui.available_width());
+{
                 list_row(
                     ui,
                     Some((icons::download(), ink)),
@@ -1211,39 +1209,59 @@ impl TeyvatmeApp {
                         }
                     },
                 );
-            });
-        // How updates happen: by themselves, and the restart into one too
-        // (out of sight, with Genshin closed; see `app::restart_due`).
-        card_frame(ui).show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            let was_on = self.saved_state.auto_update;
-            switch_row(
-                ui,
-                tr("Install updates by itself"),
-                Some(secondary_text(
-                    tr("A new version is downloaded and installed while capture keeps running"),
-                    pal.tx2,
-                )),
-                &mut self.saved_state.auto_update,
-                true,
-            );
-            // Switched on with one waiting: that one goes now.
-            if self.saved_state.auto_update
-                && !was_on
-                && matches!(status, UpdateStatus::Available(_))
-            {
-                command = Some(UpdateCommand::Install);
             }
+            ui.add_space(4.0);
+            widgets::overline(ui, tr("When a new version is out"));
+            ui.add_space(2.0);
+            let mut chosen = mode;
+            if widgets::choice_tiles(
+                ui,
+                &mut chosen,
+                &[
+                    (
+                        UpdateMode::Install,
+                        icons::download(),
+                        tr("Install by itself"),
+                        tr("Installs while capture keeps running"),
+                    ),
+                    (
+                        UpdateMode::Tell,
+                        icons::eye(),
+                        tr("Tell me only"),
+                        tr("Shows the bar; installs on Update now"),
+                    ),
+                    (
+                        UpdateMode::Never,
+                        icons::circle_x(),
+                        tr("Never check"),
+                        tr("Only Check for updates asks"),
+                    ),
+                ],
+            ) {
+                self.saved_state.set_update_mode(chosen);
+                self.remark_tray();
+                // Chosen with one waiting: that one goes now.
+                if chosen == UpdateMode::Install && matches!(status, UpdateStatus::Available(_)) {
+                    command = Some(UpdateCommand::Install);
+                }
+            }
+            ui.add_space(6.0);
             divider(ui);
             switch_row(
                 ui,
                 tr("Restart by itself"),
                 Some(secondary_text(
-                    tr("Once Genshin is closed and the window is minimized or in the tray"),
+                    if chosen == UpdateMode::Install {
+                        tr("Once Genshin is closed and the window is minimized or in the tray")
+                    } else {
+                        tr(
+                            "After Update now: once Genshin is closed and the window is minimized or in the tray",
+                        )
+                    },
                     pal.tx2,
                 )),
                 &mut self.saved_state.auto_restart,
-                self.saved_state.auto_update,
+                true,
             );
         });
         if let Some(command) = command

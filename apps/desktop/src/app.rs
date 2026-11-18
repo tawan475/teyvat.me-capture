@@ -189,8 +189,15 @@ pub struct SavedAppState {
     /// Settings › About: a release the check finds is downloaded and
     /// installed by itself (on by default; the home banner used to wait for
     /// a click that most people never gave).
+    /// Kept in step with `update_mode` (true only for
+    /// [`UpdateMode::Install`]) for builds from before that setting.
     #[serde(default = "default_true")]
     pub auto_update: bool,
+    /// Settings › About › "When a new version is out". `None` in a file
+    /// from before the setting: [`SavedAppState::migrate`] reads the old
+    /// switch (on = install by itself, off = tell me only).
+    #[serde(default)]
+    pub update_mode: Option<UpdateMode>,
     /// Settings › About: the installed release starts by itself once
     /// Genshin is closed and the window is out of sight
     /// ([`restart_due`]).
@@ -206,6 +213,20 @@ pub struct SavedAppState {
 /// The resin alert's threshold until one is picked (the user's choice).
 fn default_resin_alert_at() -> u32 {
     160
+}
+
+/// What the app does about new versions (Settings › About).
+#[derive(Deserialize, Serialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum UpdateMode {
+    /// Checks every hour; a release found is downloaded, verified and
+    /// installed while capture keeps running.
+    #[default]
+    Install,
+    /// Checks every hour and shows the update bar; installs on Update now.
+    Tell,
+    /// Never asks GitHub by itself: only "Check for updates" does, and
+    /// what it finds installs only on Update now.
+    Never,
 }
 
 /// The theme setting (Settings › App).
@@ -321,6 +342,28 @@ impl SavedAppState {
             );
             self.tracker_api_url = url;
         }
+        if self.update_mode.is_none() {
+            self.update_mode = Some(if self.auto_update {
+                UpdateMode::Install
+            } else {
+                UpdateMode::Tell
+            });
+        }
+    }
+
+    /// What the app does about new versions.
+    pub fn update_mode(&self) -> UpdateMode {
+        self.update_mode.unwrap_or(if self.auto_update {
+            UpdateMode::Install
+        } else {
+            UpdateMode::Tell
+        })
+    }
+
+    /// Choose what the app does about new versions.
+    pub fn set_update_mode(&mut self, mode: UpdateMode) {
+        self.update_mode = Some(mode);
+        self.auto_update = mode == UpdateMode::Install;
     }
 }
 
@@ -349,6 +392,7 @@ impl Default for SavedAppState {
             resin_alert: false,
             resin_alert_at: default_resin_alert_at(),
             auto_update: true,
+            update_mode: Some(UpdateMode::Install),
             auto_restart: true,
             tracker_alerts: None,
         }
@@ -538,9 +582,10 @@ enum OnClose {
 /// A close that is the app's own restart (`restart_requested`: "Restart
 /// now", the quiet restart, restart as administrator) closes as it did; one
 /// installed already (`Ready`), or no update known, closes at once.
-/// With Settings › About › "Install updates by itself" off (`auto_install`
-/// false) a found release is left for the player's Update now: the close
-/// installs nothing (issue #74); an install they started is still waited for.
+/// Unless Settings › About says "Install by itself" (`auto_install` false:
+/// Tell me only, Never check) a found release is left for the player's
+/// Update now: the close installs nothing (issue #74); an install they
+/// started is still waited for.
 fn install_on_close(status: &UpdateStatus, restart_requested: bool, auto_install: bool) -> OnClose {
     if restart_requested {
         return OnClose::Close;
@@ -2973,6 +3018,32 @@ mod tests {
         };
         custom.migrate();
         assert_eq!(custom.tracker_api_url, "https://gdt.example/api");
+    }
+
+    #[test]
+    fn the_old_update_switch_becomes_the_three_way_setting() {
+        // A file from before the setting has no `update_mode`.
+        let mut old = serde_json::to_value(SavedAppState::default()).unwrap();
+        old.as_object_mut().unwrap().remove("update_mode");
+        let mut on: SavedAppState = serde_json::from_value(old.clone()).unwrap();
+        on.migrate();
+        assert_eq!(on.update_mode(), UpdateMode::Install);
+
+        // Off never becomes Never check: nobody stops hearing of updates
+        // without choosing to.
+        old["auto_update"] = false.into();
+        let mut off: SavedAppState = serde_json::from_value(old).unwrap();
+        assert_eq!(off.update_mode(), UpdateMode::Tell);
+        off.migrate();
+        assert_eq!(off.update_mode, Some(UpdateMode::Tell));
+
+        // A choice keeps the old switch in step, for a build before it.
+        off.set_update_mode(UpdateMode::Never);
+        assert!(!off.auto_update);
+        off.migrate();
+        assert_eq!(off.update_mode(), UpdateMode::Never);
+        off.set_update_mode(UpdateMode::Install);
+        assert!(off.auto_update);
     }
 
     #[test]

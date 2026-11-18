@@ -16,6 +16,7 @@ use serde::Deserialize;
 use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
 
+use crate::app::UpdateMode;
 use crate::i18n::trf;
 
 /// What Settings › About and the home banner show about updates.
@@ -689,18 +690,35 @@ fn asked_check_due(since_last: Option<std::time::Duration>) -> bool {
     since_last.is_none_or(|since| since >= MIN_GAP)
 }
 
-/// Whether a release that was found installs by itself.
+/// What Settings › About says the app does about new versions, read live:
+/// a change takes effect without a restart.
 pub struct AutoInstall(pub watch::Receiver<crate::app::SavedAppState>);
 
 impl AutoInstall {
-    fn on(&self) -> bool {
-        self.0.borrow().auto_update
+    fn mode(&self) -> UpdateMode {
+        self.0.borrow().update_mode()
     }
+}
+
+/// Whether the updater asks GitHub now. `manual` (the About page's "Check
+/// for updates") always does; the app's own checks (the timer, the window
+/// coming back into focus) never do under [`UpdateMode::Never`].
+fn check_allowed(manual: bool, mode: UpdateMode) -> bool {
+    manual || mode != UpdateMode::Never
+}
+
+/// When the app's own next check is due after the setting changed from
+/// `before` to `now`: at once when checking was just switched back on (the
+/// timer was idle, so the last answer may be days old), otherwise as it was.
+fn check_after_mode_change(before: UpdateMode, now: UpdateMode) -> bool {
+    before == UpdateMode::Never && now != UpdateMode::Never
 }
 
 /// The updater: checks at start, every [`CHECK_EVERY`] (sooner after a
 /// failure), or when asked, and installs a release it finds by itself when
 /// Settings › About says so (or when asked) — while the app keeps running.
+/// With "Never check" it asks GitHub only when the About page's button is
+/// pressed ([`check_allowed`]).
 /// Installing replaces the executable on disk (`self_replace` moves the
 /// running one aside), so the new version runs from the next start; the
 /// window decides whether that start happens by itself
@@ -713,7 +731,7 @@ pub async fn run_updater(
     cancel_token: CancellationToken,
     toast_tx: crate::activity::Sender,
     install_lock: std::sync::Arc<InstallLock>,
-    auto_install: AutoInstall,
+    mut auto_install: AutoInstall,
 ) {
     let mut found: Option<Release> = None;
     // Redirects are the point: the one to the newest release's page is read,
@@ -725,10 +743,21 @@ pub async fn run_updater(
     // The first check is at start.
     let mut next_check = tokio::time::Instant::now();
     let mut last_check: Option<tokio::time::Instant> = None;
+    let mut mode = auto_install.mode();
+    let mut settings_open = true;
     loop {
         let (command, due) = tokio::select! {
             _ = cancel_token.cancelled() => return,
             _ = tokio::time::sleep_until(next_check) => (UpdateCommand::Check { manual: false }, true),
+            changed = auto_install.0.changed(), if settings_open => {
+                settings_open = changed.is_ok();
+                let now = auto_install.mode();
+                if check_after_mode_change(mode, now) {
+                    next_check = tokio::time::Instant::now();
+                }
+                mode = now;
+                continue;
+            }
             command = commands.recv() => match command {
                 Some(command) => (command, false),
                 None => return,
@@ -746,6 +775,9 @@ pub async fn run_updater(
         }
         match command {
             UpdateCommand::Check { manual } => {
+                if !check_allowed(manual, auto_install.mode()) {
+                    continue;
+                }
                 if !manual && matches!(status, UpdateStatus::Checking) {
                     continue;
                 }
@@ -781,7 +813,7 @@ pub async fn run_updater(
                 // installed at once when that is the setting.
                 if !manual
                     && matches!(status_tx.borrow().clone(), UpdateStatus::Available(_))
-                    && auto_install.on()
+                    && auto_install.mode() == UpdateMode::Install
                     && let Some(release) = found.clone()
                     && let Installed::Cancelled =
                         install(release, &status_tx, &cancel_token, &install_lock, &toast_tx).await
@@ -1141,6 +1173,66 @@ mod tests {
         assert!(is_newer_release("1.18.0-rc.1", "1.18.0-rc.2"));
         assert!(is_newer_release("1.18.0-rc.1", "1.18.0"));
         assert!(!is_newer_release("1.17.12", "latest"));
+    }
+
+    #[test]
+    fn never_check_asks_only_when_the_button_is_pressed() {
+        for mode in [UpdateMode::Install, UpdateMode::Tell] {
+            assert!(check_allowed(false, mode));
+            assert!(check_allowed(true, mode));
+        }
+        assert!(!check_allowed(false, UpdateMode::Never));
+        assert!(check_allowed(true, UpdateMode::Never));
+        // Switching checks back on looks at once; any other change waits
+        // for the timer.
+        assert!(check_after_mode_change(UpdateMode::Never, UpdateMode::Tell));
+        assert!(check_after_mode_change(
+            UpdateMode::Never,
+            UpdateMode::Install
+        ));
+        assert!(!check_after_mode_change(
+            UpdateMode::Tell,
+            UpdateMode::Install
+        ));
+        assert!(!check_after_mode_change(
+            UpdateMode::Install,
+            UpdateMode::Never
+        ));
+        assert!(!check_after_mode_change(
+            UpdateMode::Never,
+            UpdateMode::Never
+        ));
+    }
+
+    /// The whole loop under Never check: no request leaves by itself, the
+    /// window's focus checks are dropped, and nothing is reported.
+    #[tokio::test]
+    async fn the_updater_stays_silent_under_never_check() {
+        let mut saved = crate::app::SavedAppState::default();
+        saved.set_update_mode(UpdateMode::Never);
+        let (_saved_tx, saved_rx) = watch::channel(saved);
+        let (status_tx, status_rx) = watch::channel(UpdateStatus::Idle);
+        let (commands_tx, commands_rx) = mpsc::unbounded_channel();
+        let (toast_tx, _toast_rx) = mpsc::unbounded_channel();
+        let cancel = CancellationToken::new();
+        let updater = tokio::spawn(run_updater(
+            status_tx,
+            commands_rx,
+            cancel.clone(),
+            toast_tx,
+            Arc::new(InstallLock::new()),
+            AutoInstall(saved_rx),
+        ));
+        // The start check (due at once) and a focus check.
+        commands_tx
+            .send(UpdateCommand::Check { manual: false })
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        // A check that ran would have left Idle (Checking, then an answer).
+        assert_eq!(*status_rx.borrow(), UpdateStatus::Idle);
+        assert!(!status_rx.has_changed().unwrap());
+        cancel.cancel();
+        updater.await.unwrap();
     }
 
     #[test]

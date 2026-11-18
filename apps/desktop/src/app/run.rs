@@ -13,7 +13,9 @@ use std::time::Instant;
 
 use egui::{Context, Frame};
 
-use super::{Closing, HIDDEN_TO_TRAY, Onboarding, Page, StartWindow, TeyvatmeApp, View};
+use super::{
+    Closing, HIDDEN_TO_TRAY, Onboarding, Page, StartWindow, TeyvatmeApp, UpdateMode, View,
+};
 use crate::activity::{Event, Kind, Topic};
 use crate::game_watch::{GameStatus, MissedLaunch};
 use crate::i18n::{tr, trf};
@@ -289,7 +291,11 @@ impl TeyvatmeApp {
             match &status {
                 // Found, and left for the user: the setting is off (on, it
                 // is installing already).
-                UpdateStatus::Available(v) if !self.saved_state.auto_update => {
+                // With Never check a release is only ever found by the
+                // About page's button: the bar shows it, nothing else.
+                UpdateStatus::Available(v)
+                    if self.saved_state.update_mode() == UpdateMode::Tell =>
+                {
                     self.update_notice(
                         &format!("out {v}"),
                         trf("Teyvat.me {0} is out", &[v]),
@@ -318,7 +324,7 @@ impl TeyvatmeApp {
                 self.update_ready_since = None;
             }
             self.seen_update_status = status.clone();
-            self.mark_tray(status.pending().is_some());
+            self.mark_tray(tray_marked(&status, self.saved_state.update_mode()));
         }
         let UpdateStatus::Ready(version) = &status else {
             return;
@@ -370,7 +376,8 @@ impl TeyvatmeApp {
                 None => {}
             }
             let restart = self.restart_requested.load(Ordering::SeqCst);
-            match super::install_on_close(&status, restart, self.saved_state.auto_update) {
+            let auto_install = self.saved_state.update_mode() == UpdateMode::Install;
+            match super::install_on_close(&status, restart, auto_install) {
                 super::OnClose::Close => {
                     self.closing = Some(Closing::Now);
                     return;
@@ -418,6 +425,13 @@ impl TeyvatmeApp {
             // a frame of its own (out of sight nothing else draws).
             ctx.request_repaint_after(super::CLOSE_INSTALL_TIMEOUT.saturating_sub(waited));
         }
+    }
+
+    /// Keep the tray mark right when the setting changes under a release
+    /// already found.
+    pub(super) fn remark_tray(&mut self) {
+        let status = self.update_status.borrow().clone();
+        self.mark_tray(tray_marked(&status, self.saved_state.update_mode()));
     }
 
     /// A Windows notification about an update, once per `key` (a release
@@ -599,6 +613,16 @@ fn tray_tooltip_text(title: &str, since_capture: Option<i64>, update: Option<&st
         ));
     }
     text
+}
+
+/// Whether the tray icon carries the update mark: a version waits, or is
+/// going in. Not for one only found under Never check (the bar alone shows
+/// that, by the user's choice).
+fn tray_marked(status: &UpdateStatus, mode: UpdateMode) -> bool {
+    match status {
+        UpdateStatus::Available(_) => mode != UpdateMode::Never,
+        _ => status.pending().is_some(),
+    }
 }
 
 #[cfg(test)]
