@@ -538,12 +538,16 @@ enum OnClose {
 /// A close that is the app's own restart (`restart_requested`: "Restart
 /// now", the quiet restart, restart as administrator) closes as it did; one
 /// installed already (`Ready`), or no update known, closes at once.
-fn install_on_close(status: &UpdateStatus, restart_requested: bool) -> OnClose {
+/// With Settings › About › "Install updates by itself" off (`auto_install`
+/// false) a found release is left for the player's Update now: the close
+/// installs nothing (issue #74); an install they started is still waited for.
+fn install_on_close(status: &UpdateStatus, restart_requested: bool, auto_install: bool) -> OnClose {
     if restart_requested {
         return OnClose::Close;
     }
     match status {
-        UpdateStatus::Available(_) => OnClose::Install,
+        UpdateStatus::Available(_) if auto_install => OnClose::Install,
+        UpdateStatus::Available(_) => OnClose::Close,
         UpdateStatus::Installing(_) => OnClose::WaitForInstall,
         UpdateStatus::Idle
         | UpdateStatus::Checking
@@ -2440,20 +2444,20 @@ mod tests {
     #[test]
     fn closing_installs_a_known_update_first_and_never_an_installed_or_unknown_one() {
         let version = || "1.17.15".to_owned();
-        // Found and not installed yet (the setting is off, or the check just
-        // ran): installed on the way out.
+        // Found and not installed yet with "Install updates by itself" on (the
+        // check just ran): installed on the way out.
         assert_eq!(
-            install_on_close(&UpdateStatus::Available(version()), false),
+            install_on_close(&UpdateStatus::Available(version()), false, true),
             OnClose::Install
         );
         // The hourly install is under way: let it finish.
         assert_eq!(
-            install_on_close(&UpdateStatus::Installing(version()), false),
+            install_on_close(&UpdateStatus::Installing(version()), false, true),
             OnClose::WaitForInstall
         );
         // Installed already: it runs from the next start as it is.
         assert_eq!(
-            install_on_close(&UpdateStatus::Ready(version()), false),
+            install_on_close(&UpdateStatus::Ready(version()), false, true),
             OnClose::Close
         );
         // No update known.
@@ -2465,7 +2469,7 @@ mod tests {
             UpdateStatus::Failed("offline".to_owned()),
         ] {
             assert_eq!(
-                install_on_close(&status, false),
+                install_on_close(&status, false, true),
                 OnClose::Close,
                 "{status:?}"
             );
@@ -2473,12 +2477,22 @@ mod tests {
         // The app's own restart ("Restart now", the quiet restart, restart as
         // administrator) is not a close that installs anything.
         assert_eq!(
-            install_on_close(&UpdateStatus::Available(version()), true),
+            install_on_close(&UpdateStatus::Available(version()), true, true),
             OnClose::Close
         );
         assert_eq!(
-            install_on_close(&UpdateStatus::Installing(version()), true),
+            install_on_close(&UpdateStatus::Installing(version()), true, true),
             OnClose::Close
+        );
+        // The setting off: the close leaves the release for Update now, but
+        // an install the player started is still let finish.
+        assert_eq!(
+            install_on_close(&UpdateStatus::Available(version()), false, false),
+            OnClose::Close
+        );
+        assert_eq!(
+            install_on_close(&UpdateStatus::Installing(version()), false, false),
+            OnClose::WaitForInstall
         );
     }
 

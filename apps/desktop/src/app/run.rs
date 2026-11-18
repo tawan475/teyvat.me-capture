@@ -347,7 +347,7 @@ impl TeyvatmeApp {
 
     /// Closing the window (its close button, the tray's Quit, "Close
     /// Teyvat.me" in the missed-launch modal) installs an update the check
-    /// found first, then closes ([`super::install_on_close`]): the close is
+    /// found first when updates install by themselves, then closes ([`super::install_on_close`]): the close is
     /// cancelled and asked again once the install ended or
     /// [`super::CLOSE_INSTALL_TIMEOUT`] is up. Capture stops and the
     /// executable is replaced in the same order as before (the install
@@ -370,7 +370,7 @@ impl TeyvatmeApp {
                 None => {}
             }
             let restart = self.restart_requested.load(Ordering::SeqCst);
-            match super::install_on_close(&status, restart) {
+            match super::install_on_close(&status, restart, self.saved_state.auto_update) {
                 super::OnClose::Close => {
                     self.closing = Some(Closing::Now);
                     return;

@@ -120,9 +120,10 @@ pub use crate::routine::{
     MAX_ABYSS_FLOORS, MAX_DAILY_TASKS, MAX_EXPEDITION_STATE, MAX_REALM_CURRENCY, MAX_RESIN,
     MAX_RESIN_SPENT, MAX_WELKIN_DAYS, ResinClock, TRANSFORMER_COOLDOWN_SECS, TRANSFORMER_ITEM_ID,
     TransformerState, WeekResin, matches_avatar_expedition_notify, matches_daily_task_data_notify,
-    matches_daily_task_notify, matches_home_resource_notify, matches_recharge_data_notify,
-    matches_resin_change_notify, matches_tower_all_data_rsp, matches_transformer_cool_down,
-    matches_transformer_notify, matches_week_active_notify,
+    matches_daily_task_notify, matches_expedition_all_data_rsp, matches_expedition_start_rsp,
+    matches_home_resource_notify, matches_recharge_data_notify, matches_resin_change_notify,
+    matches_tower_all_data_rsp, matches_transformer_cool_down, matches_transformer_notify,
+    matches_week_active_notify,
 };
 pub use crate::shop::{
     ACQUAINT_FATE, Bargains, FateStock, INTERTWINED_FATE, MASTERLESS_STARDUST,
@@ -407,6 +408,8 @@ static CLIENT_VERSION_LOGGED: AtomicBool = AtomicBool::new(false);
 static DAILY_TASK_NOTIFY_LOGGED: AtomicBool = AtomicBool::new(false);
 static TOWER_RSP_LOGGED: AtomicBool = AtomicBool::new(false);
 static EXPEDITION_NOTIFY_LOGGED: AtomicBool = AtomicBool::new(false);
+static EXPEDITION_SCREEN_LOGGED: AtomicBool = AtomicBool::new(false);
+static EXPEDITION_START_LOGGED: AtomicBool = AtomicBool::new(false);
 static HOME_RESOURCE_NOTIFY_LOGGED: AtomicBool = AtomicBool::new(false);
 static RECHARGE_NOTIFY_LOGGED: AtomicBool = AtomicBool::new(false);
 
@@ -1902,6 +1905,12 @@ pub enum CommandMatch {
     Abyss(AbyssPeriod),
     /// Every character's expedition: see [`matches_expedition_packet`].
     Expeditions(Vec<Expedition>),
+    /// Who is out on an expedition now, from the expedition screen: see
+    /// [`matches_expedition_screen_packet`].
+    ExpeditionsOut(Vec<Expedition>),
+    /// The characters just sent on expeditions: see
+    /// [`matches_expedition_start_packet`].
+    ExpeditionsSent(Vec<Expedition>),
     /// The Serenitea Pot's realm currency: see [`matches_home_resource_packet`].
     HomeResources(HomeResources),
     /// The Blessing of the Welkin Moon's days left: see
@@ -2026,6 +2035,8 @@ impl CommandMatch {
             Self::ResinSpent(_) => "resin spent",
             Self::Abyss(_) => "abyss",
             Self::Expeditions(_) => "expeditions",
+            Self::ExpeditionsOut(_) => "expeditions out",
+            Self::ExpeditionsSent(_) => "expeditions sent",
             Self::HomeResources(_) => "realm currency",
             Self::Welkin(_) => "welkin",
             Self::Transformer(_) => "parametric transformer",
@@ -2223,6 +2234,12 @@ pub fn classify_command(game_command: &GameCommand) -> Option<CommandMatch> {
     }
     if let Some(expeditions) = matches_expedition_packet(game_command) {
         claims.push(CommandMatch::Expeditions(expeditions));
+    }
+    if let Some(out) = matches_expedition_screen_packet(game_command) {
+        claims.push(CommandMatch::ExpeditionsOut(out));
+    }
+    if let Some(sent) = matches_expedition_start_packet(game_command) {
+        claims.push(CommandMatch::ExpeditionsSent(sent));
     }
     if let Some(home) = matches_home_resource_packet(game_command) {
         claims.push(CommandMatch::HomeResources(home));
@@ -2455,6 +2472,49 @@ pub fn matches_expedition_packet(game_command: &GameCommand) -> Option<Vec<Exped
         );
     }
     Some(found)
+}
+
+/// Recover who is out on an expedition from the expedition screen's
+/// `AvatarExpeditionAllDataRsp`, or `None` if this is not one. Recognised by
+/// shape (see [`matches_expedition_all_data_rsp`]); the first match logs the
+/// command id.
+pub fn matches_expedition_screen_packet(game_command: &GameCommand) -> Option<Vec<Expedition>> {
+    let out = matches_expedition_all_data_rsp(&game_command.proto_data)?;
+    if first_time(&EXPEDITION_SCREEN_LOGGED) {
+        info!(
+            command_id = game_command.command_id,
+            out = out.len(),
+            "discovered AvatarExpeditionAllDataRsp"
+        );
+    } else {
+        debug!(
+            command_id = game_command.command_id,
+            out = out.len(),
+            "expedition screen packet"
+        );
+    }
+    Some(out)
+}
+
+/// Recover the characters just sent on expeditions from the reply to sending
+/// them, or `None` if this is not one. Recognised by shape (see
+/// [`matches_expedition_start_rsp`]); the first match logs the command id.
+pub fn matches_expedition_start_packet(game_command: &GameCommand) -> Option<Vec<Expedition>> {
+    let sent = matches_expedition_start_rsp(&game_command.proto_data)?;
+    if first_time(&EXPEDITION_START_LOGGED) {
+        info!(
+            command_id = game_command.command_id,
+            sent = sent.len(),
+            "discovered the expedition start reply"
+        );
+    } else {
+        debug!(
+            command_id = game_command.command_id,
+            sent = sent.len(),
+            "expedition start packet"
+        );
+    }
+    Some(sent)
 }
 
 /// Recover the Serenitea Pot's realm currency from a `HomeResourceNotify`, or
