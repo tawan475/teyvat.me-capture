@@ -8,9 +8,22 @@ name: Create Release
 # Press "Run workflow" on main. The version is not typed: it is the
 # `package.version` in apps/desktop/Cargo.toml (plain semver, 1.0.0 first), and
 # the run refuses a version whose tag already exists, so bump it in the
-# release PR. The tag is created on the commit that was built. The APK builds
-# beside the desktop files; the release is made from the desktop files, and
-# the signed APK is added to it once both are done.
+# release PR. The tag is created on the commit that was built.
+#
+# Nothing is public until everything is in: the desktop files and the signed
+# APK build side by side, then one job lists their SHA-256 in SHA256SUMS.txt,
+# signs that list with minisign (SHA256SUMS.txt.minisig), makes the release
+# as a draft, checks the draft holds every file, and only then publishes it.
+# The app's updater installs a file only when the list is signed for the
+# release's version and names the file's hash (crates/core/src/verify.rs), so
+# a release without its signature must never be published. A run that fails
+# leaves at most a draft, which the next run deletes before it starts over.
+#
+# The signing key (MINISIGN_SECRET_KEY, MINISIGN_PASSWORD) and the Android
+# upload key (ANDROID_KEYSTORE_B64, ANDROID_KEYSTORE_PASSWORD,
+# ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD) are secrets of the `release`
+# environment, which only the protected main branch can use: no other branch
+# or workflow run can read them.
 on:
   workflow_dispatch:
 
@@ -154,13 +167,34 @@ jobs:
           path: target/release/${{ matrix.out_file }}
           if-no-files-found: error
 
-  create-release:
+  # Signed with the upload key from the `release` environment.
+  android:
+    needs: [version]
+    uses: ./.github/workflows/android.yml
+    with:
+      release: true
+
+  release:
     runs-on: ubuntu-latest
-    needs: [version, desktop]
+    needs: [version, desktop, android]
+    environment: release
     permissions:
       contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.version.outputs.version }}
+      TAG: v${{ needs.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+      # What an earlier run of this version left behind when it failed: a
+      # draft (never public, no tag yet). A published release is never
+      # touched: the version job refused its tag already.
+      - name: Delete a failed run's draft
+        run: |
+          if [ "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>/dev/null)" = "true" ]; then
+            echo "::notice::Deleting the draft of $TAG an earlier run left."
+            gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes
+          fi
       - name: Download release artifacts
         uses: actions/download-artifact@v4
         with:
@@ -170,59 +204,71 @@ jobs:
           mkdir -p upload
           find artifacts -type f -exec cp {} upload/ \;
           cd upload
-          sha256sum * > SHA256SUMS.txt
+          for file in teyvatme-windows.exe teyvatme-windows-pcap.exe teyvatme-linux-x86_64.tar.gz \
+            Teyvatme-macos-arm64.app.tar.gz teyvatme-android.apk; do
+            test -s "$file" || { echo "::error::$file is missing from the build"; exit 1; }
+          done
+          sha256sum * | sort -k2 > SHA256SUMS.txt
           cat SHA256SUMS.txt
+      # The last step before anything is uploaded: the list of every file,
+      # signed for this version. The trusted comment is what the updater
+      # compares with the release's version (verify::trusted_comment).
+      - name: Sign the checksums
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+          MINISIGN_PASSWORD: ${{ secrets.MINISIGN_PASSWORD }}
+        run: |
+          if [ -z "$MINISIGN_SECRET_KEY" ] || [ -z "$MINISIGN_PASSWORD" ]; then
+            echo "::error::The release environment has no MINISIGN_SECRET_KEY / MINISIGN_PASSWORD: an unsigned release would be refused by every updater. Set both, then run again."
+            exit 1
+          fi
+          sudo apt-get update -qq && sudo apt-get install -y -qq minisign
+          key="$RUNNER_TEMP/minisign.key"
+          printf '%s\n' "$MINISIGN_SECRET_KEY" > "$key"
+          cd upload
+          printf '%s\n' "$MINISIGN_PASSWORD" | minisign -S -s "$key" -m SHA256SUMS.txt \
+            -x SHA256SUMS.txt.minisig -t "teyvat.me-capture $VERSION" \
+            -c "Teyvat.me Capture $VERSION: verify with a key from crates/core/src/verify.rs"
+          rm -f "$key"
+          # The signature must verify with a key this very build ships, or
+          # the release could never be installed by its own updater.
+          ok=false
+          for public in $(sed -n '/^pub const UPDATE_KEYS/,/^];/p' ../crates/core/src/verify.rs | grep -o '"[A-Za-z0-9+/=]*"' | tr -d '"'); do
+            if minisign -V -P "$public" -m SHA256SUMS.txt -x SHA256SUMS.txt.minisig; then
+              ok=true
+            fi
+          done
+          if [ "$ok" != "true" ]; then
+            echo "::error::The signature does not verify with any key in crates/core/src/verify.rs (UPDATE_KEYS): add the release key's public key there first."
+            exit 1
+          fi
+          grep -qx "trusted comment: teyvat.me-capture $VERSION" SHA256SUMS.txt.minisig
+          sha256sum -c SHA256SUMS.txt
       - name: Release notes
         run: |
-          version=${{ needs.version.outputs.version }}
           # This version's section of CHANGELOG.md, without its heading.
-          awk -v v="## $version" '
+          awk -v v="## $VERSION" '
             index($0, v) == 1 { on = 1; next }
             /^## / && on { exit }
             on { print }
           ' CHANGELOG.md > notes.md
           if [ ! -s notes.md ]; then
-            echo "CHANGELOG.md has no section for $version" >&2
+            echo "CHANGELOG.md has no section for $VERSION" >&2
             exit 1
           fi
-      # The tag is created on the commit this run built; main is not pushed to.
-      - name: Create release
-        uses: ncipollo/release-action@v1
-        with:
-          tag: v${{ needs.version.outputs.version }}
-          commit: ${{ github.sha }}
-          name: "Teyvat.me ${{ needs.version.outputs.version }}"
-          bodyFile: notes.md
-          artifacts: "upload/*"
-
-  # The APK builds beside the desktop files and joins the release after, so a
-  # missing signing secret (ANDROID_KEYSTORE_B64, ANDROID_KEYSTORE_PASSWORD,
-  # ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD) fails only these two jobs:
-  # set the secrets, then "Re-run failed jobs" on this run.
-  android:
-    needs: [version]
-    uses: ./.github/workflows/android.yml
-    secrets: inherit
-
-  attach-apk:
-    runs-on: ubuntu-latest
-    needs: [version, android, create-release]
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: teyvatme-android
-          path: apk
-      - name: Add the APK and its checksum to the release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: v${{ needs.version.outputs.version }}
+      # A draft first: not public, no tag, and "latest" does not name it, so
+      # no updater sees a release that is still missing a file.
+      - name: Create the draft
         run: |
-          test -f apk/teyvatme-android.apk
-          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern SHA256SUMS.txt --dir sums
-          (cd apk && sha256sum teyvatme-android.apk) >> sums/SHA256SUMS.txt
-          sort -k2 -u sums/SHA256SUMS.txt -o sums/SHA256SUMS.txt
-          cat sums/SHA256SUMS.txt
-          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber \
-            apk/teyvatme-android.apk sums/SHA256SUMS.txt
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --target "$GITHUB_SHA" \
+            --title "Teyvat.me $VERSION" --notes-file notes.md upload/*
+      - name: Check the draft holds every file
+        run: |
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | sort > have.txt
+          (cd upload && ls) | sort > want.txt
+          cat have.txt
+          diff want.txt have.txt
+      # The tag is created here, on the commit this run built; main is not
+      # pushed to.
+      - name: Publish
+        run: gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest

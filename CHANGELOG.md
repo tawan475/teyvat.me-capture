@@ -4,6 +4,24 @@ Each release's section is its GitHub release notes (`.github/workflows/release.y
 
 ## 1.18.0
 
+- Updates are verified before they install: the download must match the
+  checksum in the release's `SHA256SUMS.txt`, and that list must carry the
+  project's signature (`SHA256SUMS.txt.minisig`, minisign) for that exact
+  version. Anything else is refused with "Update x not installed: it couldn't
+  be verified" and a link to the release page; nothing is installed. On
+  Android the same check runs before the installer opens. To check a download
+  by hand: `minisign -Vm SHA256SUMS.txt -P <the key in the README>`, then
+  `sha256sum -c SHA256SUMS.txt`.
+- One setting replaces "Install updates by itself" (Settings › About, and
+  Settings › Updates on Android): **Install by itself**, **Tell me only**
+  (checks every hour, installs when you press Update now) or **Never check**
+  (asks GitHub only when you press Check for updates). The old switch off
+  becomes Tell me only. The update bar's button is now Update now.
+- Android checks for updates every hour instead of every six; with Tell me
+  only a new version is downloaded only when you tap Download.
+- Release builds: the signing keys (updates and the Android APK) can be read
+  only by the release workflow on the protected main branch, and a release
+  is published only once every file and the signature are in.
 - Every control answers the pointer: a soft fill on hover, hovered text and
   borders in the accent colour, and a small give when pressed. Switch rows
   light up across the card, since clicking anywhere on them flips the

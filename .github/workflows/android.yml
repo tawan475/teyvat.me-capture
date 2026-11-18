@@ -3,12 +3,14 @@
 
 name: Android
 
-# The Android app's release APK, signed with the upload key (the key Google
-# Play will know as the upload key). The release workflow calls this and
-# publishes the artifact (a call always needs the key); workflow_dispatch
-# builds it on its own, and `unsigned` builds without the key to test the
-# build itself. Pushes to develop and main that touch the app build it too,
-# unsigned when the key is not there.
+# The Android app's release APK. Only a release signs it: the upload key (the
+# key Google Play will know as the upload key) lives in the `release`
+# environment, which only the protected main branch can use, so no other
+# branch or workflow can read it. The release workflow calls this with
+# `release: true` and publishes the artifact; a dispatch on main with
+# `unsigned` off signs one too (it goes nowhere by itself). Everything else
+# builds unsigned, as a check of the build only: pushes to develop and main
+# that touch the app, and a dispatch with `unsigned` on.
 #
 # The artifact `teyvatme-android` holds exactly one file,
 # `teyvatme-android.apk`.
@@ -22,21 +24,17 @@ on:
       - "rust-toolchain.toml"
       - ".github/workflows/android.yml"
   workflow_call:
-    secrets:
-      ANDROID_KEYSTORE_B64:
-        required: false
-      ANDROID_KEYSTORE_PASSWORD:
-        required: false
-      ANDROID_KEY_ALIAS:
-        required: false
-      ANDROID_KEY_PASSWORD:
-        required: false
+    inputs:
+      release:
+        description: "Sign with the upload key from the release environment"
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       unsigned:
         description: "Build without the upload key (a test of the build; not a release APK)"
         type: boolean
-        default: false
+        default: true
 
 env:
   CARGO_TERM_COLOR: always
@@ -46,6 +44,15 @@ env:
 jobs:
   apk:
     runs-on: ubuntu-latest
+    # The upload key's secrets are the `release` environment's (main only,
+    # no approval). A signed build names it; an unsigned one names none, so
+    # it runs on any branch and sees no key. Signed: the release workflow's
+    # call (`release`), or a dispatch of this workflow with `unsigned` off
+    # (in a call github.workflow is the caller's name and `inputs` holds no
+    # `unsigned`).
+    environment: ${{ (inputs.release == true || (github.workflow == 'Android' && github.event_name == 'workflow_dispatch' && inputs.unsigned != true)) && 'release' || '' }}
+    env:
+      SIGN: ${{ inputs.release == true || (github.workflow == 'Android' && github.event_name == 'workflow_dispatch' && inputs.unsigned != true) }}
     steps:
       # First, so a release without the key fails at once. A release build
       # needs the upload key: an APK signed with any other key could never be
@@ -53,18 +60,14 @@ jobs:
       - name: Check the upload key
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
-          # A dispatch that asks for it, or a CI push. Never a workflow_call:
-          # there `inputs` holds no `unsigned`, and github.workflow is the
-          # caller's name.
-          UNSIGNED: ${{ inputs.unsigned == true || (github.event_name == 'push' && github.workflow == 'Android') }}
         run: |
-          if [ -n "$KEYSTORE_B64" ]; then
-            echo "SIGNED=true" >> "$GITHUB_ENV"
-          elif [ "$UNSIGNED" = "true" ]; then
-            echo "::notice::Building without the upload key (unsigned test build)."
+          if [ "$SIGN" != "true" ]; then
+            echo "::notice::Building without the upload key (a check of the build, not a release APK)."
             echo "SIGNED=false" >> "$GITHUB_ENV"
+          elif [ -n "$KEYSTORE_B64" ]; then
+            echo "SIGNED=true" >> "$GITHUB_ENV"
           else
-            echo "::error::The ANDROID_KEYSTORE_B64 secret is empty: a release APK must be signed with the upload key. Set ANDROID_KEYSTORE_B64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD, then re-run."
+            echo "::error::The release environment has no ANDROID_KEYSTORE_B64: a release APK must be signed with the upload key. Set ANDROID_KEYSTORE_B64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD in the repository's 'release' environment, then re-run."
             exit 1
           fi
 
