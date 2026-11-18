@@ -817,6 +817,8 @@ impl LoginParts {
 }
 
 pub struct PlayerData {
+    /// What tracker uploads leave out ([`Self::set_sharing`]).
+    sharing: crate::sharing::Sharing,
     game_data: AnimeGameData,
     achievements: HashMap<u32, Achievement>,
     characters: HashMap<u32, AvatarInfo>,
@@ -912,7 +914,18 @@ impl PlayerData {
             exploration: exploration::ExplorationState::default(),
             endgame: endgame::EndgameState::default(),
             commission_reward: CommissionReward::default(),
+            sharing: crate::sharing::Sharing::default(),
         }
+    }
+
+    /// Which parts tracker uploads leave out ([`Self::live_export`]). A
+    /// setting, not captured data: clearing the data keeps it.
+    pub fn set_sharing(&mut self, sharing: crate::sharing::Sharing) {
+        self.sharing = sharing;
+    }
+
+    pub fn sharing(&self) -> &crate::sharing::Sharing {
+        &self.sharing
     }
 
     /// Name the dump commit `game_data` was built from, which exports then
@@ -2190,8 +2203,13 @@ impl PlayerData {
 
     /// The tracker export at `now_ms`, what it left out, and its keyed form,
     /// for live sync (`live.rs`): every item with its guid.
+    ///
+    /// Without the parts the user does not share ([`Self::set_sharing`]):
+    /// they are taken out here, before anything is keyed or sent, so neither
+    /// a snapshot nor a live batch ever holds them.
     pub fn live_export(&self, now_ms: u64) -> (good::Good, ExportReport, crate::delta::Keyed) {
-        let (good, report) = self.export_at(&ExportSettings::for_tracker(), now_ms);
+        let (mut good, report) = self.export_at(&ExportSettings::for_tracker(), now_ms);
+        self.sharing.strip(&mut good);
         let keyed = self.keyed(&good);
         (good, report, keyed)
     }
@@ -2368,6 +2386,7 @@ impl PlayerData {
             gi_wardrobe: self.export_wardrobe(),
             gi_exploration: self.export_exploration(),
             gi_endgame: self.export_endgame(),
+            gi_off: None,
         };
 
         if settings.include_characters {
