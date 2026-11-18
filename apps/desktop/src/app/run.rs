@@ -539,6 +539,8 @@ impl TeyvatmeApp {
     }
 
     pub(super) fn open_settings(&mut self, page: Page) {
+        // The Sharing page's "changed" note is for the visit it happened in.
+        self.sharing_changed_at = None;
         if page == Page::Teyvatme || page == Page::Destinations {
             self.tracker_url_edit = self.saved_state.tracker_api_url.clone();
             if self.saved_state.tracker_sign_in != super::TrackerSignIn::SignedIn {

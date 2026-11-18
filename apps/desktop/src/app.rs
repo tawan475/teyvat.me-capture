@@ -206,6 +206,10 @@ pub struct SavedAppState {
     /// chosen, so going back to Custom restores it.
     #[serde(default)]
     pub sharing_custom: Option<teyvatme_core::sharing::PartsOff>,
+    /// Settings › Sharing: the groups that are open, as bits (the fold
+    /// state is kept per PC).
+    #[serde(default)]
+    pub sharing_open: u8,
     /// Settings › About: the installed release starts by itself once
     /// Genshin is closed and the window is out of sight
     /// ([`restart_due`]).
@@ -404,6 +408,7 @@ impl Default for SavedAppState {
             auto_restart: true,
             sharing_off: Default::default(),
             sharing_custom: None,
+            sharing_open: 0,
             tracker_alerts: None,
         }
     }
@@ -967,6 +972,11 @@ pub struct TeyvatmeApp {
     /// What the app did, for the footer and its popover.
     activity: crate::activity::Log,
     activity_open: bool,
+    /// Settings › Sharing: "Custom" was picked (it stays picked even while
+    /// its set equals a preset's), and when a switch last changed, for the
+    /// page's note about the new live journal.
+    sharing_custom_picked: bool,
+    sharing_changed_at: Option<chrono::DateTime<chrono::Local>>,
     /// The view drawn last frame and when it came up, for its fade-in.
     shown_view: View,
     view_shown_at: Instant,
@@ -1019,6 +1029,8 @@ pub(crate) enum View {
 pub(crate) enum Page {
     App,
     Export,
+    /// Which parts go to the tracker.
+    Sharing,
     Destinations,
     Teyvatme,
     Diagnostics,
@@ -1038,6 +1050,7 @@ mod preview;
 mod run;
 mod screens;
 mod settings;
+mod sharing;
 mod today;
 
 /// How the window starts.
@@ -1774,6 +1787,8 @@ impl TeyvatmeApp {
             view: View::Main,
             activity: crate::activity::Log::default(),
             activity_open: false,
+            sharing_custom_picked: false,
+            sharing_changed_at: None,
             activity_anchor: None,
             shown_view: View::Main,
             view_shown_at: Instant::now(),

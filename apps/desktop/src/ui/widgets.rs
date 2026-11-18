@@ -1044,6 +1044,8 @@ pub fn icon_button(ui: &mut Ui, icon: ImageSource<'static>, name: &str) -> Respo
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CalloutKind {
+    /// Something to know, nothing wrong.
+    Info,
     Warn,
     Error,
 }
@@ -1052,6 +1054,12 @@ pub enum CalloutKind {
 pub fn callout(ui: &mut Ui, kind: CalloutKind, text: &str) -> Response {
     let pal = p(ui);
     let (fill, ink, stroke, icon) = match kind {
+        CalloutKind::Info => (
+            pal.over,
+            pal.tx2,
+            Stroke::new(1.0_f32, pal.line),
+            icons::info(),
+        ),
         CalloutKind::Warn => (
             pal.warn_con,
             pal.warn_on,

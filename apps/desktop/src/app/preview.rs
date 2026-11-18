@@ -283,8 +283,19 @@ impl TeyvatmeApp {
                 state.game_status = GameStatus::Decoding;
                 captured(&mut state);
                 linked_state(&mut state);
+                // `TEYVATME_PREVIEW_OFF=<gi_off names>`: those parts not
+                // shared, the Account group open and the "changed" note up.
+                if let Ok(off) = std::env::var("TEYVATME_PREVIEW_OFF")
+                    && self.sharing_changed_at.is_none()
+                {
+                    self.saved_state.sharing_off =
+                        teyvatme_core::sharing::PartsOff::from_names(off.split(','));
+                    self.saved_state.sharing_open = 0b10;
+                    self.sharing_changed_at = Some(chrono::Local::now());
+                }
                 self.view = View::Settings(match &page["settings-".len()..] {
                     "export" => Page::Export,
+                    "sharing" => Page::Sharing,
                     "destinations" => Page::Destinations,
                     "teyvatme" => Page::Teyvatme,
                     "diagnostics" => Page::Diagnostics,

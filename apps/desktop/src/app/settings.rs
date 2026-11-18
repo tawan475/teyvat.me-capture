@@ -21,10 +21,11 @@ use crate::ui::widgets::{
     list_row, overline, secondary_text, small_text, strong_text, switch_row, title_text,
 };
 
-fn pages() -> [(Page, &'static str); 5] {
+fn pages() -> [(Page, &'static str); 6] {
     [
         (Page::App, tr("App")),
         (Page::Export, tr("Export")),
+        (Page::Sharing, tr("Sharing")),
         (Page::Destinations, tr("Tracker")),
         (Page::Diagnostics, tr("Diagnostics")),
         (Page::About, tr("About")),
@@ -35,6 +36,7 @@ fn page_icon(page: Page) -> egui::ImageSource<'static> {
     match page {
         Page::App => icons::settings(),
         Page::Export => icons::download(),
+        Page::Sharing => icons::shield(),
         Page::Destinations | Page::Teyvatme => icons::cloud(),
         Page::Diagnostics => icons::bug(),
         Page::About => icons::info(),
@@ -183,6 +185,7 @@ impl TeyvatmeApp {
                         match page {
                             Page::App => self.app_page(ui),
                             Page::Export => self.export_page(ui),
+                            Page::Sharing => self.sharing_page(ui),
                             // The tab is the tracker page itself (no list
                             // row to click through to it).
                             Page::Destinations | Page::Teyvatme => self.teyvatme_page(ui),
@@ -629,6 +632,26 @@ impl TeyvatmeApp {
             .on_hover_text(
                 tr("Between snapshots, send what changed as you play, so the tracker stays current without logging out. Off: every change uploads the whole account."),
             );
+            divider(ui);
+            // What the uploads leave out, and the way to the page that
+            // decides it.
+            let mut change = false;
+            let (sharing_line, sharing_full) = self.sharing_summary_line();
+            list_row(
+                ui,
+                None,
+                title_text(tr("Sharing"), pal.tx),
+                Some(secondary_text(sharing_line, pal.tx2)),
+                |ui| {
+                    change =
+                        button(ui, ButtonKind::Secondary, None, tr("Change"), false).clicked();
+                },
+            )
+            .0
+            .on_hover_text(sharing_full);
+            if change {
+                self.open_settings(Page::Sharing);
+            }
             divider(ui);
             let (line_text, problem) = self.destination_result_line();
             let missing = super::missing_export_data(
