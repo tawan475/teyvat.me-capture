@@ -354,7 +354,8 @@ impl Keyed {
 /// upload writes, not the `3.9000000953674316` `serde_json::to_value` would
 /// widen it to.
 pub fn as_uploaded(good: &Good) -> Value {
-    let json = serde_json::to_string(good).expect("a Good always serialises");
+    // As the upload writes it: a GOOD section that is not shared is left out.
+    let json = good.upload_json().expect("a Good always serialises");
     serde_json::from_str(&json).expect("its own JSON parses")
 }
 

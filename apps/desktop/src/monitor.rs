@@ -1192,6 +1192,7 @@ impl Monitor {
         // uploads again then, not only at the next new data.
         let mut auth_rx = self.tracker_auth.status();
         let mut settings_rx = self.saved_state_rx.clone();
+        self.follow_sharing();
         self.link_check();
         self.sync_packet_log();
 
@@ -1286,6 +1287,7 @@ impl Monitor {
                     self.handle_link_event(event);
                 }
                 Ok(()) = auth_rx.changed() => {
+                    self.follow_sharing();
                     self.link_check();
                     if self.app_state.app_state.updated.items_updated.is_some()
                         || self.app_state.app_state.updated.characters_updated.is_some()
@@ -1302,6 +1304,7 @@ impl Monitor {
                 // A settings change can turn the resin alert on or move it,
                 // or link a tracker (a verified key).
                 Ok(()) = settings_rx.changed() => {
+                    self.follow_sharing();
                     self.link_check();
                     self.follow_capture_setting().await;
                 }
@@ -2043,6 +2046,26 @@ impl Monitor {
         ));
     }
 
+    /// Keep the held data's sharing (which parts uploads leave out) equal
+    /// to the settings and the sign-in. A change that matters to an open
+    /// journal starts a new one once the switches are left alone
+    /// (`LiveSync::note_sharing_changed`).
+    fn follow_sharing(&mut self) {
+        let sharing = crate::app::sharing(
+            &self.saved_state_rx.borrow(),
+            &self.tracker_auth.status().borrow(),
+        );
+        if *self.player_data.sharing() != sharing {
+            tracing::info!(
+                off = ?sharing.off.names(),
+                routes_by_uid = sharing.routes_by_uid,
+                "the parts shared with the tracker changed"
+            );
+            self.player_data.set_sharing(sharing);
+            self.live.note_sharing_changed(now_ms());
+        }
+    }
+
     /// The settings with the live sign-in and key state; see
     /// [`crate::app::background_state`].
     fn upload_state(&self) -> crate::app::SavedAppState {
@@ -2598,7 +2621,7 @@ impl Monitor {
             report.counts()
         );
         good.gi_capture = self.live.capture(reason);
-        let json = serde_json::to_string(&good).unwrap_or_default();
+        let json = good.upload_json().unwrap_or_default();
         let ticket = self.live.snapshot_started(reason, keyed);
         (json, report, ticket)
     }
@@ -2610,12 +2633,18 @@ impl Monitor {
         let Ok(mut good) = serde_json::from_str::<crate::good::Good>(&json) else {
             return (json, None);
         };
-        let Some(capture) = self.live.capture(Reason::Manual) else {
+        // The parts that are not shared leave here too, and the upload says
+        // which, with or without a login to label it with.
+        self.player_data.sharing().strip(&mut good);
+        let Ok(stripped) = good.upload_json() else {
             return (json, None);
         };
+        let Some(capture) = self.live.capture(Reason::Manual) else {
+            return (stripped, None);
+        };
         good.gi_capture = Some(capture);
-        let Ok(labelled) = serde_json::to_string(&good) else {
-            return (json, None);
+        let Ok(labelled) = good.upload_json() else {
+            return (stripped, None);
         };
         let keyed = self.player_data.keyed(&good);
         let ticket = self.live.snapshot_started(Reason::Manual, keyed);

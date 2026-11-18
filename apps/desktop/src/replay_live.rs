@@ -80,7 +80,7 @@ impl LocalTracker {
 
 impl StandInTracker for LocalTracker {
     fn snapshot(&mut self, good: &Good) -> Option<ImportAnswer> {
-        let json = serde_json::to_string(good).ok()?;
+        let json = good.upload_json().ok()?;
         let at = good.timestamp.map(|ms| ms as i64);
         let url = monitor::import_url(&self.api);
         match self.runtime.block_on(monitor::upload_to_tracker(

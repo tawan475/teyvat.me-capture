@@ -365,9 +365,17 @@ pub struct LiveSync {
     /// Not before this (a failed attach backs off like a batch).
     attach_retry_at_ms: u64,
     attach_backoff_ms: u64,
+    /// The parts shared with the tracker last changed then, and the journal
+    /// (kept against the old set) has not been replaced yet: see
+    /// [`Self::note_sharing_changed`].
+    sharing_changed_ms: Option<u64>,
 }
 
 const DAY_MS: u64 = 86_400_000;
+
+/// How long the sharing switches must be left alone before the journal is
+/// started over: several flips in a row make one new journal, not one each.
+pub const SHARING_QUIET_MS: u64 = 10_000;
 
 impl LiveSync {
     pub fn new() -> Self {
@@ -596,6 +604,20 @@ impl LiveSync {
         }
     }
 
+    /// The user changed which parts are shared. The tracker's base for this
+    /// journal was made with the old set, so the journal cannot go on:
+    /// nothing is batched until the switches were left alone for
+    /// [`SHARING_QUIET_MS`], then one full snapshot (reason `resync`, with
+    /// the new `gi_off`) starts a new journal.
+    pub fn note_sharing_changed(&mut self, now_ms: u64) {
+        self.sharing_changed_ms = Some(now_ms);
+    }
+
+    /// When a change of the shared parts is settled, if one is waiting.
+    fn sharing_settles_ms(&self) -> Option<u64> {
+        self.sharing_changed_ms.map(|at| at + SHARING_QUIET_MS)
+    }
+
     /// The reason the debounced automation export uploads a snapshot with,
     /// or `None` when it should not upload one (live mode: batches carry the
     /// changes). `live_enabled`: the switch here and the tracker upload on.
@@ -704,6 +726,9 @@ impl LiveSync {
         if self.busy() {
             return None;
         }
+        if let Some(settles) = self.sharing_settles_ms() {
+            return Some(settles.max(now_ms));
+        }
         if let Some(reason) = self.wanted
             && !reason.debounced()
         {
@@ -746,6 +771,22 @@ impl LiveSync {
     ) -> Action {
         if self.busy() || now_ms < self.retry_at_ms {
             return Action::Nothing;
+        }
+        if let Some(settles) = self.sharing_settles_ms() {
+            // Nothing goes against the old set's journal meanwhile.
+            if now_ms < settles {
+                return Action::Nothing;
+            }
+            self.sharing_changed_ms = None;
+            // Without a journal the next snapshot is whole anyway.
+            if self.journal.is_some() {
+                self.journal = None;
+                self.unacked = None;
+                self.pending = 0;
+                if self.wanted.is_none_or(Reason::debounced) {
+                    self.wanted = Some(Reason::Resync);
+                }
+            }
         }
         if let Some(reason) = self.wanted
             && !reason.debounced()
@@ -1406,6 +1447,57 @@ mod tests {
         let next = sent(live.tick(true, 360_000, export(with_materials(9))));
         assert_eq!(next.seq, 2);
         assert_eq!(next.changes.len(), 4);
+    }
+
+    #[test]
+    fn changed_sharing_starts_one_new_journal_once_the_switches_rest() {
+        let mut live = live_at(0);
+        live.note_change(5);
+        // Three flips in a row: the quiet time counts from the last.
+        live.note_sharing_changed(20_000);
+        live.note_sharing_changed(22_000);
+        live.note_sharing_changed(25_000);
+        assert_eq!(
+            live.next_tick_ms(true, 25_000),
+            Some(25_000 + SHARING_QUIET_MS)
+        );
+        // Meanwhile nothing goes against the old set's journal, however
+        // due the batch is, and no export is built for it.
+        assert_eq!(
+            live.tick(true, 30_000, || panic!(
+                "no export while the switches settle"
+            )),
+            Action::Nothing
+        );
+        assert!(live.is_live(30_000));
+        // Then one full snapshot (it carries the new gi_off), not a batch.
+        assert_eq!(
+            live.tick(true, 25_000 + SHARING_QUIET_MS, || None),
+            Action::Snapshot(Reason::Resync)
+        );
+        assert!(!live.is_live(25_000 + SHARING_QUIET_MS));
+        let ticket = live.snapshot_started(Reason::Resync, keyed(&with_materials(5)));
+        live.snapshot_answered(
+            ticket,
+            Some(ImportAnswer {
+                base: Some("k2".into()),
+                watching: false,
+            }),
+            36_000,
+        );
+        // One new journal, and the change is done with.
+        assert!(live.is_live(36_000));
+        assert_eq!(live.tick(true, 36_001, || None), Action::Nothing);
+
+        // In snapshot mode there is no journal to replace: the next
+        // snapshot is whole anyway.
+        let mut snapshots = LiveSync::new();
+        snapshots.note_sharing_changed(0);
+        assert_eq!(
+            snapshots.tick(true, SHARING_QUIET_MS, || None),
+            Action::Nothing
+        );
+        assert_eq!(snapshots.next_tick_ms(true, SHARING_QUIET_MS + 1), None);
     }
 
     #[test]

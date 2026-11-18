@@ -231,8 +231,18 @@ fn replay_journal_to_file(
     let file = File::create(out).with_context(|| format!("cannot write {}", out.display()))?;
 
     let mut recording = Recording::open(recording_path)?;
-    let player_data = PlayerData::new(monitor::load_game_data()?)
+    let mut player_data = PlayerData::new(monitor::load_game_data()?)
         .with_game_data_sha(monitor::embedded_game_data_sha());
+    // Debug aid: `TEYVATME_REPLAY_OFF=<gi_off names, comma separated>`
+    // replays with those parts not shared (and `TEYVATME_REPLAY_ONE_ACCOUNT`
+    // as uploads to one chosen account, where the UID stays home too), to
+    // prove no snapshot or batch carries them.
+    if let Ok(off) = std::env::var("TEYVATME_REPLAY_OFF") {
+        player_data.set_sharing(teyvatme_core::sharing::Sharing {
+            off: teyvatme_core::sharing::PartsOff::from_names(off.split(',').map(str::trim)),
+            routes_by_uid: std::env::var_os("TEYVATME_REPLAY_ONE_ACCOUNT").is_none(),
+        });
+    }
     let sniffer = GameSniffer::new().set_initial_keys(monitor::load_keys()?);
     let mut replay = Replay::new(sniffer, player_data);
     replay.journal = Some(JournalSim::new(BufWriter::new(file), tracker));

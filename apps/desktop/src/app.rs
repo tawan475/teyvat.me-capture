@@ -198,6 +198,14 @@ pub struct SavedAppState {
     /// switch (on = install by itself, off = tell me only).
     #[serde(default)]
     pub update_mode: Option<UpdateMode>,
+    /// Settings › Sharing: the parts tracker uploads leave out (none by
+    /// default: everything is shared, as before the switches).
+    #[serde(default)]
+    pub sharing_off: teyvatme_core::sharing::PartsOff,
+    /// The Custom preset's own set, kept while Everything or Builds only is
+    /// chosen, so going back to Custom restores it.
+    #[serde(default)]
+    pub sharing_custom: Option<teyvatme_core::sharing::PartsOff>,
     /// Settings › About: the installed release starts by itself once
     /// Genshin is closed and the window is out of sight
     /// ([`restart_due`]).
@@ -394,6 +402,8 @@ impl Default for SavedAppState {
             auto_update: true,
             update_mode: Some(UpdateMode::Install),
             auto_restart: true,
+            sharing_off: Default::default(),
+            sharing_custom: None,
             tracker_alerts: None,
         }
     }
@@ -700,6 +710,28 @@ pub(crate) fn background_state(state: &SavedAppState, auth: &AuthStatus) -> Save
         state.tracker_verified = true;
     }
     state
+}
+
+/// Whether uploads are placed by the file's UID: signed in with "Auto (by
+/// UID)", or a user import key (`gdt_uk_…`). Then the UID goes even with the
+/// account numbers switched off. An upload target not known yet counts as
+/// by UID: sending the UID is what uploads always did, leaving it out is
+/// the choice that needs knowing.
+pub(crate) fn routes_by_uid(state: &SavedAppState, auth: &AuthStatus) -> bool {
+    match auth {
+        AuthStatus::SignedIn { whoami, .. } => whoami
+            .as_ref()
+            .is_none_or(|whoami| whoami.scope == crate::signin::UploadScope::Uid),
+        _ => !state.tracker_import_key.starts_with("gdt_import_"),
+    }
+}
+
+/// What tracker uploads leave out, from the settings and the sign-in.
+pub(crate) fn sharing(state: &SavedAppState, auth: &AuthStatus) -> teyvatme_core::sharing::Sharing {
+    teyvatme_core::sharing::Sharing {
+        off: state.sharing_off.clone(),
+        routes_by_uid: routes_by_uid(state, auth),
+    }
 }
 
 /// One captured data class a GOOD export writes, and when it last arrived.
