@@ -173,7 +173,7 @@ export interface GoodArtifact {
   totalRolls: number
   astralMark: boolean
   /** GOOD's own spelling. */
-  elixerCrafted: boolean
+  elixirCrafted: boolean
   unactivatedSubstats: GoodSubstat[]
 }
 
