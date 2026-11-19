@@ -250,6 +250,16 @@ fn replay_journal_to_file(
     let handover_at: Option<u64> = std::env::var("TEYVATME_REPLAY_HANDOVER_AT")
         .ok()
         .and_then(|at| at.parse().ok());
+    // Debug aid: `TEYVATME_REPLAY_FLIP_AT=<frame>:<gi_off names>` changes
+    // the parts not shared at that frame, as the Sharing page would mid-
+    // session (an empty list shares everything again).
+    let flip: Option<(u64, String)> =
+        std::env::var("TEYVATME_REPLAY_FLIP_AT")
+            .ok()
+            .and_then(|flip| {
+                let (frame, names) = flip.split_once(':')?;
+                Some((frame.trim().parse().ok()?, names.to_string()))
+            });
 
     loop {
         match recording.next_frame() {
@@ -258,6 +268,11 @@ fn replay_journal_to_file(
                 replay.feed(frame);
                 if handover_at == Some(replay.frames) {
                     replay.hand_over()?;
+                }
+                if let Some((frame, names)) = &flip
+                    && *frame == replay.frames
+                {
+                    replay.flip_sharing(names);
                 }
                 if let Some(ns) = at {
                     replay.advance_journal(ns / 1_000_000)?;
@@ -455,7 +470,7 @@ impl JournalSim {
                 // The endgame parts for this login's snapshot (the journal
                 // gate's stand-in takes them as stored; --replay-live sends).
                 Action::Attach { session } => {
-                    let uid = player_data.gi_player().and_then(|p| p.uid);
+                    let uid = player_data.attach_uid();
                     let answer = match (uid, player_data.gi_endgame()) {
                         (Some(uid), Some(gi_endgame)) => {
                             let request = AttachRequest {
@@ -1003,6 +1018,25 @@ impl Replay {
     }
 
     /// Run the sender for what a frame brought.
+    /// The Sharing page changed the parts not shared ([`run_journal_with`]'s
+    /// `TEYVATME_REPLAY_FLIP_AT`): as the monitor's `follow_sharing` does.
+    fn flip_sharing(&mut self, names: &str) {
+        let sharing = teyvatme_core::sharing::Sharing {
+            off: teyvatme_core::sharing::PartsOff::from_names(
+                names
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|name| !name.is_empty()),
+            ),
+            routes_by_uid: self.player_data.sharing().routes_by_uid,
+        };
+        tracing::info!(off = ?sharing.off.names(), frame = self.frames, "sharing changed");
+        self.player_data.set_sharing(sharing);
+        if let Some(journal) = &mut self.journal {
+            journal.live.note_sharing_changed(journal.now_ms);
+        }
+    }
+
     fn advance_journal(&mut self, now_ms: u64) -> Result<()> {
         if let Some(journal) = &mut self.journal {
             journal.advance(now_ms, &self.player_data);

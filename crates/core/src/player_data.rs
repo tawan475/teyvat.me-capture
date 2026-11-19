@@ -5647,6 +5647,44 @@ mod tests {
     }
 
     #[test]
+    fn the_endgame_attach_follows_the_sharing_switches() {
+        use teyvatme_protocol::TheaterDetail;
+
+        use crate::sharing::{Part, PartsOff, Sharing};
+        let mut data = endgame_data();
+        // A UID, as read from the items' guids.
+        data.process_items(&[material_item(104002, minted_guid(812_345_678, 7), 12)]);
+        assert!(data.apply_theater(&TheaterDetail {
+            start: 1_793_476_800,
+            end: 1_796_068_799,
+            arcana: None,
+            small: vec![31, 8, 19, 2, 7, 127, 8, 1, 8, 1],
+            lists: vec![vec![1, 2, 3], vec![1, 2], vec![3, 6], vec![1, 2, 3]],
+        }));
+        let share = |off: &[Part], routes_by_uid: bool| {
+            let mut parts = PartsOff::default();
+            for part in off {
+                parts.set_shared(*part, false);
+            }
+            Sharing {
+                off: parts,
+                routes_by_uid,
+            }
+        };
+        assert!(data.gi_endgame().is_some());
+        assert!(data.attach_uid().is_some());
+        // Endgame not shared: nothing for an attach to carry.
+        data.set_sharing(share(&[Part::Endgame], true));
+        assert!(data.gi_endgame().is_none());
+        // The account numbers not shared: the UID still names the attach
+        // while uploads go by UID, and stays home to one chosen account.
+        data.set_sharing(share(&[Part::Numbers], true));
+        assert!(data.gi_endgame().is_some() && data.attach_uid().is_some());
+        data.set_sharing(share(&[Part::Numbers], false));
+        assert!(data.attach_uid().is_none());
+    }
+
+    #[test]
     fn the_theater_stars_are_read_when_the_starred_acts_can_be_told() {
         use teyvatme_protocol::TheaterDetail;
         let mut data = endgame_data();

@@ -2559,7 +2559,7 @@ impl Monitor {
             }
             Action::Batch(delta) => self.spawn_live_batch(&state, credential, *delta),
             Action::Attach { session } => {
-                let uid = self.player_data.gi_player().and_then(|p| p.uid);
+                let uid = self.player_data.attach_uid();
                 match (uid, self.player_data.gi_endgame()) {
                     (Some(uid), Some(gi_endgame)) => {
                         let request = AttachRequest {

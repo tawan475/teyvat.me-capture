@@ -663,7 +663,7 @@ impl Decoder {
                 Some(format!("B\n{}", serde_json::to_string(&delta)?))
             }
             Action::Attach { session } => {
-                let uid = data.gi_player().and_then(|p| p.uid);
+                let uid = data.attach_uid();
                 match (uid, data.gi_endgame()) {
                     (Some(uid), Some(gi_endgame)) => {
                         log::info!("live sync: sending the endgame parts (attach)");
