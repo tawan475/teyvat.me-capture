@@ -252,14 +252,21 @@ fn replay_journal_to_file(
         .and_then(|at| at.parse().ok());
     // Debug aid: `TEYVATME_REPLAY_FLIP_AT=<frame>:<gi_off names>` changes
     // the parts not shared at that frame, as the Sharing page would mid-
-    // session (an empty list shares everything again).
-    let flip: Option<(u64, String)> =
-        std::env::var("TEYVATME_REPLAY_FLIP_AT")
-            .ok()
-            .and_then(|flip| {
-                let (frame, names) = flip.split_once(':')?;
-                Some((frame.trim().parse().ok()?, names.to_string()))
-            });
+    // session (an empty list shares everything again); `batch:<names>`
+    // instead flips right after the first stored live batch, so the change
+    // meets an open journal.
+    let mut flip: Option<(Option<u64>, String)> = std::env::var("TEYVATME_REPLAY_FLIP_AT")
+        .ok()
+        .and_then(|flip| {
+            let (when, names) = flip.split_once(':')?;
+            let when = when.trim();
+            let frame = if when == "batch" {
+                None
+            } else {
+                Some(when.parse().ok()?)
+            };
+            Some((frame, names.to_string()))
+        });
 
     loop {
         match recording.next_frame() {
@@ -269,10 +276,16 @@ fn replay_journal_to_file(
                 if handover_at == Some(replay.frames) {
                     replay.hand_over()?;
                 }
-                if let Some((frame, names)) = &flip
-                    && *frame == replay.frames
-                {
-                    replay.flip_sharing(names);
+                if let Some((frame, names)) = &flip {
+                    let due = match frame {
+                        Some(frame) => *frame == replay.frames,
+                        None => replay.journal.as_ref().is_some_and(|j| j.batches > 0),
+                    };
+                    if due {
+                        let names = names.clone();
+                        replay.flip_sharing(&names);
+                        flip = None;
+                    }
                 }
                 if let Some(ns) = at {
                     replay.advance_journal(ns / 1_000_000)?;
