@@ -1357,7 +1357,11 @@ pub(crate) mod tests {
                 gi_guid: Some("3488998120056947188".to_string()),
                 gi_exp: Some(0),
             }],
-            materials: HashMap::from([("ChilledMeat".to_string(), 12)]),
+            materials: HashMap::from([
+                ("ChilledMeat".to_string(), 12),
+                ("OriginalResin".to_string(), 124),
+                ("RealmCurrency".to_string(), 2_400),
+            ]),
             gi_achievements: Some(vec![80001]),
             timestamp: Some(1_756_000_000_000),
             gi_player: Some(GiPlayer {

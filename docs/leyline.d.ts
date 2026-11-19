@@ -753,7 +753,8 @@ export type GiOffPart =
   | 'materials'
   /** gi_player: nickname, signature, birthday, nameCard, profilePicture. */
   | 'gi_player.profile'
-  /** gi_player: everything else; also gi_tasks.resin and gi_tasks.resinSpent. */
+  /** gi_player: everything else; also gi_tasks.resin, gi_tasks.resinSpent
+   *  and materials.OriginalResin. */
   | 'gi_player.numbers'
   /** With gi_achievement_times and gi_achievement_progress. */
   | 'gi_achievements'
@@ -763,7 +764,7 @@ export type GiOffPart =
   | 'gi_exploration'
   | 'gi_collections'
   | 'gi_wardrobe'
-  /** Also gi_tasks.realm. */
+  /** Also gi_tasks.realm and materials.RealmCurrency. */
   | 'gi_teapot'
   | 'gi_events'
   | 'gi_miliastra'

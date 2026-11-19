@@ -37,7 +37,8 @@ pub enum Part {
     /// `gi_player`: nickname, signature, birthday, name card, picture.
     Profile,
     /// `gi_player`: UID, AR, World Level, resin and the rest; with it,
-    /// `gi_tasks.resin` and `gi_tasks.resinSpent`.
+    /// `gi_tasks.resin`, `gi_tasks.resinSpent` and the bag's
+    /// `materials.OriginalResin`.
     Numbers,
     /// `gi_achievements`, `gi_achievement_times`, `gi_achievement_progress`.
     Achievements,
@@ -47,7 +48,8 @@ pub enum Part {
     Exploration,
     Collections,
     Wardrobe,
-    /// `gi_teapot`; with it, `gi_tasks.realm`.
+    /// `gi_teapot`; with it, `gi_tasks.realm` and the bag's
+    /// `materials.RealmCurrency`.
     Teapot,
     Events,
     Miliastra,
@@ -186,6 +188,11 @@ impl PartsOff {
     }
 }
 
+/// The bag's copy of the resin count: off with [`Part::Numbers`].
+const RESIN_MATERIAL: &str = "OriginalResin";
+/// The bag's copy of the realm currency: off with [`Part::Teapot`].
+const REALM_CURRENCY_MATERIAL: &str = "RealmCurrency";
+
 /// What an upload leaves out, and whether the UID must go regardless.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Sharing {
@@ -224,6 +231,14 @@ impl Sharing {
         }
         if off(Part::Materials) {
             good.materials.clear();
+        }
+        // The bag carries a copy of two counts that belong to other
+        // switches (the user's call, 2026-11-19): they leave with those.
+        if off(Part::Numbers) {
+            good.materials.remove(RESIN_MATERIAL);
+        }
+        if off(Part::Teapot) {
+            good.materials.remove(REALM_CURRENCY_MATERIAL);
         }
         if let Some(player) = &mut good.gi_player {
             if off(Part::Profile) {
@@ -451,7 +466,9 @@ mod tests {
                     continue;
                 }
                 for key in keys(other) {
-                    if *key == "gi_tasks" && matches!(part, Part::Numbers | Part::Teapot) {
+                    if matches!(*key, "gi_tasks" | "materials")
+                        && matches!(part, Part::Numbers | Part::Teapot)
+                    {
                         continue;
                     }
                     assert_eq!(sent[*key], full[*key], "{part:?} off changed {key}");
@@ -532,10 +549,18 @@ mod tests {
         assert!(sent["gi_tasks"].get("resin").is_none());
         assert!(sent["gi_tasks"].get("resinSpent").is_none());
         assert_eq!(sent["gi_tasks"]["realm"], full["gi_tasks"]["realm"]);
+        // The bag's copy of each count leaves with it: the key is left
+        // out, never sent as 0, and the rest of the bag is untouched.
+        assert!(sent["materials"].get("OriginalResin").is_none());
+        assert_eq!(sent["materials"]["RealmCurrency"], 2_400);
+        assert_eq!(sent["materials"]["ChilledMeat"], 12);
 
         let sent = upload(&sharing(&[Part::Teapot], true));
         assert!(sent["gi_tasks"].get("realm").is_none());
         assert_eq!(sent["gi_tasks"]["resin"], full["gi_tasks"]["resin"]);
+        assert!(sent["materials"].get("RealmCurrency").is_none());
+        assert_eq!(sent["materials"]["OriginalResin"], 124);
+        assert_eq!(sent["materials"]["ChilledMeat"], 12);
         // The Epitomized Path stays with the planner tasks.
         assert_eq!(sent["gi_tasks"]["wishPath"], full["gi_tasks"]["wishPath"]);
         assert_eq!(
@@ -649,5 +674,18 @@ mod tests {
         assert!(task(&all, "resin") && task(&all, "realm"));
         assert!(!task(&paths(&sharing(&[Part::Numbers], true)), "resin"));
         assert!(!task(&paths(&sharing(&[Part::Teapot], true)), "realm"));
+        // So do their copies in the bag, and nothing else of it.
+        let material = |paths: &BTreeSet<crate::delta::Path>, name: &str| {
+            paths.iter().any(|path| {
+                path.first().is_some_and(|p| p == "materials")
+                    && path.get(1).is_some_and(|p| p == name)
+            })
+        };
+        assert!(material(&all, "OriginalResin") && material(&all, "RealmCurrency"));
+        let sent = paths(&sharing(&[Part::Numbers], true));
+        assert!(!material(&sent, "OriginalResin") && material(&sent, "RealmCurrency"));
+        assert!(material(&sent, "ChilledMeat"));
+        let sent = paths(&sharing(&[Part::Teapot], true));
+        assert!(material(&sent, "OriginalResin") && !material(&sent, "RealmCurrency"));
     }
 }
