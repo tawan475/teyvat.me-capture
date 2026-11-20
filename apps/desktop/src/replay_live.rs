@@ -10,6 +10,10 @@
 //! history. The address and the import key come from the environment
 //! (`TEYVATME_REPLAY_TRACKER`, `TEYVATME_REPLAY_IMPORT_KEY`); no app setting
 //! or data directory is read or written, no lock is taken.
+//!
+//! Like the app, it checks the key first, which is also where the tracker
+//! says whether it reads gzipped snapshots; `TEYVATME_REPLAY_PLAIN=1` sends
+//! them plain all the same.
 
 use std::path::Path;
 
@@ -68,7 +72,27 @@ impl LocalTracker {
             .enable_all()
             .build()?;
         let client = crate::http_client_builder().build()?;
-        tracing::info!(%api, "replaying to a local tracker");
+        if std::env::var_os("TEYVATME_REPLAY_PLAIN").is_some_and(|v| v == "1") {
+            monitor::PLAIN_UPLOADS.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+        let verify = format!("{api}/genshin-accounts-public/verify-key");
+        let checked = runtime.block_on(async {
+            let response = client
+                .get(&verify)
+                .header("x-import-key", &key)
+                .send()
+                .await?;
+            let status = response.status();
+            anyhow::Ok((status, response.text().await.unwrap_or_default()))
+        });
+        match checked {
+            Ok((status, body)) if status.is_success() => {
+                monitor::note_upload_options(&verify, &body);
+            }
+            Ok((status, _)) => bail!("the local tracker refused the import key: HTTP {status}"),
+            Err(e) => bail!("the local tracker did not answer: {e}"),
+        }
+        tracing::info!(%api, gzip = monitor::gzip_uploads(&api), "replaying to a local tracker");
         Ok(Self {
             runtime,
             client,

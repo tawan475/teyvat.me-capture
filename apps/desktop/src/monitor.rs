@@ -3275,8 +3275,16 @@ pub(crate) fn note_upload_options(url: &str, body: &str) {
     }
 }
 
+/// `--replay-live` can hold uploads plain whatever the tracker says, to
+/// compare what a tracker stores from each form.
+pub(crate) static PLAIN_UPLOADS: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
 /// Whether snapshot uploads to the tracker at `url` go gzipped.
 pub(crate) fn gzip_uploads(url: &str) -> bool {
+    if PLAIN_UPLOADS.load(Ordering::Relaxed) {
+        return false;
+    }
     let Some(origin) = tracker_origin(url) else {
         return false;
     };
@@ -3303,7 +3311,9 @@ pub(crate) async fn upload_to_tracker(
     json: String,
     captured_at_ms: Option<i64>,
 ) -> std::result::Result<String, String> {
-    let form = snapshot_form(json, captured_at_ms, gzip_uploads(url))?;
+    let gzip = gzip_uploads(url);
+    tracing::debug!(gzip, bytes = json.len(), "snapshot upload");
+    let form = snapshot_form(json, captured_at_ms, gzip)?;
 
     let response = client
         .post(url)
