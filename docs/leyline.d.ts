@@ -91,6 +91,17 @@ export interface Leyline {
   gi_tasks?: GiTasks
   /** [shipped] Why this snapshot was taken (live sync). Tracker uploads only. */
   gi_capture?: GiCapture
+  /**
+   * [1.18] The parts the user does not share (Settings › Sharing), `[]` when
+   * everything is shared; absent from older builds. Capture writes it in
+   * tracker uploads only, never in a file it saves. A part named here is
+   * left out of the upload: for `characters`, `weapons`, `artifacts` and
+   * `materials` the key itself is absent.
+   * A file exported from teyvat.me carries it too, when the capture it came
+   * from had parts off; there an absent key can also mean everything was
+   * shared (an empty list is not written back).
+   */
+  gi_off?: GiOffPart[]
   /** [shipped] What the player has collected. */
   gi_collections?: GiCollections
   /** [shipped] What the characters own and wear, and the saved teams. */
@@ -166,7 +177,7 @@ export interface GoodArtifact {
   totalRolls: number
   astralMark: boolean
   /** GOOD's own spelling. */
-  elixerCrafted: boolean
+  elixirCrafted: boolean
   unactivatedSubstats: GoodSubstat[]
 }
 
@@ -734,3 +745,30 @@ export interface WishCursor {
 //      most other parts leave a 0 out.
 // 4.9 gi_tasks.expeditions is a list (sorted by doneAt) though each has a unique id;
 //     by the Record rule it would be Record<IdKey, {...}>.
+
+// ── gi_off ──────────────────────────────────────────────────────── [1.18]
+
+/** A part a tracker upload can leave out. Names are only ever appended. */
+export type GiOffPart =
+  /** With gi_characters (friendship, when obtained, character EXP). */
+  | 'characters'
+  | 'weapons'
+  | 'artifacts'
+  | 'materials'
+  /** gi_player: nickname, signature, birthday, nameCard, profilePicture. */
+  | 'gi_player.profile'
+  /** gi_player: everything else; also gi_tasks.resin, gi_tasks.resinSpent
+   *  and materials.OriginalResin. */
+  | 'gi_player.numbers'
+  /** With gi_achievement_times and gi_achievement_progress. */
+  | 'gi_achievements'
+  | 'gi_anecdotes'
+  | 'gi_tasks'
+  | 'gi_endgame'
+  | 'gi_exploration'
+  | 'gi_collections'
+  | 'gi_wardrobe'
+  /** Also gi_tasks.realm and materials.RealmCurrency. */
+  | 'gi_teapot'
+  | 'gi_events'
+  | 'gi_miliastra'

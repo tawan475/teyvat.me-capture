@@ -70,10 +70,14 @@ import me.teyvat.app.ui.TmIcon
 import me.teyvat.app.ui.TmTopBar
 import me.teyvat.app.ui.WelcomeScreen
 
-enum class Screen { Welcome, SetUp, Home, Settings, ExportSettings, Teyvat, Activity, About, Thanks, Licences, Notices }
+enum class Screen { Welcome, SetUp, Home, Settings, ExportSettings, Sharing, Teyvat, Activity, About, Thanks, Licences, Notices }
 
 /** The one activity: first run, Home and the pushed screens (spec section 3). */
-class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsActions, ExportSettingsActions, TeyvatActions {
+class MainActivity :
+    ComponentActivity(), HomeActions, SetUpActions, SettingsActions, ExportSettingsActions, TeyvatActions,
+    me.teyvat.app.ui.SharingActions {
+    /** When a Sharing switch last changed, during this visit to the screen (its note). */
+    private var sharingChangedAt by mutableStateOf<Long?>(null)
     private val app get() = application as TeyvatApp
     private val prefs get() = app.prefs
     private val capture get() = app.capture
@@ -246,6 +250,15 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
             uploadedAccount = uploadedAccount?.takeIf { it.first == Links.trackerApi }?.second,
         )
         val update by updater.state.collectAsState()
+        // A refused update: the snackbar says so once, with its release page.
+        val unverified = (update as? UpdateState.Unverified)?.version
+        androidx.compose.runtime.LaunchedEffect(unverified) {
+            if (unverified != null) {
+                snack(getString(R.string.update_unverified, unverified), getString(R.string.release_page)) {
+                    openUrl(Updater.releasePage(unverified))
+                }
+            }
+        }
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
             topBar = {
@@ -266,6 +279,7 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
                         }
                         Screen.Settings -> TmTopBar(stringResource(R.string.settings), ::pop)
                         Screen.ExportSettings -> TmTopBar(stringResource(R.string.export_title), ::pop)
+                        Screen.Sharing -> TmTopBar(stringResource(R.string.share_title), ::pop)
                         Screen.Teyvat -> TmTopBar(Links.trackerHost, ::pop) {
                             (trackerState as? TrackerState.SignedIn)?.let { signedIn ->
                                 IconButton(onClick = ::refreshTracker) { TmIcon(R.drawable.ic_refresh, stringResource(R.string.refresh)) }
@@ -299,6 +313,10 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
                 Screen.Home -> HomeContent(hero, summary, settings, capture.startingSince, folder, trackerView, update, backgroundAllowed, crashed, this, padding)
                 Screen.Settings -> SettingsScreen(padding, settings, trackerView, update, backgroundAllowed, this)
                 Screen.ExportSettings -> ExportSettingsScreen(padding, settings, folder, this)
+                Screen.Sharing -> me.teyvat.app.ui.SharingScreen(
+                    padding, settings, canUpload = tracker.canUpload(), uploadOn = settings.trackerUpload,
+                    routesByUid = tracker.routesByUid(), changedAt = sharingChangedAt, actions = this,
+                )
                 Screen.Teyvat -> TeyvatScreen(padding, trackerView, summary.captured, settings, this)
                 Screen.Activity -> ActivityScreen(padding, summary.events)
                 Screen.About -> AboutScreen(padding, BuildConfig.VERSION_NAME, gameDataLabel(summary), ::openUrl, {
@@ -386,6 +404,30 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
     override fun openActivity() = push(Screen.Activity)
     override fun openSettings() = push(Screen.Settings)
     override fun openExportSettings() = push(Screen.ExportSettings)
+
+    override fun openSharing() {
+        sharingChangedAt = null
+        push(Screen.Sharing)
+    }
+
+    override fun setSharing(off: Set<String>, customPicked: Boolean) {
+        val before = prefs.value
+        prefs.update {
+            it.copy(
+                sharingOff = off, sharingCustomPicked = customPicked,
+                // Custom keeps its own set while a fixed preset is chosen.
+                sharingCustom = if (customPicked) off else it.sharingCustom ?: it.sharingOff.takeIf { _ -> SharePart.preset(it.sharingOff, it.sharingCustomPicked) == SharePreset.Custom },
+            )
+        }
+        if (before.sharingOff != off) {
+            sharingChangedAt = System.currentTimeMillis()
+            NativeBridge.setSharing(SharePart.names(off), tracker.routesByUid())
+        }
+    }
+
+    override fun toggleSharingGroup(index: Int) {
+        prefs.update { it.copy(sharingOpen = it.sharingOpen xor (1 shl index)) }
+    }
     override fun openTeyvat() = push(Screen.Teyvat)
     override fun openAbout() = push(Screen.About)
 
@@ -401,7 +443,8 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
 
     override fun updateInstallNow() {
         when (updater.state.value) {
-            is UpdateState.Failed -> updater.check()
+            is UpdateState.Failed, is UpdateState.Unverified -> updater.check()
+            is UpdateState.Found -> updater.downloadNow()
             is UpdateState.NeedsPermission -> updateAllow()
             else -> updater.installNow()
         }
@@ -439,9 +482,9 @@ class MainActivity : ComponentActivity(), HomeActions, SetUpActions, SettingsAct
         }
     }
 
-    override fun setAutoUpdate(on: Boolean) {
-        prefs.update { it.copy(autoUpdate = on) }
-        if (on) updater.check(manual = false)
+    override fun setUpdateMode(mode: UpdateMode) {
+        prefs.update { it.copy(updateMode = mode) }
+        updater.modeChanged()
     }
 
     override fun checkForUpdates() = updater.check()

@@ -22,6 +22,8 @@ pub mod live;
 pub mod pcapng;
 pub mod player_data;
 pub mod recording;
+pub mod sharing;
+pub mod verify;
 pub mod wish;
 
 /// The export format's display name, the one place both apps take it from

@@ -13,7 +13,9 @@ use std::time::Instant;
 
 use egui::{Context, Frame};
 
-use super::{Closing, HIDDEN_TO_TRAY, Onboarding, Page, StartWindow, TeyvatmeApp, View};
+use super::{
+    Closing, HIDDEN_TO_TRAY, Onboarding, Page, StartWindow, TeyvatmeApp, UpdateMode, View,
+};
 use crate::activity::{Event, Kind, Topic};
 use crate::game_watch::{GameStatus, MissedLaunch};
 use crate::i18n::{tr, trf};
@@ -224,6 +226,8 @@ impl TeyvatmeApp {
             let toast = self.toasts.quiet(event.kind, event.text);
             if let Some(path) = event.path {
                 toast.action(Action::Show(path)).saved();
+            } else if let Some(link) = event.link {
+                toast.action(Action::ReleasePage(link));
             }
         }
     }
@@ -289,7 +293,11 @@ impl TeyvatmeApp {
             match &status {
                 // Found, and left for the user: the setting is off (on, it
                 // is installing already).
-                UpdateStatus::Available(v) if !self.saved_state.auto_update => {
+                // With Never check a release is only ever found by the
+                // About page's button: the bar shows it, nothing else.
+                UpdateStatus::Available(v)
+                    if self.saved_state.update_mode() == UpdateMode::Tell =>
+                {
                     self.update_notice(
                         &format!("out {v}"),
                         trf("Teyvat.me {0} is out", &[v]),
@@ -318,7 +326,7 @@ impl TeyvatmeApp {
                 self.update_ready_since = None;
             }
             self.seen_update_status = status.clone();
-            self.mark_tray(status.pending().is_some());
+            self.mark_tray(tray_marked(&status, self.saved_state.update_mode()));
         }
         let UpdateStatus::Ready(version) = &status else {
             return;
@@ -370,7 +378,8 @@ impl TeyvatmeApp {
                 None => {}
             }
             let restart = self.restart_requested.load(Ordering::SeqCst);
-            match super::install_on_close(&status, restart, self.saved_state.auto_update) {
+            let auto_install = self.saved_state.update_mode() == UpdateMode::Install;
+            match super::install_on_close(&status, restart, auto_install) {
                 super::OnClose::Close => {
                     self.closing = Some(Closing::Now);
                     return;
@@ -420,6 +429,13 @@ impl TeyvatmeApp {
         }
     }
 
+    /// Keep the tray mark right when the setting changes under a release
+    /// already found.
+    pub(super) fn remark_tray(&mut self) {
+        let status = self.update_status.borrow().clone();
+        self.mark_tray(tray_marked(&status, self.saved_state.update_mode()));
+    }
+
     /// A Windows notification about an update, once per `key` (a release
     /// and what is said about it) across runs.
     fn update_notice(&self, key: &str, title: String, text: String) {
@@ -462,6 +478,10 @@ impl TeyvatmeApp {
         };
         let update = match &*self.update_status.borrow() {
             UpdateStatus::Ready(v) => Some(trf("{0} installed · restart to use it", &[v])),
+            // Found under Never check: the bar alone says so.
+            UpdateStatus::Available(_) if self.saved_state.update_mode() == UpdateMode::Never => {
+                None
+            }
             UpdateStatus::Available(v) | UpdateStatus::Installing(v) => {
                 Some(trf("Update {0}", &[v]))
             }
@@ -509,7 +529,9 @@ impl TeyvatmeApp {
     fn handle_toast_action(&mut self, ctx: &Context, action: Action) {
         match action {
             Action::Show(path) => crate::autostart::reveal_file(&path),
-            Action::OpenAnyway(url) => ctx.open_url(egui::OpenUrl::new_tab(url)),
+            Action::OpenAnyway(url) | Action::ReleasePage(url) => {
+                ctx.open_url(egui::OpenUrl::new_tab(url))
+            }
             Action::RetryUpload => {
                 self.genshin_optimizer_request_export(super::OptimizerExportTarget::TrackerManual)
             }
@@ -517,6 +539,8 @@ impl TeyvatmeApp {
     }
 
     pub(super) fn open_settings(&mut self, page: Page) {
+        // The Sharing page's "changed" note is for the visit it happened in.
+        self.sharing_changed_at = None;
         if page == Page::Teyvatme || page == Page::Destinations {
             self.tracker_url_edit = self.saved_state.tracker_api_url.clone();
             if self.saved_state.tracker_sign_in != super::TrackerSignIn::SignedIn {
@@ -599,6 +623,16 @@ fn tray_tooltip_text(title: &str, since_capture: Option<i64>, update: Option<&st
         ));
     }
     text
+}
+
+/// Whether the tray icon carries the update mark: a version waits, or is
+/// going in. Not for one only found under Never check (the bar alone shows
+/// that, by the user's choice).
+fn tray_marked(status: &UpdateStatus, mode: UpdateMode) -> bool {
+    match status {
+        UpdateStatus::Available(_) => mode != UpdateMode::Never,
+        _ => status.pending().is_some(),
+    }
 }
 
 #[cfg(test)]

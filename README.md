@@ -98,8 +98,19 @@ From the [latest release](https://github.com/tawan475/teyvat.me-capture/releases
 | macOS (Apple silicon) | `Teyvatme-macos-arm64.app.tar.gz` | Asks once for access to `/dev/bpf`. |
 | Android 10+ | `teyvatme-android.apk` | A local VPN that sees only Genshin's traffic. Allow installing from your browser or file manager. |
 
-`SHA256SUMS.txt` lists every file's checksum. The desktop app updates itself
-from this page.
+`SHA256SUMS.txt` lists every file's checksum, and `SHA256SUMS.txt.minisig` is
+the project's [minisign](https://jedisct1.github.io/minisign/) signature over
+that list (from 1.18.0 on). The apps update themselves from this page and
+install a download only when both checks pass. To check a download by hand
+(the public key is also `UPDATE_KEYS` in
+[`crates/core/src/verify.rs`](crates/core/src/verify.rs)):
+
+```
+minisign -Vm SHA256SUMS.txt -P RWRcXLSnVldopL8tuyDx/JECEMOE+3plsO4wUWOSdc1WVf3TwngzoX+I
+sha256sum -c --ignore-missing SHA256SUMS.txt
+```
+
+The first line must end with `teyvat.me-capture <the version you downloaded>`.
 
 ## For developers
 
@@ -148,8 +159,22 @@ request with every CI check green, and releases are made from `main`:
 **Actions → Create Release → Run workflow** on `main`. The version is
 `package.version` in `apps/desktop/Cargo.toml` (bump it in the release PR, and
 add its section to [`CHANGELOG.md`](CHANGELOG.md)). The workflow builds the
-four desktop files and the signed APK (`.github/workflows/android.yml`) and
-publishes them with checksums.
+four desktop files and the signed APK (`.github/workflows/android.yml`), lists
+their SHA-256 in `SHA256SUMS.txt`, signs that list with minisign
+(`SHA256SUMS.txt.minisig`, trusted comment `teyvat.me-capture <version>`) and
+publishes the release only once the draft holds every file. A failed run
+leaves at most a draft, which the next run deletes.
+
+The signing key (`MINISIGN_SECRET_KEY`, `MINISIGN_PASSWORD`) and the Android
+upload key (`ANDROID_KEYSTORE_B64`, `ANDROID_KEYSTORE_PASSWORD`,
+`ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`) are secrets of the GitHub
+environment `release`, whose deployment branch rule allows only the protected
+`main` branch (no reviewers): no other branch or workflow can read them.
+Builds on `develop`, and pushes to `main` that are not a release, make an
+unsigned APK as a check of the build only. The public keys the apps accept are
+`UPDATE_KEYS` in [`crates/core/src/verify.rs`](crates/core/src/verify.rs); a
+new key is added there one release before the old one is retired, and the
+release workflow refuses to publish a signature none of them verifies.
 
 </details>
 

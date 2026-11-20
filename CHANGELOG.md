@@ -2,6 +2,48 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.18.0
+
+- **Settings › Sharing** (new, also on Android): choose which parts of your
+  account go to teyvat.me. Everything is shared until you change it, as
+  before. Presets Everything / Builds only / Custom, and a switch for each of
+  16 parts: characters, weapons, artifacts, materials, your profile, the
+  account numbers, and each kind of progress. A part that is off never leaves
+  your device, in a snapshot or in live sync, and teyvat.me is told which
+  parts are off so its pages can say "Not shared by Capture". Files saved to
+  a folder keep following Settings › Export. Other trackers (a self-hosted or
+  older one) may refuse or show empty data for an upload with characters,
+  weapons, artifacts or materials off.
+- Updates are verified before they install: the download must match the
+  checksum in the release's `SHA256SUMS.txt`, and that list must carry the
+  project's signature (`SHA256SUMS.txt.minisig`, minisign) for that exact
+  version. Anything else is refused with "Update x not installed: it couldn't
+  be verified" and a link to the release page; nothing is installed. On
+  Android the same check runs before the installer opens. To check a download
+  by hand: `minisign -Vm SHA256SUMS.txt -P <the key in the README>`, then
+  `sha256sum -c SHA256SUMS.txt`.
+- One setting replaces "Install updates by itself" (Settings › About, and
+  Settings › Updates on Android): **Install by itself**, **Tell me only**
+  (checks every hour, installs when you press Update now) or **Never check**
+  (asks GitHub only when you press Check for updates). The old switch off
+  becomes Tell me only. The update bar's button is now Update now.
+- Android checks for updates every hour instead of every six; with Tell me
+  only a new version is downloaded only when you tap Download.
+- Release builds: the signing keys (updates and the Android APK) can be read
+  only by the release workflow on the protected main branch, and a release
+  is published only once every file and the signature are in.
+- Every control answers the pointer: a soft fill on hover, hovered text and
+  borders in the accent colour, and a small give when pressed. Switch rows
+  light up across the card, since clicking anywhere on them flips the
+  switch, and the side list shows a faint accent bar before you click.
+  Buttons, segments and switches show a focus ring when reached with Tab.
+- Fixed the resin count teyvat.me showed after the last resin was spent:
+  Capture kept sending the regeneration clock with the earlier amount (40
+  when the game said 0), and the Planner read that one.
+- Live sync is faster while a teyvat.me page is open: a batch every 5 s
+  at most (was 15 s). A reward's changes (resin, Mora, the drops) now go in
+  one batch; before, part could go at once and the rest a batch later.
+
 ## 1.17.32
 
 - The Characters tile counts only the characters you own: trial copies and

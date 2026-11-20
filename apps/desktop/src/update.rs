@@ -13,9 +13,11 @@ use futures_util::StreamExt;
 use reqwest::header;
 use self_update::update::{Release, ReleaseAsset};
 use serde::Deserialize;
+use teyvatme_core::verify::{self, Refused};
 use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
 
+use crate::app::UpdateMode;
 use crate::i18n::trf;
 
 /// What Settings › About and the home banner show about updates.
@@ -38,6 +40,10 @@ pub enum UpdateStatus {
     Ready(String),
     /// The last check or install failed, and why.
     Failed(String),
+    /// This version's download did not pass its checks (checksum,
+    /// signature): nothing was installed, and the app's own checks leave it
+    /// alone until a newer release, a restart or "Check for updates".
+    Unverified(String),
 }
 
 impl UpdateStatus {
@@ -70,6 +76,16 @@ pub enum UpdateCommand {
 /// Where a user is pointed when Teyvat.me can find an update but cannot install
 /// it for them.
 const RELEASES_URL: &str = "https://github.com/tawan475/teyvat.me-capture/releases";
+
+/// The page of one release, for a download by hand.
+pub fn release_page(version: &str) -> String {
+    format!("{RELEASES_URL}/tag/v{}", version.trim_start_matches('v'))
+}
+
+/// The release's list of its files' SHA-256, and the minisign signature
+/// over it (`teyvatme_core::verify`).
+const SUMS_ASSET: &str = "SHA256SUMS.txt";
+const SIGNATURE_ASSET: &str = "SHA256SUMS.txt.minisig";
 
 /// Serialises replacing the installed binary against process exit.
 ///
@@ -492,6 +508,54 @@ enum InstallOutcome {
     Cancelled,
 }
 
+/// The SHA-256 of the file at `path`, lowercase hex.
+fn sha256_of(path: &Path) -> Result<String> {
+    use sha2::{Digest, Sha256};
+    let mut file = std::fs::File::open(path).with_context(|| format!("could not open {path:?}"))?;
+    let mut hasher = Sha256::new();
+    std::io::copy(&mut file, &mut hasher)?;
+    Ok(hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect())
+}
+
+/// Whether the download at `path` is `asset` of release `version`: the
+/// release's `sums` list is signed for that version by one of `keys`, lists
+/// the file, and the file has that hash. `None` for a file the release
+/// lacks. Everything an install is gated on, apart from the fetching.
+fn verify_download(
+    path: &Path,
+    sums: Option<&[u8]>,
+    signature: Option<&str>,
+    version: &str,
+    asset: &str,
+    keys: &[&str],
+) -> Result<()> {
+    // No list is no signed list.
+    let sums = sums.ok_or(Refused::NoSignature)?;
+    let expected = verify::expected_hash(sums, signature, version, asset, keys)?;
+    verify::hash_matches(&expected, &sha256_of(path)?)?;
+    Ok(())
+}
+
+/// Fetch one of the release's small files whole, or `None` when the release
+/// has no asset of that name.
+async fn fetch_release_file(
+    client: &reqwest::Client,
+    release: &Release,
+    name: &str,
+) -> Result<Option<Vec<u8>>> {
+    let Some(asset) = release.assets.iter().find(|asset| asset.name == name) else {
+        return Ok(None);
+    };
+    let dir = tempfile::tempdir()?;
+    let dest = dir.path().join(name);
+    download_asset(client, asset, &dest).await?;
+    Ok(Some(std::fs::read(&dest)?))
+}
+
 /// Fetch a release asset into `dest`.
 ///
 /// Split out so the whole download can be raced against the cancel token by a
@@ -569,17 +633,35 @@ async fn download_new_version_and_replace_current(
     // and then detaching this thread mid-download — which also leaked the
     // staging directory next to the executable, because `TempDir::drop` never
     // ran.
-    let cancelled = tokio::select! {
-        _ = cancel_token.cancelled() => true,
-        result = download_asset(&client, &asset, &tmp_asset_path) => {
-            result?;
-            false
-        }
+    let fetch = async {
+        download_asset(&client, &asset, &tmp_asset_path).await?;
+        let sums = fetch_release_file(&client, &release, SUMS_ASSET).await?;
+        let signature = fetch_release_file(&client, &release, SIGNATURE_ASSET).await?;
+        anyhow::Ok((sums, signature))
     };
+    let fetched = tokio::select! {
+        _ = cancel_token.cancelled() => None,
+        result = fetch => Some(result?),
+    };
+    let cancelled = fetched.is_none();
     if cancelled {
         tracing::info!("update download cancelled during shutdown; nothing was installed");
         return Ok(InstallOutcome::Cancelled);
     }
+
+    // The file as the release built it, before anything of it is unpacked
+    // or run: its hash in the signed list (`teyvatme_core::verify`).
+    let (sums, signature) = fetched.unwrap_or_default();
+    let signature = signature.map(|bytes| String::from_utf8_lossy(&bytes).into_owned());
+    verify_download(
+        &tmp_asset_path,
+        sums.as_deref(),
+        signature.as_deref(),
+        &release.version,
+        &asset.name,
+        verify::UPDATE_KEYS,
+    )?;
+    tracing::info!("{} passed its checksum and signature", asset.name);
 
     let installable = match plan {
         InstallPlan::Direct => tmp_asset_path,
@@ -689,18 +771,35 @@ fn asked_check_due(since_last: Option<std::time::Duration>) -> bool {
     since_last.is_none_or(|since| since >= MIN_GAP)
 }
 
-/// Whether a release that was found installs by itself.
+/// What Settings › About says the app does about new versions, read live:
+/// a change takes effect without a restart.
 pub struct AutoInstall(pub watch::Receiver<crate::app::SavedAppState>);
 
 impl AutoInstall {
-    fn on(&self) -> bool {
-        self.0.borrow().auto_update
+    fn mode(&self) -> UpdateMode {
+        self.0.borrow().update_mode()
     }
+}
+
+/// Whether the updater asks GitHub now. `manual` (the About page's "Check
+/// for updates") always does; the app's own checks (the timer, the window
+/// coming back into focus) never do under [`UpdateMode::Never`].
+fn check_allowed(manual: bool, mode: UpdateMode) -> bool {
+    manual || mode != UpdateMode::Never
+}
+
+/// When the app's own next check is due after the setting changed from
+/// `before` to `now`: at once when checking was just switched back on (the
+/// timer was idle, so the last answer may be days old), otherwise as it was.
+fn check_after_mode_change(before: UpdateMode, now: UpdateMode) -> bool {
+    before == UpdateMode::Never && now != UpdateMode::Never
 }
 
 /// The updater: checks at start, every [`CHECK_EVERY`] (sooner after a
 /// failure), or when asked, and installs a release it finds by itself when
 /// Settings › About says so (or when asked) — while the app keeps running.
+/// With "Never check" it asks GitHub only when the About page's button is
+/// pressed ([`check_allowed`]).
 /// Installing replaces the executable on disk (`self_replace` moves the
 /// running one aside), so the new version runs from the next start; the
 /// window decides whether that start happens by itself
@@ -713,9 +812,14 @@ pub async fn run_updater(
     cancel_token: CancellationToken,
     toast_tx: crate::activity::Sender,
     install_lock: std::sync::Arc<InstallLock>,
-    auto_install: AutoInstall,
+    mut auto_install: AutoInstall,
 ) {
     let mut found: Option<Release> = None;
+    // A version whose download was refused: the app's own checks leave it
+    // alone (no retry and no new toast every hour). In memory only, and
+    // "Check for updates" forgets it: a restart or the button tries again
+    // (the user's choice, 2026-11-18).
+    let mut refused: Option<String> = None;
     // Redirects are the point: the one to the newest release's page is read,
     // not followed.
     let client = crate::http_client_builder()
@@ -725,10 +829,21 @@ pub async fn run_updater(
     // The first check is at start.
     let mut next_check = tokio::time::Instant::now();
     let mut last_check: Option<tokio::time::Instant> = None;
+    let mut mode = auto_install.mode();
+    let mut settings_open = true;
     loop {
         let (command, due) = tokio::select! {
             _ = cancel_token.cancelled() => return,
             _ = tokio::time::sleep_until(next_check) => (UpdateCommand::Check { manual: false }, true),
+            changed = auto_install.0.changed(), if settings_open => {
+                settings_open = changed.is_ok();
+                let now = auto_install.mode();
+                if check_after_mode_change(mode, now) {
+                    next_check = tokio::time::Instant::now();
+                }
+                mode = now;
+                continue;
+            }
             command = commands.recv() => match command {
                 Some(command) => (command, false),
                 None => return,
@@ -746,6 +861,9 @@ pub async fn run_updater(
         }
         match command {
             UpdateCommand::Check { manual } => {
+                if !check_allowed(manual, auto_install.mode()) {
+                    continue;
+                }
                 if !manual && matches!(status, UpdateStatus::Checking) {
                     continue;
                 }
@@ -763,8 +881,17 @@ pub async fn run_updater(
                     }
                     Ok(Checked::Installable(release)) => {
                         let version = release.version.clone();
-                        found = Some(release);
-                        UpdateStatus::Available(version)
+                        if manual {
+                            refused = None;
+                        }
+                        if still_refused(refused.as_deref(), &version) {
+                            found = None;
+                            UpdateStatus::Unverified(version)
+                        } else {
+                            refused = None;
+                            found = Some(release);
+                            UpdateStatus::Available(version)
+                        }
                     }
                     Ok(Checked::ByHand(version)) => {
                         found = None;
@@ -781,22 +908,32 @@ pub async fn run_updater(
                 // installed at once when that is the setting.
                 if !manual
                     && matches!(status_tx.borrow().clone(), UpdateStatus::Available(_))
-                    && auto_install.on()
+                    && auto_install.mode() == UpdateMode::Install
                     && let Some(release) = found.clone()
-                    && let Installed::Cancelled =
-                        install(release, &status_tx, &cancel_token, &install_lock, &toast_tx).await
                 {
-                    return;
+                    match install(release, &status_tx, &cancel_token, &install_lock, &toast_tx)
+                        .await
+                    {
+                        Installed::Cancelled => return,
+                        Installed::Refused(version) => {
+                            refused = Some(version);
+                            found = None;
+                        }
+                        Installed::Ended => {}
+                    }
                 }
             }
             UpdateCommand::Install => {
                 let Some(release) = found.clone() else {
                     continue;
                 };
-                if let Installed::Cancelled =
-                    install(release, &status_tx, &cancel_token, &install_lock, &toast_tx).await
-                {
-                    return;
+                match install(release, &status_tx, &cancel_token, &install_lock, &toast_tx).await {
+                    Installed::Cancelled => return,
+                    Installed::Refused(version) => {
+                        refused = Some(version);
+                        found = None;
+                    }
+                    Installed::Ended => {}
                 }
             }
         }
@@ -862,6 +999,14 @@ async fn check(
 enum Installed {
     Ended,
     Cancelled,
+    /// This version's download did not pass its checks; nothing installed.
+    Refused(String),
+}
+
+/// Whether a release the app's own check found is the one whose download
+/// was `refused` (then it is not offered or tried again by itself).
+fn still_refused(refused: Option<&str>, version: &str) -> bool {
+    refused == Some(version)
 }
 
 /// Download `release` and replace the running executable, reporting through
@@ -882,6 +1027,23 @@ async fn install(
         }
         // Shutdown won the race; nothing was touched.
         Ok(InstallOutcome::Cancelled) => return Installed::Cancelled,
+        Err(e) if e.downcast_ref::<Refused>().is_some() => {
+            // One message whatever the cause (the user's choice); the log
+            // has the cause.
+            tracing::error!("update {version} refused: {e:#}");
+            let _ = toast_tx.send(
+                crate::activity::Event::error(
+                    crate::activity::Topic::App,
+                    trf(
+                        "Update {0} not installed: it couldn't be verified",
+                        &[&version],
+                    ),
+                )
+                .with_link(release_page(&version)),
+            );
+            let _ = status_tx.send(UpdateStatus::Unverified(version.clone()));
+            return Installed::Refused(version);
+        }
         Err(e) => {
             tracing::error!("update failed: {e:#}");
             let _ = toast_tx.send(crate::activity::Event::error(
@@ -1141,6 +1303,180 @@ mod tests {
         assert!(is_newer_release("1.18.0-rc.1", "1.18.0-rc.2"));
         assert!(is_newer_release("1.18.0-rc.1", "1.18.0"));
         assert!(!is_newer_release("1.17.12", "latest"));
+    }
+
+    /// A file, its release's list and the list's signature by a key made
+    /// here, as `verify_download` takes them.
+    struct Signed {
+        _dir: tempfile::TempDir,
+        path: PathBuf,
+        sums: Vec<u8>,
+        signature: String,
+        key: String,
+    }
+
+    const SIGNED_ASSET: &str = "teyvatme-windows.exe";
+
+    fn signed_download(version: &str) -> Signed {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(SIGNED_ASSET);
+        std::fs::write(&path, b"MZ the release's own bytes").unwrap();
+        let sums = format!("{}  {SIGNED_ASSET}\n", sha256_of(&path).unwrap()).into_bytes();
+        let minisign::KeyPair { pk, sk } =
+            minisign::KeyPair::generate_unencrypted_keypair().unwrap();
+        let comment = verify::trusted_comment(version);
+        let signature = minisign::sign(
+            Some(&pk),
+            &sk,
+            std::io::Cursor::new(&sums),
+            Some(&comment),
+            None,
+        )
+        .unwrap()
+        .to_string();
+        Signed {
+            _dir: dir,
+            path,
+            sums,
+            signature,
+            key: pk.to_base64(),
+        }
+    }
+
+    fn refusal(result: Result<()>) -> Option<Refused> {
+        result
+            .err()
+            .and_then(|e| e.downcast_ref::<Refused>().copied())
+    }
+
+    #[test]
+    fn a_download_installs_only_when_it_passes_every_check() {
+        let s = signed_download("1.18.1");
+        let check = |path: &Path, sums: Option<&[u8]>, signature: Option<&str>, version: &str| {
+            verify_download(path, sums, signature, version, SIGNED_ASSET, &[&s.key])
+        };
+        assert!(check(&s.path, Some(&s.sums), Some(&s.signature), "1.18.1").is_ok());
+
+        // The file was swapped or cut short on the way.
+        let tampered = s.path.with_extension("tampered");
+        std::fs::write(&tampered, b"MZ somebody else's bytes").unwrap();
+        assert_eq!(
+            refusal(check(
+                &tampered,
+                Some(&s.sums),
+                Some(&s.signature),
+                "1.18.1"
+            )),
+            Some(Refused::HashDiffers)
+        );
+        // The list was rewritten to match a swapped file.
+        let rewritten = format!("{}  {SIGNED_ASSET}\n", sha256_of(&tampered).unwrap()).into_bytes();
+        assert_eq!(
+            refusal(check(
+                &tampered,
+                Some(&rewritten),
+                Some(&s.signature),
+                "1.18.1"
+            )),
+            Some(Refused::BadSignature)
+        );
+        // The release has no signature, or no list at all.
+        assert_eq!(
+            refusal(check(&s.path, Some(&s.sums), None, "1.18.1")),
+            Some(Refused::NoSignature)
+        );
+        assert_eq!(
+            refusal(check(&s.path, None, Some(&s.signature), "1.18.1")),
+            Some(Refused::NoSignature)
+        );
+        // An older release's signed files served as a newer one.
+        assert_eq!(
+            refusal(check(&s.path, Some(&s.sums), Some(&s.signature), "1.18.2")),
+            Some(Refused::OtherVersion)
+        );
+        // With the keys this build ships and a foreign signature: refused.
+        assert_eq!(
+            refusal(verify_download(
+                &s.path,
+                Some(&s.sums),
+                Some(&s.signature),
+                "1.18.1",
+                SIGNED_ASSET,
+                verify::UPDATE_KEYS,
+            )),
+            Some(Refused::BadSignature)
+        );
+    }
+
+    #[test]
+    fn a_refused_release_is_left_alone_until_a_newer_one() {
+        assert!(still_refused(Some("1.18.1"), "1.18.1"));
+        assert!(!still_refused(Some("1.18.1"), "1.18.2"));
+        assert!(!still_refused(None, "1.18.1"));
+        assert_eq!(
+            release_page("1.18.1"),
+            "https://github.com/tawan475/teyvat.me-capture/releases/tag/v1.18.1"
+        );
+    }
+
+    #[test]
+    fn never_check_asks_only_when_the_button_is_pressed() {
+        for mode in [UpdateMode::Install, UpdateMode::Tell] {
+            assert!(check_allowed(false, mode));
+            assert!(check_allowed(true, mode));
+        }
+        assert!(!check_allowed(false, UpdateMode::Never));
+        assert!(check_allowed(true, UpdateMode::Never));
+        // Switching checks back on looks at once; any other change waits
+        // for the timer.
+        assert!(check_after_mode_change(UpdateMode::Never, UpdateMode::Tell));
+        assert!(check_after_mode_change(
+            UpdateMode::Never,
+            UpdateMode::Install
+        ));
+        assert!(!check_after_mode_change(
+            UpdateMode::Tell,
+            UpdateMode::Install
+        ));
+        assert!(!check_after_mode_change(
+            UpdateMode::Install,
+            UpdateMode::Never
+        ));
+        assert!(!check_after_mode_change(
+            UpdateMode::Never,
+            UpdateMode::Never
+        ));
+    }
+
+    /// The whole loop under Never check: no request leaves by itself, the
+    /// window's focus checks are dropped, and nothing is reported.
+    #[tokio::test]
+    async fn the_updater_stays_silent_under_never_check() {
+        let mut saved = crate::app::SavedAppState::default();
+        saved.set_update_mode(UpdateMode::Never);
+        let (_saved_tx, saved_rx) = watch::channel(saved);
+        let (status_tx, status_rx) = watch::channel(UpdateStatus::Idle);
+        let (commands_tx, commands_rx) = mpsc::unbounded_channel();
+        let (toast_tx, _toast_rx) = mpsc::unbounded_channel();
+        let cancel = CancellationToken::new();
+        let updater = tokio::spawn(run_updater(
+            status_tx,
+            commands_rx,
+            cancel.clone(),
+            toast_tx,
+            Arc::new(InstallLock::new()),
+            AutoInstall(saved_rx),
+        ));
+        // The start check (due at once) and a focus check.
+        commands_tx
+            .send(UpdateCommand::Check { manual: false })
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        // A check that ran would have left Idle (Checking, then an answer).
+        assert_eq!(*status_rx.borrow(), UpdateStatus::Idle);
+        assert!(!status_rx.has_changed().unwrap());
+        cancel.cancel();
+        updater.await.unwrap();
     }
 
     #[test]

@@ -918,6 +918,25 @@ pub extern "system" fn Java_me_teyvat_app_NativeBridge_attachAnswered(
     decoder::get().attach_answered(status);
 }
 
+/// `NativeBridge.setSharing(off, routesByUid)`: the parts tracker uploads
+/// leave out, as `gi_off` names separated by commas (`teyvatme_core::sharing`),
+/// and whether uploads are placed by UID (the UID then always goes).
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_me_teyvat_app_NativeBridge_setSharing(
+    mut env: JNIEnv,
+    _class: JClass,
+    off: JString,
+    routes_by_uid: jboolean,
+) {
+    let Some(off) = java_string(&mut env, &off) else {
+        return;
+    };
+    decoder::get().set_sharing(teyvatme_core::sharing::Sharing {
+        off: teyvatme_core::sharing::PartsOff::from_names(off.split(',').map(str::trim)),
+        routes_by_uid: routes_by_uid != 0,
+    });
+}
+
 /// `NativeBridge.setWishSync(on)`: whether a captured wish key is synced to
 /// the tracker (signed in, uploads on, wishes on).
 #[unsafe(no_mangle)]
@@ -1068,7 +1087,67 @@ pub extern "system" fn Java_me_teyvat_app_NativeBridge_note(
         "error" => "error",
         _ => "info",
     };
-    decoder::get().note(kind, &text);
+    decoder::get().note(kind, &text, None);
+}
+
+/// `NativeBridge.noteLink(kind, text, link)`: [`Java_me_teyvat_app_NativeBridge_note`]
+/// with a page the activity list links (an update's release page).
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_me_teyvat_app_NativeBridge_noteLink(
+    mut env: JNIEnv,
+    _class: JClass,
+    kind: JString,
+    text: JString,
+    link: JString,
+) {
+    let (Some(kind), Some(text), Some(link)) = (
+        java_string(&mut env, &kind),
+        java_string(&mut env, &text),
+        java_string(&mut env, &link),
+    ) else {
+        return;
+    };
+    let kind = if kind == "error" { "error" } else { "info" };
+    decoder::get().note(kind, &text, Some(link));
+}
+
+/// `NativeBridge.updateHash(sums, signature, version, asset)`: the SHA-256
+/// (hex) the release's signed `SHA256SUMS.txt` lists for `asset`, or null
+/// when the list is not signed for that version by one of our keys or lacks
+/// the file (`teyvatme_core::verify`, the desktop's own check). `signature`
+/// is the `.minisig` file's text, empty when the release has none.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_me_teyvat_app_NativeBridge_updateHash(
+    mut env: JNIEnv,
+    _class: JClass,
+    sums: JString,
+    signature: JString,
+    version: JString,
+    asset: JString,
+) -> jstring {
+    let (Some(sums), Some(signature), Some(version), Some(asset)) = (
+        java_string(&mut env, &sums),
+        java_string(&mut env, &signature),
+        java_string(&mut env, &version),
+        java_string(&mut env, &asset),
+    ) else {
+        return std::ptr::null_mut();
+    };
+    use teyvatme_core::verify;
+    let signature = (!signature.trim().is_empty()).then_some(signature.as_str());
+    match verify::expected_hash(
+        sums.as_bytes(),
+        signature,
+        &version,
+        &asset,
+        verify::UPDATE_KEYS,
+    ) {
+        Ok(hash) => java_result(&env, Some(hash)),
+        Err(e) => {
+            log::error!("update {version} refused: {e}");
+            std::ptr::null_mut()
+        }
+    }
 }
 
 /// `NativeBridge.wishUrl()`: the game's wish history link for this login's

@@ -817,6 +817,8 @@ impl LoginParts {
 }
 
 pub struct PlayerData {
+    /// What tracker uploads leave out ([`Self::set_sharing`]).
+    sharing: crate::sharing::Sharing,
     game_data: AnimeGameData,
     achievements: HashMap<u32, Achievement>,
     characters: HashMap<u32, AvatarInfo>,
@@ -912,7 +914,18 @@ impl PlayerData {
             exploration: exploration::ExplorationState::default(),
             endgame: endgame::EndgameState::default(),
             commission_reward: CommissionReward::default(),
+            sharing: crate::sharing::Sharing::default(),
         }
+    }
+
+    /// Which parts tracker uploads leave out ([`Self::live_export`]). A
+    /// setting, not captured data: clearing the data keeps it.
+    pub fn set_sharing(&mut self, sharing: crate::sharing::Sharing) {
+        self.sharing = sharing;
+    }
+
+    pub fn sharing(&self) -> &crate::sharing::Sharing {
+        &self.sharing
     }
 
     /// Name the dump commit `game_data` was built from, which exports then
@@ -1299,6 +1312,30 @@ impl PlayerData {
         if let Some(clock) = self.pending_resin.take() {
             self.check_resin_clock(&clock);
         }
+        self.resin_clock_follows_the_resin();
+    }
+
+    /// The clock's resin is the resin held. Spending (or a refill) changes
+    /// the property without a clock the matcher can believe: at 0 the
+    /// game's message leaves the number out. The next resin's time does not
+    /// move with a spend, so it is kept while it is still ahead; a clock
+    /// whose time has passed says nothing and goes, and `gi_player.resin`
+    /// alone is exported until the game sends the next one.
+    fn resin_clock_follows_the_resin(&mut self) {
+        let Some(held) = self.properties.get(&PROP_RESIN.id).copied() else {
+            return;
+        };
+        let Some((value, next_at)) = self.routine.resin else {
+            return;
+        };
+        if u64::from(value) == held {
+            return;
+        }
+        let ahead = self.clock_secs.is_some_and(|now| u64::from(next_at) > now);
+        self.routine.resin = match u32::try_from(held) {
+            Ok(held) if ahead => Some((held, next_at)),
+            _ => None,
+        };
     }
 
     /// Keep a resin clock whose time already checked out, when one of its
@@ -2190,8 +2227,13 @@ impl PlayerData {
 
     /// The tracker export at `now_ms`, what it left out, and its keyed form,
     /// for live sync (`live.rs`): every item with its guid.
+    ///
+    /// Without the parts the user does not share ([`Self::set_sharing`]):
+    /// they are taken out here, before anything is keyed or sent, so neither
+    /// a snapshot nor a live batch ever holds them.
     pub fn live_export(&self, now_ms: u64) -> (good::Good, ExportReport, crate::delta::Keyed) {
-        let (good, report) = self.export_at(&ExportSettings::for_tracker(), now_ms);
+        let (mut good, report) = self.export_at(&ExportSettings::for_tracker(), now_ms);
+        self.sharing.strip(&mut good);
         let keyed = self.keyed(&good);
         (good, report, keyed)
     }
@@ -2368,6 +2410,7 @@ impl PlayerData {
             gi_wardrobe: self.export_wardrobe(),
             gi_exploration: self.export_exploration(),
             gi_endgame: self.export_endgame(),
+            gi_off: None,
         };
 
         if settings.include_characters {
@@ -4444,6 +4487,49 @@ mod tests {
     }
 
     #[test]
+    fn the_resin_clock_follows_resin_spent_down_to_none() {
+        let mut data = player_data();
+        let next_at = (NOW_SECS + 200) as u32;
+        let resin = |data: &PlayerData| data.export_tasks(NOW_SECS).and_then(|t| t.resin);
+        data.set_clock(NOW_SECS);
+        data.process_properties(&HashMap::from([(PROP_RESIN.id, 40)]));
+        data.process_routine(RoutinePart::Resin(ResinClock {
+            next_at,
+            values: vec![40, 2],
+        }));
+        assert_eq!(resin(&data), Some(good::GiResin { value: 40, next_at }));
+        // The last 40 are spent. The game's message at 0 leaves the resin
+        // out, so no clock is believed: the one held must not go on saying
+        // 40 (seen live, 2026-11-20). The next resin's time stands.
+        data.process_properties(&HashMap::from([(PROP_RESIN.id, 0)]));
+        data.process_routine(RoutinePart::Resin(ResinClock {
+            next_at,
+            values: vec![2],
+        }));
+        assert_eq!(resin(&data), Some(good::GiResin { value: 0, next_at }));
+        // A refill: the same clock, the new resin.
+        data.process_properties(&HashMap::from([(PROP_RESIN.id, 60)]));
+        assert_eq!(resin(&data), Some(good::GiResin { value: 60, next_at }));
+        // Once the clock's time has passed it says nothing of the new
+        // resin: it goes, and gi_player.resin alone is exported.
+        data.set_clock(NOW_SECS + 300);
+        data.process_properties(&HashMap::from([(PROP_RESIN.id, 20)]));
+        assert_eq!(resin(&data), None);
+        // The game's next clock is taken as before.
+        data.process_routine(RoutinePart::Resin(ResinClock {
+            next_at: next_at + 480,
+            values: vec![20, 2],
+        }));
+        assert_eq!(
+            resin(&data),
+            Some(good::GiResin {
+                value: 20,
+                next_at: next_at + 480
+            })
+        );
+    }
+
+    #[test]
     fn a_resin_clock_is_kept_only_beside_the_resin_held() {
         let mut data = player_data();
         let clock = |values: Vec<u32>| {
@@ -5625,6 +5711,44 @@ mod tests {
             }
             .build(),
         )
+    }
+
+    #[test]
+    fn the_endgame_attach_follows_the_sharing_switches() {
+        use teyvatme_protocol::TheaterDetail;
+
+        use crate::sharing::{Part, PartsOff, Sharing};
+        let mut data = endgame_data();
+        // A UID, as read from the items' guids.
+        data.process_items(&[material_item(104002, minted_guid(812_345_678, 7), 12)]);
+        assert!(data.apply_theater(&TheaterDetail {
+            start: 1_793_476_800,
+            end: 1_796_068_799,
+            arcana: None,
+            small: vec![31, 8, 19, 2, 7, 127, 8, 1, 8, 1],
+            lists: vec![vec![1, 2, 3], vec![1, 2], vec![3, 6], vec![1, 2, 3]],
+        }));
+        let share = |off: &[Part], routes_by_uid: bool| {
+            let mut parts = PartsOff::default();
+            for part in off {
+                parts.set_shared(*part, false);
+            }
+            Sharing {
+                off: parts,
+                routes_by_uid,
+            }
+        };
+        assert!(data.gi_endgame().is_some());
+        assert!(data.attach_uid().is_some());
+        // Endgame not shared: nothing for an attach to carry.
+        data.set_sharing(share(&[Part::Endgame], true));
+        assert!(data.gi_endgame().is_none());
+        // The account numbers not shared: the UID still names the attach
+        // while uploads go by UID, and stays home to one chosen account.
+        data.set_sharing(share(&[Part::Numbers], true));
+        assert!(data.gi_endgame().is_some() && data.attach_uid().is_some());
+        data.set_sharing(share(&[Part::Numbers], false));
+        assert!(data.attach_uid().is_none());
     }
 
     #[test]

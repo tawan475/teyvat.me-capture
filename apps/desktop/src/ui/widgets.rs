@@ -5,8 +5,8 @@
 
 use egui::epaint::Shadow;
 use egui::{
-    Align, Color32, CornerRadius, Frame, ImageSource, Layout, Margin, Response, RichText, Sense,
-    Stroke, StrokeKind, TextWrapMode, Ui, UiBuilder, Vec2, WidgetText, vec2,
+    Align, Color32, CornerRadius, Frame, ImageSource, Layout, Margin, Rect, Response, RichText,
+    Sense, Stroke, StrokeKind, TextWrapMode, Ui, UiBuilder, Vec2, WidgetText, vec2,
 };
 
 use super::icons;
@@ -598,14 +598,39 @@ fn lerp_color(a: Color32, b: Color32, t: f32) -> Color32 {
 
 /// The 36 × 20 switch.
 pub fn switch(ui: &mut Ui, on: &mut bool) -> Response {
+    switch_feel(ui, on, None)
+}
+
+/// A switch; `row` is the feel of the row it sits in, which lights it too.
+fn switch_feel(ui: &mut Ui, on: &mut bool, row: Option<Feel>) -> Response {
     let pal = p(ui);
-    let (rect, mut response) = ui.allocate_exact_size(vec2(36.0, 20.0), Sense::click());
+    let (rect, response) = ui.allocate_exact_size(vec2(36.0, 20.0), Sense::click());
+    let mut response = response.on_hover_cursor(egui::CursorIcon::PointingHand);
     if response.clicked() {
         *on = !*on;
         response.mark_changed();
     }
+    let own = feel(ui, &response, false);
+    let feel = match row {
+        Some(row) => Feel {
+            hover: row.hover.max(own.hover),
+            pressed: row.pressed || own.pressed,
+        },
+        None => own,
+    };
     let t = ui.ctx().animate_bool_responsive(response.id, *on);
+    let press = ui
+        .ctx()
+        .animate_bool_with_time(response.id.with("press"), feel.pressed, 0.08);
     let painter = ui.painter();
+    // The halo: the accent, faint, around the track.
+    if feel.hover > 0.0 {
+        painter.rect_filled(
+            rect.expand(4.0),
+            14.0,
+            pal.ac_tx.gamma_multiply(0.22 * feel.hover),
+        );
+    }
     let track = lerp_color(pal.over, pal.fill, t);
     painter.rect_filled(rect, 10.0, track);
     if t < 1.0 {
@@ -616,9 +641,18 @@ pub fn switch(ui: &mut Ui, on: &mut bool) -> Response {
             StrokeKind::Inside,
         );
     }
+    // The knob stretches toward the side it will go to while pressed.
+    let stretch = 4.0 * press;
     let knob_x = egui::lerp((rect.left() + 10.0)..=(rect.right() - 10.0), t);
-    let knob = lerp_color(pal.tx3, Color32::WHITE, t);
-    painter.circle_filled(egui::pos2(knob_x, rect.center().y), 7.0, knob);
+    let left = knob_x - 7.0 - stretch * t;
+    let knob_rect = Rect::from_min_size(
+        egui::pos2(left, rect.center().y - 7.0),
+        vec2(14.0 + stretch, 14.0),
+    );
+    let rest = lerp_color(pal.tx3, pal.tx2, feel.hover);
+    let knob = lerp_color(rest, Color32::WHITE, t);
+    painter.rect_filled(knob_rect, 7.0, knob);
+    focus_ring(ui, &response, rect, 10.0);
     response.widget_info(|| {
         egui::WidgetInfo::selected(egui::WidgetType::Checkbox, ui.is_enabled(), *on, "")
     });
@@ -634,6 +668,20 @@ pub fn list_row<R>(
     title: RichText,
     secondary: Option<RichText>,
     trailing: impl FnOnce(&mut Ui) -> R,
+) -> (Response, R) {
+    list_row_feel(ui, leading, title, secondary, false, |ui, _| trailing(ui))
+}
+
+/// A [`list_row`]; a `clickable` one senses clicks and lights up from edge
+/// to edge of its card while the pointer is anywhere on it (`trailing`
+/// gets that feel, for a switch to light with it).
+fn list_row_feel<R>(
+    ui: &mut Ui,
+    leading: Option<(ImageSource<'static>, Color32)>,
+    title: RichText,
+    secondary: Option<RichText>,
+    clickable: bool,
+    trailing: impl FnOnce(&mut Ui, Feel) -> R,
 ) -> (Response, R) {
     const MIN_HEIGHT: f32 = 40.0;
     const LINE_GAP: f32 = 1.0;
@@ -656,10 +704,38 @@ pub fn list_row<R>(
     if let Some(secondary) = &secondary {
         block += LINE_GAP + height_of(secondary);
     }
+    // Painted under the row's text once its feel is known.
+    let ground = ui.painter().add(egui::Shape::Noop);
     let (rect, response) = ui.allocate_exact_size(
         vec2(ui.available_width(), MIN_HEIGHT.max(block + 8.0)),
-        Sense::hover(),
+        if clickable {
+            Sense::click()
+        } else {
+            Sense::hover()
+        },
     );
+    let row_feel = if clickable {
+        let pal = p(ui);
+        let feel = feel(ui, &response, true);
+        // Half the card's 16 px margin out on each side, rounded like a
+        // button, so it never meets the card's own corners.
+        ui.painter().set(
+            ground,
+            egui::Shape::rect_filled(
+                rect.expand2(vec2(8.0, 0.0)).shrink2(vec2(0.0, 1.0)),
+                CornerRadius::same(radius::BUTTON),
+                feel.fill(&pal),
+            ),
+        );
+        feel
+    } else {
+        Feel::default()
+    };
+    let response = if clickable {
+        response.on_hover_cursor(egui::CursorIcon::PointingHand)
+    } else {
+        response
+    };
 
     let mut controls = ui.new_child(
         UiBuilder::new()
@@ -667,7 +743,7 @@ pub fn list_row<R>(
             .layout(Layout::right_to_left(Align::Center)),
     );
     controls.spacing_mut().item_spacing.x = 6.0;
-    let result = trailing(&mut controls);
+    let result = trailing(&mut controls, row_feel);
     let used = controls.min_rect();
     let text_right = if used.width() > 0.0 {
         used.left() - GAP
@@ -711,18 +787,101 @@ pub fn switch_row(
 ) -> Response {
     let pal = p(ui);
     let mut changed = None;
-    let (row, ()) = list_row(ui, None, title_text(title, pal.tx), secondary, |ui| {
-        changed = Some(ui.add_enabled_ui(enabled, |ui| switch(ui, on)).inner);
-    });
+    let (row, ()) = ui
+        .add_enabled_ui(enabled, |ui| {
+            list_row_feel(
+                ui,
+                None,
+                title_text(title, pal.tx),
+                secondary,
+                true,
+                |ui, row| {
+                    changed = Some(switch_feel(ui, on, Some(row)));
+                },
+            )
+        })
+        .inner;
     let mut response = changed.expect("switch drawn");
-    if enabled {
-        let row = ui.interact(row.rect, row.id.with("switch-row"), Sense::click());
-        if row.clicked() && !response.clicked() {
-            *on = !*on;
-            response.mark_changed();
-        }
+    if enabled && row.clicked() && !response.clicked() {
+        *on = !*on;
+        response.mark_changed();
     }
     response
+}
+
+// ---------------------------------------------------------------------------
+// How controls answer the pointer
+// ---------------------------------------------------------------------------
+
+/// How long a control takes to light up when the pointer reaches it.
+const HOVER_SECS: f32 = 0.12;
+
+/// How much a pressed control gives: its size shrinks by this share.
+const PRESS_SHRINK: f32 = 0.04;
+
+/// How a control answers the pointer (the design's option E: a soft fill,
+/// the accent on hover, a small give when pressed). `hover` eases from 0 to
+/// 1 over [`HOVER_SECS`]; egui asks for frames only while it moves.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Feel {
+    pub hover: f32,
+    pub pressed: bool,
+}
+
+impl Feel {
+    /// The soft fill under the control: deeper while pressed.
+    pub fn fill(&self, pal: &Palette) -> Color32 {
+        if self.pressed {
+            pal.press
+        } else {
+            pal.hover.gamma_multiply(self.hover)
+        }
+    }
+
+    /// `rest` turning to the accent as the pointer arrives.
+    pub fn ink(&self, pal: &Palette, rest: Color32) -> Color32 {
+        lerp_color(rest, pal.ac_tx, self.hover)
+    }
+
+    /// `rect`, a little smaller while pressed.
+    pub fn rect(&self, rect: Rect) -> Rect {
+        if self.pressed {
+            rect.shrink2(rect.size() * (PRESS_SHRINK / 2.0))
+        } else {
+            rect
+        }
+    }
+}
+
+/// The [`Feel`] of `response`, a control drawn by hand. `whole` counts the
+/// pointer anywhere on the rect, even over a control drawn on top of it (a
+/// switch row's switch).
+pub fn feel(ui: &Ui, response: &Response, whole: bool) -> Feel {
+    let on = ui.is_enabled()
+        && if whole {
+            response.contains_pointer()
+        } else {
+            response.hovered()
+        };
+    Feel {
+        hover: ui
+            .ctx()
+            .animate_bool_with_time(response.id.with("feel"), on, HOVER_SECS),
+        pressed: on && response.is_pointer_button_down_on(),
+    }
+}
+
+/// The accent ring of a control that has keyboard focus.
+fn focus_ring(ui: &Ui, response: &Response, rect: Rect, corner: f32) {
+    if response.has_focus() {
+        let pal = p(ui);
+        ui.painter().rect_stroke(
+            rect.expand(2.0),
+            corner + 2.0,
+            Stroke::new(2.0_f32, pal.ac_tx),
+            StrokeKind::Outside,
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -745,36 +904,87 @@ pub fn button(
     text: &str,
     big: bool,
 ) -> Response {
+    const ICON: f32 = 16.0;
+    const ICON_GAP: f32 = 6.0;
     let pal = p(ui);
-    let (fill, stroke, ink) = match kind {
-        ButtonKind::Fill => (pal.fill, Stroke::NONE, Color32::WHITE),
-        ButtonKind::Secondary => (pal.card, Stroke::new(1.0_f32, pal.line2), pal.tx),
-        ButtonKind::Ghost => (Color32::TRANSPARENT, Stroke::NONE, pal.ac_tx),
-        ButtonKind::Danger => (
-            Color32::TRANSPARENT,
-            Stroke::new(1.0_f32, pal.bad_line),
-            pal.bad,
-        ),
+    let rest_ink = match kind {
+        ButtonKind::Fill => Color32::WHITE,
+        ButtonKind::Secondary => pal.tx,
+        ButtonKind::Ghost => pal.ac_tx,
+        ButtonKind::Danger => pal.bad,
     };
-    let label = RichText::new(text)
-        .text_style(style::secondary())
-        .family(weight::semibold())
-        .color(ink);
-    let mut widget = match icon {
-        Some(icon) => egui::Button::image_and_text(icons::image(icon, 16.0, ink), label),
-        None => egui::Button::new(label),
-    };
-    widget = widget
-        .fill(fill)
-        .stroke(stroke)
-        .corner_radius(CornerRadius::same(radius::BUTTON))
-        .min_size(vec2(0.0, if big { 40.0 } else { 32.0 }));
-    ui.scope(|ui| {
-        let padding = if kind == ButtonKind::Ghost { 8.0 } else { 12.0 };
-        ui.spacing_mut().button_padding = vec2(padding, 6.0);
-        ui.add(widget)
-    })
-    .inner
+    let galley = WidgetText::from(
+        RichText::new(text)
+            .text_style(style::secondary())
+            .family(weight::semibold()),
+    )
+    .into_galley(
+        ui,
+        Some(TextWrapMode::Extend),
+        f32::INFINITY,
+        egui::TextStyle::Button,
+    );
+    let padding = if kind == ButtonKind::Ghost { 8.0 } else { 12.0 };
+    let icon_width = if icon.is_some() { ICON + ICON_GAP } else { 0.0 };
+    let size = vec2(
+        padding * 2.0 + icon_width + galley.size().x,
+        if big { 40.0 } else { 32.0 },
+    );
+    let (rect, response) = ui.allocate_exact_size(size, Sense::click());
+    let response = response.on_hover_cursor(egui::CursorIcon::PointingHand);
+    if ui.is_rect_visible(rect) {
+        let feel = feel(ui, &response, false);
+        let shape = feel.rect(rect);
+        let corner = CornerRadius::same(radius::BUTTON);
+        let (fill, stroke, ink) = match kind {
+            // The fill brightens on hover and darkens while pressed.
+            ButtonKind::Fill => (
+                if feel.pressed {
+                    lerp_color(pal.fill, Color32::BLACK, 0.12)
+                } else {
+                    lerp_color(pal.fill, Color32::WHITE, 0.10 * feel.hover)
+                },
+                Stroke::NONE,
+                rest_ink,
+            ),
+            ButtonKind::Secondary => (
+                if feel.pressed {
+                    pal.over
+                } else {
+                    lerp_color(pal.card, pal.over, feel.hover)
+                },
+                Stroke::new(1.0_f32, feel.ink(&pal, pal.line2)),
+                rest_ink,
+            ),
+            ButtonKind::Ghost => (feel.fill(&pal), Stroke::NONE, rest_ink),
+            ButtonKind::Danger => (
+                pal.bad_con
+                    .gamma_multiply(if feel.pressed { 1.0 } else { feel.hover }),
+                Stroke::new(1.0_f32, pal.bad_line),
+                rest_ink,
+            ),
+        };
+        let painter = ui.painter();
+        painter.rect(shape, corner, fill, stroke, StrokeKind::Inside);
+        let content = icon_width + galley.size().x;
+        let mut x = shape.center().x - content / 2.0;
+        if let Some(icon) = icon {
+            icons::image(icon, ICON, ink).paint_at(
+                ui,
+                Rect::from_center_size(
+                    egui::pos2(x + ICON / 2.0, shape.center().y),
+                    Vec2::splat(ICON),
+                ),
+            );
+            x += icon_width;
+        }
+        let text_pos = egui::pos2(x, shape.center().y - galley.size().y / 2.0);
+        ui.painter().galley(text_pos, galley, ink);
+        focus_ring(ui, &response, rect, f32::from(radius::BUTTON));
+    }
+    response
+        .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), text));
+    response
 }
 
 /// Ko-fi's coral: what the Ko-fi button turns on hover, like the tracker's.
@@ -788,15 +998,34 @@ pub fn icon_button_hover(
     name: &str,
     hover: Color32,
 ) -> Response {
+    icon_button_tinted(ui, icon, name, Some(hover))
+}
+
+/// A 32 × 32 icon button drawn by hand: a soft fill on hover, the icon
+/// turning `hover` (the accent when `None`), a small give when pressed.
+fn icon_button_tinted(
+    ui: &mut Ui,
+    icon: ImageSource<'static>,
+    name: &str,
+    hover: Option<Color32>,
+) -> Response {
     let pal = p(ui);
     let (rect, response) = ui.allocate_exact_size(Vec2::splat(32.0), Sense::click());
     if ui.is_rect_visible(rect) {
-        let color = if response.hovered() { hover } else { pal.tx2 };
-        icons::image(icon, 18.0, color).paint_at(
+        let feel = feel(ui, &response, false);
+        let shape = feel.rect(rect);
+        ui.painter()
+            .rect_filled(shape, CornerRadius::same(radius::BUTTON), feel.fill(&pal));
+        let color = lerp_color(pal.tx2, hover.unwrap_or(pal.ac_tx), feel.hover);
+        let size = if feel.pressed { 17.0 } else { 18.0 };
+        icons::image(icon, size, color).paint_at(
             ui,
-            egui::Rect::from_center_size(rect.center(), Vec2::splat(18.0)),
+            egui::Rect::from_center_size(shape.center(), Vec2::splat(size)),
         );
+        focus_ring(ui, &response, rect, f32::from(radius::BUTTON));
     }
+    response
+        .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), name));
     response
         .on_hover_cursor(egui::CursorIcon::PointingHand)
         .on_hover_text(name)
@@ -804,20 +1033,9 @@ pub fn icon_button_hover(
 
 /// A 32 × 32 icon button with its name as the tooltip.
 pub fn icon_button(ui: &mut Ui, icon: ImageSource<'static>, name: &str) -> Response {
-    let pal = p(ui);
-    let widget = egui::Button::image(icons::image(icon, 18.0, pal.tx2))
-        .fill(Color32::TRANSPARENT)
-        .stroke(Stroke::NONE)
-        .corner_radius(CornerRadius::same(radius::BUTTON))
-        .min_size(Vec2::splat(32.0));
-    // Exactly 32 × 32: the 18 px icon plus 7 px a side, whatever the
-    // style's button padding, so rows of them can be measured.
-    ui.scope(|ui| {
-        ui.spacing_mut().button_padding = Vec2::splat(7.0);
-        ui.add(widget)
-    })
-    .inner
-    .on_hover_text(name)
+    // Exactly 32 × 32 (the 18 px icon plus 7 px a side), so rows of them
+    // can be measured.
+    icon_button_tinted(ui, icon, name, None)
 }
 
 // ---------------------------------------------------------------------------
@@ -826,6 +1044,8 @@ pub fn icon_button(ui: &mut Ui, icon: ImageSource<'static>, name: &str) -> Respo
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CalloutKind {
+    /// Something to know, nothing wrong.
+    Info,
     Warn,
     Error,
 }
@@ -834,6 +1054,12 @@ pub enum CalloutKind {
 pub fn callout(ui: &mut Ui, kind: CalloutKind, text: &str) -> Response {
     let pal = p(ui);
     let (fill, ink, stroke, icon) = match kind {
+        CalloutKind::Info => (
+            pal.over,
+            pal.tx2,
+            Stroke::new(1.0_f32, pal.line),
+            icons::info(),
+        ),
         CalloutKind::Warn => (
             pal.warn_con,
             pal.warn_on,
@@ -875,24 +1101,207 @@ pub fn segmented<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(T,
                 ui.spacing_mut().item_spacing.x = 2.0;
                 for (option, label) in options {
                     let selected = *value == *option;
-                    let text = small_text(*label, if selected { pal.tx } else { pal.tx2 })
-                        .family(weight::medium());
-                    let widget = egui::Button::new(text)
-                        .fill(if selected {
-                            pal.card
-                        } else {
-                            Color32::TRANSPARENT
-                        })
-                        .stroke(Stroke::NONE)
-                        .corner_radius(CornerRadius::same(6))
-                        .min_size(vec2(0.0, 26.0));
-                    if ui.add(widget).clicked() && !selected {
+                    let galley =
+                        WidgetText::from(small_text(*label, pal.tx).family(weight::medium()))
+                            .into_galley(
+                                ui,
+                                Some(TextWrapMode::Extend),
+                                f32::INFINITY,
+                                egui::TextStyle::Button,
+                            );
+                    let (rect, response) =
+                        ui.allocate_exact_size(vec2(galley.size().x + 24.0, 26.0), Sense::click());
+                    let response = if selected {
+                        response
+                    } else {
+                        response.on_hover_cursor(egui::CursorIcon::PointingHand)
+                    };
+                    let feel = feel(ui, &response, false);
+                    let shape = feel.rect(rect);
+                    let (fill, ink) = if selected {
+                        (pal.card, pal.tx)
+                    } else {
+                        (feel.fill(&pal), feel.ink(&pal, pal.tx2))
+                    };
+                    ui.painter().rect_filled(shape, CornerRadius::same(6), fill);
+                    ui.painter()
+                        .galley(shape.center() - galley.size() / 2.0, galley, ink);
+                    focus_ring(ui, &response, rect, 6.0);
+                    response.widget_info(|| {
+                        egui::WidgetInfo::selected(
+                            egui::WidgetType::SelectableLabel,
+                            ui.is_enabled(),
+                            selected,
+                            *label,
+                        )
+                    });
+                    if response.clicked() && !selected {
                         *value = *option;
                         changed = true;
                     }
                 }
             });
         });
+    changed
+}
+
+/// One choice of [`choice_tiles`]: its value, icon, name and one-line meaning.
+pub type ChoiceTile<'a, T> = (T, ImageSource<'static>, &'a str, &'a str);
+
+/// Below this width per tile the tiles stack as full-width rows.
+const TILE_MIN_WIDTH: f32 = 150.0;
+
+/// A choice of a few, each a tile with an icon, a name and what it means;
+/// the chosen one is outlined and carries a check (never colour alone).
+/// Side by side while each gets [`TILE_MIN_WIDTH`], full-width rows below.
+/// Returns whether the choice changed.
+pub fn choice_tiles<T: PartialEq + Copy>(
+    ui: &mut Ui,
+    value: &mut T,
+    options: &[ChoiceTile<'_, T>],
+) -> bool {
+    const GAP: f32 = 8.0;
+    const PAD: f32 = 12.0;
+    const ICON: f32 = 18.0;
+    let pal = p(ui);
+    let count = options.len().max(1) as f32;
+    let available = ui.available_width();
+    let side_by_side = (available - GAP * (count - 1.0)) / count >= TILE_MIN_WIDTH;
+    let width = if side_by_side {
+        ((available - GAP * (count - 1.0)) / count).floor()
+    } else {
+        available
+    };
+    // In a row the texts sit beside the icon, and leave room for the check.
+    let wrap = if side_by_side {
+        width - PAD * 2.0
+    } else {
+        width - PAD * 2.0 - (ICON + 10.0) * 2.0
+    };
+    let texts: Vec<_> = options
+        .iter()
+        .map(|(option, _, name, meaning)| {
+            let name_text = if *value == *option {
+                strong_text(*name, pal.tx)
+            } else {
+                title_text(*name, pal.tx)
+            };
+            let name = WidgetText::from(name_text).into_galley(
+                ui,
+                Some(TextWrapMode::Wrap),
+                wrap,
+                egui::TextStyle::Body,
+            );
+            let meaning = WidgetText::from(secondary_text(*meaning, pal.tx2)).into_galley(
+                ui,
+                Some(TextWrapMode::Wrap),
+                wrap,
+                egui::TextStyle::Body,
+            );
+            (name, meaning)
+        })
+        .collect();
+    let text_height =
+        |(name, meaning): &(std::sync::Arc<egui::Galley>, std::sync::Arc<egui::Galley>)| {
+            name.size().y + 2.0 + meaning.size().y
+        };
+    let tallest = texts.iter().map(text_height).fold(0.0_f32, f32::max);
+    let height = if side_by_side {
+        PAD + ICON + 8.0 + tallest + PAD
+    } else {
+        0.0
+    };
+    let mut changed = false;
+    let tiles = |ui: &mut Ui| {
+        for ((option, icon, name, _), galleys) in options.iter().zip(texts) {
+            let selected = *value == *option;
+            let height = if side_by_side {
+                height
+            } else {
+                (text_height(&galleys) + 20.0).max(48.0)
+            };
+            let (rect, response) = ui.allocate_exact_size(vec2(width, height), Sense::click());
+            let response = if selected {
+                response
+            } else {
+                response.on_hover_cursor(egui::CursorIcon::PointingHand)
+            };
+            let feel = feel(ui, &response, false);
+            let shape = feel.rect(rect);
+            let corner = CornerRadius::same(10);
+            let (fill, stroke, ink, ink2) = if selected {
+                (
+                    pal.ac_con,
+                    Stroke::new(2.0_f32, pal.ac_tx),
+                    pal.ac_on,
+                    pal.ac_on,
+                )
+            } else {
+                (
+                    feel.fill(&pal),
+                    Stroke::new(1.0_f32, lerp_color(pal.line, pal.ac_tx, feel.hover)),
+                    pal.tx,
+                    pal.tx2,
+                )
+            };
+            ui.painter().rect_filled(shape, corner, fill);
+            ui.painter()
+                .rect_stroke(shape, corner, stroke, StrokeKind::Inside);
+            let (name_galley, meaning_galley) = galleys;
+            let icon_at = if side_by_side {
+                shape.min + vec2(PAD, PAD)
+            } else {
+                egui::pos2(shape.min.x + PAD, shape.center().y - ICON / 2.0)
+            };
+            icons::image(icon.clone(), ICON, ink)
+                .paint_at(ui, Rect::from_min_size(icon_at, Vec2::splat(ICON)));
+            if selected {
+                let check_at = if side_by_side {
+                    egui::pos2(shape.max.x - PAD - ICON, shape.min.y + PAD)
+                } else {
+                    egui::pos2(shape.max.x - PAD - ICON, shape.center().y - ICON / 2.0)
+                };
+                icons::image(icons::check(), ICON, ink)
+                    .paint_at(ui, Rect::from_min_size(check_at, Vec2::splat(ICON)));
+            }
+            let text_at = if side_by_side {
+                shape.min + vec2(PAD, PAD + ICON + 8.0)
+            } else {
+                egui::pos2(
+                    shape.min.x + PAD + ICON + 10.0,
+                    shape.center().y - (name_galley.size().y + 2.0 + meaning_galley.size().y) / 2.0,
+                )
+            };
+            let name_height = name_galley.size().y;
+            ui.painter().galley(text_at, name_galley, ink);
+            ui.painter()
+                .galley(text_at + vec2(0.0, name_height + 2.0), meaning_galley, ink2);
+            focus_ring(ui, &response, rect, 10.0);
+            response.widget_info(|| {
+                egui::WidgetInfo::selected(
+                    egui::WidgetType::RadioButton,
+                    ui.is_enabled(),
+                    selected,
+                    *name,
+                )
+            });
+            if response.clicked() && !selected {
+                *value = *option;
+                changed = true;
+            }
+        }
+    };
+    if side_by_side {
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = GAP;
+            tiles(ui);
+        });
+    } else {
+        ui.vertical(|ui| {
+            ui.spacing_mut().item_spacing.y = GAP;
+            tiles(ui);
+        });
+    }
     changed
 }
 

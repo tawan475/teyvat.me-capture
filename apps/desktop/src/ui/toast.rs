@@ -38,6 +38,8 @@ pub enum Action {
     OpenAnyway(String),
     /// Try the manual upload again.
     RetryUpload,
+    /// Open the page of the release whose download was refused.
+    ReleasePage(String),
 }
 
 impl Action {
@@ -46,6 +48,7 @@ impl Action {
             Action::Show(_) => tr("Show"),
             Action::OpenAnyway(_) => tr("Open anyway"),
             Action::RetryUpload => tr("Retry"),
+            Action::ReleasePage(_) => tr("Release page"),
         }
     }
 }

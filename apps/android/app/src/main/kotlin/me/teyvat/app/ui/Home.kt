@@ -898,7 +898,7 @@ private fun BackgroundCard(actions: HomeActions) {
 
 fun UpdateState.shown() = when (this) {
     is UpdateState.Downloading, is UpdateState.Ready, is UpdateState.Confirming, is UpdateState.Installing,
-    is UpdateState.NeedsPermission -> true
+    is UpdateState.NeedsPermission, is UpdateState.Found, is UpdateState.Verifying, is UpdateState.Unverified -> true
     is UpdateState.Failed -> version != null
     else -> false
 }
@@ -912,14 +912,30 @@ fun UpdateBannerFor(update: UpdateState, actions: HomeActions, modifier: Modifie
     val current = stringResource(R.string.update_you_have, BuildConfig.VERSION_NAME)
     val detailsLabel = if (details) stringResource(R.string.details) else null
     when (update) {
-        is UpdateState.Downloading -> UpdateBanner(
+        // Found, nothing downloaded (Tell me only, or Never check after
+        // Check for updates): Download fetches and checks it.
+        is UpdateState.Found -> UpdateBanner(
             stringResource(R.string.update_banner_title, update.version),
-            stringResource(R.string.update_downloading, update.version, update.percent), modifier,
+            stringResource(R.string.update_found_line, BuildConfig.VERSION_NAME), modifier,
+            action = stringResource(R.string.update_download), onAction = actions::updateInstallNow,
+        )
+        is UpdateState.Downloading -> UpdateBanner(
+            stringResource(R.string.update_downloading, update.version, update.percent),
+            stringResource(R.string.update_then_checks), modifier,
             busy = true, action = detailsLabel, onAction = actions::openAbout,
         )
-        is UpdateState.Ready -> UpdateBanner(
+        is UpdateState.Verifying -> UpdateBanner(
+            stringResource(R.string.update_verifying, update.version),
+            stringResource(R.string.update_verifying_line), modifier, busy = true,
+        )
+        is UpdateState.Unverified -> UpdateBanner(
             stringResource(R.string.update_banner_title, update.version),
-            current,
+            stringResource(R.string.update_unverified_short), modifier, error = true,
+            action = stringResource(R.string.release_page), onAction = { actions.openUrl(me.teyvat.app.Updater.releasePage(update.version)) },
+        )
+        is UpdateState.Ready -> UpdateBanner(
+            stringResource(R.string.update_ready, update.version),
+            stringResource(R.string.update_ready_line),
             modifier, action = stringResource(R.string.update_install_now), onAction = actions::updateInstallNow,
         )
         // Android's Update screen is open or was left: Install now shows it again.

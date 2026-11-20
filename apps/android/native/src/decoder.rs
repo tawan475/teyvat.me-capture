@@ -25,7 +25,9 @@ use teyvatme_core::decode::{
     self, AppliedData, DataReplacement, DataVerdict, KeyReport, SnifferEvent, SnifferStats,
 };
 use teyvatme_core::good::{GiAbyss, GiCommissions, GiRealm, GiResin, GiTasks, GiWeeklyBosses};
-use teyvatme_core::live::{Action, AttachAnswer, AttachRequest, BatchAnswer, ImportAnswer, LiveSync, Reason};
+use teyvatme_core::live::{
+    Action, AttachAnswer, AttachRequest, BatchAnswer, ImportAnswer, LiveSync, Reason,
+};
 use teyvatme_core::player_data::{ExportSettings, LOGIN_COMPLETE_QUIET_MS, LoginParts, PlayerData};
 use teyvatme_core::recording;
 use teyvatme_core::wish::hub::{WishHub, take_wish_events};
@@ -56,6 +58,9 @@ pub struct Event {
     /// `ok`, `error` or `info`.
     pub kind: &'static str,
     pub text: String,
+    /// A page about it (the release page of an update that was refused).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub link: Option<String>,
 }
 
 /// What the home screen shows about the game, decided from its connection
@@ -222,6 +227,9 @@ const SETTLE_EXPLORE_MS: u64 = 12_000;
 const SETTLE_MAX_MS: u64 = 25_000;
 
 struct State {
+    /// What tracker uploads leave out (`NativeBridge.setSharing`), given to
+    /// the player data once the game data has loaded.
+    sharing: teyvatme_core::sharing::Sharing,
     player_data: Option<PlayerData>,
     error: Option<String>,
     replacement: DataReplacement,
@@ -260,6 +268,7 @@ struct State {
 impl State {
     fn new() -> Self {
         Self {
+            sharing: Default::default(),
             player_data: None,
             error: None,
             replacement: DataReplacement::default(),
@@ -287,6 +296,15 @@ impl State {
     }
 
     fn event(&mut self, kind: &'static str, text: impl Into<String>) {
+        self.event_with_link(kind, text, None);
+    }
+
+    fn event_with_link(
+        &mut self,
+        kind: &'static str,
+        text: impl Into<String>,
+        link: Option<String>,
+    ) {
         let text = text.into();
         log::info!("activity: {text}");
         if self.events.len() == EVENTS {
@@ -296,6 +314,7 @@ impl State {
             at: now_ms(),
             kind,
             text,
+            link,
         });
     }
 
@@ -521,8 +540,28 @@ impl Decoder {
     }
 
     /// An event from the app (an export, a capture start or stop).
-    pub fn note(&self, kind: &'static str, text: &str) {
-        self.state.lock().unwrap().event(kind, text);
+    /// Which parts tracker uploads leave out. A change starts a new live
+    /// journal once the switches were left alone
+    /// (`LiveSync::note_sharing_changed`); the same set again does nothing.
+    pub fn set_sharing(&self, sharing: teyvatme_core::sharing::Sharing) {
+        let mut state = self.state.lock().unwrap();
+        if state.sharing == sharing {
+            return;
+        }
+        log::info!(
+            "the parts shared with the tracker changed: off {:?}, by uid {}",
+            sharing.off.names(),
+            sharing.routes_by_uid
+        );
+        state.sharing = sharing.clone();
+        if let Some(data) = &mut state.player_data {
+            data.set_sharing(sharing);
+        }
+        state.live.note_sharing_changed(now_ms());
+    }
+
+    pub fn note(&self, kind: &'static str, text: &str, link: Option<String>) {
+        self.state.lock().unwrap().event_with_link(kind, text, link);
     }
 
     pub fn summary_json(&self) -> String {
@@ -624,7 +663,7 @@ impl Decoder {
                 Some(format!("B\n{}", serde_json::to_string(&delta)?))
             }
             Action::Attach { session } => {
-                let uid = data.gi_player().and_then(|p| p.uid);
+                let uid = data.attach_uid();
                 match (uid, data.gi_endgame()) {
                     (Some(uid), Some(gi_endgame)) => {
                         log::info!("live sync: sending the endgame parts (attach)");
@@ -749,7 +788,7 @@ fn snapshot(state: &mut State, reason: Reason, now: u64) -> Result<(u64, String)
         note_gaps(state, &report.summary());
     }
     good.gi_capture = state.live.capture(reason);
-    let json = serde_json::to_string(&good)?;
+    let json = good.upload_json()?;
     // A manual upload with no login yet carries no capture: nothing follows it.
     let ticket = if good.gi_capture.is_some() {
         state.live.snapshot_started(reason, keyed)
@@ -766,8 +805,9 @@ fn run(rx: mpsc::Receiver<Input>, state: Arc<Mutex<State>>, wishes: &Wishes) {
     let mut sniffer = match loaded {
         Ok((game_data, keys)) => {
             let mut state = state.lock().unwrap();
-            state.player_data =
-                Some(PlayerData::new(game_data).with_game_data_sha(embedded_game_data_sha()));
+            let mut data = PlayerData::new(game_data).with_game_data_sha(embedded_game_data_sha());
+            data.set_sharing(state.sharing.clone());
+            state.player_data = Some(data);
             log::info!(
                 "decoder ready, game data {}",
                 embedded_game_data_sha().unwrap_or("unknown")
@@ -947,7 +987,9 @@ fn apply(
     if full_send {
         state.live.note_full_send();
     }
-    state.live.note_change(noted + applied.live_updates);
+    state
+        .live
+        .note_change_at(noted + applied.live_updates, now_ms());
     if applied.endgame {
         state.live.note_endgame_change();
     }

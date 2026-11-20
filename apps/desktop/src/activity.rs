@@ -45,6 +45,9 @@ pub struct Event {
     pub toast: bool,
     /// A file it wrote (the auto-export), for "Show" and the Export row.
     pub path: Option<PathBuf>,
+    /// A page about it (the release page of an update that was refused),
+    /// for the toast's and the History entry's "Release page".
+    pub link: Option<String>,
 }
 
 impl Event {
@@ -56,6 +59,7 @@ impl Event {
             text: text.into(),
             toast: true,
             path: None,
+            link: None,
         }
     }
 
@@ -79,6 +83,11 @@ impl Event {
     /// toasted.
     pub fn routine(mut self) -> Self {
         self.toast = matches!(self.kind, Kind::Error | Kind::Warn);
+        self
+    }
+
+    pub fn with_link(mut self, link: String) -> Self {
+        self.link = Some(link);
         self
     }
 

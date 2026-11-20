@@ -430,9 +430,24 @@ impl PlayerData {
     }
 
     /// `gi_endgame` as the export writes it (the attach request's body), or
-    /// `None` when none of it was captured.
+    /// `None` when none of it was captured, or when the user does not share
+    /// it with the tracker (`crate::sharing`): the attach is an upload too.
     pub fn gi_endgame(&self) -> Option<good::GiEndgame> {
+        if self.sharing().off.is_off(crate::sharing::Part::Endgame) {
+            return None;
+        }
         self.export_endgame()
+    }
+
+    /// The UID an attach request names, or `None` when it must stay home
+    /// (the account numbers not shared, to one chosen account): the attach
+    /// is then dropped, and the endgame parts ride in the next snapshot.
+    pub fn attach_uid(&self) -> Option<u32> {
+        let sharing = self.sharing();
+        if sharing.off.is_off(crate::sharing::Part::Numbers) && !sharing.routes_by_uid {
+            return None;
+        }
+        self.gi_player().and_then(|p| p.uid)
     }
 
     /// `gi_endgame`, or `None` when none of it was captured.

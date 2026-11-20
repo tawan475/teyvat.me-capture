@@ -189,8 +189,27 @@ pub struct SavedAppState {
     /// Settings › About: a release the check finds is downloaded and
     /// installed by itself (on by default; the home banner used to wait for
     /// a click that most people never gave).
+    /// Kept in step with `update_mode` (true only for
+    /// [`UpdateMode::Install`]) for builds from before that setting.
     #[serde(default = "default_true")]
     pub auto_update: bool,
+    /// Settings › About › "When a new version is out". `None` in a file
+    /// from before the setting: [`SavedAppState::migrate`] reads the old
+    /// switch (on = install by itself, off = tell me only).
+    #[serde(default)]
+    pub update_mode: Option<UpdateMode>,
+    /// Settings › Sharing: the parts tracker uploads leave out (none by
+    /// default: everything is shared, as before the switches).
+    #[serde(default)]
+    pub sharing_off: teyvatme_core::sharing::PartsOff,
+    /// The Custom preset's own set, kept while Everything or Builds only is
+    /// chosen, so going back to Custom restores it.
+    #[serde(default)]
+    pub sharing_custom: Option<teyvatme_core::sharing::PartsOff>,
+    /// Settings › Sharing: the groups that are open, as bits (the fold
+    /// state is kept per PC).
+    #[serde(default)]
+    pub sharing_open: u8,
     /// Settings › About: the installed release starts by itself once
     /// Genshin is closed and the window is out of sight
     /// ([`restart_due`]).
@@ -206,6 +225,20 @@ pub struct SavedAppState {
 /// The resin alert's threshold until one is picked (the user's choice).
 fn default_resin_alert_at() -> u32 {
     160
+}
+
+/// What the app does about new versions (Settings › About).
+#[derive(Deserialize, Serialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum UpdateMode {
+    /// Checks every hour; a release found is downloaded, verified and
+    /// installed while capture keeps running.
+    #[default]
+    Install,
+    /// Checks every hour and shows the update bar; installs on Update now.
+    Tell,
+    /// Never asks GitHub by itself: only "Check for updates" does, and
+    /// what it finds installs only on Update now.
+    Never,
 }
 
 /// The theme setting (Settings › App).
@@ -321,6 +354,28 @@ impl SavedAppState {
             );
             self.tracker_api_url = url;
         }
+        if self.update_mode.is_none() {
+            self.update_mode = Some(if self.auto_update {
+                UpdateMode::Install
+            } else {
+                UpdateMode::Tell
+            });
+        }
+    }
+
+    /// What the app does about new versions.
+    pub fn update_mode(&self) -> UpdateMode {
+        self.update_mode.unwrap_or(if self.auto_update {
+            UpdateMode::Install
+        } else {
+            UpdateMode::Tell
+        })
+    }
+
+    /// Choose what the app does about new versions.
+    pub fn set_update_mode(&mut self, mode: UpdateMode) {
+        self.update_mode = Some(mode);
+        self.auto_update = mode == UpdateMode::Install;
     }
 }
 
@@ -349,7 +404,11 @@ impl Default for SavedAppState {
             resin_alert: false,
             resin_alert_at: default_resin_alert_at(),
             auto_update: true,
+            update_mode: Some(UpdateMode::Install),
             auto_restart: true,
+            sharing_off: Default::default(),
+            sharing_custom: None,
+            sharing_open: 0,
             tracker_alerts: None,
         }
     }
@@ -538,9 +597,10 @@ enum OnClose {
 /// A close that is the app's own restart (`restart_requested`: "Restart
 /// now", the quiet restart, restart as administrator) closes as it did; one
 /// installed already (`Ready`), or no update known, closes at once.
-/// With Settings › About › "Install updates by itself" off (`auto_install`
-/// false) a found release is left for the player's Update now: the close
-/// installs nothing (issue #74); an install they started is still waited for.
+/// Unless Settings › About says "Install by itself" (`auto_install` false:
+/// Tell me only, Never check) a found release is left for the player's
+/// Update now: the close installs nothing (issue #74); an install they
+/// started is still waited for.
 fn install_on_close(status: &UpdateStatus, restart_requested: bool, auto_install: bool) -> OnClose {
     if restart_requested {
         return OnClose::Close;
@@ -554,7 +614,8 @@ fn install_on_close(status: &UpdateStatus, restart_requested: bool, auto_install
         | UpdateStatus::UpToDate
         | UpdateStatus::Manual(_)
         | UpdateStatus::Ready(_)
-        | UpdateStatus::Failed(_) => OnClose::Close,
+        | UpdateStatus::Failed(_)
+        | UpdateStatus::Unverified(_) => OnClose::Close,
     }
 }
 
@@ -654,6 +715,28 @@ pub(crate) fn background_state(state: &SavedAppState, auth: &AuthStatus) -> Save
         state.tracker_verified = true;
     }
     state
+}
+
+/// Whether uploads are placed by the file's UID: signed in with "Auto (by
+/// UID)", or a user import key (`gdt_uk_…`). Then the UID goes even with the
+/// account numbers switched off. An upload target not known yet counts as
+/// by UID: sending the UID is what uploads always did, leaving it out is
+/// the choice that needs knowing.
+pub(crate) fn routes_by_uid(state: &SavedAppState, auth: &AuthStatus) -> bool {
+    match auth {
+        AuthStatus::SignedIn { whoami, .. } => whoami
+            .as_ref()
+            .is_none_or(|whoami| whoami.scope == crate::signin::UploadScope::Uid),
+        _ => !state.tracker_import_key.starts_with("gdt_import_"),
+    }
+}
+
+/// What tracker uploads leave out, from the settings and the sign-in.
+pub(crate) fn sharing(state: &SavedAppState, auth: &AuthStatus) -> teyvatme_core::sharing::Sharing {
+    teyvatme_core::sharing::Sharing {
+        off: state.sharing_off.clone(),
+        routes_by_uid: routes_by_uid(state, auth),
+    }
 }
 
 /// One captured data class a GOOD export writes, and when it last arrived.
@@ -889,6 +972,11 @@ pub struct TeyvatmeApp {
     /// What the app did, for the footer and its popover.
     activity: crate::activity::Log,
     activity_open: bool,
+    /// Settings › Sharing: "Custom" was picked (it stays picked even while
+    /// its set equals a preset's), and when a switch last changed, for the
+    /// page's note about the new live journal.
+    sharing_custom_picked: bool,
+    sharing_changed_at: Option<chrono::DateTime<chrono::Local>>,
     /// The view drawn last frame and when it came up, for its fade-in.
     shown_view: View,
     view_shown_at: Instant,
@@ -941,6 +1029,8 @@ pub(crate) enum View {
 pub(crate) enum Page {
     App,
     Export,
+    /// Which parts go to the tracker.
+    Sharing,
     Destinations,
     Teyvatme,
     Diagnostics,
@@ -960,6 +1050,7 @@ mod preview;
 mod run;
 mod screens;
 mod settings;
+mod sharing;
 mod today;
 
 /// How the window starts.
@@ -1696,6 +1787,8 @@ impl TeyvatmeApp {
             view: View::Main,
             activity: crate::activity::Log::default(),
             activity_open: false,
+            sharing_custom_picked: false,
+            sharing_changed_at: None,
             activity_anchor: None,
             shown_view: View::Main,
             view_shown_at: Instant::now(),
@@ -2973,6 +3066,54 @@ mod tests {
         };
         custom.migrate();
         assert_eq!(custom.tracker_api_url, "https://gdt.example/api");
+    }
+
+    #[test]
+    fn the_sharing_setting_survives_the_settings_file() {
+        use teyvatme_core::sharing::Part;
+        // As eframe stores it: RON.
+        let mut state = SavedAppState::default();
+        state.sharing_off.set_shared(Part::Profile, false);
+        state.sharing_off.set_shared(Part::Teapot, false);
+        let saved = ron::to_string(&state).unwrap();
+        let back: SavedAppState = ron::from_str(&saved).unwrap();
+        assert_eq!(back.sharing_off, state.sharing_off);
+        // A part this build does not have (the extras switch a develop
+        // build once saved) is dropped, and the file still loads.
+        let names = r#"["gi_player.profile","gi_teapot"]"#;
+        assert!(saved.contains(names), "{saved}");
+        let older = saved.replace(
+            names,
+            r#"["gi_player.profile","gi_characters","gi_teapot"]"#,
+        );
+        let back: SavedAppState = ron::from_str(&older).unwrap();
+        assert_eq!(back.sharing_off, state.sharing_off);
+    }
+
+    #[test]
+    fn the_old_update_switch_becomes_the_three_way_setting() {
+        // A file from before the setting has no `update_mode`.
+        let mut old = serde_json::to_value(SavedAppState::default()).unwrap();
+        old.as_object_mut().unwrap().remove("update_mode");
+        let mut on: SavedAppState = serde_json::from_value(old.clone()).unwrap();
+        on.migrate();
+        assert_eq!(on.update_mode(), UpdateMode::Install);
+
+        // Off never becomes Never check: nobody stops hearing of updates
+        // without choosing to.
+        old["auto_update"] = false.into();
+        let mut off: SavedAppState = serde_json::from_value(old).unwrap();
+        assert_eq!(off.update_mode(), UpdateMode::Tell);
+        off.migrate();
+        assert_eq!(off.update_mode, Some(UpdateMode::Tell));
+
+        // A choice keeps the old switch in step, for a build before it.
+        off.set_update_mode(UpdateMode::Never);
+        assert!(!off.auto_update);
+        off.migrate();
+        assert_eq!(off.update_mode(), UpdateMode::Never);
+        off.set_update_mode(UpdateMode::Install);
+        assert!(off.auto_update);
     }
 
     #[test]

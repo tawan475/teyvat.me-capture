@@ -179,7 +179,8 @@ impl TeyvatmeApp {
             _ => return,
         };
         let pal = widgets::p(ui);
-        let mut open = false;
+        let mut install = false;
+        let mut notes = false;
         let mut restart = false;
         let mut download = false;
         egui::Frame::new()
@@ -210,6 +211,22 @@ impl TeyvatmeApp {
                                 .min_size(vec2(0.0, 32.0)),
                             )
                         };
+                        let filled = |ui: &mut Ui, text: &str| {
+                            ui.add(
+                                egui::Button::new(
+                                    RichText::new(text)
+                                        .text_style(crate::ui::theme::style::secondary())
+                                        .family(crate::ui::theme::weight::semibold())
+                                        .color(pal.ac_con),
+                                )
+                                .fill(pal.ac_on)
+                                .corner_radius(egui::CornerRadius::same(8))
+                                .min_size(vec2(0.0, 32.0)),
+                            )
+                            .on_hover_text(tr(
+                                "Downloads and installs it while capture keeps running",
+                            ))
+                        };
                         match &status {
                             UpdateStatus::Ready(_) => {
                                 restart = outlined(ui, tr("Restart now")).clicked();
@@ -221,7 +238,8 @@ impl TeyvatmeApp {
                                 download = outlined(ui, tr("Download")).clicked();
                             }
                             _ => {
-                                open = outlined(ui, tr("Details")).clicked();
+                                install = filled(ui, tr("Update now")).clicked();
+                                notes = outlined(ui, tr("Release notes")).clicked();
                             }
                         }
                         ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
@@ -233,10 +251,10 @@ impl TeyvatmeApp {
                     });
                 });
             });
-        if open {
-            self.open_settings(Page::About);
+        if install && let Err(e) = self.update_tx.send(crate::update::UpdateCommand::Install) {
+            tracing::error!("Unable to send update command: {e}");
         }
-        if download {
+        if download || notes {
             ui.ctx().open_url(egui::OpenUrl::new_tab(
                 "https://github.com/tawan475/teyvat.me-capture/releases",
             ));

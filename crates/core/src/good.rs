@@ -82,6 +82,33 @@ fn is_zero(value: &u32) -> bool {
     *value == 0
 }
 
+thread_local! {
+    /// The GOOD sections [`Good::upload_json`] is leaving out right now, as
+    /// bits (characters 1, artifacts 2, weapons 4, materials 8). Zero
+    /// everywhere else, so every other serialisation writes all four.
+    static OMITTED_SECTIONS: std::cell::Cell<u8> = const { std::cell::Cell::new(0) };
+}
+
+fn section_omitted(bit: u8) -> bool {
+    OMITTED_SECTIONS.with(|omitted| omitted.get() & bit != 0)
+}
+
+fn omit_characters(_: &Vec<Character>) -> bool {
+    section_omitted(1)
+}
+
+fn omit_artifacts(_: &Vec<Artifact>) -> bool {
+    section_omitted(2)
+}
+
+fn omit_weapons(_: &Vec<Weapon>) -> bool {
+    section_omitted(4)
+}
+
+fn omit_materials(_: &HashMap<String, u32>) -> bool {
+    section_omitted(8)
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Good {
     pub format: String,
@@ -92,9 +119,15 @@ pub struct Good {
     /// before it existed reads as 0, and 0 is never written back.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub leyline: u32,
+    // The four GOOD sections are always written, except by
+    // [`Good::upload_json`] for one the user does not share.
+    #[serde(default, skip_serializing_if = "omit_characters")]
     pub characters: Vec<Character>,
+    #[serde(default, skip_serializing_if = "omit_artifacts")]
     pub artifacts: Vec<Artifact>,
+    #[serde(default, skip_serializing_if = "omit_weapons")]
     pub weapons: Vec<Weapon>,
+    #[serde(default, skip_serializing_if = "omit_materials")]
     pub materials: HashMap<String, u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gi_achievements: Option<Vec<u32>>,
@@ -164,6 +197,39 @@ pub struct Good {
     /// Onslaught's records, as the game last sent each.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub gi_endgame: Option<GiEndgame>,
+    /// The parts the user does not share with the tracker
+    /// ([`crate::sharing`]), by name; empty when all are shared. Tracker
+    /// uploads only: never in a file saved to a folder.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub gi_off: Option<Vec<String>>,
+}
+
+impl Good {
+    /// The JSON of a tracker upload: as `serde_json::to_string`, but a GOOD
+    /// section `gi_off` names is left out, not written empty, so the tracker
+    /// never reads "not shared" as "the account has none". Byte for byte
+    /// the plain serialisation when no GOOD section is off.
+    pub fn upload_json(&self) -> serde_json::Result<String> {
+        let off = |name: &str| {
+            self.gi_off
+                .as_ref()
+                .is_some_and(|names| names.iter().any(|n| n == name))
+        };
+        let bits = u8::from(off("characters"))
+            | u8::from(off("artifacts")) << 1
+            | u8::from(off("weapons")) << 2
+            | u8::from(off("materials")) << 3;
+        // Put back even if serialising panics.
+        struct Reset;
+        impl Drop for Reset {
+            fn drop(&mut self) {
+                OMITTED_SECTIONS.with(|omitted| omitted.set(0));
+            }
+        }
+        let _reset = Reset;
+        OMITTED_SECTIONS.with(|omitted| omitted.set(bits));
+        serde_json::to_string(self)
+    }
 }
 
 /// `gi_endgame` (contract v1, append fields only).
@@ -1192,7 +1258,7 @@ pub fn fake_uninitialized_4th_line(artifacts: Vec<Artifact>) -> Vec<Artifact> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     #[test]
@@ -1262,27 +1328,9 @@ mod tests {
         assert_eq!(faked[2].level, 0);
     }
 
-    /// The JSON key names below are a cross-repo contract, not a style choice.
-    ///
-    /// `Good` is uploaded verbatim to the tracker's
-    /// `POST /genshin-accounts-public/import-by-key`, which runs a bare
-    /// `JSON.parse` and reads fields by name with no schema validation and no
-    /// error on a miss (`genshin-accounts.service.ts::processImport`). So a
-    /// rename here does not fail an import -- it silently drops whatever it
-    /// renamed. The two easiest mistakes both look harmless in review:
-    ///
-    /// * adding `#[serde(rename_all = "camelCase")]` to `Good` turns
-    ///   `gi_achievements` into `giAchievements`, and every snapshot then
-    ///   imports zero achievements;
-    /// * removing it from `Artifact` turns `setKey` into `set_key`, and every
-    ///   artifact then hashes as `{"setKey":null,...}` -- one shared row for
-    ///   the entire inventory.
-    ///
-    /// Neither raises anything anywhere. This test is the only thing that
-    /// notices.
-    #[test]
-    fn good_json_keys_match_what_the_tracker_reads() {
-        let good = Good {
+    /// An export with every part filled in (placeholder data).
+    pub(crate) fn full_good() -> Good {
+        Good {
             format: "GOOD".to_string(),
             version: 3,
             source: "Teyvat.me".to_string(),
@@ -1309,7 +1357,11 @@ mod tests {
                 gi_guid: Some("3488998120056947188".to_string()),
                 gi_exp: Some(0),
             }],
-            materials: HashMap::from([("ChilledMeat".to_string(), 12)]),
+            materials: HashMap::from([
+                ("ChilledMeat".to_string(), 12),
+                ("OriginalResin".to_string(), 124),
+                ("RealmCurrency".to_string(), 2_400),
+            ]),
             gi_achievements: Some(vec![80001]),
             timestamp: Some(1_756_000_000_000),
             gi_player: Some(GiPlayer {
@@ -1568,7 +1620,31 @@ mod tests {
                     }],
                 }),
             }),
-        };
+            gi_off: None,
+        }
+    }
+
+    /// The JSON key names below are a cross-repo contract, not a style choice.
+    ///
+    /// `Good` is uploaded verbatim to the tracker's
+    /// `POST /genshin-accounts-public/import-by-key`, which runs a bare
+    /// `JSON.parse` and reads fields by name with no schema validation and no
+    /// error on a miss (`genshin-accounts.service.ts::processImport`). So a
+    /// rename here does not fail an import -- it silently drops whatever it
+    /// renamed. The two easiest mistakes both look harmless in review:
+    ///
+    /// * adding `#[serde(rename_all = "camelCase")]` to `Good` turns
+    ///   `gi_achievements` into `giAchievements`, and every snapshot then
+    ///   imports zero achievements;
+    /// * removing it from `Artifact` turns `setKey` into `set_key`, and every
+    ///   artifact then hashes as `{"setKey":null,...}` -- one shared row for
+    ///   the entire inventory.
+    ///
+    /// Neither raises anything anywhere. This test is the only thing that
+    /// notices.
+    #[test]
+    fn good_json_keys_match_what_the_tracker_reads() {
+        let good = full_good();
 
         let json = serde_json::to_value(&good).expect("Good must serialize");
 
@@ -1864,6 +1940,7 @@ mod tests {
             gi_miliastra: None,
             gi_exploration: None,
             gi_endgame: None,
+            gi_off: None,
         };
 
         let json = serde_json::to_value(&good).expect("Good must serialize");

@@ -29,4 +29,21 @@ class UpdaterTest {
         assertFalse(kept("teyvatme-1.1.4.apk", "1.1.5"))
         assertFalse(kept("teyvatme-1.2.0.apk.part", "1.1.5"))
     }
+
+    @Test
+    fun `the three choices decide what runs by itself`() {
+        // Install by itself: checks and downloads. Tell me only: checks. Never check: neither.
+        assertTrue(Updater.checksAlone(UpdateMode.Install) && Updater.downloadsAlone(UpdateMode.Install))
+        assertTrue(Updater.checksAlone(UpdateMode.Tell) && !Updater.downloadsAlone(UpdateMode.Tell))
+        assertFalse(Updater.checksAlone(UpdateMode.Never) || Updater.downloadsAlone(UpdateMode.Never))
+    }
+
+    @Test
+    fun `the old switch becomes a choice, and off is never Never check`() {
+        assertEquals(UpdateMode.Install, UpdateMode.of(null, auto = true))
+        assertEquals(UpdateMode.Tell, UpdateMode.of(null, auto = false))
+        assertEquals(UpdateMode.Never, UpdateMode.of("Never", auto = true))
+        assertEquals(UpdateMode.Tell, UpdateMode.of("nonsense", auto = false))
+        assertEquals("https://github.com/tawan475/teyvat.me-capture/releases/tag/v1.18.1", Updater.releasePage("1.18.1"))
+    }
 }

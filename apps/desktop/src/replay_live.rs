@@ -80,7 +80,7 @@ impl LocalTracker {
 
 impl StandInTracker for LocalTracker {
     fn snapshot(&mut self, good: &Good) -> Option<ImportAnswer> {
-        let json = serde_json::to_string(good).ok()?;
+        let json = good.upload_json().ok()?;
         let at = good.timestamp.map(|ms| ms as i64);
         let url = monitor::import_url(&self.api);
         match self.runtime.block_on(monitor::upload_to_tracker(
@@ -103,12 +103,40 @@ impl StandInTracker for LocalTracker {
     }
 
     fn batch(&mut self, delta: &GoodDelta) -> BatchAnswer {
-        self.runtime.block_on(monitor::send_live_batch_with_key(
-            &self.client,
-            &self.api,
-            &self.key,
-            delta,
-        ))
+        // As `monitor::send_live_batch_with_key`, with a refusal's status
+        // and body in the log (a test run wants to see them).
+        let url = monitor::changes_url(&self.api);
+        let response = self.runtime.block_on(async {
+            let response = self
+                .client
+                .post(&url)
+                .header("x-import-key", &self.key)
+                .json(delta)
+                .send()
+                .await?;
+            let status = response.status().as_u16();
+            let body = response.text().await.unwrap_or_default();
+            anyhow::Ok((status, body))
+        });
+        match response {
+            Ok((status, body)) => {
+                if !(200..300).contains(&status) {
+                    tracing::warn!(seq = delta.seq, status, %body, "batch refused");
+                } else {
+                    tracing::info!(
+                        seq = delta.seq,
+                        changes = delta.changes.len(),
+                        status,
+                        "batch stored"
+                    );
+                }
+                BatchAnswer::of(status, &body)
+            }
+            Err(e) => {
+                tracing::warn!("batch request failed: {e:#}");
+                BatchAnswer::Retry
+            }
+        }
     }
 
     fn attach(&mut self, request: &AttachRequest) -> AttachAnswer {

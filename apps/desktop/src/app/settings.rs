@@ -9,7 +9,7 @@ use egui::{Align, DragValue, Layout, RichText, Ui, vec2};
 use teyvatme_core::FORMAT_NAME;
 
 use super::frame::BREAKPOINT;
-use super::{AddressChange, Closing, Page, TeyvatmeApp, ThemeChoice, TrackerSignIn};
+use super::{AddressChange, Closing, Page, TeyvatmeApp, ThemeChoice, TrackerSignIn, UpdateMode};
 use crate::TracingLevel;
 use crate::clock::ClockChoice;
 use crate::i18n::{Lang, tr, trf};
@@ -21,10 +21,11 @@ use crate::ui::widgets::{
     list_row, overline, secondary_text, small_text, strong_text, switch_row, title_text,
 };
 
-fn pages() -> [(Page, &'static str); 5] {
+fn pages() -> [(Page, &'static str); 6] {
     [
         (Page::App, tr("App")),
         (Page::Export, tr("Export")),
+        (Page::Sharing, tr("Sharing")),
         (Page::Destinations, tr("Tracker")),
         (Page::Diagnostics, tr("Diagnostics")),
         (Page::About, tr("About")),
@@ -35,6 +36,7 @@ fn page_icon(page: Page) -> egui::ImageSource<'static> {
     match page {
         Page::App => icons::settings(),
         Page::Export => icons::download(),
+        Page::Sharing => icons::shield(),
         Page::Destinations | Page::Teyvatme => icons::cloud(),
         Page::Diagnostics => icons::bug(),
         Page::About => icons::info(),
@@ -70,25 +72,32 @@ fn nav_item(
     let (rect, response) =
         ui.allocate_exact_size(vec2(ui.available_width(), 36.0), egui::Sense::click());
     let response = response.on_hover_cursor(egui::CursorIcon::PointingHand);
+    let feel = widgets::feel(ui, &response, false);
     let painter = ui.painter();
-    if selected || response.hovered() {
-        let fill = if selected {
-            pal.over
-        } else {
-            pal.over.gamma_multiply(0.6)
-        };
-        painter.rect_filled(rect, egui::CornerRadius::same(6), fill);
-    }
-    if selected {
+    let fill = if selected { pal.over } else { feel.fill(&pal) };
+    painter.rect_filled(rect, egui::CornerRadius::same(6), fill);
+    // The selected page's accent bar; a shorter, faint one under the pointer.
+    let (bar_height, bar_color) = if selected {
+        (16.0, pal.ac_tx)
+    } else {
+        (12.0, pal.ac_tx.gamma_multiply(0.45 * feel.hover))
+    };
+    if selected || feel.hover > 0.0 {
         let bar = egui::Rect::from_center_size(
             egui::pos2(rect.left() + 1.5, rect.center().y),
-            vec2(3.0, 16.0),
+            vec2(3.0, bar_height),
         );
-        painter.rect_filled(bar, egui::CornerRadius::same(2), pal.ac_tx);
+        painter.rect_filled(bar, egui::CornerRadius::same(2), bar_color);
     }
-    let ink = if selected { pal.tx } else { pal.tx2 };
+    let ink = if selected {
+        pal.tx
+    } else {
+        feel.ink(&pal, pal.tx2)
+    };
+    // The icon leans 2 px toward its page under the pointer.
+    let nudge = if selected { 0.0 } else { 2.0 * feel.hover };
     let icon_rect = egui::Rect::from_center_size(
-        egui::pos2(rect.left() + 22.0, rect.center().y),
+        egui::pos2(rect.left() + 22.0 + nudge, rect.center().y),
         egui::Vec2::splat(16.0),
     );
     icons::image(icon, 16.0, ink).paint_at(ui, icon_rect);
@@ -176,6 +185,7 @@ impl TeyvatmeApp {
                         match page {
                             Page::App => self.app_page(ui),
                             Page::Export => self.export_page(ui),
+                            Page::Sharing => self.sharing_page(ui),
                             // The tab is the tracker page itself (no list
                             // row to click through to it).
                             Page::Destinations | Page::Teyvatme => self.teyvatme_page(ui),
@@ -622,6 +632,26 @@ impl TeyvatmeApp {
             .on_hover_text(
                 tr("Between snapshots, send what changed as you play, so the tracker stays current without logging out. Off: every change uploads the whole account."),
             );
+            divider(ui);
+            // What the uploads leave out, and the way to the page that
+            // decides it.
+            let mut change = false;
+            let (sharing_line, sharing_full) = self.sharing_summary_line();
+            list_row(
+                ui,
+                None,
+                title_text(tr("Sharing"), pal.tx),
+                Some(secondary_text(sharing_line, pal.tx2)),
+                |ui| {
+                    change =
+                        button(ui, ButtonKind::Secondary, None, tr("Change"), false).clicked();
+                },
+            )
+            .0
+            .on_hover_text(sharing_full);
+            if change {
+                self.open_settings(Page::Sharing);
+            }
             divider(ui);
             let (line_text, problem) = self.destination_result_line();
             let missing = super::missing_export_data(
@@ -1096,17 +1126,20 @@ impl TeyvatmeApp {
         use crate::update::{UpdateCommand, UpdateStatus};
         let pal = widgets::p(ui);
         let status = self.update_status.borrow().clone();
-        let highlight = matches!(status, UpdateStatus::Available(_) | UpdateStatus::Ready(_));
-        let (fill, ink, ink2) = if highlight {
-            (pal.ac_con, pal.ac_on, pal.ac_on)
-        } else {
-            (pal.card, pal.tx, pal.tx2)
-        };
+        let mode = self.saved_state.update_mode();
+        let (ink, ink2) = (pal.tx, pal.tx2);
         let line = match &status {
+            UpdateStatus::Idle | UpdateStatus::UpToDate if mode == UpdateMode::Never => trf(
+                "You have {0} · it doesn't check by itself",
+                &[&env!("CARGO_PKG_VERSION")],
+            ),
             UpdateStatus::Idle => trf("You have {0}", &[&env!("CARGO_PKG_VERSION")]),
             UpdateStatus::Checking => tr("Checking for updates").to_string(),
             UpdateStatus::UpToDate => {
                 trf("{0} · the newest version", &[&env!("CARGO_PKG_VERSION")])
+            }
+            UpdateStatus::Available(v) if mode == UpdateMode::Never => {
+                trf("{0} is out · installs only when you press Update now", &[v])
             }
             UpdateStatus::Available(v) => trf(
                 "{0} is out · you have {1}",
@@ -1119,26 +1152,23 @@ impl TeyvatmeApp {
                 trf("Installing {0} · Teyvat.me closes when it is done", &[v])
             }
             UpdateStatus::Installing(v) => trf("Installing {0} · capture keeps running", &[v]),
+            UpdateStatus::Ready(v) if self.saved_state.auto_restart => {
+                trf("{0} installed · restarts when Genshin is closed", &[v])
+            }
             UpdateStatus::Ready(v) => trf(
                 "{0} installed · restart to use it, or it starts next time",
                 &[v],
             ),
             UpdateStatus::Failed(e) => trf("Couldn't update: {0}", &[e]),
+            UpdateStatus::Unverified(v) => trf("{0} not installed: it couldn't be verified", &[v]),
         };
         let mut command = None;
         let mut restart = false;
         let mut open_releases = false;
-        egui::Frame::new()
-            .fill(fill)
-            .stroke(if highlight {
-                egui::Stroke::NONE
-            } else {
-                egui::Stroke::new(1.0_f32, pal.line)
-            })
-            .corner_radius(egui::CornerRadius::same(12))
-            .inner_margin(egui::Margin::symmetric(16, 12))
-            .show(ui, |ui| {
-                ui.set_width(ui.available_width());
+        let mut open_page: Option<String> = None;
+        card_frame(ui).show(ui, |ui| {
+            ui.set_width(ui.available_width());
+{
                 list_row(
                     ui,
                     Some((icons::download(), ink)),
@@ -1189,6 +1219,32 @@ impl TeyvatmeApp {
                             )
                             .clicked();
                         }
+                        UpdateStatus::Unverified(v) => {
+                            if button(
+                                ui,
+                                ButtonKind::Fill,
+                                Some(icons::external_link()),
+                                tr("Release page"),
+                                false,
+                            )
+                            .on_hover_text(tr("Download it by hand from its release page"))
+                            .clicked()
+                            {
+                                open_page = Some(crate::update::release_page(v));
+                            }
+                            if button(
+                                ui,
+                                ButtonKind::Ghost,
+                                None,
+                                tr("Check for updates"),
+                                false,
+                            )
+                            .on_hover_text(tr("Downloads and checks it again"))
+                            .clicked()
+                            {
+                                command = Some(UpdateCommand::Check { manual: true });
+                            }
+                        }
                         UpdateStatus::Idle | UpdateStatus::UpToDate | UpdateStatus::Failed(_) => {
                             if button(
                                 ui,
@@ -1204,39 +1260,59 @@ impl TeyvatmeApp {
                         }
                     },
                 );
-            });
-        // How updates happen: by themselves, and the restart into one too
-        // (out of sight, with Genshin closed; see `app::restart_due`).
-        card_frame(ui).show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            let was_on = self.saved_state.auto_update;
-            switch_row(
-                ui,
-                tr("Install updates by itself"),
-                Some(secondary_text(
-                    tr("A new version is downloaded and installed while capture keeps running"),
-                    pal.tx2,
-                )),
-                &mut self.saved_state.auto_update,
-                true,
-            );
-            // Switched on with one waiting: that one goes now.
-            if self.saved_state.auto_update
-                && !was_on
-                && matches!(status, UpdateStatus::Available(_))
-            {
-                command = Some(UpdateCommand::Install);
             }
+            ui.add_space(4.0);
+            widgets::overline(ui, tr("When a new version is out"));
+            ui.add_space(2.0);
+            let mut chosen = mode;
+            if widgets::choice_tiles(
+                ui,
+                &mut chosen,
+                &[
+                    (
+                        UpdateMode::Install,
+                        icons::download(),
+                        tr("Install by itself"),
+                        tr("Installs while capture keeps running"),
+                    ),
+                    (
+                        UpdateMode::Tell,
+                        icons::eye(),
+                        tr("Tell me only"),
+                        tr("Shows the bar; installs on Update now"),
+                    ),
+                    (
+                        UpdateMode::Never,
+                        icons::circle_x(),
+                        tr("Never check"),
+                        tr("Only Check for updates asks"),
+                    ),
+                ],
+            ) {
+                self.saved_state.set_update_mode(chosen);
+                self.remark_tray();
+                // Chosen with one waiting: that one goes now.
+                if chosen == UpdateMode::Install && matches!(status, UpdateStatus::Available(_)) {
+                    command = Some(UpdateCommand::Install);
+                }
+            }
+            ui.add_space(6.0);
             divider(ui);
             switch_row(
                 ui,
                 tr("Restart by itself"),
                 Some(secondary_text(
-                    tr("Once Genshin is closed and the window is minimized or in the tray"),
+                    if chosen == UpdateMode::Install {
+                        tr("Once Genshin is closed and the window is minimized or in the tray")
+                    } else {
+                        tr(
+                            "After Update now: once Genshin is closed and the window is minimized or in the tray",
+                        )
+                    },
                     pal.tx2,
                 )),
                 &mut self.saved_state.auto_restart,
-                self.saved_state.auto_update,
+                true,
             );
         });
         if let Some(command) = command
@@ -1248,6 +1324,9 @@ impl TeyvatmeApp {
             ui.ctx().open_url(egui::OpenUrl::new_tab(
                 "https://github.com/tawan475/teyvat.me-capture/releases",
             ));
+        }
+        if let Some(page) = open_page {
+            ui.ctx().open_url(egui::OpenUrl::new_tab(page));
         }
         if restart {
             self.restart_to_update(ui);
