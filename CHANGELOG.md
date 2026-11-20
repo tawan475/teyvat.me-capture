@@ -2,6 +2,12 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.18.2
+
+- Uploads to teyvat.me are about nine times smaller: the snapshot is sent
+  compressed when the tracker says it reads that. A tracker that does not
+  say so (a self-hosted or older one) gets it as before.
+
 ## 1.18.1
 
 - A row you can click now lights up its whole cell, from edge to edge of

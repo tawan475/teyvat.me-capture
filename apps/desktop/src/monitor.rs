@@ -3249,6 +3249,48 @@ pub(crate) fn uploaded_account(api: &str) -> Option<i64> {
         .map(|(_, id)| *id)
 }
 
+/// The trackers (by origin) that said they take gzipped snapshot uploads
+/// (`upload.gzip` in verify-key, whoami or an import's answer). Learned per
+/// run: until a tracker says so, uploads go as plain JSON, which every
+/// tracker reads (a self-hosted or older one may not read gzip).
+static GZIP_UPLOADS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+fn tracker_origin(url: &str) -> Option<String> {
+    let url = reqwest::Url::parse(url.trim()).ok()?;
+    Some(url.origin().ascii_serialization())
+}
+
+/// Read what the tracker at `url` says about uploads from one of its
+/// answers. The newest answer decides.
+pub(crate) fn note_upload_options(url: &str, body: &str) {
+    let Ok(answer) = serde_json::from_str::<serde_json::Value>(body) else {
+        return;
+    };
+    let (Some(origin), Ok(mut held)) = (tracker_origin(url), GZIP_UPLOADS.lock()) else {
+        return;
+    };
+    held.retain(|known| *known != origin);
+    if crate::live::accepts_gzip(&answer) {
+        held.push(origin);
+    }
+}
+
+/// `--replay-live` can hold uploads plain whatever the tracker says, to
+/// compare what a tracker stores from each form.
+pub(crate) static PLAIN_UPLOADS: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// Whether snapshot uploads to the tracker at `url` go gzipped.
+pub(crate) fn gzip_uploads(url: &str) -> bool {
+    if PLAIN_UPLOADS.load(Ordering::Relaxed) {
+        return false;
+    }
+    let Some(origin) = tracker_origin(url) else {
+        return false;
+    };
+    GZIP_UPLOADS.lock().is_ok_and(|held| held.contains(&origin))
+}
+
 /// The tracker's snapshot import endpoint for a configured base URL.
 pub(crate) fn import_url(base_url: &str) -> String {
     format!(
@@ -3269,7 +3311,9 @@ pub(crate) async fn upload_to_tracker(
     json: String,
     captured_at_ms: Option<i64>,
 ) -> std::result::Result<String, String> {
-    let form = snapshot_form(json, captured_at_ms)?;
+    let gzip = gzip_uploads(url);
+    tracing::debug!(gzip, bytes = json.len(), "snapshot upload");
+    let form = snapshot_form(json, captured_at_ms, gzip)?;
 
     let response = client
         .post(url)
@@ -3289,6 +3333,7 @@ pub(crate) async fn upload_to_tracker(
     let body = response.text().await.unwrap_or_default();
     if status.is_success() {
         tracing::info!("Successfully uploaded data to tracker");
+        note_upload_options(url, &body);
         Ok(body)
     } else {
         tracing::error!("Tracker upload failed ({}): {}", status, body);
@@ -3298,13 +3343,18 @@ pub(crate) async fn upload_to_tracker(
 
 /// The multipart body of a snapshot upload, shared by the import-key path and
 /// the signed-in one (`signin.rs`), whose routes take the same body.
+///
+/// `gzip`: the tracker said it reads a gzipped file ([`gzip_uploads`]); the
+/// export is about nine times smaller that way.
 pub(crate) fn snapshot_form(
     json: String,
     captured_at_ms: Option<i64>,
+    gzip: bool,
 ) -> std::result::Result<reqwest::multipart::Form, String> {
-    let part = reqwest::multipart::Part::bytes(json.into_bytes())
-        .file_name("irminsul_capture.json")
-        .mime_str("application/json")
+    let (bytes, name, mime) = snapshot_file(json, gzip);
+    let part = reqwest::multipart::Part::bytes(bytes)
+        .file_name(name)
+        .mime_str(mime)
         .map_err(|e| format!("could not build the upload body: {e}"))?;
 
     // Sent before the file part, because the backend reads it while streaming
@@ -3316,6 +3366,24 @@ pub(crate) fn snapshot_form(
         form = form.text("timestamp", captured_at_ms.to_string());
     }
     Ok(form.part("file", part))
+}
+
+/// The snapshot's file part: its bytes, file name and type. Gzipped when
+/// asked; if compressing fails, the plain JSON, which every tracker reads.
+fn snapshot_file(json: String, gzip: bool) -> (Vec<u8>, &'static str, &'static str) {
+    if gzip {
+        let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        if encoder.write_all(json.as_bytes()).is_ok()
+            && let Ok(bytes) = encoder.finish()
+        {
+            return (bytes, "irminsul_capture.json.gz", "application/gzip");
+        }
+    }
+    (
+        json.into_bytes(),
+        "irminsul_capture.json",
+        "application/json",
+    )
 }
 
 /// What the tracker says about an import key (`verify-key`).
@@ -3353,6 +3421,7 @@ async fn verify_tracker_key(
     if !status.is_success() {
         return Err(anyhow!("Verify failed: HTTP {}", status));
     }
+    note_upload_options(url, &body);
     parse_verify_response(&body)
 }
 
@@ -3495,6 +3564,48 @@ pub(crate) fn load_keys() -> Result<HashMap<u16, Vec<u8>>> {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+
+    #[test]
+    fn a_snapshot_goes_gzipped_only_when_asked() {
+        let json = format!(
+            "{{\"artifacts\":[{}]}}",
+            "{\"setKey\":\"X\"},".repeat(2_000)
+        );
+        let (plain, name, mime) = snapshot_file(json.clone(), false);
+        assert_eq!(plain, json.as_bytes());
+        assert_eq!((name, mime), ("irminsul_capture.json", "application/json"));
+
+        let (packed, name, mime) = snapshot_file(json.clone(), true);
+        assert_eq!(
+            (name, mime),
+            ("irminsul_capture.json.gz", "application/gzip")
+        );
+        assert!(packed.len() * 5 < json.len());
+        let mut back = String::new();
+        std::io::Read::read_to_string(&mut GzDecoder::new(packed.as_slice()), &mut back).unwrap();
+        assert_eq!(back, json);
+    }
+
+    #[test]
+    fn gzip_follows_what_each_tracker_last_said() {
+        let api = "https://gzip-test.invalid/api";
+        let import = import_url(api);
+        assert!(!gzip_uploads(&import));
+        // Learned from any answer of that tracker, for all its routes.
+        note_upload_options(
+            &format!("{api}/genshin-accounts-public/verify-key"),
+            r#"{"accountName":"A","upload":{"gzip":true}}"#,
+        );
+        assert!(gzip_uploads(&import));
+        assert!(gzip_uploads(api));
+        // Another tracker has not said so.
+        assert!(!gzip_uploads("https://other-test.invalid/api"));
+        // Not JSON says nothing; an answer without it takes it back.
+        note_upload_options(&import, "<html>");
+        assert!(gzip_uploads(&import));
+        note_upload_options(&import, r#"{"snapshot":{"id":1}}"#);
+        assert!(!gzip_uploads(&import));
+    }
     #[test]
     fn an_import_answer_names_its_account() {
         let body = r#"{"status":"created","snapshotId":5,"account":{"id":11,"name":"Main","uid":"812345678","created":false}}"#;
