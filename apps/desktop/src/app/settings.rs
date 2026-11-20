@@ -17,7 +17,7 @@ use crate::signin::{self, AuthStatus, TrackerRequest, UploadScope, Whoami};
 use crate::ui::icons;
 use crate::ui::theme::style;
 use crate::ui::widgets::{
-    self, ButtonKind, CalloutKind, button, callout, card_frame, divider, icon_button, line,
+    self, ButtonKind, CalloutKind, button, callout, card_show, divider, icon_button, line,
     list_row, overline, secondary_text, small_text, strong_text, switch_row, title_text,
 };
 
@@ -155,7 +155,16 @@ impl TeyvatmeApp {
                 });
         }
         egui::CentralPanel::default()
-            .frame(egui::Frame::new().inner_margin(egui::Margin::same(16)))
+            // No margin above (wide) or below the scrolling page: the page
+            // carries that padding itself, so its content runs to the
+            // window's edge instead of being cut 16 px short of it by an
+            // empty strip (the user, 2026-11-20).
+            .frame(egui::Frame::new().inner_margin(egui::Margin {
+                left: 16,
+                right: 16,
+                top: if wide { 0 } else { 16 },
+                bottom: 0,
+            }))
             .show_inside(ui, |ui| {
                 if !wide {
                     back = settings_heading(ui);
@@ -181,6 +190,9 @@ impl TeyvatmeApp {
                         // At most 600 px; `set_max_width` alone would also
                         // widen it past a narrower window.
                         ui.set_max_width(ui.available_width().min(600.0));
+                        if wide {
+                            ui.add_space(16.0);
+                        }
                         ui.spacing_mut().item_spacing.y = 10.0;
                         match page {
                             Page::App => self.app_page(ui),
@@ -192,6 +204,7 @@ impl TeyvatmeApp {
                             Page::Diagnostics => self.diagnostics_page(ui),
                             Page::About => self.about_page(ui),
                         }
+                        ui.add_space(16.0 - ui.spacing().item_spacing.y);
                     });
             });
         if back {
@@ -205,14 +218,14 @@ impl TeyvatmeApp {
     fn app_page(&mut self, ui: &mut Ui) {
         let pal = widgets::p(ui);
         overline(ui, tr("Startup"));
-        card_frame(ui).show(ui, |ui| {
+        card_show(ui, |ui| {
             ui.set_width(ui.available_width());
             self.startup
                 .settings_rows(ui, &mut self.saved_state.start_on_startup);
         });
 
         overline(ui, tr("Window"));
-        card_frame(ui).show(ui, |ui| {
+        card_show(ui, |ui| {
             ui.set_width(ui.available_width());
             list_row(
                 ui,
@@ -321,7 +334,7 @@ impl TeyvatmeApp {
                 self.tracker_alert_row(ui, alerts);
                 return;
             }
-            card_frame(ui).show(ui, |ui| {
+            card_show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 switch_row(
                     ui,
@@ -387,7 +400,7 @@ impl TeyvatmeApp {
             _ => None,
         };
         let mut open = false;
-        card_frame(ui).show(ui, |ui| {
+        card_show(ui, |ui| {
             ui.set_width(ui.available_width());
             list_row(
                 ui,
@@ -418,7 +431,7 @@ impl TeyvatmeApp {
     fn export_page(&mut self, ui: &mut Ui) {
         let pal = widgets::p(ui);
         overline(ui, tr("Auto-export"));
-        card_frame(ui).show(ui, |ui| {
+        card_show(ui, |ui| {
             ui.set_width(ui.available_width());
             let was_on = self.saved_state.save_result_to_file;
             switch_row(
@@ -473,7 +486,7 @@ impl TeyvatmeApp {
         });
 
         overline(ui, tr("Filters"));
-        card_frame(ui).show(ui, |ui| {
+        card_show(ui, |ui| {
             ui.set_width(ui.available_width());
             let settings = &mut self.saved_state.export_settings;
             switch_row(
@@ -488,7 +501,12 @@ impl TeyvatmeApp {
                     ui,
                     &mut [
                         (tr("Min level"), &mut settings.min_character_level, 1, 90),
-                        (tr("Min ascension"), &mut settings.min_character_ascension, 0, 6),
+                        (
+                            tr("Min ascension"),
+                            &mut settings.min_character_ascension,
+                            0,
+                            6,
+                        ),
                         (
                             tr("Min constellation"),
                             &mut settings.min_character_constellation,
@@ -499,7 +517,13 @@ impl TeyvatmeApp {
                 );
             }
             divider(ui);
-            switch_row(ui, tr("Artifacts"), None, &mut settings.include_artifacts, true);
+            switch_row(
+                ui,
+                tr("Artifacts"),
+                None,
+                &mut settings.include_artifacts,
+                true,
+            );
             if settings.include_artifacts {
                 steppers(
                     ui,
@@ -516,14 +540,30 @@ impl TeyvatmeApp {
                     ui,
                     &mut [
                         (tr("Min level"), &mut settings.min_weapon_level, 1, 90),
-                        (tr("Min refinement"), &mut settings.min_weapon_refinement, 1, 5),
-                        (tr("Min ascension"), &mut settings.min_weapon_ascension, 0, 6),
+                        (
+                            tr("Min refinement"),
+                            &mut settings.min_weapon_refinement,
+                            1,
+                            5,
+                        ),
+                        (
+                            tr("Min ascension"),
+                            &mut settings.min_weapon_ascension,
+                            0,
+                            6,
+                        ),
                         (tr("Min rarity"), &mut settings.min_weapon_rarity, 1, 5),
                     ],
                 );
             }
             divider(ui);
-            switch_row(ui, tr("Materials"), None, &mut settings.include_materials, true);
+            switch_row(
+                ui,
+                tr("Materials"),
+                None,
+                &mut settings.include_materials,
+                true,
+            );
             divider(ui);
             switch_row(
                 ui,
@@ -575,7 +615,7 @@ impl TeyvatmeApp {
         }
 
         // The account row.
-        card_frame(ui).show(ui, |ui| {
+        card_show(ui, |ui| {
             ui.set_width(ui.available_width());
             self.account_row(ui, &status, &host);
         });
@@ -608,7 +648,7 @@ impl TeyvatmeApp {
         }
 
         overline(ui, tr("Uploads"));
-        card_frame(ui).show(ui, |ui| {
+        card_show(ui, |ui| {
             ui.set_width(ui.available_width());
             switch_row(
                 ui,
@@ -643,8 +683,7 @@ impl TeyvatmeApp {
                 title_text(tr("Sharing"), pal.tx),
                 Some(secondary_text(sharing_line, pal.tx2)),
                 |ui| {
-                    change =
-                        button(ui, ButtonKind::Secondary, None, tr("Change"), false).clicked();
+                    change = button(ui, ButtonKind::Secondary, None, tr("Change"), false).clicked();
                 },
             )
             .0
@@ -703,7 +742,7 @@ impl TeyvatmeApp {
         });
 
         overline(ui, tr("Advanced"));
-        card_frame(ui).show(ui, |ui| {
+        card_show(ui, |ui| {
             ui.set_width(ui.available_width());
             self.advanced(ui);
         });
@@ -973,7 +1012,7 @@ impl TeyvatmeApp {
     fn diagnostics_page(&mut self, ui: &mut Ui) {
         let pal = widgets::p(ui);
         overline(ui, tr("Logs"));
-        card_frame(ui).show(ui, |ui| {
+        card_show(ui, |ui| {
             ui.set_width(ui.available_width());
             let previous = self.saved_state.tracing_level;
             list_row(
@@ -1080,7 +1119,7 @@ impl TeyvatmeApp {
         });
 
         overline(ui, tr("Report"));
-        card_frame(ui).show(ui, |ui| {
+        card_show(ui, |ui| {
             ui.set_width(ui.available_width());
             let mut new_issue = false;
             list_row(
@@ -1166,9 +1205,9 @@ impl TeyvatmeApp {
         let mut restart = false;
         let mut open_releases = false;
         let mut open_page: Option<String> = None;
-        card_frame(ui).show(ui, |ui| {
+        card_show(ui, |ui| {
             ui.set_width(ui.available_width());
-{
+            {
                 list_row(
                     ui,
                     Some((icons::download(), ink)),
@@ -1232,15 +1271,9 @@ impl TeyvatmeApp {
                             {
                                 open_page = Some(crate::update::release_page(v));
                             }
-                            if button(
-                                ui,
-                                ButtonKind::Ghost,
-                                None,
-                                tr("Check for updates"),
-                                false,
-                            )
-                            .on_hover_text(tr("Downloads and checks it again"))
-                            .clicked()
+                            if button(ui, ButtonKind::Ghost, None, tr("Check for updates"), false)
+                                .on_hover_text(tr("Downloads and checks it again"))
+                                .clicked()
                             {
                                 command = Some(UpdateCommand::Check { manual: true });
                             }
@@ -1354,7 +1387,7 @@ impl TeyvatmeApp {
 
         self.updates_card(ui);
 
-        card_frame(ui).show(ui, |ui| {
+        card_show(ui, |ui| {
             ui.set_width(ui.available_width());
             for (icon, title, secondary, url) in [
                 (

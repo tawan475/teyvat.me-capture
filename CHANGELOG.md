@@ -2,6 +2,15 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.18.1
+
+- A row you can click now lights up its whole cell, from edge to edge of
+  its card; the highlight used to stop short of the card's sides.
+- Settings pages scroll to the window's edge: an empty strip no longer
+  cuts the content off at the bottom.
+- Settings › Sharing fits a narrow window: the list of parts not shared
+  wraps instead of pushing the page past the window's right edge.
+
 ## 1.18.0
 
 - **Settings › Sharing** (new, also on Android): choose which parts of your
