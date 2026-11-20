@@ -21,6 +21,7 @@ import java.security.KeyStore
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.concurrent.TimeUnit
+import java.util.zip.GZIPOutputStream
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -338,7 +339,7 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
         if (stateFlow.value !is TrackerState.SignedIn) return
         scope.launch(Dispatchers.IO) {
             runCatching { withBearer { token -> getJson("${Links.trackerApi}/irminsul/whoami", token) } }
-                .onSuccess { o -> Whoami.parse(o)?.let { withContext(Dispatchers.Main) { setWho(it) } } }
+                .onSuccess { o -> noteUploadOptions(o); Whoami.parse(o)?.let { withContext(Dispatchers.Main) { setWho(it) } } }
         }
     }
 
@@ -677,6 +678,7 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
             val account = withContext(Dispatchers.IO) {
                 runCatching {
                     val o = getJsonAs("${Links.trackerApi}/genshin-accounts-public/verify-key", Credential.Key(key))
+                        .also(::noteUploadOptions)
                         .let { it.optJSONObject("data") ?: it }
                     KeyAccount(
                         o.optString("accountName").ifEmpty { "?" },
@@ -801,12 +803,26 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
             is Credential.Bearer -> "${Links.trackerApi}/irminsul/import"
             is Credential.Key -> "${Links.trackerApi}/genshin-accounts-public/import-by-key"
         }
+        // Gzipped (about nine times smaller) only for a tracker that said it reads that.
+        val packed = if (gzipApi == Links.trackerApi) gzipped(json) else null
         val body = MultipartBody.Builder("teyvatme" + randomToken(16))
             .setType(MultipartBody.FORM)
             .addFormDataPart("timestamp", capturedAt.toString())
-            .addFormDataPart("file", "teyvatme_capture.json", json.toRequestBody(JSON_TYPE))
+            .apply {
+                if (packed != null) addFormDataPart("file", "teyvatme_capture.json.gz", packed.toRequestBody(GZIP_TYPE))
+                else addFormDataPart("file", "teyvatme_capture.json", json.toRequestBody(JSON_TYPE))
+            }
             .build()
-        return json(send(url, "POST", credential, body, readSeconds = 120))
+        return json(send(url, "POST", credential, body, readSeconds = 120)).also(::noteUploadOptions)
+    }
+
+    /** The tracker address that said it takes gzipped snapshot uploads (`upload.gzip`), this run. */
+    @Volatile
+    private var gzipApi: String? = null
+
+    /** Read `upload.gzip` from a verify-key, whoami or import answer; the newest answer decides. */
+    private fun noteUploadOptions(answer: JSONObject) {
+        gzipApi = if (acceptsGzip(answer)) Links.trackerApi else null
     }
 
     // -- the refresh token, encrypted -----------------------------------------------
@@ -845,6 +861,7 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
     companion object {
         private const val TAG = "teyvatme"
         private val JSON_TYPE = "application/json".toMediaType()
+        private val GZIP_TYPE = "application/gzip".toMediaType()
         /** A failed automated upload is tried again after this, doubling up to [MAX_RETRY_MS]. */
         private const val FIRST_RETRY_MS = 30_000L
         private const val MAX_RETRY_MS = 600_000L
@@ -889,5 +906,17 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
 }
 
 /** The account id an import answer names (`account.id`, the hosted tracker's), if any. */
+/** Whether a tracker answer says snapshot uploads may be gzipped (the desktop's `accepts_gzip`). */
+internal fun acceptsGzip(answer: JSONObject): Boolean =
+    listOfNotNull(answer, answer.optJSONObject("data"))
+        .firstNotNullOfOrNull { it.optJSONObject("upload")?.opt("gzip") as? Boolean } ?: false
+
+/** [text] as a gzip stream, or null if that fails (the plain JSON goes then). */
+internal fun gzipped(text: String): ByteArray? = runCatching {
+    val out = java.io.ByteArrayOutputStream()
+    GZIPOutputStream(out).use { it.write(text.toByteArray(Charsets.UTF_8)) }
+    out.toByteArray()
+}.getOrNull()
+
 internal fun uploadedAccountId(answer: JSONObject?): Long? =
     answer?.optJSONObject("account")?.optLong("id", 0L)?.takeIf { it > 0L }

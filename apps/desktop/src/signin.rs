@@ -1614,6 +1614,10 @@ impl TrackerAuth {
             Ok((response, generation)) => {
                 let status = response.status();
                 let body = response.text().await.unwrap_or_default();
+                if status.is_success() {
+                    let base = self.inner.session.lock().await.base.clone();
+                    crate::monitor::note_upload_options(&base, &body);
+                }
                 let parsed = if status.is_success() {
                     serde_json::from_str::<serde_json::Value>(&body)
                         .map_err(|_| tr("the whoami answer is not JSON").to_string())
@@ -1723,7 +1727,11 @@ impl TrackerAuth {
                 if grant.base != expected_base {
                     return Err(tr("The tracker address changed; upload again").to_string());
                 }
-                let form = crate::monitor::snapshot_form(json.clone(), captured_at_ms)?;
+                let form = crate::monitor::snapshot_form(
+                    json.clone(),
+                    captured_at_ms,
+                    crate::monitor::gzip_uploads(&grant.base),
+                )?;
                 Ok(client
                     .post(endpoint(&grant.base, "irminsul/import"))
                     .timeout(timeout)
@@ -1739,6 +1747,7 @@ impl TrackerAuth {
         let body = response.text().await.unwrap_or_default();
         if status.is_success() {
             tracing::info!("Successfully uploaded data to tracker (signed in)");
+            crate::monitor::note_upload_options(&expected_base, &body);
             Ok(body)
         } else {
             tracing::error!("Tracker upload failed ({}): {}", status, body);

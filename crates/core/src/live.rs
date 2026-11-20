@@ -281,6 +281,19 @@ impl ImportAnswer {
     }
 }
 
+/// Whether a tracker answer (verify-key, whoami, an import's) says snapshot
+/// uploads may be gzipped: `upload.gzip`, at the top level or inside the old
+/// backend's `data` wrapper. A tracker that does not say so gets plain JSON,
+/// as every tracker did before.
+pub fn accepts_gzip(answer: &serde_json::Value) -> bool {
+    [Some(answer), answer.get("data")]
+        .into_iter()
+        .flatten()
+        .filter_map(|at| at.get("upload")?.get("gzip")?.as_bool())
+        .next()
+        .unwrap_or(false)
+}
+
 /// What the tracker said to a batch (§13's answer table).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BatchAnswer {
@@ -1054,6 +1067,18 @@ mod tests {
             good.materials.insert(format!("Thing{i}"), 1);
         }
         good
+    }
+
+    #[test]
+    fn gzip_is_sent_only_to_a_tracker_that_says_so() {
+        let yes = |json: &str| accepts_gzip(&serde_json::from_str(json).unwrap());
+        assert!(yes(r#"{"upload":{"gzip":true,"snapshotParts":1}}"#));
+        assert!(yes(r#"{"status":200,"data":{"upload":{"gzip":true}}}"#));
+        assert!(!yes(r#"{"upload":{"gzip":false}}"#));
+        assert!(!yes(r#"{"upload":{"gzip":"true"}}"#));
+        assert!(!yes(r#"{"upload":true}"#));
+        assert!(!yes(r#"{"live":{"base":"abc"}}"#));
+        assert!(!yes("[]"));
     }
 
     fn keyed(good: &Good) -> Keyed {
