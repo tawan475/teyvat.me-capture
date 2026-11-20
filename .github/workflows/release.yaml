@@ -173,6 +173,11 @@ jobs:
     uses: ./.github/workflows/android.yml
     with:
       release: true
+    # A called workflow's job sees its environment's secrets only when the
+    # caller passes secrets on (the first 1.18.0 run found none). This
+    # repository has no secrets of its own: the keys are the `release`
+    # environment's, which only main can use.
+    secrets: inherit
 
   release:
     runs-on: ubuntu-latest
