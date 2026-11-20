@@ -30,6 +30,18 @@ use crate::good::{GiCapture, GiCaptureJournal, Good};
 
 /// No batch sooner than this after the previous one (except a big one).
 pub const BATCH_SPACING_MS: u64 = 15_000;
+/// The spacing while a teyvat.me page of the account is open (the tracker's
+/// `watching`): the user's pick, 2026-11-20. 12 batches a minute at most,
+/// inside the tracker's 20 a minute.
+pub const WATCHED_SPACING_MS: u64 = 5_000;
+/// A batch waits until the changes have rested this long, so one reward's
+/// packets (resin, Mora, EXP, the drops: several messages over a few
+/// hundred ms) go together instead of one part now and the rest a spacing
+/// later.
+pub const SETTLE_MS: u64 = 1_000;
+/// Changes that never rest (Mora in a long fight) hold a batch back at most
+/// this long.
+pub const MAX_SETTLE_MS: u64 = 3_000;
 /// A lone change waits at most this long.
 pub const LONE_CHANGE_MS: u64 = 120_000;
 /// Changes at once that send a batch straight away.
@@ -369,6 +381,9 @@ pub struct LiveSync {
     /// (kept against the old set) has not been replaced yet: see
     /// [`Self::note_sharing_changed`].
     sharing_changed_ms: Option<u64>,
+    /// When the changes waiting for a batch first and last came
+    /// ([`Self::note_change_at`]); `None` with nothing timed waiting.
+    changing_ms: Option<(u64, u64)>,
 }
 
 const DAY_MS: u64 = 86_400_000;
@@ -557,6 +572,30 @@ impl LiveSync {
         self.pending = self.pending.saturating_add(count.max(1));
     }
 
+    /// [`Self::note_change`] with when it came: the batch that carries it
+    /// waits for the changes to rest ([`SETTLE_MS`], [`MAX_SETTLE_MS`]).
+    pub fn note_change_at(&mut self, count: usize, now_ms: u64) {
+        self.note_change(count);
+        let first = self.changing_ms.map_or(now_ms, |(first, _)| first);
+        self.changing_ms = Some((first, now_ms));
+    }
+
+    /// No batch sooner than this after the previous one.
+    fn spacing_ms(&self) -> u64 {
+        if self.watching {
+            WATCHED_SPACING_MS
+        } else {
+            BATCH_SPACING_MS
+        }
+    }
+
+    /// When the waiting changes have rested (0 with none timed).
+    fn settled_ms(&self) -> u64 {
+        self.changing_ms.map_or(0, |(first, last)| {
+            (last + SETTLE_MS).min(first + MAX_SETTLE_MS)
+        })
+    }
+
     /// A change worth a batch at once came (a character's level, talent,
     /// constellation or gear, as the monitor saw it; see
     /// [`delta::is_important`]): look as soon as the spacing allows instead
@@ -588,6 +627,7 @@ impl LiveSync {
             // over (a 2026-11-15 log: 330 exports a second for 1 h 42 min).
             self.journal = None;
             self.pending = 0;
+            self.changing_ms = None;
         }
     }
 
@@ -597,6 +637,7 @@ impl LiveSync {
         self.journal = None;
         self.unacked = None;
         self.pending = 0;
+        self.changing_ms = None;
         self.logout_login = None;
         self.attach_wanted = false;
         if self.wanted == Some(Reason::Logout) {
@@ -753,9 +794,10 @@ impl LiveSync {
             return Some(self.retry_at_ms.max(now_ms));
         }
         Some(
-            (self.last_sent_ms + BATCH_SPACING_MS)
+            (self.last_sent_ms + self.spacing_ms())
                 .max(self.retry_at_ms)
                 .max(self.recheck_at_ms)
+                .max(self.settled_ms())
                 .max(now_ms),
         )
     }
@@ -783,6 +825,7 @@ impl LiveSync {
                 self.journal = None;
                 self.unacked = None;
                 self.pending = 0;
+                self.changing_ms = None;
                 if self.wanted.is_none_or(Reason::debounced) {
                     self.wanted = Some(Reason::Resync);
                 }
@@ -807,6 +850,7 @@ impl LiveSync {
         }
         if self.login.is_none() {
             self.pending = 0;
+            self.changing_ms = None;
             return Action::Nothing;
         }
         if let Some(flight) = self.unacked.take() {
@@ -829,9 +873,13 @@ impl LiveSync {
             return Action::Nothing;
         }
         let since = now_ms.saturating_sub(self.last_sent_ms);
-        if self.pending < BIG_BATCH && (since < BATCH_SPACING_MS || now_ms < self.recheck_at_ms) {
+        let spacing = self.spacing_ms();
+        if self.pending < BIG_BATCH
+            && (since < spacing || now_ms < self.recheck_at_ms || now_ms < self.settled_ms())
+        {
             return Action::Nothing;
         }
+        self.changing_ms = None;
         let Some((good, keyed)) = exported.or_else(|| export.take().and_then(|export| export()))
         else {
             return Action::Nothing;
@@ -840,6 +888,7 @@ impl LiveSync {
         let changes = delta::diff(&journal.keyed, &keyed);
         if changes.is_empty() {
             self.pending = 0;
+            self.changing_ms = None;
             return Action::Nothing;
         }
         let due = changes.len() >= BIG_BATCH
@@ -849,8 +898,7 @@ impl LiveSync {
             || delta::is_important(&changes, &keyed);
         if !due {
             // Look again in a spacing, or when the lone-change wait is up.
-            self.recheck_at_ms =
-                (now_ms + BATCH_SPACING_MS).min(self.last_sent_ms + LONE_CHANGE_MS);
+            self.recheck_at_ms = (now_ms + spacing).min(self.last_sent_ms + LONE_CHANGE_MS);
             return Action::Nothing;
         }
         let Some(uid) = good.gi_player.as_ref().and_then(|player| player.uid) else {
@@ -1350,7 +1398,7 @@ mod tests {
     }
 
     #[test]
-    fn someone_watching_gets_every_change_after_15_s() {
+    fn someone_watching_gets_every_change_after_5_s() {
         let mut live = LiveSync::new();
         live.note_full_send();
         let ticket = live.snapshot_started(Reason::Login, keyed(&good(100)));
@@ -1363,13 +1411,79 @@ mod tests {
             0,
         );
         live.note_change(1);
-        assert_eq!(live.tick(true, 14_000, export(good(101))), Action::Nothing);
+        assert_eq!(live.tick(true, 4_999, export(good(101))), Action::Nothing);
         assert_eq!(
-            sent(live.tick(true, 15_000, export(good(101))))
+            sent(live.tick(true, 5_000, export(good(101))))
                 .changes
                 .len(),
             1
         );
+    }
+
+    #[test]
+    fn someone_watching_gets_changes_every_5_s_and_a_reward_whole() {
+        let mut live = LiveSync::new();
+        live.note_full_send();
+        let ticket = live.snapshot_started(Reason::Login, keyed(&good(100)));
+        live.snapshot_answered(
+            ticket,
+            Some(ImportAnswer {
+                base: Some("k1".into()),
+                watching: true,
+            }),
+            0,
+        );
+        // A reward's packets come over 300 ms, well after the last batch:
+        // nothing goes while they do, and one batch goes 1 s after the last.
+        live.note_change_at(1, 20_000);
+        assert_eq!(live.tick(true, 20_000, export(good(101))), Action::Nothing);
+        assert_eq!(live.next_tick_ms(true, 20_000), Some(21_000));
+        live.note_change_at(1, 20_300);
+        assert_eq!(live.tick(true, 21_000, export(good(102))), Action::Nothing);
+        assert_eq!(live.next_tick_ms(true, 21_000), Some(21_300));
+        let batch = sent(live.tick(true, 21_300, export(good(102))));
+        assert_eq!(batch.changes.len(), 1);
+        live.batch_answered(
+            BatchAnswer::Stored {
+                collapse: false,
+                watching: true,
+            },
+            21_400,
+        );
+        // The next one is 5 s after that, not 15.
+        live.note_change_at(1, 22_000);
+        let next = live.next_tick_ms(true, 22_000).unwrap();
+        assert!((26_300..=26_400).contains(&next), "{next}");
+        assert_eq!(
+            live.tick(true, next - 1, export(good(103))),
+            Action::Nothing
+        );
+        sent(live.tick(true, next, export(good(103))));
+        live.batch_answered(
+            BatchAnswer::Stored {
+                collapse: false,
+                watching: false,
+            },
+            next + 100,
+        );
+        // Nobody watching any more: 15 s again.
+        live.note_change_at(5, next + 600);
+        assert!(live.next_tick_ms(true, next + 600).unwrap() >= next + 15_000);
+    }
+
+    #[test]
+    fn changes_that_never_rest_hold_a_batch_3_s_at_most() {
+        let mut live = live_at(0);
+        // Mora every 200 ms in a long fight, long after the last batch.
+        let mut now = 200_000;
+        while now < 202_900 {
+            live.note_change_at(1, now);
+            assert_eq!(live.tick(true, now, export(good(101))), Action::Nothing);
+            now += 200;
+        }
+        live.note_change_at(5, 202_900);
+        assert_eq!(live.next_tick_ms(true, 202_900), Some(203_000));
+        sent(live.tick(true, 203_000, export(good(101))));
     }
 
     #[test]

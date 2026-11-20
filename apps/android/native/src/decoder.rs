@@ -987,7 +987,9 @@ fn apply(
     if full_send {
         state.live.note_full_send();
     }
-    state.live.note_change(noted + applied.live_updates);
+    state
+        .live
+        .note_change_at(noted + applied.live_updates, now_ms());
     if applied.endgame {
         state.live.note_endgame_change();
     }

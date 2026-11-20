@@ -40,6 +40,9 @@ Each release's section is its GitHub release notes (`.github/workflows/release.y
 - Fixed the resin count teyvat.me showed after the last resin was spent:
   Capture kept sending the regeneration clock with the earlier amount (40
   when the game said 0), and the Planner read that one.
+- Live sync is faster while a teyvat.me page is open: a batch every 5 s
+  at most (was 15 s). A reward's changes (resin, Mora, the drops) now go in
+  one batch; before, part could go at once and the rest a batch later.
 
 ## 1.17.32
 

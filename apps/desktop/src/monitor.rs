@@ -1919,7 +1919,8 @@ impl Monitor {
         if full_send {
             self.live.note_full_send();
         }
-        self.live.note_change(noted + applied.live_updates);
+        self.live
+            .note_change_at(noted + applied.live_updates, now_ms());
         if applied.characters {
             // A level, talent, constellation or gear change: worth a batch
             // as soon as the spacing allows (item changes wait for it).

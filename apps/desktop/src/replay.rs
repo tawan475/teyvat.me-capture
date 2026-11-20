@@ -893,7 +893,10 @@ impl Replay {
             if full_send {
                 journal.live.note_full_send();
             }
-            journal.live.note_change(noted);
+            match at {
+                Some(ns) => journal.live.note_change_at(noted, ns / 1_000_000),
+                None => journal.live.note_change(noted),
+            }
             if applied.endgame {
                 journal.live.note_endgame_change();
             }
