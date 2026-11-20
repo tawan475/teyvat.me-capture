@@ -93,9 +93,13 @@ export interface Leyline {
   gi_capture?: GiCapture
   /**
    * [1.18] The parts the user does not share (Settings › Sharing), `[]` when
-   * everything is shared; absent from older builds. Tracker uploads only.
-   * A part named here is left out of the upload: for `characters`,
-   * `weapons`, `artifacts` and `materials` the key itself is absent.
+   * everything is shared; absent from older builds. Capture writes it in
+   * tracker uploads only, never in a file it saves. A part named here is
+   * left out of the upload: for `characters`, `weapons`, `artifacts` and
+   * `materials` the key itself is absent.
+   * A file exported from teyvat.me carries it too, when the capture it came
+   * from had parts off; there an absent key can also mean everything was
+   * shared (an empty list is not written back).
    */
   gi_off?: GiOffPart[]
   /** [shipped] What the player has collected. */
