@@ -37,6 +37,9 @@ Each release's section is its GitHub release notes (`.github/workflows/release.y
   light up across the card, since clicking anywhere on them flips the
   switch, and the side list shows a faint accent bar before you click.
   Buttons, segments and switches show a focus ring when reached with Tab.
+- Fixed the resin count teyvat.me showed after the last resin was spent:
+  Capture kept sending the regeneration clock with the earlier amount (40
+  when the game said 0), and the Planner read that one.
 
 ## 1.17.32
 

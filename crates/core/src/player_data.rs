@@ -1312,6 +1312,30 @@ impl PlayerData {
         if let Some(clock) = self.pending_resin.take() {
             self.check_resin_clock(&clock);
         }
+        self.resin_clock_follows_the_resin();
+    }
+
+    /// The clock's resin is the resin held. Spending (or a refill) changes
+    /// the property without a clock the matcher can believe: at 0 the
+    /// game's message leaves the number out. The next resin's time does not
+    /// move with a spend, so it is kept while it is still ahead; a clock
+    /// whose time has passed says nothing and goes, and `gi_player.resin`
+    /// alone is exported until the game sends the next one.
+    fn resin_clock_follows_the_resin(&mut self) {
+        let Some(held) = self.properties.get(&PROP_RESIN.id).copied() else {
+            return;
+        };
+        let Some((value, next_at)) = self.routine.resin else {
+            return;
+        };
+        if u64::from(value) == held {
+            return;
+        }
+        let ahead = self.clock_secs.is_some_and(|now| u64::from(next_at) > now);
+        self.routine.resin = match u32::try_from(held) {
+            Ok(held) if ahead => Some((held, next_at)),
+            _ => None,
+        };
     }
 
     /// Keep a resin clock whose time already checked out, when one of its
@@ -4460,6 +4484,49 @@ mod tests {
         let tasks = data.export_tasks(NOW_SECS).unwrap();
         assert_eq!(tasks.abyss, None);
         assert_eq!(tasks.welkin, Some(good::GiWelkin { days: 12 }));
+    }
+
+    #[test]
+    fn the_resin_clock_follows_resin_spent_down_to_none() {
+        let mut data = player_data();
+        let next_at = (NOW_SECS + 200) as u32;
+        let resin = |data: &PlayerData| data.export_tasks(NOW_SECS).and_then(|t| t.resin);
+        data.set_clock(NOW_SECS);
+        data.process_properties(&HashMap::from([(PROP_RESIN.id, 40)]));
+        data.process_routine(RoutinePart::Resin(ResinClock {
+            next_at,
+            values: vec![40, 2],
+        }));
+        assert_eq!(resin(&data), Some(good::GiResin { value: 40, next_at }));
+        // The last 40 are spent. The game's message at 0 leaves the resin
+        // out, so no clock is believed: the one held must not go on saying
+        // 40 (seen live, 2026-11-20). The next resin's time stands.
+        data.process_properties(&HashMap::from([(PROP_RESIN.id, 0)]));
+        data.process_routine(RoutinePart::Resin(ResinClock {
+            next_at,
+            values: vec![2],
+        }));
+        assert_eq!(resin(&data), Some(good::GiResin { value: 0, next_at }));
+        // A refill: the same clock, the new resin.
+        data.process_properties(&HashMap::from([(PROP_RESIN.id, 60)]));
+        assert_eq!(resin(&data), Some(good::GiResin { value: 60, next_at }));
+        // Once the clock's time has passed it says nothing of the new
+        // resin: it goes, and gi_player.resin alone is exported.
+        data.set_clock(NOW_SECS + 300);
+        data.process_properties(&HashMap::from([(PROP_RESIN.id, 20)]));
+        assert_eq!(resin(&data), None);
+        // The game's next clock is taken as before.
+        data.process_routine(RoutinePart::Resin(ResinClock {
+            next_at: next_at + 480,
+            values: vec![20, 2],
+        }));
+        assert_eq!(
+            resin(&data),
+            Some(good::GiResin {
+                value: 20,
+                next_at: next_at + 480
+            })
+        );
     }
 
     #[test]
