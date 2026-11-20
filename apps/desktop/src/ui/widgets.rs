@@ -124,6 +124,70 @@ pub fn card_frame(ui: &Ui) -> Frame {
         })
 }
 
+/// The card being drawn, as it lay last frame: a clickable row inside lights
+/// up to its edges ([`row_ground`]).
+#[derive(Clone, Copy)]
+struct InCard(Option<Rect>);
+
+fn in_card_id() -> egui::Id {
+    egui::Id::new("card-being-drawn")
+}
+
+/// [`card_frame`] shown, remembering where the card is for the rows in it.
+pub fn card_show<R>(ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> egui::InnerResponse<R> {
+    let id = ui.next_auto_id().with("card-rect");
+    let last: Option<Rect> = ui.data(|data| data.get_temp(id));
+    let outer: Option<InCard> = ui.data_mut(|data| {
+        let outer = data.get_temp(in_card_id());
+        data.insert_temp(in_card_id(), InCard(last));
+        outer
+    });
+    let response = card_frame(ui).show(ui, body);
+    ui.data_mut(|data| {
+        data.insert_temp(id, response.response.rect);
+        data.insert_temp(in_card_id(), outer.unwrap_or(InCard(None)));
+    });
+    response
+}
+
+/// What a clickable row lights up, in a card whose inside (within its
+/// border) is `card`: the whole cell, from edge to edge of the card and up
+/// to the dividers above and below (`gap` away), or to the card's own edge
+/// for its first and last rows, whose corners follow the card's. `None`
+/// when the row is not inside `card` (a card that moved since last frame).
+fn row_ground(row: Rect, card: Rect, gap: f32) -> Option<(Rect, CornerRadius)> {
+    // A row this near the card's edge has only the card's margin there.
+    const EDGE: f32 = 18.0;
+    if row.left() < card.left()
+        || row.right() > card.right()
+        || row.top() < card.top()
+        || row.bottom() > card.bottom()
+    {
+        return None;
+    }
+    let first = row.top() - card.top() <= EDGE;
+    let last = card.bottom() - row.bottom() <= EDGE;
+    let top = if first { card.top() } else { row.top() - gap };
+    let bottom = if last {
+        card.bottom()
+    } else {
+        row.bottom() + gap
+    };
+    let round = |on: bool| if on { radius::CARD - 1 } else { 0 };
+    Some((
+        Rect::from_min_max(
+            egui::pos2(card.left(), top),
+            egui::pos2(card.right(), bottom),
+        ),
+        CornerRadius {
+            nw: round(first),
+            ne: round(first),
+            sw: round(last),
+            se: round(last),
+        },
+    ))
+}
+
 /// A card: a 32 px header (title, optional suffix, right-aligned actions)
 /// over its body.
 pub fn card<R>(
@@ -134,7 +198,7 @@ pub fn card<R>(
     body: impl FnOnce(&mut Ui) -> R,
 ) -> egui::InnerResponse<R> {
     let pal = p(ui);
-    card_frame(ui).show(ui, |ui| {
+    card_show(ui, |ui| {
         ui.set_width(ui.available_width());
         // The actions first (right to left), so the title and its suffix
         // are cut at what they leave, never drawn under them.
@@ -717,15 +781,22 @@ fn list_row_feel<R>(
     let row_feel = if clickable {
         let pal = p(ui);
         let feel = feel(ui, &response, true);
-        // Half the card's 16 px margin out on each side, rounded like a
-        // button, so it never meets the card's own corners.
-        ui.painter().set(
-            ground,
-            egui::Shape::rect_filled(
+        // The whole cell, edge to edge of its card (the user, 2026-11-20:
+        // a highlight that stopped half a margin short "is not full").
+        // Outside a card shown with `card_show`: half a margin out on each
+        // side, rounded like a button.
+        let card = ui
+            .data(|data| data.get_temp::<InCard>(in_card_id()))
+            .and_then(|card| card.0);
+        let (area, corners) = card
+            .and_then(|card| row_ground(rect, card.shrink(1.0), ui.spacing().item_spacing.y))
+            .unwrap_or((
                 rect.expand2(vec2(8.0, 0.0)).shrink2(vec2(0.0, 1.0)),
                 CornerRadius::same(radius::BUTTON),
-                feel.fill(&pal),
-            ),
+            ));
+        ui.painter().set(
+            ground,
+            egui::Shape::rect_filled(area, corners, feel.fill(&pal)),
         );
         feel
     } else {
@@ -894,6 +965,52 @@ pub enum ButtonKind {
     Secondary,
     Ghost,
     Danger,
+}
+
+/// A menu's row: as wide as the menu, lit from edge to edge of it under the
+/// pointer (egui's own button lit only its text's width and set the text
+/// against the fill's edge).
+pub fn menu_item(ui: &mut Ui, text: &str) -> Response {
+    const HEIGHT: f32 = 32.0;
+    const PAD: f32 = 10.0;
+    let pal = p(ui);
+    let galley = WidgetText::from(
+        RichText::new(text)
+            .text_style(style::secondary())
+            .family(weight::semibold()),
+    )
+    .into_galley(
+        ui,
+        Some(TextWrapMode::Extend),
+        f32::INFINITY,
+        egui::TextStyle::Button,
+    );
+    // The menu's width (its minimum, or its widest row so far), never less
+    // than this row's text.
+    let width = ui.min_rect().width().max(galley.size().x + 2.0 * PAD);
+    let (rect, response) = ui.allocate_exact_size(vec2(width, HEIGHT), Sense::click());
+    let response = if ui.is_enabled() {
+        response.on_hover_cursor(egui::CursorIcon::PointingHand)
+    } else {
+        response
+    };
+    if ui.is_rect_visible(rect) {
+        let feel = feel(ui, &response, false);
+        ui.painter()
+            .rect_filled(rect, CornerRadius::same(radius::BUTTON), feel.fill(&pal));
+        let ink = if ui.is_enabled() {
+            feel.ink(&pal, pal.tx)
+        } else {
+            pal.tx3
+        };
+        ui.painter().galley(
+            egui::pos2(rect.left() + PAD, rect.center().y - galley.size().y / 2.0),
+            galley,
+            ink,
+        );
+    }
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, text));
+    response
 }
 
 /// A 32 px button (40 with `big`), optional 16 px icon.
@@ -1335,6 +1452,34 @@ pub fn ago(seconds: i64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_row_lights_up_its_whole_cell_in_its_card() {
+        let card = Rect::from_min_max(egui::pos2(100.0, 50.0), egui::pos2(700.0, 250.0));
+        let row =
+            |top: f32| Rect::from_min_max(egui::pos2(116.0, top), egui::pos2(684.0, top + 40.0));
+        // The first row: up to the card's top, whose corners it follows.
+        let (area, corners) = row_ground(row(62.0), card, 12.0).unwrap();
+        assert_eq!((area.left(), area.right()), (100.0, 700.0));
+        assert_eq!((area.top(), area.bottom()), (50.0, 114.0));
+        assert_eq!(
+            (corners.nw, corners.ne, corners.sw, corners.se),
+            (11, 11, 0, 0)
+        );
+        // A middle row: from divider to divider, square.
+        let (area, corners) = row_ground(row(127.0), card, 12.0).unwrap();
+        assert_eq!((area.top(), area.bottom()), (115.0, 179.0));
+        assert_eq!(corners, CornerRadius::ZERO);
+        // The last row: down to the card's foot.
+        let (area, corners) = row_ground(row(196.0), card, 12.0).unwrap();
+        assert_eq!((area.top(), area.bottom()), (184.0, 250.0));
+        assert_eq!((corners.nw, corners.sw, corners.se), (0, 11, 11));
+        // A card's only row is the whole card.
+        let only = Rect::from_min_max(egui::pos2(100.0, 50.0), egui::pos2(700.0, 116.0));
+        assert_eq!(row_ground(row(62.0), only, 12.0).unwrap().0, only);
+        // Not in this card (it moved since last frame): the old look.
+        assert_eq!(row_ground(row(300.0), card, 12.0), None);
+    }
 
     #[test]
     fn counts_are_grouped_by_thousands() {

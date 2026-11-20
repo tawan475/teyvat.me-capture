@@ -13,7 +13,8 @@
 //! system's mouse); `TEYVATME_PREVIEW_TRAY=1` goes to the tray 3 s in and
 //! comes back 12 s in, through the tray's own code.
 //! `TEYVATME_PREVIEW_POINTER=x,y[,down]` holds the pointer at that point (in
-//! points), pressed with `down`, for shots of hover and press.
+//! points), pressed with `down`, for shots of hover and press;
+//! `TEYVATME_PREVIEW_CLICK=x,y` clicks there once, 2 s in.
 
 use std::time::{Duration, Instant};
 
@@ -70,6 +71,28 @@ impl TeyvatmeApp {
                     });
                 }
             }
+        }
+        // `TEYVATME_PREVIEW_CLICK=x,y`: one click there, 2 s in (a menu's
+        // button, for a shot of the menu with the pointer held on a row).
+        static CLICKED_AT: std::sync::atomic::AtomicBool =
+            std::sync::atomic::AtomicBool::new(false);
+        if let Ok(at) = std::env::var("TEYVATME_PREVIEW_CLICK")
+            && let Some((x, y)) = at.split_once(',')
+            && let (Ok(x), Ok(y)) = (x.trim().parse::<f32>(), y.trim().parse::<f32>())
+            && self.started_at.elapsed() > Duration::from_secs(2)
+            && !CLICKED_AT.swap(true, std::sync::atomic::Ordering::Relaxed)
+        {
+            let pos = egui::pos2(x, y);
+            let button = |pressed| egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: egui::Modifiers::NONE,
+            };
+            raw_input
+                .events
+                .extend([egui::Event::PointerMoved(pos), button(true), button(false)]);
+            return;
         }
         static CLICKED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
         if std::env::var("TEYVATME_PREVIEW_OPEN").as_deref() != Ok("language")

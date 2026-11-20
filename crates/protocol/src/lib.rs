@@ -4493,6 +4493,7 @@ mod tests {
 
     #[test]
     fn a_handed_over_connection_resumes_in_a_fresh_sniffer() {
+        let _guard = crate::learned_test_lock();
         // The first process logs in and decodes a few messages.
         let mut first = connected_sniffer();
         let mut conn = Conn::new(122_486);
@@ -4564,6 +4565,7 @@ mod tests {
 
     #[test]
     fn pushes_buffered_at_the_exit_survive_the_hand_over() {
+        let _guard = crate::learned_test_lock();
         let mut first = connected_sniffer();
         let mut conn = Conn::new(122_486);
         let combined = 0x1111;
@@ -4597,6 +4599,7 @@ mod tests {
 
     #[test]
     fn a_gap_missed_around_the_restart_is_given_up_on() {
+        let _guard = crate::learned_test_lock();
         let mut first = connected_sniffer();
         let mut conn = Conn::new(122_486);
         let combined = 0x1111;

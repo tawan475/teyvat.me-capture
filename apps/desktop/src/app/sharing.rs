@@ -7,7 +7,7 @@
 //! once; the monitor starts a new live journal for it once the switches
 //! were left alone (`LiveSync::note_sharing_changed`).
 
-use egui::{Align, CornerRadius, Layout, Margin, RichText, Sense, Stroke, Ui, vec2};
+use egui::{Align, CornerRadius, Layout, Margin, RichText, Sense, Stroke, Ui};
 use teyvatme_core::sharing::{Part, PartsOff};
 
 use super::{TeyvatmeApp, TrackerSignIn};
@@ -15,7 +15,7 @@ use crate::i18n::{tr, trf};
 use crate::ui::icons;
 use crate::ui::theme::{style, weight};
 use crate::ui::widgets::{
-    self, CalloutKind, callout, card_frame, divider, secondary_text, small_text, strong_text,
+    self, CalloutKind, callout, card_show, divider, secondary_text, small_text, strong_text,
     switch_row,
 };
 
@@ -218,7 +218,7 @@ impl TeyvatmeApp {
         // What the tracker receives: the count and the parts left out, the
         // same list every snapshot carries.
         let off = self.saved_state.sharing_off.clone();
-        card_frame(ui).show(ui, |ui| {
+        card_show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.spacing_mut().item_spacing.y = 6.0;
             ui.label(secondary_text(
@@ -240,18 +240,28 @@ impl TeyvatmeApp {
                 .color(pal.tx),
             );
             if !off.all_shared() {
-                ui.horizontal_wrapped(|ui| {
-                    ui.spacing_mut().item_spacing = vec2(6.0, 6.0);
-                    for part in off.off() {
+                let texts: Vec<String> = off
+                    .off()
+                    .map(|part| {
                         // The UID still goes while uploads are placed by it.
-                        let text = if part == Part::Numbers && can_upload && routes_by_uid {
+                        if part == Part::Numbers && can_upload && routes_by_uid {
                             trf("{0} · UID kept", &[&part_name(part)])
                         } else {
                             part_name(part).to_string()
-                        };
-                        off_chip(ui, &text);
-                    }
-                });
+                        }
+                    })
+                    .collect();
+                // Laid out by hand: a framed chip in a wrapping layout does
+                // not wrap, it widened the whole page past a narrow window.
+                let widths: Vec<f32> = texts.iter().map(|text| off_chip_width(ui, text)).collect();
+                for row in chip_rows(&widths, ui.available_width(), CHIP_GAP) {
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = CHIP_GAP;
+                        for text in &texts[row] {
+                            off_chip(ui, text);
+                        }
+                    });
+                }
             }
             ui.add(
                 egui::Label::new(small_text(
@@ -308,7 +318,7 @@ impl TeyvatmeApp {
                 .join(", ");
             line = trf("{0} · {1} not shared", &[&line, &names]);
         }
-        card_frame(ui).show(ui, |ui| {
+        card_show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.spacing_mut().item_spacing.y = 4.0;
             // The header is the fold's button: the whole row.
@@ -434,17 +444,63 @@ fn note_line(ui: &mut Ui, icon: egui::ImageSource<'static>, text: &str, strong: 
 }
 
 /// A part that is left out, as a chip: the cloud-off icon and its name.
+const CHIP_GAP: f32 = 6.0;
+const CHIP_ICON: f32 = 13.0;
+const CHIP_PAD: i8 = 8;
+
+fn off_chip_text(text: &str, color: egui::Color32) -> RichText {
+    small_text(text, color).family(weight::medium())
+}
+
+/// How wide [`off_chip`] draws `text`.
+fn off_chip_width(ui: &Ui, text: &str) -> f32 {
+    let galley = egui::WidgetText::from(off_chip_text(text, egui::Color32::WHITE)).into_galley(
+        ui,
+        Some(egui::TextWrapMode::Extend),
+        f32::INFINITY,
+        egui::TextStyle::Body,
+    );
+    // The frame's stroke and padding, the icon, its gap, the text.
+    2.0 + 2.0 * f32::from(CHIP_PAD) + CHIP_ICON + 4.0 + galley.size().x
+}
+
+/// Chips of these widths in rows no wider than `available`: each row as a
+/// range of the chips. A chip wider than a row has a row to itself.
+fn chip_rows(widths: &[f32], available: f32, gap: f32) -> Vec<std::ops::Range<usize>> {
+    let mut rows = Vec::new();
+    let mut start = 0;
+    let mut used = 0.0;
+    for (index, width) in widths.iter().enumerate() {
+        let with = if index == start {
+            *width
+        } else {
+            used + gap + width
+        };
+        if index > start && with > available {
+            rows.push(start..index);
+            start = index;
+            used = *width;
+        } else {
+            used = with;
+        }
+    }
+    if start < widths.len() {
+        rows.push(start..widths.len());
+    }
+    rows
+}
+
 fn off_chip(ui: &mut Ui, text: &str) {
     let pal = widgets::p(ui);
     egui::Frame::new()
         .stroke(Stroke::new(1.0_f32, pal.tx3))
         .corner_radius(CornerRadius::same(12))
-        .inner_margin(Margin::symmetric(8, 3))
+        .inner_margin(Margin::symmetric(CHIP_PAD, 3))
         .show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 4.0;
-                ui.add(icons::image(icons::cloud_off(), 13.0, pal.tx));
-                ui.label(small_text(text, pal.tx).family(weight::medium()));
+                ui.add(icons::image(icons::cloud_off(), CHIP_ICON, pal.tx));
+                ui.add(egui::Label::new(off_chip_text(text, pal.tx)).extend());
             });
         });
 }
@@ -460,6 +516,18 @@ mod tests {
             .flat_map(|group| group.iter().copied())
             .collect();
         assert_eq!(listed, Part::ALL);
+    }
+
+    #[test]
+    fn chips_wrap_into_rows_that_fit() {
+        let rows = |widths: &[f32], available| chip_rows(widths, available, 6.0);
+        assert_eq!(rows(&[], 100.0), Vec::<std::ops::Range<usize>>::new());
+        // 40 + 6 + 40 = 86 fits in 90; a third does not.
+        assert_eq!(rows(&[40.0, 40.0, 40.0], 90.0), [0..2, 2..3]);
+        assert_eq!(rows(&[40.0, 40.0, 40.0], 132.0), vec![0..3]);
+        // One wider than the row still gets a row.
+        assert_eq!(rows(&[200.0, 40.0, 40.0], 90.0), [0..1, 1..3]);
+        assert_eq!(rows(&[40.0, 200.0], 90.0), [0..1, 1..2]);
     }
 
     #[test]
