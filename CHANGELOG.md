@@ -10,6 +10,8 @@ Each release's section is its GitHub release notes (`.github/workflows/release.y
   cuts the content off at the bottom.
 - Settings › Sharing fits a narrow window: the list of parts not shared
   wraps instead of pushing the page past the window's right edge.
+- The Export and Wish history menus: a row lights up across the whole
+  menu, and its text no longer sits against the highlight's edge.
 
 ## 1.18.0
 

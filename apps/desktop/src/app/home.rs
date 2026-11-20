@@ -808,19 +808,19 @@ impl TeyvatmeApp {
                 egui::Popup::menu(&more).show(|ui| {
                     ui.set_min_width(200.0);
                     ui.add_enabled_ui(ready, |ui| {
-                        if ui.button(tr("Open paimon.moe")).clicked() {
+                        if widgets::menu_item(ui, tr("Open paimon.moe")).clicked() {
                             open_menu = Some("https://paimon.moe/wish/import");
                         }
-                        if ui.button(tr("Open StarDB")).clicked() {
+                        if widgets::menu_item(ui, tr("Open StarDB")).clicked() {
                             open_menu = Some("https://stardb.gg/en/genshin/wish-import");
                         }
                     });
                     ui.separator();
                     if reading {
-                        cancel_save = ui.button(tr("Stop saving")).clicked();
+                        cancel_save = widgets::menu_item(ui, tr("Stop saving")).clicked();
                     } else {
                         let save = ui
-                            .add_enabled_ui(ready, |ui| ui.button(tr("Save history…")))
+                            .add_enabled_ui(ready, |ui| widgets::menu_item(ui, tr("Save history…")))
                             .inner
                             .on_hover_text(tr(
                                 "Reads every banner from the game's wish API (1 s a page, a few minutes for a long history) and saves it as UIGF JSON",
@@ -945,20 +945,20 @@ impl TeyvatmeApp {
                 let more = icon_button(ui, icons::ellipsis(), tr("More exports"));
                 egui::Popup::menu(&more).show(|ui| {
                     ui.set_min_width(220.0);
-                    if ui.button(tr("Copy achievements")).clicked() {
+                    if widgets::menu_item(ui, tr("Copy achievements")).clicked() {
                         more_action = Some(MoreExport::Achievements(None));
                     }
-                    if ui.button(tr("Achievements to StarDB")).clicked() {
+                    if widgets::menu_item(ui, tr("Achievements to StarDB")).clicked() {
                         more_action =
                             Some(MoreExport::Achievements(Some("https://stardb.gg/import")));
                     }
-                    if ui.button(tr("Achievements to Seelie.me")).clicked() {
+                    if widgets::menu_item(ui, tr("Achievements to Seelie.me")).clicked() {
                         more_action = Some(MoreExport::Achievements(Some(
                             "https://seelie.me/achievements",
                         )));
                     }
                     ui.separator();
-                    if ui.button(tr("Filters and auto-export")).clicked() {
+                    if widgets::menu_item(ui, tr("Filters and auto-export")).clicked() {
                         more_action = Some(MoreExport::Settings);
                     }
                 });

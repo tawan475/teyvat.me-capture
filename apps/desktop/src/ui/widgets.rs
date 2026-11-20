@@ -967,6 +967,52 @@ pub enum ButtonKind {
     Danger,
 }
 
+/// A menu's row: as wide as the menu, lit from edge to edge of it under the
+/// pointer (egui's own button lit only its text's width and set the text
+/// against the fill's edge).
+pub fn menu_item(ui: &mut Ui, text: &str) -> Response {
+    const HEIGHT: f32 = 32.0;
+    const PAD: f32 = 10.0;
+    let pal = p(ui);
+    let galley = WidgetText::from(
+        RichText::new(text)
+            .text_style(style::secondary())
+            .family(weight::semibold()),
+    )
+    .into_galley(
+        ui,
+        Some(TextWrapMode::Extend),
+        f32::INFINITY,
+        egui::TextStyle::Button,
+    );
+    // The menu's width (its minimum, or its widest row so far), never less
+    // than this row's text.
+    let width = ui.min_rect().width().max(galley.size().x + 2.0 * PAD);
+    let (rect, response) = ui.allocate_exact_size(vec2(width, HEIGHT), Sense::click());
+    let response = if ui.is_enabled() {
+        response.on_hover_cursor(egui::CursorIcon::PointingHand)
+    } else {
+        response
+    };
+    if ui.is_rect_visible(rect) {
+        let feel = feel(ui, &response, false);
+        ui.painter()
+            .rect_filled(rect, CornerRadius::same(radius::BUTTON), feel.fill(&pal));
+        let ink = if ui.is_enabled() {
+            feel.ink(&pal, pal.tx)
+        } else {
+            pal.tx3
+        };
+        ui.painter().galley(
+            egui::pos2(rect.left() + PAD, rect.center().y - galley.size().y / 2.0),
+            galley,
+            ink,
+        );
+    }
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, text));
+    response
+}
+
 /// A 32 px button (40 with `big`), optional 16 px icon.
 pub fn button(
     ui: &mut Ui,
