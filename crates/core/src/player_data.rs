@@ -75,6 +75,10 @@ const CHARACTER_ASCENSION_RANGE: RangeInclusive<u32> = 0..=100;
 /// the account UID.
 const UID_MAJORITY: f64 = 0.9;
 
+/// With the characters' guids behind it, the share of item guids that is
+/// enough: more than every other top half together.
+const UID_BACKED_MAJORITY: f64 = 0.5;
+
 /// `AvatarInfo.avatar_type` of an owned character (0 none, 2 trial, 3 mirror).
 const AVATAR_TYPE_FORMAL: u32 = 1;
 
@@ -1399,6 +1403,8 @@ impl PlayerData {
                     .insert(*guid, avatar.avatar_id);
             }
             self.characters.insert(avatar.avatar_id, avatar.clone());
+            // The characters' guids can back the items' vote.
+            self.uid_cache.set(None);
         }
     }
 
@@ -1898,9 +1904,27 @@ impl PlayerData {
             .iter()
             .filter(|(top, _)| **top != 0)
             .max_by_key(|(_, n)| **n)
-            .filter(|(_, n)| (**n as f64) >= (total as f64) * UID_MAJORITY)
+            .filter(|(top, n)| {
+                let share = (**n as f64) / (total as f64);
+                share >= UID_MAJORITY
+                    || (share > UID_BACKED_MAJORITY && self.characters_back_uid(**top))
+            })
             .and_then(|(top, _)| u32::try_from(*top).ok());
         (uid, item_tops)
+    }
+
+    /// Whether the captured characters' guids say `top` too: at least
+    /// [`UID_MAJORITY`] of them, and there are some. A character is always
+    /// the account's own, while an artifact or weapon picked up in another
+    /// player's world keeps that player's top half: an account that farms in
+    /// co-op a lot fell under the items' 90% and exported no UID at all (a
+    /// 2026-11-21 log: 5,398 of 6,064 items, every one of 106 characters).
+    fn characters_back_uid(&self, top: u64) -> bool {
+        let voting = self.characters.values().filter(|avatar| avatar.guid != 0);
+        let (agreeing, total) = voting.fold((0usize, 0usize), |(agreeing, total), avatar| {
+            (agreeing + usize::from(avatar.guid >> 32 == top), total + 1)
+        });
+        total > 0 && (agreeing as f64) >= (total as f64) * UID_MAJORITY
     }
 
     /// How the account UID is read off the captured item guids, with the
@@ -1911,8 +1935,9 @@ impl PlayerData {
     /// teyvatme-protocol's delete matcher only accepts guid lists of that
     /// shape), so the top half of an item guid would be the UID. Virtual items
     /// carry guid 0 and are skipped. The UID is the top half at least
-    /// [`UID_MAJORITY`] of the items share; a real split claims nothing. Avatar
-    /// guids are counted but don't vote: their field is unverified on 7.1.
+    /// [`UID_MAJORITY`] of the items share, or more than half of them when
+    /// the characters' guids back it ([`Self::characters_back_uid`]); a real
+    /// split claims nothing. Character guids never name a UID by themselves.
     pub fn uid_check(&self) -> good::UidCheck {
         let (uid, item_tops) = self.item_uid();
         let mut avatar_tops: BTreeMap<u64, usize> = BTreeMap::new();
@@ -4046,7 +4071,7 @@ mod tests {
         data.process_items(&items);
         assert_eq!(data.account_uid(), Some(800_000_001));
 
-        // Avatar guids don't vote, even when they disagree.
+        // Character guids can't take it away, even when they disagree.
         let mut hu_tao = avatar(10000046, &[]);
         hu_tao.guid = minted_guid(123_456_789, 2);
         data.process_characters(&[hu_tao]);
@@ -4055,6 +4080,46 @@ mod tests {
         // One stray item among 21 doesn't spoil it (95% agree).
         data.process_items(&[material_item(105_000, minted_guid(800_000_002, 1), 1)]);
         assert_eq!(data.account_uid(), Some(800_000_001));
+    }
+
+    #[test]
+    fn co_op_pickups_dont_cost_the_uid_while_the_characters_back_it() {
+        let own = |n: u64| material_item(104_000 + n as u32, minted_guid(800_000_001, n), 3);
+        // Picked up in other players' worlds: their top halves.
+        let foreign =
+            |n: u64| material_item(105_000 + n as u32, minted_guid(800_000_100 + n % 3, n), 1);
+        let mut data = player_data();
+        data.process_items(&(1..=20).map(own).collect::<Vec<_>>());
+        data.process_items(&(1..=5).map(foreign).collect::<Vec<_>>());
+        // 20 of 25 (80%) and no character held: not claimed, as before.
+        assert_eq!(data.account_uid(), None);
+
+        // The characters are the account's own: with them, 80% is enough.
+        let mut hu_tao = avatar(10000046, &[]);
+        hu_tao.guid = minted_guid(800_000_001, 500);
+        data.process_characters(&[hu_tao]);
+        assert_eq!(data.account_uid(), Some(800_000_001));
+
+        // Not when the account's items are no longer more than half...
+        data.process_items(&(6..=25).map(foreign).collect::<Vec<_>>());
+        assert_eq!(data.account_uid(), None);
+    }
+
+    #[test]
+    fn characters_of_another_uid_dont_back_the_items() {
+        let mut data = player_data();
+        let items: Vec<_> = (1..=20)
+            .map(|n| material_item(104_000 + n, minted_guid(800_000_001, u64::from(n)), 3))
+            .chain(
+                (1..=5)
+                    .map(|n| material_item(105_000 + n, minted_guid(800_000_002, u64::from(n)), 1)),
+            )
+            .collect();
+        data.process_items(&items);
+        let mut hu_tao = avatar(10000046, &[]);
+        hu_tao.guid = minted_guid(800_000_002, 500);
+        data.process_characters(&[hu_tao]);
+        assert_eq!(data.account_uid(), None);
     }
 
     #[test]
