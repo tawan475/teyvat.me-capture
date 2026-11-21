@@ -1163,7 +1163,19 @@ impl PlayerData {
             RoutinePart::Home(found) => self.routine.home = Some(found),
             RoutinePart::Welkin(days) => self.routine.welkin = Some(days),
             RoutinePart::WishPath(found) => self.routine.wish_path = Some(found),
-            RoutinePart::Bosses(found) => self.routine.bosses = Some(found),
+            RoutinePart::Bosses(found) => match &mut self.routine.bosses {
+                // A reply in play lists only some of the bosses (on 7.2, the
+                // ones with a single spot): it says nothing of the others,
+                // so they keep their times. Replacing the list lost them
+                // from every snapshot after such a reply.
+                Some(held) => {
+                    held.respawns.extend(found.respawns);
+                    if found.weekly.is_some() {
+                        held.weekly = found.weekly;
+                    }
+                }
+                None => self.routine.bosses = Some(found),
+            },
             RoutinePart::Bargains(found) => {
                 let at = self.clock_secs.unwrap_or_default() as u32;
                 self.routine.bargains = Some((found, at));
@@ -5325,6 +5337,88 @@ mod tests {
         assert!(data.is_empty());
     }
 
+    #[test]
+    fn a_short_boss_reply_keeps_the_other_bosses() {
+        use teyvatme_protocol::{BossList, WeeklyDiscounts};
+        let weekly = WeeklyDiscounts {
+            used: 1,
+            limit: 3,
+            cost: 30,
+            full_cost: 60,
+        };
+        let mut data = collector();
+        data.process_routine(RoutinePart::Bosses(BossList {
+            respawns: BTreeMap::from([(1, vec![10, 20, 30]), (6, vec![40]), (7, vec![50])]),
+            weekly: Some(weekly),
+        }));
+        // In play the game lists only some: their times move, the rest stay.
+        data.process_routine(RoutinePart::Bosses(BossList {
+            respawns: BTreeMap::from([(6, vec![99]), (8, vec![70])]),
+            weekly: None,
+        }));
+        let held = data.routine.bosses.clone().unwrap();
+        assert_eq!(
+            held.respawns,
+            BTreeMap::from([
+                (1, vec![10, 20, 30]),
+                (6, vec![99]),
+                (7, vec![50]),
+                (8, vec![70])
+            ])
+        );
+        assert_eq!(held.weekly, Some(weekly));
+        // A reply with the discounts replaces them.
+        let used = WeeklyDiscounts { used: 2, ..weekly };
+        data.process_routine(RoutinePart::Bosses(BossList {
+            respawns: BTreeMap::new(),
+            weekly: Some(used),
+        }));
+        assert_eq!(data.routine.bosses.as_ref().unwrap().weekly, Some(used));
+        // A new login starts from nothing.
+        data.reset();
+        assert_eq!(data.routine.bosses, None);
+    }
+
+    #[test]
+    fn another_message_in_the_aranara_shape_does_not_replace_the_list() {
+        use teyvatme_protocol::AranaraState::{Collectable, Finished, None as Unmet};
+        let real: BTreeMap<u32, BTreeMap<u32, _>> = BTreeMap::from([(
+            1,
+            (1..=13)
+                .map(|id| (id, Finished))
+                .chain([(14, Collectable)])
+                .collect(),
+        )]);
+        let stray = BTreeMap::from([(2, BTreeMap::from([(2, Unmet)]))]);
+        let mut data = collector();
+        data.process_collection(CollectionPart::Aranara(21_372, real.clone()));
+        data.process_collection(CollectionPart::Aranara(7_828, stray.clone()));
+        assert_eq!(data.collections.aranara.as_ref(), Some(&real));
+        // The list's own command always replaces it, a shorter list too.
+        let fewer = BTreeMap::from([(1, BTreeMap::from([(1, Finished)]))]);
+        data.process_collection(CollectionPart::Aranara(21_372, fewer.clone()));
+        assert_eq!(data.collections.aranara.as_ref(), Some(&fewer));
+
+        // The stray one first: the real list, longer, takes its place.
+        let mut data = collector();
+        data.process_collection(CollectionPart::Aranara(7_828, stray.clone()));
+        data.process_collection(CollectionPart::Aranara(21_372, real.clone()));
+        assert_eq!(data.collections.aranara.as_ref(), Some(&real));
+        data.process_collection(CollectionPart::Aranara(7_828, stray.clone()));
+        assert_eq!(data.collections.aranara.as_ref(), Some(&real));
+
+        // Handed over by a build that kept no command: an equal list is read.
+        let mut data = collector();
+        data.process_collection(CollectionPart::Aranara(21_372, real.clone()));
+        data.collections.aranara_command = None;
+        data.process_collection(CollectionPart::Aranara(7_828, stray));
+        assert_eq!(data.collections.aranara.as_ref(), Some(&real));
+        let mut moved = real.clone();
+        moved.get_mut(&1).unwrap().insert(14, Finished);
+        data.process_collection(CollectionPart::Aranara(21_372, moved.clone()));
+        assert_eq!(data.collections.aranara.as_ref(), Some(&moved));
+    }
+
     // -- gi_collections (the rest) and gi_wardrobe -------------------------------------
 
     #[test]
@@ -5369,10 +5463,10 @@ mod tests {
                 },
             )]),
         }));
-        data.process_collection(CollectionPart::Aranara(BTreeMap::from([(
-            1,
-            BTreeMap::from([(1, AranaraState::Finished)]),
-        )])));
+        data.process_collection(CollectionPart::Aranara(
+            21_372,
+            BTreeMap::from([(1, BTreeMap::from([(1, AranaraState::Finished)]))]),
+        ));
         data.process_collection(CollectionPart::Hangouts(BTreeMap::from([(
             101_401,
             teyvatme_protocol::HangoutChapter {

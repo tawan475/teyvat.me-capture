@@ -520,7 +520,7 @@ pub fn apply_commands(
             }
             CommandMatch::Aranara(found) => {
                 tracing::info!("Found the Aranara collections");
-                player_data.process_collection(CollectionPart::Aranara(found));
+                player_data.process_collection(CollectionPart::Aranara(command_id.into(), found));
                 applied.routine = true;
             }
             CommandMatch::WeaponSkins(found) => {
