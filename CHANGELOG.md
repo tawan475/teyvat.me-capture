@@ -2,6 +2,16 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.18.4
+
+- Boss respawn times no longer go missing from uploads. While you play, the
+  game re-sends the times of only some bosses; that short list replaced the
+  whole one, so most bosses dropped out of the next upload until the
+  following login. The others now keep their times.
+- The Aranara collections no longer flip to a single empty entry. Another
+  game message of the same shape was read as the list; only the real one
+  replaces it now.
+
 ## 1.18.3
 
 - Uploads no longer stop for accounts with many artifacts or weapons picked

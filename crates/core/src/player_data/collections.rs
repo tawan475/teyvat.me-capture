@@ -26,6 +26,9 @@ pub(super) struct CollectionsState {
     pub handbook: Option<Handbook>,
     pub tcg: Option<TcgCollection>,
     pub aranara: Option<BTreeMap<u32, BTreeMap<u32, AranaraState>>>,
+    /// The command that gave [`Self::aranara`]: see [`keeps_aranara`].
+    #[serde(default)]
+    pub aranara_command: Option<u32>,
     pub weapon_skins: Option<Vec<WeaponSkin>>,
     pub wardrobe: Option<AvatarWardrobe>,
     /// Unlocked recipes → proficiency (0 when none yet).
@@ -104,7 +107,8 @@ pub enum CollectionPart {
     Defeats(BTreeMap<u32, DefeatCount>),
     Handbook(Handbook),
     Tcg(TcgCollection),
-    Aranara(BTreeMap<u32, BTreeMap<u32, AranaraState>>),
+    /// With the command it came in.
+    Aranara(u32, BTreeMap<u32, BTreeMap<u32, AranaraState>>),
     WeaponSkins(Vec<WeaponSkin>),
     Wardrobe(AvatarWardrobe),
     Hangouts(BTreeMap<u32, HangoutChapter>),
@@ -170,6 +174,31 @@ fn hangout(chapter: &HangoutChapter) -> good::GiHangout {
             .map(|(id, _)| *id)
             .collect(),
         pictures_total: chapter.pictures.len() as u32,
+    }
+}
+
+/// Whether an Aranara list from `command` takes the place of the one held.
+///
+/// The list is recognised by its shape, and another message has it too (7.2:
+/// one suite with a single entry, seen right before a logout), which used to
+/// replace the real list. So the command that gave the held list always
+/// replaces it, and another command only with more entries than held (the
+/// real list arriving after a stray one). A held list whose command is not
+/// known (handed over by an older build) gives way to one at least as long.
+fn keeps_aranara(
+    held: Option<&BTreeMap<u32, BTreeMap<u32, AranaraState>>>,
+    held_command: Option<u32>,
+    command: u32,
+    found: &BTreeMap<u32, BTreeMap<u32, AranaraState>>,
+) -> bool {
+    let count = |list: &BTreeMap<u32, BTreeMap<u32, AranaraState>>| {
+        list.values().map(BTreeMap::len).sum::<usize>()
+    };
+    match (held, held_command) {
+        (None, _) => true,
+        (Some(_), Some(from)) if from == command => true,
+        (Some(held), Some(_)) => count(found) > count(held),
+        (Some(held), None) => count(found) >= count(held),
     }
 }
 
@@ -476,7 +505,19 @@ impl PlayerData {
             CollectionPart::Defeats(found) => state.defeats = Some(found),
             CollectionPart::Handbook(found) => state.handbook = Some(found),
             CollectionPart::Tcg(found) => state.tcg = Some(found),
-            CollectionPart::Aranara(found) => state.aranara = Some(found),
+            CollectionPart::Aranara(command, found) => {
+                if keeps_aranara(
+                    state.aranara.as_ref(),
+                    state.aranara_command,
+                    command,
+                    &found,
+                ) {
+                    state.aranara = Some(found);
+                    state.aranara_command = Some(command);
+                } else {
+                    tracing::info!(command, "Not the Aranara list held: left out");
+                }
+            }
             CollectionPart::WeaponSkins(found) => state.weapon_skins = Some(found),
             CollectionPart::Wardrobe(found) => state.wardrobe = Some(found),
             CollectionPart::Hangouts(found) => state.hangouts = Some(found),
