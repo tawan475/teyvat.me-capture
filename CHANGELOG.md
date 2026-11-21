@@ -2,6 +2,14 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.18.3
+
+- Uploads no longer stop for accounts with many artifacts or weapons picked
+  up in other players' worlds. Those items count against the check that
+  reads the account's UID, and past one in ten the upload went out with no
+  UID and teyvat.me refused it ("This file has no UID"). The characters,
+  which are always the account's own, now settle it.
+
 ## 1.18.2
 
 - Uploads to teyvat.me are about nine times smaller: the snapshot is sent
