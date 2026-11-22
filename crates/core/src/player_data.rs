@@ -1163,6 +1163,11 @@ impl PlayerData {
             RoutinePart::Home(found) => self.routine.home = Some(found),
             RoutinePart::Welkin(days) => self.routine.welkin = Some(days),
             RoutinePart::WishPath(found) => self.routine.wish_path = Some(found),
+            // In co-op the reply lists the host's bosses: kept, it replaced
+            // every time of the player's own with the host's.
+            RoutinePart::Bosses(_) if self.in_another_world() => {
+                tracing::debug!("bosses of another player's world: not kept");
+            }
             RoutinePart::Bosses(found) => match &mut self.routine.bosses {
                 // A reply in play lists only some of the bosses (on 7.2, the
                 // ones with a single spot): it says nothing of the others,
@@ -5377,6 +5382,50 @@ mod tests {
         // A new login starts from nothing.
         data.reset();
         assert_eq!(data.routine.bosses, None);
+    }
+
+    #[test]
+    fn a_hosts_boss_list_is_not_kept() {
+        use teyvatme_protocol::{BossList, SceneRequest};
+        let mut data = PlayerData::new(
+            TestGameData {
+                exploration: r#""cities": [1], "reputation_cities": [1], "offerings": [1],
+                    "areas": [1], "scene_points": {"3": [7], "5": [1], "6": [2]}"#,
+                ..Default::default()
+            }
+            .build(),
+        );
+        let mut item = Item::new();
+        item.guid = (812_345_678_u64 << 32) | 5;
+        item.item_id = 104_001;
+        item.mut_material().count = 1;
+        data.process_items(&[item]);
+        let ask = |data: &mut PlayerData, owner: u32| {
+            for scene in [3, 5, 6] {
+                data.note_scene_request(1649, SceneRequest { owner, scene });
+            }
+        };
+        let list = |time: u32| {
+            RoutinePart::Bosses(BossList {
+                respawns: BTreeMap::from([(1, vec![time]), (6, vec![time])]),
+                weekly: None,
+            })
+        };
+        let own = BTreeMap::from([(1, vec![10]), (6, vec![10])]);
+        ask(&mut data, 812_345_678);
+        data.process_routine(list(10));
+        assert_eq!(data.routine.bosses.as_ref().unwrap().respawns, own);
+        // Co-op: the reply is the host's.
+        ask(&mut data, 811_111_111);
+        data.process_routine(list(99));
+        assert_eq!(data.routine.bosses.as_ref().unwrap().respawns, own);
+        // Home again.
+        ask(&mut data, 812_345_678);
+        data.process_routine(list(20));
+        assert_eq!(
+            data.routine.bosses.as_ref().unwrap().respawns,
+            BTreeMap::from([(1, vec![20]), (6, vec![20])])
+        );
     }
 
     #[test]

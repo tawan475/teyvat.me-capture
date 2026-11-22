@@ -2,6 +2,13 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.18.5
+
+- Boss respawn times are no longer replaced by another player's. In co-op
+  the game sends the host's boss list, and it was kept as your own until
+  the next login. A list received in another player's world is now left
+  out.
+
 ## 1.18.4
 
 - Boss respawn times no longer go missing from uploads. While you play, the
