@@ -18,6 +18,9 @@ default = []
 # needs. Library consumers (Teyvat.me) depend on the lib target with default
 # features, so they never build clap or anyhow.
 cli = ["dep:anyhow", "dep:clap"]
+# A whole game login on the wire (`test_login`), for other crates' tests
+# (Teyvat.me's hand-over tests).
+test-support = []
 
 [lib]
 name = "teyvatme_protocol"

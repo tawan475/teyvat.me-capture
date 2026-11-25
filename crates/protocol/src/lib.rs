@@ -212,6 +212,8 @@ mod quests;
 mod records;
 mod routine;
 mod shop;
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_login;
 #[cfg(test)]
 mod test_support;
 mod unk_util;
@@ -1032,6 +1034,15 @@ impl GameSniffer {
     /// account's until the new login's own data replaces it.
     pub fn login_uid(&self) -> Option<u32> {
         self.login_uid
+    }
+
+    /// A handshake request arrived while the session key was live and the
+    /// reset it asks for waits for corroboration (a new conversation, or the
+    /// key going dead): no new generation yet, and nothing told the
+    /// consumer. A connection handed over now would lose that armed reset,
+    /// so the next login's conversation would be refused as a stray.
+    pub fn reset_armed(&self) -> bool {
+        self.pending_reset
     }
 
     /// Whether the session key of the current connection has been given up on.

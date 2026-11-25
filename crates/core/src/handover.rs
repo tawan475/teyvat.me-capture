@@ -116,14 +116,25 @@ pub struct SessionHandover {
 /// * `unhandled_reset`: the decoding thread concluded a new connection that
 ///   the monitor never handled (decoded after its loop ended), so the same
 ///   pairing, with the replacement never even started.
+/// * `reset_armed`: the reader saw a new handshake while the session key
+///   was live and holds the reset back until the new connection proves
+///   itself ([`teyvatme_protocol::GameSniffer::reset_armed`]). The armed
+///   reset is not handed over, so after a resume the new login's
+///   conversation would be refused as a stray and never captured, silently.
 ///
 /// Writing nothing is always safe: the next start is a start with the game
 /// already running.
-pub fn write_refusal(replacement_pending: bool, unhandled_reset: bool) -> Option<&'static str> {
+pub fn write_refusal(
+    replacement_pending: bool,
+    unhandled_reset: bool,
+    reset_armed: bool,
+) -> Option<&'static str> {
     if replacement_pending {
         Some("the held data is waiting to be replaced by a new login's")
     } else if unhandled_reset {
         Some("a new game connection began after the last event handled")
+    } else if reset_armed {
+        Some("a new game connection was announced and has not proved itself yet")
     } else {
         None
     }
@@ -150,11 +161,11 @@ impl SessionHandover {
         (handover.v == Self::VERSION).then_some(handover)
     }
 
-    /// Whether the player part (the account data, and what rides on it: the
-    /// live journal, the wish link, the resin alert) may be resumed with the
-    /// sniffer part; `Err` names why not. The sniffer part alone is always
-    /// safe: the data then starts empty and the game's next full send fills
-    /// it.
+    /// Whether the hand-over may be resumed at all; `Err` names why not, and
+    /// then nothing of it is (no key, no data, no journal): the reader starts
+    /// as with the game already running. Resuming the key alone left the app
+    /// mid-session with empty data, where a later full send plus one new
+    /// character could pass for a whole account.
     ///
     /// Not when the file says a replacement was pending, nor when both
     /// halves carry a login UID and they differ: the connection is then
@@ -222,29 +233,35 @@ mod tests {
         // A's data held; B's connection begins, its reply and key go by, and
         // what comes before its first data is held back (Hold).
         let mut replacement = DataReplacement::default();
-        assert_eq!(write_refusal(replacement.is_pending(), false), None);
+        assert_eq!(write_refusal(replacement.is_pending(), false, false), None);
         assert!(replacement.connection_reset());
         assert_eq!(
             replacement.verdict(teyvatme_protocol::KeyState::Session, false),
             DataVerdict::Hold
         );
-        assert!(write_refusal(replacement.is_pending(), false).is_some());
+        assert!(write_refusal(replacement.is_pending(), false, false).is_some());
         // B's data replaces A's: a hand-over may be written again.
         assert_eq!(
             replacement.verdict(teyvatme_protocol::KeyState::Session, true),
             DataVerdict::ReplaceThenApply
         );
-        assert_eq!(write_refusal(replacement.is_pending(), false), None);
+        assert_eq!(write_refusal(replacement.is_pending(), false, false), None);
         // Clear data during the wait: nothing left to replace.
         replacement.connection_reset();
         replacement.clear();
-        assert_eq!(write_refusal(replacement.is_pending(), false), None);
+        assert_eq!(write_refusal(replacement.is_pending(), false, false), None);
     }
 
     #[test]
     fn nothing_is_written_after_a_reset_the_monitor_never_handled() {
-        assert!(write_refusal(false, true).is_some());
-        assert!(write_refusal(true, true).is_some());
+        assert!(write_refusal(false, true, false).is_some());
+        assert!(write_refusal(true, true, false).is_some());
+    }
+
+    #[test]
+    fn nothing_is_written_while_the_reader_has_a_reset_armed() {
+        assert!(write_refusal(false, false, true).is_some());
+        assert_eq!(write_refusal(false, false, false), None);
     }
 
     #[test]
@@ -313,5 +330,117 @@ mod tests {
         let mut pending = written;
         pending.replacement_pending = true;
         assert!(serde_json::from_slice::<Older>(&pending.to_bytes().unwrap()).is_ok());
+    }
+
+    /// The hand-over as release 1.18.2 reads it: its field lists, copied
+    /// from `git show v1.18.2:` of `crates/core/src/handover.rs`,
+    /// `crates/protocol/src/lib.rs` and `crates/core/src/player_data.rs`.
+    /// Types this build shares unchanged with that release are used as they
+    /// are; the private ones are read as JSON values, which still requires
+    /// each field to be there.
+    mod release_1_18_2 {
+        use std::collections::HashMap;
+
+        use serde::Deserialize;
+
+        #[derive(Deserialize)]
+        #[allow(dead_code)]
+        pub struct SessionHandover {
+            pub v: u32,
+            pub written_ms: u64,
+            pub game_data: Option<String>,
+            pub sniffer: SnifferHandover,
+            pub player: PlayerHandover,
+            pub live: Option<crate::live::LiveHandover>,
+            #[serde(default)]
+            pub wish: Option<crate::wish::hub::WishHandover>,
+            #[serde(default)]
+            pub resin_alerted: Option<(crate::good::GiResin, u32)>,
+        }
+
+        #[derive(Deserialize)]
+        #[allow(dead_code)]
+        pub struct SnifferHandover {
+            pub v: u32,
+            key: Vec<u8>,
+            last_time_seed: Option<u64>,
+            time_anchors: Vec<u64>,
+            lanes: [Option<LaneHandover>; 2],
+            #[serde(default)]
+            learned: Option<serde_json::Value>,
+        }
+
+        #[derive(Deserialize)]
+        #[allow(dead_code)]
+        struct LaneHandover {
+            conv: u32,
+            #[serde(default)]
+            rcv_nxt: Option<u32>,
+            #[serde(default)]
+            pushes: Vec<(u32, u8, Vec<u8>)>,
+            decompressor: Option<Vec<u8>>,
+            decompressor_broken: bool,
+        }
+
+        #[derive(Deserialize)]
+        #[allow(dead_code)]
+        pub struct PlayerHandover {
+            achievements: HashMap<u32, serde_json::Value>,
+            characters: Vec<(u32, String)>,
+            pub items: Vec<(u32, u64, String)>,
+            properties: HashMap<u32, u64>,
+            anecdotes: Option<serde_json::Value>,
+            routine: serde_json::Value,
+            character_equip_guid_map: HashMap<u64, u32>,
+            clock_secs: Option<u64>,
+            pending_resin: Option<serde_json::Value>,
+            nickname: Option<String>,
+            profiles: Vec<serde_json::Value>,
+            spincrystals: Option<Vec<u32>>,
+            collections: serde_json::Value,
+            exploration: serde_json::Value,
+            endgame: serde_json::Value,
+            commission_reward: serde_json::Value,
+        }
+    }
+
+    #[test]
+    fn a_hand_over_from_this_build_loads_in_release_1_18_2() {
+        let mut player = PlayerData::new(AnimeGameData::new());
+        player.set_login_uid(Some(UID_A));
+        let mut item = crate::player_data::Item::new();
+        item.item_id = 104_001;
+        item.guid = (u64::from(UID_A) << 32) + 1;
+        item.set_material(teyvatme_protocol::r#gen::protos::Material {
+            count: 5,
+            ..Default::default()
+        });
+        player.process_items(&[item]);
+        // A connection with a bound lane, its learned tags and a login UID,
+        // as this build writes it (made-up key bytes).
+        let sniffer: SnifferHandover = serde_json::from_value(serde_json::json!({
+            "v": 1, "key": [1, 2, 3, 4], "last_time_seed": 1_759_553_801_000u64,
+            "time_anchors": [1_759_553_801_000u64],
+            "lanes": [{"conv": 122_486, "rcv_nxt": 3, "pushes": [[3, 0, [9, 9]]],
+                       "decompressor": null, "decompressor_broken": false}, null],
+            "learned": {"gacha_type": 9}, "login_uid": UID_A,
+        }))
+        .unwrap();
+        let written = SessionHandover {
+            sniffer,
+            player: player.handover(),
+            ..handover(None, None)
+        };
+        let json: serde_json::Value = serde_json::from_slice(&written.to_bytes().unwrap()).unwrap();
+        assert!(
+            json["sniffer"].get("login_uid").is_some(),
+            "the new fields are in"
+        );
+        assert!(json["player"].get("login_uid").is_some());
+        let old: release_1_18_2::SessionHandover =
+            serde_json::from_slice(&written.to_bytes().unwrap()).expect("1.18.2 reads it");
+        assert_eq!(old.v, SessionHandover::VERSION);
+        assert_eq!(old.sniffer.v, 1);
+        assert_eq!(old.player.items.len(), 1);
     }
 }

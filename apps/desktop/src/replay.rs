@@ -629,17 +629,40 @@ impl Replay {
                 .and_then(|journal| journal.live.handover()),
             wish: None,
             resin_alerted: None,
-            // As the app would have written it; the reader then keeps the
-            // connection and leaves the data, as the app's guards do.
+            // The app writes none while pending; this file says so, and the
+            // reader then resumes nothing of it, as the app's guards do.
             replacement_pending: self.replacement.is_pending(),
         };
         let bytes = handover.to_bytes()?;
         let handover = teyvatme_core::handover::SessionHandover::from_bytes(&bytes)
             .context("the hand-over does not read back")?;
-        let player_part = handover.player_resumable();
+        // The app writes none while the reader has a reset armed
+        // (`write_refusal`), and resumes nothing of one whose data may not
+        // be resumed (`player_resumable`): the next run is then a start with
+        // the game already running.
+        let refused = if self.sniffer.reset_armed() {
+            Err("a new game connection was announced and has not proved itself yet")
+        } else {
+            handover.player_resumable()
+        };
         let mut sniffer = GameSniffer::new().set_initial_keys(monitor::load_keys()?);
         // A new process knows none of the field numbers the login taught.
         teyvatme_protocol::forget_learned_tags();
+        self.player_data.reset();
+        if let Err(why) = refused {
+            tracing::warn!(frame = self.frames, why, "nothing handed over");
+            self.generation = sniffer.session_generation();
+            self.sniffer = sniffer;
+            self.replacement = DataReplacement::default();
+            // Nothing is held now: no connection's data, no capture time.
+            self.data_from = None;
+            self.captured = AppliedData::default();
+            self.last_data_ns = None;
+            if let Some(journal) = &mut self.journal {
+                journal.live = LiveSync::new();
+            }
+            return Ok(());
+        }
         anyhow::ensure!(
             sniffer.resume(handover.sniffer),
             "the fresh sniffer refused the hand-over"
@@ -647,22 +670,6 @@ impl Replay {
         // The fresh sniffer counts its resets from zero: not a new connection.
         self.generation = sniffer.session_generation();
         self.sniffer = sniffer;
-        self.player_data.reset();
-        // The app writes no hand-over in these states (`write_refusal`) and
-        // reads none's player part (`player_resumable`): the connection
-        // alone goes on, with the data empty and no replacement pending.
-        if let Err(why) = player_part {
-            tracing::warn!(
-                frame = self.frames,
-                why,
-                "handed the connection over without its data"
-            );
-            self.replacement = DataReplacement::default();
-            if let Some(journal) = &mut self.journal {
-                journal.live = LiveSync::new();
-            }
-            return Ok(());
-        }
         let unreadable = self.player_data.resume(handover.player);
         if let Some(journal) = &mut self.journal {
             // The live sender starts fresh too, as the next process's does.
@@ -1454,7 +1461,8 @@ mod tests {
         let held = holding_a_for_b();
         // The app writes nothing now.
         assert!(
-            teyvatme_core::handover::write_refusal(held.replacement.is_pending(), false).is_some()
+            teyvatme_core::handover::write_refusal(held.replacement.is_pending(), false, false)
+                .is_some()
         );
 
         // A file that pairs B's connection with A's data anyway (an older
@@ -1497,6 +1505,62 @@ mod tests {
         );
         assert_eq!(exported_uid(&merged), Some(UID_A));
         assert_eq!(merged.player_data.uid_check().total, 20);
+    }
+
+    /// A sniffer holding the fixture login's session key for `uid`.
+    fn logged_in_sniffer(uid: u32) -> GameSniffer {
+        use teyvatme_protocol::test_login::{LOGIN_MS, TestLogin, client_draw, initial_keys};
+        let mut sniffer = GameSniffer::new().set_initial_keys(initial_keys());
+        for frame in
+            TestLogin::new(122_486).log_in(LOGIN_MS, client_draw(LOGIN_MS, 0), 0x1111, Some(uid))
+        {
+            sniffer.receive_packet(frame);
+        }
+        assert_eq!(sniffer.key_state(), KeyState::Session);
+        sniffer
+    }
+
+    #[test]
+    fn a_refused_hand_over_leaves_nothing_of_the_held_login() {
+        // A's data held and B's awaited, with B's connection live.
+        let mut held = holding_a_for_b();
+        held.sniffer = logged_in_sniffer(UID_B);
+        assert!(held.data_from.is_some());
+        held.hand_over().unwrap();
+        assert_eq!(held.sniffer.key_state(), KeyState::None, "no key");
+        assert_eq!(held.player_data.uid_check().total, 0, "no data");
+        assert!(!held.replacement.is_pending());
+        assert_eq!(held.data_from, None);
+        assert!(!held.captured.any());
+        assert_eq!(held.last_data_ns, None);
+
+        // A reset armed in the reader: the same.
+        let mut armed = replay();
+        log_in(&mut armed, LOGIN_NS);
+        armed.apply(
+            stating(KeyState::Session, UID_A),
+            vec![(1, inventory(u64::from(UID_A)))],
+            Some(LOGIN_NS),
+        );
+        armed.sniffer = logged_in_sniffer(UID_A);
+        armed.sniffer.receive_packet(handshake_frame());
+        assert!(armed.sniffer.reset_armed());
+        armed.hand_over().unwrap();
+        assert_eq!(armed.sniffer.key_state(), KeyState::None);
+        assert_eq!(armed.data_from, None);
+
+        // Neither: the session goes on whole.
+        let mut whole = replay();
+        log_in(&mut whole, LOGIN_NS);
+        whole.apply(
+            stating(KeyState::Session, UID_A),
+            vec![(1, inventory(u64::from(UID_A)))],
+            Some(LOGIN_NS),
+        );
+        whole.sniffer = logged_in_sniffer(UID_A);
+        whole.hand_over().unwrap();
+        assert_eq!(whole.sniffer.key_state(), KeyState::Session);
+        assert_eq!(whole.player_data.uid_check().total, 10);
     }
 
     #[test]

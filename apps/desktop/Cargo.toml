@@ -193,6 +193,8 @@ libc = "0.2.177"
 minisign = "0.7"
 # The pcapng builders the replay tests use (`recording::test_support`).
 teyvatme-core = { path = "../../crates/core", features = ["test-support"] }
+# A whole game login on the wire, for the hand-over tests (monitor.rs).
+teyvatme-protocol = { path = "../../crates/protocol", features = ["test-support"] }
 # Builds the fixture tarball that `src/update.rs` unpacks. Already in the
 # graph through self_update's `archive-tar`; named here so the tests can
 # construct one.

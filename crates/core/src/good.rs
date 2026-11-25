@@ -829,6 +829,10 @@ pub struct UidCheck {
     /// `items` (these item guids' vote). Absent without a UID.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub source: Option<String>,
+    /// Why no UID is exported although the login's token response stated
+    /// one (the characters name another and no vote they back says which).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub withheld: Option<String>,
     /// Item guids whose top half is the most common one.
     pub agreeing: usize,
     /// Item guids counted (non-zero).
