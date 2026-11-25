@@ -742,7 +742,7 @@ impl Decoder {
     }
 }
 
-fn load_game_data() -> Result<AnimeGameData> {
+pub(crate) fn load_game_data() -> Result<AnimeGameData> {
     static DATABASE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/game_data.gz"));
     AnimeGameData::new_from_reader(GzDecoder::new(DATABASE))
 }

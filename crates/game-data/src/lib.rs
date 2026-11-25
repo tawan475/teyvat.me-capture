@@ -263,6 +263,24 @@ impl AnimeGameData {
             .ok_or_else(|| anyhow!("Unable to fetch character {id}"))
     }
 
+    /// Every character the data names, `(avatar id, English name)`, in no
+    /// order; none when no data is loaded.
+    pub fn characters(&self) -> impl Iterator<Item = (u32, &str)> {
+        self.db
+            .iter()
+            .flat_map(|db| db.character_map.iter())
+            .map(|(id, name)| (*id, name.as_str()))
+    }
+
+    /// Every weapon the data names, `(item id, English name)`, in no order;
+    /// none when no data is loaded.
+    pub fn weapons(&self) -> impl Iterator<Item = (u32, &str)> {
+        self.db
+            .iter()
+            .flat_map(|db| db.weapon_map.iter())
+            .map(|(id, weapon)| (*id, weapon.name.as_str()))
+    }
+
     pub fn get_material(&self, id: u32) -> Result<&String> {
         self.db()?
             .material_map

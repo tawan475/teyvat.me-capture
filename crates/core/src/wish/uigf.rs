@@ -5,8 +5,18 @@
 //! interchange format wish trackers (paimon.moe, StarDB, Snap Hutao, the
 //! tracker) import: `info` plus one `hk4e` account with its records, every
 //! field a string as the API sends it.
+//!
+//! UIGF v4 requires `item_id`, and importers that check it refuse a file
+//! (or the whole account) with an empty one. The API sends it empty for the
+//! global servers' records, so an empty id is filled from Capture's own game
+//! data by the record's English name ([`ItemIds`]); one the API sent is
+//! written as it came.
+
+use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 
 use serde::Serialize;
+use teyvatme_game_data::AnimeGameData;
 
 use super::api::ApiRecord;
 use super::history::History;
@@ -33,6 +43,83 @@ pub fn uigf_gacha_type(gacha_type: &str) -> &str {
         "400" => "301",
         other => other,
     }
+}
+
+/// The playable characters' avatar ids. The data's other avatars (test
+/// bodies, 11000000 up) never come from a wish.
+const CHARACTER_IDS: std::ops::Range<u32> = 10_000_000..11_000_000;
+
+/// Item ids by English name, for the records the API sent without one.
+/// Names match exactly (case and spaces included): the records are read in
+/// English ([`RECORD_LANG`]) and carry the game's own names, and a loose
+/// match could give a record another item's id.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ItemIds {
+    characters: HashMap<String, String>,
+    weapons: HashMap<String, String>,
+}
+
+impl ItemIds {
+    /// From the game data's characters and weapons.
+    pub fn from_game_data(data: &AnimeGameData) -> Self {
+        Self::new(
+            data.characters()
+                .filter(|(id, _)| CHARACTER_IDS.contains(id)),
+            data.weapons(),
+        )
+    }
+
+    /// From `(id, name)` pairs. A name the data gives several ids keeps the
+    /// lowest: the game's later copies of a name are trial, quest or test
+    /// variants (Primordial Jade Cutter 11505 and its copy 11506), never
+    /// the item a wish gives.
+    pub fn new<'n>(
+        characters: impl IntoIterator<Item = (u32, &'n str)>,
+        weapons: impl IntoIterator<Item = (u32, &'n str)>,
+    ) -> Self {
+        fn by_name<'n>(pairs: impl IntoIterator<Item = (u32, &'n str)>) -> HashMap<String, String> {
+            let mut lowest: HashMap<&str, u32> = HashMap::new();
+            for (id, name) in pairs {
+                match lowest.entry(name) {
+                    Entry::Occupied(mut held) => {
+                        if id < *held.get() {
+                            held.insert(id);
+                        }
+                    }
+                    Entry::Vacant(slot) => {
+                        slot.insert(id);
+                    }
+                }
+            }
+            lowest
+                .into_iter()
+                .map(|(name, id)| (name.to_owned(), id.to_string()))
+                .collect()
+        }
+        Self {
+            characters: by_name(characters),
+            weapons: by_name(weapons),
+        }
+    }
+
+    /// The id of the item a record names, by its `item_type`.
+    fn id(&self, item_type: &str, name: &str) -> Option<&str> {
+        let table = match item_type {
+            "Character" => &self.characters,
+            "Weapon" => &self.weapons,
+            _ => return None,
+        };
+        table.get(name).map(String::as_str)
+    }
+}
+
+/// A written UIGF file.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct UigfFile {
+    pub json: String,
+    /// Records written with an empty `item_id`: the API sent none and the
+    /// game data does not know the name (an item newer than this build).
+    pub unknown_items: usize,
 }
 
 #[derive(Serialize)]
@@ -70,14 +157,14 @@ struct Record<'a> {
     id: &'a str,
 }
 
-impl<'a> From<&'a ApiRecord> for Record<'a> {
-    fn from(record: &'a ApiRecord) -> Self {
+impl<'a> Record<'a> {
+    /// `record` as written, with `item_id` (the one it came with, or the
+    /// game data's).
+    fn new(record: &'a ApiRecord, item_id: &'a str) -> Self {
         Self {
             uigf_gacha_type: uigf_gacha_type(&record.gacha_type),
             gacha_type: &record.gacha_type,
-            // The API sends it empty for the global servers' records; kept as
-            // sent (importers match by name then).
-            item_id: &record.item_id,
+            item_id,
             count: "1",
             time: &record.time,
             name: &record.name,
@@ -89,8 +176,32 @@ impl<'a> From<&'a ApiRecord> for Record<'a> {
 }
 
 /// `history` as UIGF v4.0 JSON, exported at `export_timestamp` (Unix
-/// seconds) by `app` `app_version`.
-pub fn to_uigf(history: &History, export_timestamp: u64, app: &str, app_version: &str) -> String {
+/// seconds) by `app` `app_version`, empty item ids filled from `item_ids`.
+pub fn to_uigf<'a>(
+    history: &'a History,
+    item_ids: &'a ItemIds,
+    export_timestamp: u64,
+    app: &'a str,
+    app_version: &'a str,
+) -> UigfFile {
+    let mut unknown_items = 0;
+    let list = history
+        .records
+        .iter()
+        .map(|record| {
+            let item_id = if record.item_id.is_empty() {
+                item_ids
+                    .id(&record.item_type, &record.name)
+                    .unwrap_or_else(|| {
+                        unknown_items += 1;
+                        ""
+                    })
+            } else {
+                &record.item_id
+            };
+            Record::new(record, item_id)
+        })
+        .collect();
     let uigf = Uigf {
         info: Info {
             export_timestamp,
@@ -102,10 +213,13 @@ pub fn to_uigf(history: &History, export_timestamp: u64, app: &str, app_version:
             uid: history.uid.to_string(),
             timezone: region_timezone(&history.region),
             lang: RECORD_LANG,
-            list: history.records.iter().map(Record::from).collect(),
+            list,
         }],
     };
-    serde_json::to_string_pretty(&uigf).expect("plain strings and numbers serialise")
+    UigfFile {
+        json: serde_json::to_string_pretty(&uigf).expect("plain strings and numbers serialise"),
+        unknown_items,
+    }
 }
 
 #[cfg(test)]
@@ -197,8 +311,15 @@ mod tests {
 
     #[test]
     fn a_history_is_written_as_uigf_v4() {
-        let json = to_uigf(&history(), 1_792_000_000, "Teyvat.me Capture", "1.0.0");
-        let file: Value = serde_json::from_str(&json).unwrap();
+        let written = to_uigf(
+            &history(),
+            &ItemIds::default(),
+            1_792_000_000,
+            "Teyvat.me Capture",
+            "1.0.0",
+        );
+        assert_eq!(written.unknown_items, 6);
+        let file: Value = serde_json::from_str(&written.json).unwrap();
         assert_uigf_v4(&file);
 
         assert_eq!(file["info"]["export_timestamp"], 1_792_000_000u64);
@@ -223,10 +344,119 @@ mod tests {
             region: String::new(),
             records: Vec::new(),
         };
-        let file: Value =
-            serde_json::from_str(&to_uigf(&empty, 0, "Teyvat.me Capture", "1.0.0")).unwrap();
+        let file: Value = serde_json::from_str(
+            &to_uigf(&empty, &ItemIds::default(), 0, "Teyvat.me Capture", "1.0.0").json,
+        )
+        .unwrap();
         assert_uigf_v4(&file);
         assert_eq!(file["hk4e"][0]["timezone"], 8);
+    }
+
+    fn named(item_type: &str, name: &str, item_id: &str, id: u64) -> ApiRecord {
+        ApiRecord {
+            item_id: item_id.to_owned(),
+            name: name.to_owned(),
+            item_type: item_type.to_owned(),
+            ..record("301", 1_790_000_000_000_000_000 + id, "5")
+        }
+    }
+
+    fn item_ids() -> ItemIds {
+        ItemIds::new(
+            [(10_000_002, "Kamisato Ayaka"), (10_000_016, "Diluc")],
+            [
+                (11_505, "Primordial Jade Cutter"),
+                (11_506, "Primordial Jade Cutter"),
+                (15_502, "Amos' Bow"),
+                // The same name in both tables stays apart by item_type.
+                (11_101, "Diluc"),
+            ],
+        )
+    }
+
+    /// The written records' `item_id`s, in order, and the unknown count.
+    fn written_ids(records: Vec<ApiRecord>) -> (Vec<String>, usize) {
+        let history = History {
+            uid: UID,
+            region: "os_asia".to_owned(),
+            records,
+        };
+        let written = to_uigf(&history, &item_ids(), 0, "Teyvat.me Capture", "1.0.0");
+        let file: Value = serde_json::from_str(&written.json).unwrap();
+        assert_uigf_v4(&file);
+        let ids = file["hk4e"][0]["list"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|record| record["item_id"].as_str().unwrap().to_owned())
+            .collect();
+        (ids, written.unknown_items)
+    }
+
+    #[test]
+    fn empty_item_ids_are_filled_from_the_game_data_by_name() {
+        let (ids, unknown) = written_ids(vec![
+            named("Character", "Kamisato Ayaka", "", 1),
+            named("Weapon", "Amos' Bow", "", 2),
+            named("Character", "Diluc", "", 3),
+            named("Weapon", "Diluc", "", 4),
+            // The lowest of a name's ids, the one a wish gives.
+            named("Weapon", "Primordial Jade Cutter", "", 5),
+        ]);
+        assert_eq!(ids, ["10000002", "15502", "10000016", "11101", "11505"]);
+        assert_eq!(unknown, 0);
+    }
+
+    #[test]
+    fn an_id_the_api_sent_is_kept() {
+        let (ids, unknown) = written_ids(vec![
+            named("Character", "Kamisato Ayaka", "10000002", 1),
+            // Even one that disagrees with the game data: never replaced.
+            named("Weapon", "Amos' Bow", "99999", 2),
+            named("Weapon", "Not In The Data", "15599", 3),
+        ]);
+        assert_eq!(ids, ["10000002", "99999", "15599"]);
+        assert_eq!(unknown, 0);
+    }
+
+    #[test]
+    fn an_unknown_name_stays_empty_and_is_counted() {
+        let (ids, unknown) = written_ids(vec![
+            named("Character", "Someone Newer", "", 1),
+            named("Character", "Kamisato Ayaka", "", 2),
+            // Names match exactly: case and spaces are not forgiven.
+            named("Character", "kamisato ayaka", "", 3),
+            named("Character", "Kamisato Ayaka ", "", 4),
+            // A character's name read as a weapon is not that character.
+            named("Weapon", "Kamisato Ayaka", "", 5),
+            named("Mystery", "Diluc", "", 6),
+        ]);
+        assert_eq!(ids, ["", "10000002", "", "", "", ""]);
+        assert_eq!(unknown, 5);
+    }
+
+    #[test]
+    fn different_items_never_share_an_id() {
+        let ids = item_ids();
+        let mut seen = std::collections::HashMap::new();
+        for (item_type, table) in [("Character", &ids.characters), ("Weapon", &ids.weapons)] {
+            for (name, id) in table {
+                if let Some(other) = seen.insert((item_type, id.clone()), name.clone()) {
+                    panic!("{item_type} {id} is both {other} and {name}");
+                }
+            }
+        }
+        assert_eq!(ids.weapons.len(), 3);
+    }
+
+    #[test]
+    fn only_playable_characters_come_from_the_game_data() {
+        assert_eq!(
+            ItemIds::from_game_data(&AnimeGameData::new()),
+            ItemIds::default()
+        );
+        assert!(CHARACTER_IDS.contains(&10_000_002));
+        assert!(!CHARACTER_IDS.contains(&11_000_017));
     }
 
     #[test]

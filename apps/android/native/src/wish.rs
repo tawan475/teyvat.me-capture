@@ -292,10 +292,27 @@ fn read_history(
         .unwrap_or_default()
         .as_secs();
     let records = history.records.len();
-    Ok((
-        uigf::to_uigf(&history, exported, "Teyvat.me Capture", app_version),
-        records,
-    ))
+    let item_ids = match crate::decoder::load_game_data() {
+        Ok(data) => uigf::ItemIds::from_game_data(&data),
+        Err(e) => {
+            log::warn!("wish history: no game data for the item ids: {e:#}");
+            uigf::ItemIds::default()
+        }
+    };
+    let file = uigf::to_uigf(
+        &history,
+        &item_ids,
+        exported,
+        "Teyvat.me Capture",
+        app_version,
+    );
+    if file.unknown_items > 0 {
+        log::info!(
+            "wish history: {} records without an item id (names this build's game data lacks)",
+            file.unknown_items
+        );
+    }
+    Ok((file.json, records))
 }
 
 fn failed(why: String) -> HistoryError {
