@@ -1,0 +1,74 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 tawan475
+
+name: Keys watch
+# A game update can bring a dispatch key id we lack, and a login under it
+# decrypts nothing. Once a day this compares apps/desktop/keys/gi.json with
+# the public list (juliuskreutz/stardb-exporter's keys/gi.json, one read-only
+# GET) and, on a difference, opens ONE issue labelled `dispatch-keys` naming
+# the ids (never key bytes). While such an issue is open it only comments, and
+# only when the ids it reports change. When the list cannot be checked the run
+# fails and opens nothing. The logic and its tests:
+# .github/scripts/keys_watch.py, test_keys_watch.py.
+#
+# Scheduled workflows only run from the default branch, so this starts once it
+# reaches main.
+on:
+  schedule:
+    - cron: "43 4 * * *" # daily, off the hour when scheduled runs pile up
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  contents: read
+
+concurrency:
+  group: keys-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LABEL: dispatch-keys
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Compare our keys with the public list
+        id: compare
+        run: |
+          set +e
+          python .github/scripts/keys_watch.py --report "$RUNNER_TEMP/keys-report.md"
+          code=$?
+          set -e
+          case "$code" in
+            0) echo "differences=false" >> "$GITHUB_OUTPUT" ;;
+            3) echo "differences=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::Could not check the keys (exit $code)"; exit 1 ;;
+          esac
+      - name: Open or update the issue
+        if: steps.compare.outputs.differences == 'true'
+        run: |
+          report="$RUNNER_TEMP/keys-report.md"
+          gh label create "$LABEL" --repo tawan475/teyvat.me-capture --color d93f0b \
+            --description "Dispatch keys differ from the public list" --force
+          number=$(gh issue list --repo tawan475/teyvat.me-capture --label "$LABEL" --state open \
+            --limit 1 --json number --jq '.[0].number // empty')
+          if [ -z "$number" ]; then
+            gh issue create --repo tawan475/teyvat.me-capture --label "$LABEL" \
+              --title "Dispatch keys differ from the public list" --body-file "$report"
+            exit 0
+          fi
+          last=$(gh issue view "$number" --repo tawan475/teyvat.me-capture --json body,comments \
+            --jq '([.body] + [.comments[].body]) | last')
+          if [ "$last" = "$(cat "$report")" ]; then
+            echo "#$number already reports these ids"
+          else
+            gh issue comment "$number" --repo tawan475/teyvat.me-capture --body-file "$report"
+          fi
