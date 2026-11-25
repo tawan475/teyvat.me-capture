@@ -70,6 +70,17 @@ class ParseTest(unittest.TestCase):
         self.assert_malformed(json.dumps({"1": b64(key(1) + b"x")}), "4097 bytes")
         self.assert_malformed('{"1": "%s", "1": "%s"}' % (good, good), "appears twice")
 
+    def test_base64_is_read_strictly(self):
+        # A real-length key with one stray character inside: a lenient decode
+        # would drop it and still find 4,096 bytes.
+        good = b64(key(1))
+        middle = len(good) // 2
+        for stray in ("!", "\n", " ", "-"):
+            with self.subTest(stray=repr(stray)):
+                self.assert_malformed(json.dumps({"1": good[:middle] + stray + good[middle:]}), "not base64")
+        # The same text without the stray character is a key.
+        self.assertEqual(watch.parse_table(json.dumps({"1": good}), "t")[1], key(1))
+
     def test_the_edges_of_the_id_range_are_ids(self):
         parsed = watch.parse_table(json.dumps({"0": b64(key(0)), "65535": b64(key(65535))}), "t")
         self.assertEqual(sorted(parsed), [0, 65535])
@@ -207,6 +218,97 @@ class RunTest(unittest.TestCase):
         codes = {watch.EXIT_NOTHING, watch.EXIT_DIFFERENCES, watch.EXIT_UNCHECKED}
         self.assertEqual(len(codes), 3)
         self.assertNotIn(1, codes)  # Python's own code for an uncaught exception
+
+
+class _Response:
+    """What `urlopen` hands back, as far as `fetch` reads it."""
+
+    def __init__(self, status: int, body: bytes):
+        self.status = status
+        self._body = body
+
+    def read(self) -> bytes:
+        return self._body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class RealFetchTest(unittest.TestCase):
+    """`fetch` itself, with `urllib.request.urlopen` patched: no network."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.ours = Path(self.tmp.name) / "gi.json"
+        self.ours.write_bytes(OURS)
+        self.requests = []
+        original = watch.urllib.request.urlopen
+        self.addCleanup(setattr, watch.urllib.request, "urlopen", original)
+
+    def answer(self, outcome):
+        """Patch urlopen to record each request and answer with `outcome`
+        (a _Response, or an exception to raise)."""
+
+        def urlopen(request, timeout=None):
+            self.requests.append(request)
+            if isinstance(outcome, BaseException):
+                raise outcome
+            return outcome
+
+        watch.urllib.request.urlopen = urlopen
+
+    def run_real(self):
+        out = io.StringIO()
+        code = watch.run(self.ours, report_path=None, out=out)  # the default getter: fetch
+        return code, out.getvalue()
+
+    def test_fetch_reads_the_body_from_the_public_url(self):
+        body = table(_10=key(10), _20=key(20))
+        self.answer(_Response(200, body))
+        self.assertEqual(watch.fetch(watch.PUBLIC_URL), body)
+        self.assertEqual(len(self.requests), 1)
+        request = self.requests[0]
+        self.assertEqual(request.full_url, watch.PUBLIC_URL)
+        self.assertEqual(request.get_method(), "GET")
+        self.assertIsNone(request.data)
+        headers = {name.lower(): value for name, value in request.header_items()}
+        self.assertEqual(headers.get("user-agent"), watch.USER_AGENT)
+        self.assertNotIn("authorization", headers)
+        self.assertNotIn("cookie", headers)
+        # Generic: names the tool, not a person, a repo or an address.
+        self.assertRegex(watch.USER_AGENT, r"^[a-z-]+$")
+
+    def test_run_uses_the_real_fetch_by_default(self):
+        self.answer(_Response(200, table(_10=key(10), _20=key(20))))
+        code, out = self.run_real()
+        self.assertEqual(code, watch.EXIT_NOTHING)
+        self.assertIn("nothing to do", out)
+        self.assertEqual([r.full_url for r in self.requests], [watch.PUBLIC_URL])
+
+    def test_a_non_200_answer_is_not_checked(self):
+        self.answer(_Response(203, OURS))
+        code, out = self.run_real()
+        self.assertEqual(code, watch.EXIT_UNCHECKED)
+        self.assertIn("could not check", out)
+
+    def test_an_http_error_is_not_checked(self):
+        self.answer(urllib.error.HTTPError(watch.PUBLIC_URL, 500, "Server Error", {}, io.BytesIO(b"")))
+        code, out = self.run_real()
+        self.assertEqual(code, watch.EXIT_UNCHECKED)
+        self.assertIn("500", out)
+
+    def test_a_network_error_or_timeout_is_not_checked(self):
+        for error in (urllib.error.URLError("no route"), TimeoutError("timed out"), ConnectionResetError()):
+            with self.subTest(error=type(error).__name__):
+                self.answer(error)
+                code, out = self.run_real()
+                self.assertEqual(code, watch.EXIT_UNCHECKED)
+                self.assertIn("could not check", out)
+                self.assertNotIn("nothing to do", out)
 
 
 if __name__ == "__main__":
