@@ -131,7 +131,7 @@ pub use crate::shop::{
     matches_shop_purchase, read_bargains,
 };
 pub use crate::unk_util::{
-    Achievement, AchievementMatchError, matches_achievement_all_data_notify,
+    Achievement, AchievementMatchError, login_reply_uid, matches_achievement_all_data_notify,
     matches_achievement_update_notify, matches_avatars_all_data_notify,
     matches_get_player_token_rsp, matches_items_all_data_notify,
     try_match_achievement_all_data_notify,
@@ -648,6 +648,10 @@ pub struct SnifferHandover {
     /// achievement or quest update until its own login.
     #[serde(default)]
     learned: Option<LearnedTags>,
+    /// The login's UID ([`GameSniffer::login_uid`]). Absent in a hand-over
+    /// from before it (1.18.4 and earlier): the next process then knows none.
+    #[serde(default)]
+    login_uid: Option<u32>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -854,6 +858,10 @@ pub struct GameSniffer {
     /// this library actually concluded, rather than on a raw handshake datagram
     /// anyone can forge.
     session_generation: u64,
+    /// The UID the current login's token response stated
+    /// ([`login_reply_uid`]). Per login: cleared by a reset, and replaced
+    /// (`None` included) by the next token response that installs seeds.
+    login_uid: Option<u32>,
 }
 
 impl GameSniffer {
@@ -905,6 +913,7 @@ impl GameSniffer {
             time_anchors: self.time_anchors.clone(),
             lanes,
             learned: Some(learned_tags()),
+            login_uid: self.login_uid,
         })
     }
 
@@ -961,6 +970,7 @@ impl GameSniffer {
             .map(|kcp| kcp.conv_id);
         self.key = Some(Key::Session(handover.key));
         self.last_time_seed = handover.last_time_seed;
+        self.login_uid = handover.login_uid;
         self.time_anchors = handover.time_anchors;
         self.time_anchors.truncate(MAX_TIME_ANCHORS);
         info!(conv = ?self.announced_conv, "resumed the game connection from a session hand-over");
@@ -1006,6 +1016,14 @@ impl GameSniffer {
     /// the new connection.
     pub fn session_generation(&self) -> u64 {
         self.session_generation
+    }
+
+    /// The account UID the current login's token response stated, if it
+    /// stated exactly one (see [`login_reply_uid`]). It belongs to the login
+    /// that is starting: data still held from an earlier login is not this
+    /// account's until the new login's own data replaces it.
+    pub fn login_uid(&self) -> Option<u32> {
+        self.login_uid
     }
 
     /// Whether the session key of the current connection has been given up on.
@@ -1110,6 +1128,7 @@ impl GameSniffer {
         }
         self.key = None;
         self.session_seeds = None;
+        self.login_uid = None;
         // The live connection's anchor goes, because it is probed outside the
         // bruteforce budget. The time seeds themselves stay in `time_anchors`:
         // a reconnect's key is drawn from the same generator.
@@ -1702,6 +1721,13 @@ impl GameSniffer {
                     seeds,
                     sent_ms: header.sent_ms,
                 });
+                // This login's UID, from the whole payload; `None` when it
+                // states none (or two), never an earlier login's.
+                self.login_uid = login_reply_uid(&command.proto_data);
+                debug!(
+                    found = self.login_uid.is_some(),
+                    "read the login's UID from the token response"
+                );
                 // A new token response means a new session key is coming, so the
                 // previous connection's live anchor and search budget go with it.
                 // `time_anchors` stays: that is where a reconnect's key is found.
@@ -3790,6 +3816,17 @@ mod tests {
     /// The client's token request and the server's token response, both under
     /// the dispatch key; the response carries `seed` and is stamped `sent_ms`.
     fn token_exchange(sniffer: &mut GameSniffer, conn: &mut Conn, sent_ms: u64, seed: u64) {
+        let payload = token_rsp_payload(sniffer, seed);
+        token_exchange_with(sniffer, conn, sent_ms, payload);
+    }
+
+    /// [`token_exchange`] with the token response's whole `payload` given.
+    fn token_exchange_with(
+        sniffer: &mut GameSniffer,
+        conn: &mut Conn,
+        sent_ms: u64,
+        payload: Vec<u8>,
+    ) {
         let dispatch = dispatch_key();
         let request = command_bytes(TOKEN_REQ, &[], &field_varint(1, 1));
         assert_eq!(
@@ -3801,11 +3838,7 @@ mod tests {
             "the token request decrypts under the dispatch key"
         );
 
-        let response = command_bytes(
-            TOKEN_RSP,
-            &field_varint(6, sent_ms),
-            &token_rsp_payload(sniffer, seed),
-        );
+        let response = command_bytes(TOKEN_RSP, &field_varint(6, sent_ms), &payload);
         assert_eq!(
             command_ids(
                 sniffer,
@@ -4489,6 +4522,176 @@ mod tests {
         let mut third = connected_sniffer();
         assert!(third.resume(old));
         assert_eq!(learned_tags(), tags);
+    }
+
+    /// The placeholder UID the tests' accounts have, and a second account's.
+    const UID_A: u32 = 812_345_678;
+    const UID_B: u32 = 812_345_679;
+
+    /// [`log_in`] with the token response's payload passed through `wrap`
+    /// (to put a UID and other fields around the seed).
+    fn log_in_with(
+        sniffer: &mut GameSniffer,
+        conn: &mut Conn,
+        sent_ms: u64,
+        client_seed: u64,
+        combined: u64,
+        wrap: impl Fn(Vec<u8>) -> Vec<u8>,
+    ) -> Vec<u16> {
+        sniffer.receive_packet(handshake_frame());
+        let payload = wrap(token_rsp_payload(sniffer, client_seed ^ combined));
+        token_exchange_with(sniffer, conn, sent_ms, payload);
+        command_ids(
+            sniffer,
+            conn.server_message(&new_key_from_seed(combined), SESSION_MESSAGE),
+        )
+    }
+
+    #[test]
+    fn the_token_response_states_the_logins_uid_wherever_it_sits() {
+        let before = |payload: Vec<u8>| {
+            let mut out = field_varint(3, u64::from(UID_A));
+            out.extend(payload);
+            out
+        };
+        let after = |mut payload: Vec<u8>| {
+            payload.extend(field_varint(14, u64::from(UID_A)));
+            payload
+        };
+        // After a signature-like field with `==` inside it, where the seed
+        // reader tries its cuts.
+        let after_signature = |mut payload: Vec<u8>| {
+            payload.extend(field_bytes(12, b"\x01\x02==\x03\x04==\x05"));
+            payload.extend(field_varint(14, u64::from(UID_A)));
+            payload
+        };
+        let wraps: [&dyn Fn(Vec<u8>) -> Vec<u8>; 3] = [&before, &after, &after_signature];
+        for (i, wrap) in wraps.into_iter().enumerate() {
+            let mut sniffer = connected_sniffer();
+            assert_eq!(sniffer.login_uid(), None);
+            let mut conn = Conn::new(122_486);
+            let decoded = log_in_with(
+                &mut sniffer,
+                &mut conn,
+                LOGIN_MS,
+                client_draw(LOGIN_MS, 0),
+                0x1111,
+                wrap,
+            );
+            assert_eq!(decoded, vec![SESSION_MESSAGE], "case {i}");
+            assert_eq!(sniffer.login_uid(), Some(UID_A), "case {i}");
+        }
+    }
+
+    #[test]
+    fn the_login_uid_lasts_one_login() {
+        let stating = |uid: Option<u32>| {
+            move |mut payload: Vec<u8>| {
+                if let Some(uid) = uid {
+                    payload.extend(field_varint(14, u64::from(uid)));
+                }
+                payload
+            }
+        };
+        let mut sniffer = connected_sniffer();
+        let mut first = Conn::new(122_486);
+        let decoded = log_in_with(
+            &mut sniffer,
+            &mut first,
+            LOGIN_MS,
+            client_draw(LOGIN_MS, 0),
+            0x1111,
+            stating(Some(UID_A)),
+        );
+        assert_eq!(decoded, vec![SESSION_MESSAGE]);
+        assert_eq!(sniffer.login_uid(), Some(UID_A));
+
+        // A bare handshake proves nothing (the reset waits): still A's login.
+        sniffer.receive_packet(handshake_frame());
+        assert_eq!(sniffer.login_uid(), Some(UID_A));
+        // The new connection's first segment corroborates it: the login is
+        // over, and so is its UID.
+        let mut second = Conn::new(122_628);
+        let dispatch = dispatch_key();
+        let request = command_bytes(TOKEN_REQ, &[], &field_varint(1, 1));
+        assert_eq!(
+            command_ids(
+                &mut sniffer,
+                second.push(PacketDirection::Sent, &dispatch, &request)
+            ),
+            vec![TOKEN_REQ]
+        );
+        assert_eq!(sniffer.session_generation(), 2);
+        assert_eq!(sniffer.login_uid(), None);
+        // The next account's reply states its own.
+        let seed = client_draw(LOGIN_MS, 1) ^ 0x2222;
+        let payload = stating(Some(UID_B))(token_rsp_payload(&sniffer, seed));
+        let response = command_bytes(TOKEN_RSP, &field_varint(6, LOGIN_MS + HOUR_MS), &payload);
+        assert_eq!(
+            command_ids(
+                &mut sniffer,
+                second.push(PacketDirection::Received, &dispatch, &response)
+            ),
+            vec![TOKEN_RSP]
+        );
+        assert_eq!(sniffer.login_uid(), Some(UID_B));
+        assert_eq!(
+            command_ids(
+                &mut sniffer,
+                second.server_message(&new_key_from_seed(0x2222), SESSION_MESSAGE)
+            ),
+            vec![SESSION_MESSAGE]
+        );
+
+        // A reply that states none leaves none, not the last login's.
+        let mut third = Conn::new(122_777);
+        log_in_with(
+            &mut sniffer,
+            &mut third,
+            LOGIN_MS + 2 * HOUR_MS,
+            client_draw(LOGIN_MS, 2),
+            0x3333,
+            stating(None),
+        );
+        assert_eq!(sniffer.session_generation(), 3);
+        assert_eq!(sniffer.login_uid(), None);
+    }
+
+    #[test]
+    fn a_hand_over_carries_the_login_uid() {
+        let _guard = crate::learned_test_lock();
+        let mut first = connected_sniffer();
+        let mut conn = Conn::new(122_486);
+        log_in_with(
+            &mut first,
+            &mut conn,
+            LOGIN_MS,
+            client_draw(LOGIN_MS, 0),
+            0x1111,
+            |mut payload| {
+                payload.extend(field_varint(14, u64::from(UID_A)));
+                payload
+            },
+        );
+        let handover = first.handover().expect("a live session hands over");
+        assert_eq!(handover.login_uid, Some(UID_A));
+        let json = serde_json::to_vec(&handover).unwrap();
+        let back: SnifferHandover = serde_json::from_slice(&json).unwrap();
+        assert_eq!(back, handover);
+        let mut second = connected_sniffer();
+        assert!(second.resume(back));
+        assert_eq!(second.login_uid(), Some(UID_A));
+
+        // A hand-over written by 1.18.4 (no such field) still loads, and the
+        // next process knows no login UID.
+        let mut json: serde_json::Value = serde_json::to_value(&handover).unwrap();
+        json.as_object_mut().unwrap().remove("login_uid");
+        let old: SnifferHandover = serde_json::from_value(json).unwrap();
+        assert_eq!(old.login_uid, None);
+        let mut third = connected_sniffer();
+        assert!(third.resume(old));
+        assert_eq!(third.login_uid(), None);
+        assert_eq!(third.key_state(), KeyState::Session);
     }
 
     #[test]

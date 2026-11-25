@@ -911,7 +911,7 @@ fn handle(state: &mut State, event: SnifferEvent, at: u64, hub: &WishHub) {
             if !events.is_empty() {
                 hub.forward(events, state.uid());
             }
-            apply(state, report.state, classified, at, hub);
+            apply(state, report, classified, at, hub);
         }
     }
 }
@@ -946,7 +946,7 @@ fn note_key(state: &mut State, report: KeyReport, at: u64) {
 
 fn apply(
     state: &mut State,
-    key: KeyState,
+    report: KeyReport,
     mut classified: Vec<(u16, teyvatme_protocol::CommandMatch)>,
     at: u64,
     hub: &WishHub,
@@ -954,7 +954,10 @@ fn apply(
     if classified.is_empty() {
         return;
     }
-    match state.replacement.verdict_for_batch(key, &mut classified) {
+    let verdict = state
+        .replacement
+        .verdict_for_batch(report.state, &mut classified);
+    match verdict {
         DataVerdict::Apply => {}
         DataVerdict::ReplaceThenApply => {
             // A new login: its key, if any, is not the old one's.
@@ -973,6 +976,8 @@ fn apply(
     let Some(data) = &mut state.player_data else {
         return;
     };
+    // After the replacement: the login's UID is the new data's.
+    decode::adopt_login_uid(data, &verdict, report);
     let full_send = decode::full_send_in(&classified, data.item_count());
     let noted = decode::changes_in(&classified);
     data.set_clock(
@@ -1128,6 +1133,7 @@ mod tests {
         let report = |state: KeyState| KeyReport {
             state,
             recovery_failed: false,
+            login_uid: None,
         };
         note_key(&mut state, report(KeyState::None), 1);
         assert!(state.events.is_empty(), "connecting is not logging in");

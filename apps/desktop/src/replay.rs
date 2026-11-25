@@ -734,7 +734,7 @@ impl Replay {
                         }
                         self.current(at).commands += commands.len() as u64;
                         let classified = monitor::classify_commands(&commands);
-                        self.apply(report.state, classified, at);
+                        self.apply(report, classified, at);
                     }
                 }
             }
@@ -827,12 +827,19 @@ impl Replay {
     /// Fold one classified batch into the captured data, by the rules the
     /// monitor applies: a new connection's data replaces the old once it is
     /// real data under the session key.
-    fn apply(&mut self, key: KeyState, mut classified: Vec<(u16, CommandMatch)>, at: Option<u64>) {
+    fn apply(
+        &mut self,
+        report: KeyReport,
+        mut classified: Vec<(u16, CommandMatch)>,
+        at: Option<u64>,
+    ) {
         if classified.is_empty() {
             return;
         }
+        let key = report.state;
         let index = self.current(at).number - 1;
-        match self.replacement.verdict_for_batch(key, &mut classified) {
+        let verdict = self.replacement.verdict_for_batch(key, &mut classified);
+        match verdict {
             DataVerdict::Apply => {}
             DataVerdict::ReplaceThenApply => {
                 match self.data_from {
@@ -879,6 +886,8 @@ impl Replay {
                 return;
             }
         }
+        // After the replacement, as the monitor does.
+        monitor::adopt_login_uid(&mut self.player_data, &verdict, report);
 
         let held = self.player_data.item_count();
         let full_send = monitor::full_send_in(&classified, held);
@@ -1204,7 +1213,38 @@ mod tests {
         KeyReport {
             state: KeyState::Session,
             recovery_failed: false,
+            login_uid: None,
         }
+    }
+
+    /// A report under `state` whose login's token response stated `uid`.
+    fn stating(state: KeyState, uid: u32) -> KeyReport {
+        KeyReport {
+            state,
+            recovery_failed: false,
+            login_uid: Some(uid),
+        }
+    }
+
+    fn dispatch() -> KeyReport {
+        KeyReport {
+            state: KeyState::Dispatch,
+            ..session()
+        }
+    }
+
+    /// Placeholder UIDs: the first account's and an alt's.
+    const UID_A: u32 = 812_345_678;
+    const UID_B: u32 = 812_345_679;
+
+    /// What an export made now says the UID is.
+    fn exported_uid(replay: &Replay) -> Option<u32> {
+        replay
+            .player_data
+            .export_at(&ExportSettings::for_tracker(), 0)
+            .0
+            .gi_player
+            .and_then(|player| player.uid)
     }
 
     /// A realistic capture time, in nanoseconds since the epoch.
@@ -1221,24 +1261,20 @@ mod tests {
     fn the_last_logins_data_is_what_gets_exported() {
         let mut replay = replay();
         log_in(&mut replay, LOGIN_NS);
-        replay.apply(KeyState::Session, vec![(1, inventory(111))], Some(LOGIN_NS));
+        replay.apply(session(), vec![(1, inventory(111))], Some(LOGIN_NS));
 
         // A second account logs in. Its login exchange proves nothing about
         // it yet, so the first account's data stays...
         let relog_ns = LOGIN_NS + HOUR_NS;
         replay.handle(SnifferEvent::SessionReset, Some(relog_ns));
-        replay.apply(
-            KeyState::Dispatch,
-            vec![(1, inventory(999))],
-            Some(relog_ns),
-        );
+        replay.apply(dispatch(), vec![(1, inventory(999))], Some(relog_ns));
         assert_eq!(replay.player_data.uid_check().uid, Some(111));
 
         // ...until its own data arrives under its session key, which replaces
         // the first account's rather than merging with it.
         replay.note_key(session(), Some(relog_ns + 1_000_000_000));
         let data_ns = relog_ns + 2_000_000_123;
-        replay.apply(KeyState::Session, vec![(1, inventory(222))], Some(data_ns));
+        replay.apply(session(), vec![(1, inventory(222))], Some(data_ns));
 
         let good = replay.finish().unwrap();
         let uid_check = replay.player_data.uid_check();
@@ -1254,12 +1290,13 @@ mod tests {
     fn a_reconnect_that_never_decrypts_leaves_the_earlier_data_exportable() {
         let mut replay = replay();
         log_in(&mut replay, LOGIN_NS);
-        replay.apply(KeyState::Session, vec![(1, inventory(111))], Some(LOGIN_NS));
+        replay.apply(session(), vec![(1, inventory(111))], Some(LOGIN_NS));
         replay.handle(SnifferEvent::SessionReset, Some(LOGIN_NS + HOUR_NS));
         replay.note_key(
             KeyReport {
                 state: KeyState::Dispatch,
                 recovery_failed: true,
+                login_uid: None,
             },
             Some(LOGIN_NS + HOUR_NS),
         );
@@ -1268,6 +1305,116 @@ mod tests {
         assert_eq!(good.gi_player.unwrap().uid, Some(111));
         assert_eq!(good.timestamp, Some(LOGIN_NS / 1_000_000));
         assert!(replay.connections[1].recovery_failed);
+    }
+
+    #[test]
+    fn the_login_uid_follows_the_data_it_belongs_to() {
+        let mut replay = replay();
+        log_in(&mut replay, LOGIN_NS);
+        replay.apply(
+            stating(KeyState::Session, UID_A),
+            vec![(1, inventory(u64::from(UID_A)))],
+            Some(LOGIN_NS),
+        );
+        assert_eq!(exported_uid(&replay), Some(UID_A));
+
+        // An alt logs in: its token response states B under the dispatch
+        // key while A's data is still held. An export made now still says
+        // A, for every batch held back meanwhile.
+        let relog_ns = LOGIN_NS + HOUR_NS;
+        replay.handle(SnifferEvent::SessionReset, Some(relog_ns));
+        replay.apply(
+            stating(KeyState::Dispatch, UID_B),
+            vec![(1, inventory(999))],
+            Some(relog_ns),
+        );
+        assert_eq!(exported_uid(&replay), Some(UID_A));
+        assert_eq!(replay.player_data.login_uid(), Some(UID_A));
+        // A batch that does not replace the data (a property update under
+        // the session key) is held too: still A.
+        replay.apply(
+            stating(KeyState::Session, UID_B),
+            vec![(
+                21436,
+                CommandMatch::PropertyUpdate(std::collections::HashMap::from([(10016, 5)])),
+            )],
+            Some(relog_ns),
+        );
+        assert_eq!(exported_uid(&replay), Some(UID_A));
+
+        // B's own data replaces A's: from then on it is B, before the vote
+        // could say anything (this bag's guids are all another number).
+        replay.apply(
+            stating(KeyState::Session, UID_B),
+            vec![(1, inventory(424_242_424))],
+            Some(relog_ns + 2_000_000_000),
+        );
+        assert_eq!(replay.player_data.login_uid(), Some(UID_B));
+        assert_eq!(exported_uid(&replay), Some(UID_B));
+    }
+
+    #[test]
+    fn a_reconnect_that_never_decrypts_keeps_the_earlier_logins_uid() {
+        let mut replay = replay();
+        log_in(&mut replay, LOGIN_NS);
+        replay.apply(
+            stating(KeyState::Session, UID_A),
+            vec![(1, inventory(u64::from(UID_A)))],
+            Some(LOGIN_NS),
+        );
+        // B's reply was read, but its key never: B's data never comes.
+        replay.handle(SnifferEvent::SessionReset, Some(LOGIN_NS + HOUR_NS));
+        let lost = KeyReport {
+            state: KeyState::Dispatch,
+            recovery_failed: true,
+            login_uid: Some(UID_B),
+        };
+        replay.note_key(lost, Some(LOGIN_NS + HOUR_NS));
+        replay.apply(lost, vec![(1, inventory(999))], Some(LOGIN_NS + HOUR_NS));
+
+        let good = replay.finish().unwrap();
+        assert_eq!(good.gi_player.unwrap().uid, Some(UID_A));
+    }
+
+    #[test]
+    fn an_alt_swap_never_leaves_the_old_uid_on_the_new_data() {
+        // B's token response stated no UID: B's data must not carry A's.
+        let mut replay = replay();
+        log_in(&mut replay, LOGIN_NS);
+        replay.apply(
+            stating(KeyState::Session, UID_A),
+            vec![(1, inventory(u64::from(UID_A)))],
+            Some(LOGIN_NS),
+        );
+        replay.handle(SnifferEvent::SessionReset, Some(LOGIN_NS + HOUR_NS));
+        replay.apply(
+            session(),
+            vec![(1, inventory(u64::from(UID_B)))],
+            Some(LOGIN_NS + HOUR_NS),
+        );
+        assert_eq!(replay.player_data.login_uid(), None);
+        assert_eq!(exported_uid(&replay), Some(UID_B), "the vote answers");
+    }
+
+    #[test]
+    fn a_login_uid_fills_in_on_data_that_lacks_one() {
+        // Nothing was pending (the app started mid-login): the first batch
+        // that reports the UID gives it; a later report never replaces it.
+        let mut replay = replay();
+        replay.apply(session(), vec![(1, inventory(424_242_424))], Some(LOGIN_NS));
+        assert_eq!(replay.player_data.login_uid(), None);
+        replay.apply(
+            stating(KeyState::Session, UID_A),
+            vec![(1, inventory(424_242_424))],
+            Some(LOGIN_NS),
+        );
+        assert_eq!(replay.player_data.login_uid(), Some(UID_A));
+        replay.apply(
+            stating(KeyState::Session, UID_B),
+            vec![(1, inventory(424_242_424))],
+            Some(LOGIN_NS),
+        );
+        assert_eq!(replay.player_data.login_uid(), Some(UID_A));
     }
 
     #[test]

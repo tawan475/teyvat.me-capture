@@ -446,6 +446,24 @@ fn trial_and_foreign_characters_are_not_added() {
     assert!(!data.characters.contains_key(&NEW_CHARACTER));
 }
 
+#[test]
+fn a_new_characters_guid_is_checked_against_the_guids_uid_not_the_logins() {
+    // Should the login state another number than the guids carry, the new
+    // character's guid is still compared with the guids' own top half.
+    let mut data = data();
+    data.set_login_uid(Some(812_345_679));
+    assert_eq!(
+        data.apply_avatar_change(&avatar_add(NEW_CHARACTER, (812_345_679 << 32) + 30, 1)),
+        None
+    );
+    assert_eq!(
+        data.apply_avatar_change(&avatar_add(NEW_CHARACTER, guid(30), 1)),
+        Some(AvatarChange::Added {
+            avatar_id: NEW_CHARACTER
+        })
+    );
+}
+
 fn fetter(level: u32, exp: u32) -> AvatarFetterInfo {
     let mut info = AvatarFetterInfo::new();
     info.exp_level = level;

@@ -748,6 +748,10 @@ pub struct PlayerHandover {
     exploration: exploration::ExplorationState,
     endgame: endgame::EndgameState,
     commission_reward: CommissionReward,
+    /// The login's UID ([`PlayerData::login_uid`]). Absent in a hand-over
+    /// from 1.18.4 and earlier: the item guids' vote answers then.
+    #[serde(default)]
+    login_uid: Option<u32>,
 }
 
 impl PlayerHandover {
@@ -845,6 +849,17 @@ pub struct PlayerData {
     /// updates are told apart by the account's guids), and reading it walks
     /// the whole inventory. Cleared wherever `items` is written.
     uid_cache: Cell<Option<Option<u32>>>,
+    /// The UID the held login's token response stated
+    /// ([`set_login_uid`](Self::set_login_uid)): what
+    /// [`account_uid`](Self::account_uid) answers first. Per login: cleared
+    /// by [`reset`](Self::reset).
+    login_uid: Option<u32>,
+    /// The (login UID, guids' UID) pair last warned about, so a
+    /// disagreement is said once, not on every read.
+    uid_disagreement: Cell<Option<(u32, u32)>>,
+    /// The disagreement warnings logged (tests count them).
+    #[cfg(test)]
+    uid_warnings: Cell<usize>,
     properties: HashMap<u32, u64>,
     /// The Travel Accounts book as the game last sent it in full. The game
     /// re-sends the whole book each time it is asked for it, so the newest
@@ -904,6 +919,10 @@ impl PlayerData {
             characters: HashMap::new(),
             items: HashMap::new(),
             uid_cache: Cell::new(None),
+            login_uid: None,
+            uid_disagreement: Cell::new(None),
+            #[cfg(test)]
+            uid_warnings: Cell::new(0),
             properties: HashMap::new(),
             anecdotes: None,
             routine: Routine::default(),
@@ -958,6 +977,8 @@ impl PlayerData {
         self.characters.clear();
         self.items.clear();
         self.uid_cache.set(None);
+        self.login_uid = None;
+        self.uid_disagreement.set(None);
         self.properties.clear();
         self.anecdotes = None;
         self.routine = Routine::default();
@@ -1463,12 +1484,13 @@ impl PlayerData {
     ///
     /// The matcher reports *candidates* found by shape, so only items whose
     /// guid's top half is the account's UID (read off the held inventory, see
-    /// [`Self::account_uid`]) are taken; with no inventory held there is no
+    /// `guid_uid`) are taken; with no inventory held there is no
     /// UID and nothing is taken (the login's full send comes first anyway). A
     /// material whose count is now 0 is dropped. Zero means "some other
     /// packet", as for [`Self::remove_items`].
     pub fn change_items(&mut self, items: &[Item]) -> usize {
-        let Some(uid) = self.account_uid() else {
+        // The guids' own UID: what an item's guid is compared against.
+        let Some(uid) = self.guid_uid() else {
             return 0;
         };
         let mine: Vec<Item> = items
@@ -1895,8 +1917,53 @@ impl PlayerData {
         }
     }
 
-    /// The account UID, read off the captured item guids.
+    /// The UID the held login's token response stated, if it was adopted
+    /// (see `crate::decode::adopt_login_uid`).
+    pub fn login_uid(&self) -> Option<u32> {
+        self.login_uid
+    }
+
+    /// Take the held login's UID from its token response (`None`: it stated
+    /// none). Only for the login whose data is held: see
+    /// `crate::decode::adopt_login_uid`.
+    pub fn set_login_uid(&mut self, uid: Option<u32>) {
+        self.login_uid = uid;
+    }
+
+    /// The account UID: the login's, as its token response stated it, else
+    /// the one the captured item guids vote for (`guid_uid`).
     pub fn account_uid(&self) -> Option<u32> {
+        let guids = self.guid_uid();
+        let Some(login) = self.login_uid else {
+            return guids;
+        };
+        if let Some(guids) = guids.filter(|guids| *guids != login)
+            && self.uid_disagreement.get() != Some((login, guids))
+        {
+            self.uid_disagreement.set(Some((login, guids)));
+            #[cfg(test)]
+            self.uid_warnings.set(self.uid_warnings.get() + 1);
+            tracing::warn!(
+                "the login reply's UID and the item guids' UID differ; using the login reply's"
+            );
+        }
+        Some(login)
+    }
+
+    /// Where [`account_uid`](Self::account_uid) comes from: `login` (the
+    /// token response) or `items` (the item guids' vote); `None` with no UID.
+    fn uid_source(&self) -> Option<&'static str> {
+        if self.login_uid.is_some() {
+            Some("login")
+        } else {
+            self.guid_uid().map(|_| "items")
+        }
+    }
+
+    /// The UID the captured item guids vote for: what an item's or a
+    /// character's own guid is compared against (`change_items`,
+    /// `added_avatar`), whatever the login said.
+    fn guid_uid(&self) -> Option<u32> {
         if let Some(uid) = self.uid_cache.get() {
             #[cfg(test)]
             assert_eq!(uid, self.item_uid().0, "the cached UID missed a change");
@@ -1955,8 +2022,10 @@ impl PlayerData {
     /// [`UID_MAJORITY`] of the items share, or more than half of them when
     /// the characters' guids back it ([`Self::characters_back_uid`]); a real
     /// split claims nothing. Character guids never name a UID by themselves.
+    /// The check's `uid` is the exported one, which is the login's when its
+    /// token response stated it (`source` says which).
     pub fn uid_check(&self) -> good::UidCheck {
-        let (uid, item_tops) = self.item_uid();
+        let (_, item_tops) = self.item_uid();
         let mut avatar_tops: BTreeMap<u64, usize> = BTreeMap::new();
         for avatar in self.characters.values() {
             *avatar_tops.entry(avatar.guid >> 32).or_default() += 1;
@@ -1975,8 +2044,11 @@ impl PlayerData {
             .max_by_key(|(_, n)| **n)
             .map(|(top, n)| (*top, *n));
         let agreeing = best.map_or(0, |(_, n)| n);
+        // The UID the export carries, and where it came from: the vote's
+        // own result only when the login stated none.
         good::UidCheck {
-            uid,
+            uid: self.account_uid(),
+            source: self.uid_source().map(str::to_owned),
             agreeing,
             total,
             item_top_halves: most_first(&item_tops),
@@ -2163,6 +2235,7 @@ impl PlayerData {
             exploration: self.exploration.clone(),
             endgame: self.endgame.clone(),
             commission_reward: self.commission_reward.clone(),
+            login_uid: self.login_uid,
         }
     }
 
@@ -2195,6 +2268,8 @@ impl PlayerData {
             })
             .collect();
         self.uid_cache.set(None);
+        self.login_uid = handover.login_uid;
+        self.uid_disagreement.set(None);
         self.properties = handover.properties;
         self.anecdotes = handover.anecdotes;
         self.routine = handover.routine;
@@ -2375,6 +2450,7 @@ impl PlayerData {
         match uid_check.uid {
             Some(uid) => tracing::info!(
                 uid,
+                source = uid_check.source.as_deref().unwrap_or("?"),
                 agreeing = uid_check.agreeing,
                 total = uid_check.total,
                 items = ?uid_check.item_top_halves,
@@ -2391,14 +2467,14 @@ impl PlayerData {
                         s.top
                     ))
                     .collect::<Vec<_>>(),
-                "account UID read from the item guids"
+                "account UID for this export (source: login = the token response, items = the item guids)"
             ),
             None => tracing::info!(
                 agreeing = uid_check.agreeing,
                 total = uid_check.total,
                 items = ?uid_check.item_top_halves,
                 avatars = ?uid_check.avatar_top_halves,
-                "no account UID: the item guids' top halves don't agree enough"
+                "no account UID: the login stated none and the item guids' top halves don't agree enough"
             ),
         }
 
@@ -4179,6 +4255,127 @@ mod tests {
             1
         );
         assert_eq!(count(&data, 104_002, minted_guid(800_000_001, 2)), None);
+    }
+
+    #[test]
+    fn the_logins_uid_wins_over_the_guids_vote() {
+        let mut data = player_data();
+        // Before any item or character: the login's UID is already known.
+        data.set_login_uid(Some(812_345_678));
+        assert_eq!(data.account_uid(), Some(812_345_678));
+        assert_eq!(data.gi_player().and_then(|p| p.uid), Some(812_345_678));
+        let check = data.uid_check();
+        assert_eq!(check.uid, Some(812_345_678));
+        assert_eq!(check.source.as_deref(), Some("login"));
+
+        // The guids agreeing changes nothing, and warns of nothing.
+        let own: Vec<_> = (1..=20)
+            .map(|n| material_item(104_000 + n, minted_guid(812_345_678, u64::from(n)), 3))
+            .collect();
+        data.process_items(&own);
+        assert_eq!(data.account_uid(), Some(812_345_678));
+        assert_eq!(data.uid_warnings.get(), 0);
+
+        // Reset: the login's UID goes with the login, the vote answers.
+        data.reset();
+        assert_eq!(data.login_uid(), None);
+        assert_eq!(data.account_uid(), None);
+        data.process_items(&own);
+        assert_eq!(data.account_uid(), Some(812_345_678));
+        assert_eq!(data.uid_check().source.as_deref(), Some("items"));
+        assert_eq!(data.uid_check().uid, Some(812_345_678));
+    }
+
+    #[test]
+    fn a_disagreement_is_warned_of_once_and_the_login_is_believed() {
+        let mut data = player_data();
+        data.process_items(
+            &(1..=20)
+                .map(|n| material_item(104_000 + n, minted_guid(800_000_001, u64::from(n)), 3))
+                .collect::<Vec<_>>(),
+        );
+        data.set_login_uid(Some(812_345_678));
+        for _ in 0..5 {
+            assert_eq!(data.account_uid(), Some(812_345_678));
+        }
+        let (good, _) = data.export_at(&ExportSettings::for_tracker(), 1_700_000_000_000);
+        assert_eq!(good.gi_player.unwrap().uid, Some(812_345_678));
+        assert_eq!(data.uid_warnings.get(), 1, "once per disagreement");
+        // Another disagreement is said again.
+        data.set_login_uid(Some(812_345_679));
+        data.account_uid();
+        data.account_uid();
+        assert_eq!(data.uid_warnings.get(), 2);
+        // The vote itself is unchanged, cache and all.
+        assert_eq!(data.guid_uid(), Some(800_000_001));
+    }
+
+    #[test]
+    fn changed_items_are_checked_against_the_guids_uid_not_the_logins() {
+        let mut data = player_data();
+        data.process_items(
+            &(1..=20)
+                .map(|n| material_item(104_000 + n, minted_guid(800_000_001, u64::from(n)), 3))
+                .collect::<Vec<_>>(),
+        );
+        data.set_login_uid(Some(812_345_678));
+        // An item of the login's number but not the guids' is not taken...
+        assert_eq!(
+            data.change_items(&[material_item(104_001, minted_guid(812_345_678, 1), 9)]),
+            0
+        );
+        // ...one of the guids' number is.
+        assert_eq!(
+            data.change_items(&[material_item(104_001, minted_guid(800_000_001, 1), 9)]),
+            1
+        );
+    }
+
+    #[test]
+    fn a_login_uid_names_a_co_op_heavy_account_before_its_characters_come() {
+        // The 1.18.3 case: most of the bag picked up in other players'
+        // worlds, and the characters not here yet. The vote claims nothing;
+        // the login's UID is known all the same.
+        let own = |n: u64| material_item(104_000 + n as u32, minted_guid(812_345_678, n), 3);
+        let foreign =
+            |n: u64| material_item(105_000 + n as u32, minted_guid(800_000_100 + n % 3, n), 1);
+        let mut data = player_data();
+        data.set_login_uid(Some(812_345_678));
+        data.process_items(&(1..=10).map(own).collect::<Vec<_>>());
+        data.process_items(&(1..=30).map(foreign).collect::<Vec<_>>());
+        assert_eq!(data.guid_uid(), None, "the vote alone claims nothing");
+        assert_eq!(data.account_uid(), Some(812_345_678));
+        assert!(data.characters.is_empty());
+        assert_eq!(
+            data.uid_warnings.get(),
+            0,
+            "no vote, nothing to disagree with"
+        );
+    }
+
+    #[test]
+    fn a_hand_over_carries_the_login_uid() {
+        let mut data = player_data();
+        data.process_items(&[material_item(104001, minted_guid(812_345_678, 1), 3)]);
+        data.set_login_uid(Some(812_345_678));
+        let handover = data.handover();
+        let json = serde_json::to_vec(&handover).unwrap();
+        let back: PlayerHandover = serde_json::from_slice(&json).unwrap();
+        assert_eq!(back, handover);
+        let mut resumed = player_data();
+        resumed.resume(back);
+        assert_eq!(resumed.login_uid(), Some(812_345_678));
+
+        // A hand-over written by 1.18.4 has no such field: it loads, and the
+        // vote answers as it did there.
+        let mut json: serde_json::Value = serde_json::to_value(&handover).unwrap();
+        json.as_object_mut().unwrap().remove("login_uid");
+        let old: PlayerHandover = serde_json::from_value(json).unwrap();
+        let mut resumed = player_data();
+        resumed.set_login_uid(Some(812_345_679));
+        assert_eq!(resumed.resume(old), 0);
+        assert_eq!(resumed.login_uid(), None, "not a login UID it held before");
+        assert_eq!(resumed.account_uid(), Some(812_345_678));
     }
 
     #[test]

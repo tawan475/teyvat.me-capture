@@ -193,7 +193,7 @@ export interface ItemExtras {
 
 /** The property snapshot the game sends at login (not followed live, except Mora/Primogems via `materials`). */
 export interface GiPlayer {
-  /** From the item guids. (§4.4: a number here, a string in WishImport) */
+  /** As the login's reply states it, else from the item guids. (§4.4: a number here, a string in WishImport) */
   uid?: number
   /** Adventure Rank and its EXP toward the next. */
   ar?: number

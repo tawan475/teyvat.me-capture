@@ -136,6 +136,33 @@ impl<'a> Reader<'a> {
     }
 }
 
+/// The top-level varint values of `bytes`, in wire order, read tolerantly:
+/// fixed and length-delimited fields (and groups) are skipped by their
+/// length, and the walk ends at the first field that is malformed or runs
+/// past the end, keeping what came before it. For a payload whose tail is
+/// not protobuf at all (a signature after the fields).
+pub(crate) fn leading_varints(bytes: &[u8]) -> Vec<u64> {
+    let mut reader = Reader { bytes, at: 0 };
+    let mut out = Vec::new();
+    while !reader.done() {
+        let Some((_, wire)) = reader.tag() else {
+            break;
+        };
+        let read = match wire {
+            WIRE_VARINT => reader.varint().map(|value| out.push(value)),
+            WIRE_FIXED64 => reader.fixed64().map(drop),
+            WIRE_LENGTH_DELIMITED => reader.length_delimited().map(drop),
+            WIRE_START_GROUP => reader.skip_group(),
+            WIRE_FIXED32 => reader.fixed32().map(drop),
+            _ => None,
+        };
+        if read.is_none() {
+            break;
+        }
+    }
+    out
+}
+
 /// Read `bytes` as one message, or `None` if it is not well-formed.
 pub(crate) fn fields(bytes: &[u8]) -> Option<Fields<'_>> {
     let mut reader = Reader { bytes, at: 0 };

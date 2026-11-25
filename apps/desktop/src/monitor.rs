@@ -30,8 +30,8 @@ use crate::capture::{self, BackendType, CaptureSource, CapturedFrame, create_cap
 // still reach it through here.
 pub(crate) use crate::decode::{
     AppliedData, DataReplacement, DataVerdict, KeyReport, STATS_INTERVAL, SnifferEvent,
-    SnifferStats, apply_commands, changes_in, classify_commands, decode_one_packet,
-    frame_direction, full_send_in,
+    SnifferStats, adopt_login_uid, apply_commands, changes_in, classify_commands,
+    decode_one_packet, frame_direction, full_send_in,
 };
 use crate::game_watch::{self, GameStatus, GameWatch, SystemProcessDetector};
 use crate::i18n::{tr, trf};
@@ -1890,10 +1890,10 @@ impl Monitor {
             return;
         }
 
-        match self
+        let verdict = self
             .data_replacement
-            .verdict_for_batch(key, &mut classified)
-        {
+            .verdict_for_batch(key, &mut classified);
+        match verdict {
             DataVerdict::Apply => {}
             DataVerdict::ReplaceThenApply => {
                 self.replace_captured_data("the new game connection delivered data");
@@ -1907,6 +1907,9 @@ impl Monitor {
                 return;
             }
         }
+        // After the replacement: the login's UID is the new data's, never
+        // the previous account's held data's.
+        adopt_login_uid(&mut self.player_data, &verdict, report);
 
         let full_send = full_send_in(&classified, self.player_data.item_count());
         let noted = changes_in(&classified);

@@ -808,14 +808,19 @@ pub struct GiCaptureJournal {
     pub seq: u64,
 }
 
-/// How `gi_player.uid` was read off the item guids (see
-/// `PlayerData::uid_check`; logged with every export, not exported): the top 32 bits of each non-zero item guid are
-/// counted, and the most common value is the UID when enough items agree.
+/// How `gi_player.uid` was found (see `PlayerData::uid_check`; logged with
+/// every export, not exported): the login's token response states it, else
+/// the top 32 bits of each non-zero item guid are counted, and the most
+/// common value is the UID when enough items agree.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UidCheck {
     /// The UID reported in `gi_player.uid`, if any.
     pub uid: Option<u32>,
+    /// Where `uid` came from: `login` (the login's token response) or
+    /// `items` (these item guids' vote). Absent without a UID.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub source: Option<String>,
     /// Item guids whose top half is the most common one.
     pub agreeing: usize,
     /// Item guids counted (non-zero).
