@@ -14,7 +14,7 @@ use anyhow::{Context, Result, anyhow};
 use base64::prelude::*;
 use chrono::prelude::*;
 use flate2::read::GzDecoder;
-use teyvatme_core::handover::SessionHandover;
+use teyvatme_core::handover::{SessionHandover, write_refusal};
 use teyvatme_game_data::AnimeGameData;
 use teyvatme_protocol::{
     CommandMatch, ConnectionPacket, GameCommand, GamePacket, GameSniffer, KeyState,
@@ -460,6 +460,20 @@ impl SnifferThread {
         }
         self.handover.lock().ok()?.take()
     }
+}
+
+/// Empty what the decoding thread sent after the monitor stopped reading,
+/// and say whether a session reset is in it: a new connection the monitor
+/// never handled (no replacement pending for it, the live journal still
+/// open), so no hand-over may be written ([`write_refusal`]). The packets
+/// themselves are dropped: decoded after the loop ended, they were never
+/// going to be applied.
+fn drain_unhandled_reset(decoded_rx: &mut mpsc::UnboundedReceiver<SnifferEvent>) -> bool {
+    let mut reset = false;
+    while let Ok(event) = decoded_rx.try_recv() {
+        reset |= matches!(event, SnifferEvent::SessionReset);
+    }
+    reset
 }
 
 /// Move packet decoding off the monitor's `select!` loop.
@@ -940,7 +954,18 @@ impl Monitor {
                 tracing::info!("a session hand-over, but the game is not running: not resumed");
                 return None;
             }
+            let player_part = handover.player_resumable();
             if !sniffer.resume(handover.sniffer) {
+                return None;
+            }
+            if let Err(why) = player_part {
+                // The connection alone: the data starts empty and the game's
+                // next full send fills it (or the next login does).
+                tracing::warn!(
+                    why,
+                    "resumed the game connection the previous run handed over, but not its \
+                     account data"
+                );
                 return None;
             }
             let (items, characters) = handover.player.counts();
@@ -1122,10 +1147,18 @@ impl Monitor {
         let Some(sniffer) = self.sniffer.take() else {
             return;
         };
-        let Some(sniffer_handover) = sniffer.finish() else {
+        let sniffer_handover = sniffer.finish();
+        // The thread decoded what was still queued before it ended; events
+        // from that tail were never handled here.
+        let unhandled_reset = drain_unhandled_reset(&mut self.decoded_rx);
+        let Some(sniffer_handover) = sniffer_handover else {
             tracing::info!("no live game connection to hand over");
             return;
         };
+        if let Some(why) = write_refusal(self.data_replacement.is_pending(), unhandled_reset) {
+            tracing::info!(why, "nothing handed over");
+            return;
+        }
         if !self.player_data.login_parts().items {
             tracing::info!("a live game connection but no account data yet: nothing handed over");
             return;
@@ -1148,6 +1181,8 @@ impl Monitor {
             live: self.live.handover(),
             wish: self.wish_hub.as_ref().and_then(|hub| hub.handover()),
             resin_alerted: self.resin_alerted,
+            // Refused above when it would be true.
+            replacement_pending: false,
         };
         match crate::session::write(&handover) {
             Ok(()) => tracing::info!(
@@ -3584,6 +3619,30 @@ pub(crate) mod tests {
                 *id,
                 "key {id} starts with another id"
             );
+        }
+    }
+
+    /// Packets still queued when the app quits are decoded by the thread
+    /// after the monitor's loop ended. A reset among them was never
+    /// handled: no hand-over then.
+    #[test]
+    fn a_reset_decoded_after_the_loop_ended_means_no_hand_over() {
+        use teyvatme_core::decode::test_support::{handshake_frame, segment_frame};
+
+        for (frame, reset) in [
+            (handshake_frame(), true),
+            (segment_frame(7, &[0u8; 40]), false),
+        ] {
+            let (decoded_tx, mut decoded_rx) = mpsc::unbounded_channel();
+            let thread = spawn_sniffer_thread(GameSniffer::new(), decoded_tx).unwrap();
+            thread.queued.fetch_add(1, Ordering::Relaxed);
+            thread.packet_tx.send(frame).unwrap();
+            // The monitor's loop is over: nothing reads `decoded_rx` until
+            // the hand-over is decided.
+            assert_eq!(thread.finish(), None, "no key, no connection");
+            assert_eq!(drain_unhandled_reset(&mut decoded_rx), reset);
+            assert_eq!(write_refusal(false, reset).is_some(), reset);
+            assert!(decoded_rx.try_recv().is_err(), "drained");
         }
     }
 

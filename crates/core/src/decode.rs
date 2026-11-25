@@ -128,6 +128,12 @@ impl DataReplacement {
         news
     }
 
+    /// A new connection began and its data has not replaced the held data
+    /// yet: what is held is still the previous login's.
+    pub fn is_pending(&self) -> bool {
+        self.pending
+    }
+
     /// The user cleared the data, so there is nothing left to replace.
     pub fn clear(&mut self) {
         self.pending = false;

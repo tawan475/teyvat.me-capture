@@ -629,10 +629,14 @@ impl Replay {
                 .and_then(|journal| journal.live.handover()),
             wish: None,
             resin_alerted: None,
+            // As the app would have written it; the reader then keeps the
+            // connection and leaves the data, as the app's guards do.
+            replacement_pending: self.replacement.is_pending(),
         };
         let bytes = handover.to_bytes()?;
         let handover = teyvatme_core::handover::SessionHandover::from_bytes(&bytes)
             .context("the hand-over does not read back")?;
+        let player_part = handover.player_resumable();
         let mut sniffer = GameSniffer::new().set_initial_keys(monitor::load_keys()?);
         // A new process knows none of the field numbers the login taught.
         teyvatme_protocol::forget_learned_tags();
@@ -644,6 +648,21 @@ impl Replay {
         self.generation = sniffer.session_generation();
         self.sniffer = sniffer;
         self.player_data.reset();
+        // The app writes no hand-over in these states (`write_refusal`) and
+        // reads none's player part (`player_resumable`): the connection
+        // alone goes on, with the data empty and no replacement pending.
+        if let Err(why) = player_part {
+            tracing::warn!(
+                frame = self.frames,
+                why,
+                "handed the connection over without its data"
+            );
+            self.replacement = DataReplacement::default();
+            if let Some(journal) = &mut self.journal {
+                journal.live = LiveSync::new();
+            }
+            return Ok(());
+        }
         let unreadable = self.player_data.resume(handover.player);
         if let Some(journal) = &mut self.journal {
             // The live sender starts fresh too, as the next process's does.
@@ -1394,6 +1413,106 @@ mod tests {
         );
         assert_eq!(replay.player_data.login_uid(), None);
         assert_eq!(exported_uid(&replay), Some(UID_B), "the vote answers");
+    }
+
+    /// A sniffer part as a hand-over carries it, for `login_uid` (made-up
+    /// key bytes: these tests never decrypt).
+    fn sniffer_part(login_uid: Option<u32>) -> teyvatme_protocol::SnifferHandover {
+        serde_json::from_value(serde_json::json!({
+            "v": 1, "key": [1, 2, 3, 4], "last_time_seed": null, "time_anchors": [],
+            "lanes": [null, null], "login_uid": login_uid,
+        }))
+        .unwrap()
+    }
+
+    /// A's data held, B's connection live, B's first data not yet here.
+    fn holding_a_for_b() -> Replay {
+        let mut replay = replay();
+        log_in(&mut replay, LOGIN_NS);
+        replay.apply(
+            stating(KeyState::Session, UID_A),
+            vec![(1, inventory(u64::from(UID_A)))],
+            Some(LOGIN_NS),
+        );
+        let relog_ns = LOGIN_NS + HOUR_NS;
+        replay.handle(SnifferEvent::SessionReset, Some(relog_ns));
+        replay.note_key(stating(KeyState::Session, UID_B), Some(relog_ns));
+        replay.apply(
+            stating(KeyState::Session, UID_B),
+            vec![(
+                21436,
+                CommandMatch::PropertyUpdate(std::collections::HashMap::from([(10016, 5)])),
+            )],
+            Some(relog_ns),
+        );
+        assert!(replay.replacement.is_pending());
+        replay
+    }
+
+    #[test]
+    fn quitting_while_bs_data_is_awaited_never_files_it_under_a() {
+        let held = holding_a_for_b();
+        // The app writes nothing now.
+        assert!(
+            teyvatme_core::handover::write_refusal(held.replacement.is_pending(), false).is_some()
+        );
+
+        // A file that pairs B's connection with A's data anyway (an older
+        // build wrote it): its data part is not taken, whichever way it says so.
+        let mut file = teyvatme_core::handover::SessionHandover {
+            v: teyvatme_core::handover::SessionHandover::VERSION,
+            written_ms: 0,
+            game_data: None,
+            sniffer: sniffer_part(Some(UID_B)),
+            player: held.player_data.handover(),
+            live: None,
+            wish: None,
+            resin_alerted: None,
+            replacement_pending: false,
+        };
+        assert!(file.player_resumable().is_err(), "the login UIDs differ");
+        file.sniffer = sniffer_part(None);
+        file.replacement_pending = true;
+        assert!(file.player_resumable().is_err(), "the file says pending");
+
+        // The next run as the app resumes it: the connection only, the data
+        // empty, nothing pending. B's data then is B's alone.
+        let mut next = replay();
+        next.apply(
+            stating(KeyState::Session, UID_B),
+            vec![(1, inventory(u64::from(UID_B)))],
+            Some(LOGIN_NS + 2 * HOUR_NS),
+        );
+        assert_eq!(exported_uid(&next), Some(UID_B));
+        assert_eq!(next.player_data.uid_check().total, 10, "nothing of A's");
+
+        // What the next run did with the data part resumed (5e3c6b6): B's
+        // data on top of A's, filed under A.
+        let mut merged = replay();
+        merged.player_data.resume(held.player_data.handover());
+        merged.apply(
+            stating(KeyState::Session, UID_B),
+            vec![(1, inventory(u64::from(UID_B)))],
+            Some(LOGIN_NS + 2 * HOUR_NS),
+        );
+        assert_eq!(exported_uid(&merged), Some(UID_A));
+        assert_eq!(merged.player_data.uid_check().total, 20);
+    }
+
+    #[test]
+    fn clearing_the_data_while_bs_is_awaited_leaves_b_alone() {
+        let mut replay = holding_a_for_b();
+        // Clear data, as the monitor does it.
+        replay.replacement.clear();
+        replay.player_data.reset();
+        replay.apply(
+            stating(KeyState::Session, UID_B),
+            vec![(1, inventory(u64::from(UID_B)))],
+            Some(LOGIN_NS + HOUR_NS + 1_000_000_000),
+        );
+        assert_eq!(replay.player_data.login_uid(), Some(UID_B));
+        assert_eq!(exported_uid(&replay), Some(UID_B));
+        assert_eq!(replay.player_data.uid_check().total, 10, "nothing of A's");
     }
 
     #[test]

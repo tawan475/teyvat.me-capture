@@ -755,6 +755,12 @@ pub struct PlayerHandover {
 }
 
 impl PlayerHandover {
+    /// The login UID the account data carries ([`PlayerData::login_uid`]
+    /// when written): the reader compares it with the sniffer's copy.
+    pub fn login_uid(&self) -> Option<u32> {
+        self.login_uid
+    }
+
     /// Items and characters carried (diagnostics).
     pub fn counts(&self) -> (usize, usize) {
         (self.items.len(), self.characters.len())
@@ -1924,40 +1930,66 @@ impl PlayerData {
     }
 
     /// Take the held login's UID from its token response (`None`: it stated
-    /// none). Only for the login whose data is held: see
-    /// `crate::decode::adopt_login_uid`.
-    pub fn set_login_uid(&mut self, uid: Option<u32>) {
+    /// none). Only for the login whose data is held: only
+    /// `crate::decode::adopt_login_uid` calls it, so no app can stamp a UID
+    /// outside that rule.
+    pub(crate) fn set_login_uid(&mut self, uid: Option<u32>) {
         self.login_uid = uid;
     }
 
-    /// The account UID: the login's, as its token response stated it, else
-    /// the one the captured item guids vote for (`guid_uid`).
-    pub fn account_uid(&self) -> Option<u32> {
+    /// The account UID and where it comes from (`login`: the token
+    /// response; `items`: the item guids' vote), without a word logged.
+    ///
+    /// The login's UID, unless the guids' vote names another one and the
+    /// characters back that vote ([`Self::characters_back_uid`]): a
+    /// character is always the account's own, so that is direct evidence of
+    /// whose data is held, and a login UID contradicting it was misread,
+    /// is stale or was forged. With no vote yet (before the bag), a vote the
+    /// characters do not back (a bag heavy with other players' items) or
+    /// agreement, the login's UID answers.
+    fn resolved_uid(&self) -> (Option<u32>, Option<&'static str>) {
         let guids = self.guid_uid();
         let Some(login) = self.login_uid else {
-            return guids;
+            return (guids, guids.map(|_| "items"));
         };
-        if let Some(guids) = guids.filter(|guids| *guids != login)
+        match guids {
+            Some(guids) if guids != login && self.characters_back_uid(u64::from(guids)) => {
+                (Some(guids), Some("items"))
+            }
+            _ => (Some(login), Some("login")),
+        }
+    }
+
+    /// The account UID: see [`Self::resolved_uid`]. A disagreement between
+    /// the login's UID and the guids' vote is warned of once per pair.
+    pub fn account_uid(&self) -> Option<u32> {
+        let (uid, source) = self.resolved_uid();
+        if let (Some(login), Some(guids)) = (self.login_uid, self.guid_uid())
+            && guids != login
             && self.uid_disagreement.get() != Some((login, guids))
         {
             self.uid_disagreement.set(Some((login, guids)));
             #[cfg(test)]
             self.uid_warnings.set(self.uid_warnings.get() + 1);
-            tracing::warn!(
-                "the login reply's UID and the item guids' UID differ; using the login reply's"
-            );
+            if source == Some("items") {
+                tracing::warn!(
+                    "the login reply's UID and the item guids' UID differ, and the characters' \
+                     guids back the item guids; using the item guids'"
+                );
+            } else {
+                tracing::warn!(
+                    "the login reply's UID and the item guids' UID differ, and the characters' \
+                     guids do not back the item guids; using the login reply's"
+                );
+            }
         }
-        Some(login)
+        uid
     }
 
     /// Where [`account_uid`](Self::account_uid) comes from: `login` (the
     /// token response) or `items` (the item guids' vote); `None` with no UID.
     fn uid_source(&self) -> Option<&'static str> {
-        if self.login_uid.is_some() {
-            Some("login")
-        } else {
-            self.guid_uid().map(|_| "items")
-        }
+        self.resolved_uid().1
     }
 
     /// The UID the captured item guids vote for: what an item's or a
@@ -4385,6 +4417,61 @@ mod tests {
             0,
             "no vote, nothing to disagree with"
         );
+    }
+
+    #[test]
+    fn characters_that_contradict_the_login_uid_win_and_are_warned_of_once() {
+        // The bag and every character say 800000001; the login said
+        // 812345678 (misread, stale or forged): the characters are direct
+        // evidence of whose data this is.
+        let mut data = player_data();
+        data.set_login_uid(Some(812_345_678));
+        data.process_items(
+            &(1..=20)
+                .map(|n| material_item(104_000 + n, minted_guid(800_000_001, u64::from(n)), 3))
+                .collect::<Vec<_>>(),
+        );
+        // Before the characters the login answers (the vote alone is not
+        // enough to overrule it).
+        assert_eq!(data.account_uid(), Some(812_345_678));
+        assert_eq!(data.uid_check().source.as_deref(), Some("login"));
+        assert_eq!(data.uid_warnings.get(), 1);
+
+        let characters: Vec<_> = (0..3u32)
+            .map(|n| {
+                let mut avatar = character(10_000_002 + n, &[]);
+                avatar.guid = minted_guid(800_000_001, 1_000 + u64::from(n));
+                avatar
+            })
+            .collect();
+        data.process_characters(&characters);
+        for _ in 0..3 {
+            assert_eq!(data.account_uid(), Some(800_000_001));
+        }
+        let check = data.uid_check();
+        assert_eq!(check.uid, Some(800_000_001));
+        assert_eq!(check.source.as_deref(), Some("items"));
+        let (good, _) = data.export_at(&ExportSettings::for_tracker(), 1_700_000_000_000);
+        assert_eq!(good.gi_player.unwrap().uid, Some(800_000_001));
+        // The same pair of numbers: no second warning.
+        assert_eq!(data.uid_warnings.get(), 1);
+    }
+
+    #[test]
+    fn the_login_and_the_characters_agreeing_warn_of_nothing() {
+        let mut data = player_data();
+        data.set_login_uid(Some(812_345_678));
+        data.process_items(
+            &(1..=20)
+                .map(|n| material_item(104_000 + n, minted_guid(812_345_678, u64::from(n)), 3))
+                .collect::<Vec<_>>(),
+        );
+        let mut avatar = character(10_000_002, &[]);
+        avatar.guid = minted_guid(812_345_678, 1_000);
+        data.process_characters(&[avatar]);
+        assert_eq!(data.account_uid(), Some(812_345_678));
+        assert_eq!(data.uid_check().source.as_deref(), Some("login"));
+        assert_eq!(data.uid_warnings.get(), 0);
     }
 
     #[test]

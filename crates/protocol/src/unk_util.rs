@@ -152,6 +152,38 @@ const LOGIN_UID_RANGE: RangeInclusive<u64> = 100_000_000..=4_294_967_295;
 /// signature after the fields). None in range, or two different numbers in
 /// range: no UID from this message.
 pub fn login_reply_uid(data: impl AsRef<[u8]>) -> Option<u32> {
+    match login_reply_uids(data) {
+        LoginReplyUid::One(uid) => Some(uid),
+        LoginReplyUid::None | LoginReplyUid::Several => None,
+    }
+}
+
+/// What a `GetPlayerTokenRsp` payload held in the UID range
+/// ([`login_reply_uid`] answers only [`LoginReplyUid::One`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LoginReplyUid {
+    /// No top-level number in range.
+    None,
+    /// Exactly one number in range (repeats of it included).
+    One(u32),
+    /// Two different numbers in range: no UID is believed.
+    Several,
+}
+
+impl LoginReplyUid {
+    /// "none", "one" or "several", for the log (never the value).
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::One(_) => "one",
+            Self::Several => "several",
+        }
+    }
+}
+
+/// The numbers in the UID range a token response holds; see
+/// [`login_reply_uid`].
+pub fn login_reply_uids(data: impl AsRef<[u8]>) -> LoginReplyUid {
     let mut found = None;
     for value in crate::wire::leading_varints(data.as_ref()) {
         if !LOGIN_UID_RANGE.contains(&value) {
@@ -160,10 +192,13 @@ pub fn login_reply_uid(data: impl AsRef<[u8]>) -> Option<u32> {
         match found {
             None => found = Some(value),
             Some(held) if held == value => {}
-            Some(_) => return None,
+            Some(_) => return LoginReplyUid::Several,
         }
     }
-    found.and_then(|uid| u32::try_from(uid).ok())
+    match found.and_then(|uid| u32::try_from(uid).ok()) {
+        Some(uid) => LoginReplyUid::One(uid),
+        None => LoginReplyUid::None,
+    }
 }
 
 /// One achievement, as recovered from an `AchievementAllDataNotify`.
@@ -2119,6 +2154,22 @@ pub(crate) mod tests {
         two.extend(token_fields());
         two.extend(field_varint(14, 812_345_679));
         assert_eq!(login_reply_uid(&two), None);
+        // What the log line names: none, one or several (never the value).
+        assert_eq!(login_reply_uids(token_fields()), LoginReplyUid::None);
+        assert_eq!(login_reply_uids(&two), LoginReplyUid::Several);
+        assert_eq!(
+            login_reply_uids(field_varint(2, 812_345_678)),
+            LoginReplyUid::One(812_345_678)
+        );
+        assert_eq!(
+            [
+                LoginReplyUid::None,
+                LoginReplyUid::One(1),
+                LoginReplyUid::Several
+            ]
+            .map(|r| r.kind()),
+            ["none", "one", "several"]
+        );
         // Just outside each end of the range.
         assert_eq!(login_reply_uid(field_varint(2, 99_999_999)), None);
         assert_eq!(login_reply_uid(field_varint(2, 4_294_967_296)), None);

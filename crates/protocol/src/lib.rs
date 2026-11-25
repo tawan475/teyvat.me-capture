@@ -131,9 +131,9 @@ pub use crate::shop::{
     matches_shop_purchase, read_bargains,
 };
 pub use crate::unk_util::{
-    Achievement, AchievementMatchError, login_reply_uid, matches_achievement_all_data_notify,
-    matches_achievement_update_notify, matches_avatars_all_data_notify,
-    matches_get_player_token_rsp, matches_items_all_data_notify,
+    Achievement, AchievementMatchError, LoginReplyUid, login_reply_uid, login_reply_uids,
+    matches_achievement_all_data_notify, matches_achievement_update_notify,
+    matches_avatars_all_data_notify, matches_get_player_token_rsp, matches_items_all_data_notify,
     try_match_achievement_all_data_notify,
 };
 
@@ -652,6 +652,14 @@ pub struct SnifferHandover {
     /// from before it (1.18.4 and earlier): the next process then knows none.
     #[serde(default)]
     login_uid: Option<u32>,
+}
+
+impl SnifferHandover {
+    /// The login UID it carries ([`GameSniffer::login_uid`] when written):
+    /// the reader compares it with the account data's own copy.
+    pub fn login_uid(&self) -> Option<u32> {
+        self.login_uid
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1723,9 +1731,15 @@ impl GameSniffer {
                 });
                 // This login's UID, from the whole payload; `None` when it
                 // states none (or two), never an earlier login's.
-                self.login_uid = login_reply_uid(&command.proto_data);
-                debug!(
-                    found = self.login_uid.is_some(),
+                let read = login_reply_uids(&command.proto_data);
+                self.login_uid = match read {
+                    LoginReplyUid::One(uid) => Some(uid),
+                    LoginReplyUid::None | LoginReplyUid::Several => None,
+                };
+                // Once per accepted reply, no values: "several" or "none" on
+                // every login of a region means the reader is off there.
+                tracing::info!(
+                    numbers_in_uid_range = read.kind(),
                     "read the login's UID from the token response"
                 );
                 // A new token response means a new session key is coming, so the
