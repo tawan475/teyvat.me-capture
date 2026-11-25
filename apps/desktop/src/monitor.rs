@@ -3565,6 +3565,25 @@ pub(crate) fn load_keys() -> Result<HashMap<u16, Vec<u8>>> {
 pub(crate) mod tests {
     use super::*;
 
+    /// The protocol crate's `lookup_initial_key` picks a key by the encrypted
+    /// command's first two bytes, big-endian, XOR 0x4567. A plain command
+    /// starts with 0x4567, so those two bytes are the key's own first two:
+    /// a key is found only when they, read big-endian, equal its id. Every
+    /// key must also be the game's full 4,096 bytes.
+    #[test]
+    fn every_dispatch_key_is_found_by_its_own_id() {
+        let keys = load_keys().unwrap();
+        assert!(keys.contains_key(&2701), "the Bilibili server's key");
+        for (id, key) in &keys {
+            assert_eq!(key.len(), 4096, "key {id} length");
+            assert_eq!(
+                u16::from_be_bytes([key[0], key[1]]),
+                *id,
+                "key {id} starts with another id"
+            );
+        }
+    }
+
     #[test]
     fn a_snapshot_goes_gzipped_only_when_asked() {
         let json = format!(
