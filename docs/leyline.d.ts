@@ -193,8 +193,10 @@ export interface ArtifactRolls {
    * first roll) and the tier (1 = the lowest value that stat rolls at this
    * rarity, counting up: 1-4 at 3★ to 5★, 1-3 at 2★, 1-2 at 1★). Its length is
    * 2 × `totalRolls`; unactivated substats have no pair. Absent when any roll is
-   * unknown to the game data the export used (never a partial list), when the
-   * artifact has no rolls, and on a +0 five star that "fake 4th line" rewrote.
+   * unknown to the game data the export used or belongs to another rarity
+   * (never a partial list), when the artifact has no rolls, and on every five
+   * star the "fake 4th line" option rewrote (any still holding an unactivated
+   * substat, +0 to +3).
    * Example: "041221331401133402". Contract gi_rolls v1.
    */
   gi_rolls?: string

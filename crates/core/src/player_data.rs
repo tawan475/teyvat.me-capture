@@ -2956,8 +2956,12 @@ impl PlayerData {
                     entry.0 += substat.value as f32;
                     if let Some(text) = &mut rolls {
                         let line = line.unwrap_or(substats.len() - 1);
+                        // A roll of another rarity's group (`<group>NNT`,
+                        // group 501 for a 5★) is not this artifact's: its
+                        // tier would be ranked on the wrong table.
+                        let own_rarity = *substat_id / 100_000 == artifact_data.rarity;
                         match self.game_data.roll_tier(*substat_id) {
-                            Some(tier @ 1..=9) if line <= 9 => {
+                            Some(tier @ 1..=9) if line <= 9 && own_rarity => {
                                 text.push(char::from(b'0' + line as u8));
                                 text.push(char::from(b'0' + tier));
                             }
@@ -7536,6 +7540,40 @@ mod tests {
         data.process_items(&[artifact_item(81524, 7, 1, &[], &[])]);
         let out = exported_artifact(&data, &ExportSettings::for_tracker());
         assert_eq!(out.get("gi_rolls"), None);
+    }
+
+    #[test]
+    fn a_roll_of_another_rarity_drops_gi_rolls_and_leaves_the_rest() {
+        let mut data = roll_player_data("");
+        // A 5★ whose last roll is a 4★ group's (401204, CRIT Rate 3.11).
+        data.process_items(&[artifact_item(
+            81524,
+            7,
+            9,
+            &[501204, 501224, 501064, 401204],
+            &[],
+        )]);
+        let out = exported_artifact(&data, &ExportSettings::for_tracker());
+        assert_eq!(out.get("gi_rolls"), None);
+        // Everything else is written as before: the roll still counts.
+        assert_eq!(numeric(&out["totalRolls"]), serde_json::json!(4.0));
+        assert_eq!(
+            numeric(&out["substats"]),
+            numeric(&serde_json::json!([
+                {"key": "critRate_", "value": 7.0, "initialValue": 3.9},
+                {"key": "critDMG_", "value": 7.8, "initialValue": 7.8},
+                {"key": "atk_", "value": 5.8, "initialValue": 5.8},
+            ]))
+        );
+
+        // A 4★ (75510) with a 5★ group's roll loses it too; its own keep it.
+        let mut data = roll_player_data("");
+        data.process_items(&[artifact_item(75510, 7, 5, &[401204, 501224], &[])]);
+        let out = exported_artifact(&data, &ExportSettings::for_tracker());
+        assert_eq!(out.get("gi_rolls"), None);
+        data.process_items(&[artifact_item(75510, 7, 5, &[401204, 401224], &[])]);
+        let out = exported_artifact(&data, &ExportSettings::for_tracker());
+        assert_eq!(out["gi_rolls"], "0414");
     }
 
     #[test]
