@@ -2899,6 +2899,12 @@ impl PlayerData {
                 // Counted here rather than from `append_prop_id_list.len()` so
                 // that `total_rolls` can never contradict `substats`.
                 let mut total_rolls = 0u32;
+                // `gi_rolls`: a (line, tier) digit pair per roll, kept only
+                // while every roll is known (all or nothing: an unknown id
+                // shrinks `total_rolls`, so the length cannot tell).
+                let mut rolls = Some(String::with_capacity(
+                    2 * artifact.append_prop_id_list.len(),
+                ));
                 for substat_id in artifact.append_prop_id_list.iter() {
                     let Ok(substat) = self.game_data.get_affix(*substat_id) else {
                         tracing::warn!(
@@ -2907,14 +2913,27 @@ impl PlayerData {
                             "no game data for artifact affix; the substat is omitted"
                         );
                         report.record_dropped("unknown_affix");
+                        rolls = None;
                         continue;
                     };
                     total_rolls += 1;
+                    let line = substats.get_index_of(&substat.property);
                     let entry = substats
                         .entry(substat.property)
                         .or_insert((0., substat.value as f32));
                     entry.0 += substat.value as f32;
+                    if let Some(text) = &mut rolls {
+                        let line = line.unwrap_or(substats.len() - 1);
+                        match self.game_data.roll_tier(*substat_id) {
+                            Some(tier @ 1..=9) if line <= 9 => {
+                                text.push(char::from(b'0' + line as u8));
+                                text.push(char::from(b'0' + tier));
+                            }
+                            _ => rolls = None,
+                        }
+                    }
                 }
+                let gi_rolls = rolls.filter(|text| !text.is_empty());
                 let substats = substats
                     .into_iter()
                     .map(|(property, (value, initial_value))| good::Substat {
@@ -2984,6 +3003,8 @@ impl PlayerData {
                     astral_mark,
                     elixir_crafted,
                     unactivated_substats,
+                    // Every export, not only tracker uploads.
+                    gi_rolls,
                     gi_guid: (settings.item_guids && item.guid != 0).then(|| item.guid.to_string()),
                     // Beside the guid it belongs to.
                     gi_exp: (settings.item_guids && item.guid != 0)
@@ -3403,6 +3424,19 @@ mod tests {
     /// Export settings that filter nothing out: the tracker's.
     fn settings() -> ExportSettings {
         ExportSettings::for_tracker()
+    }
+
+    /// Every artifact roll affix (groups 101 to 501, all tiers of every
+    /// stat) as a `TestGameData::affix_map`: the rows of the pinned
+    /// `game-data/ExcelBinOutput/ReliquaryAffixExcelConfigData.json.gz`
+    /// (public game data) as `fetch_affix_map` stores them. With fewer tiers
+    /// of a stat every roll of it would rank tier 1 and `gi_rolls` would lie.
+    fn roll_affixes() -> &'static str {
+        include_str!("../tests/fixtures/reliquary-roll-affixes.json")
+            .trim()
+            .strip_prefix('{')
+            .and_then(|inside| inside.strip_suffix('}'))
+            .unwrap()
     }
 
     fn character(avatar_id: u32, skill_levels: &[(u32, u32)]) -> AvatarInfo {
@@ -4413,8 +4447,7 @@ mod tests {
     /// Teyvat.me adds beside GOOD. The two differ in nothing GOOD can see.
     fn golden_player_data(extras: bool) -> PlayerData {
         let game_data = TestGameData {
-            affix_map: r#""501204": {"property": "CritRate", "value": 3.89},
-                          "501234": {"property": "CritDamage", "value": 7.77}"#,
+            affix_map: roll_affixes(),
             artifact_map: r#""81524": {"set": "Crimson Witch of Flames", "slot": "Flower", "rarity": 5}"#,
             character_map: r#""10000046": "Hu Tao""#,
             material_map: r#""104003": "Hero's Wit""#,
@@ -4455,7 +4488,9 @@ mod tests {
         let mut reliquary = teyvatme_protocol::r#gen::protos::Reliquary::new();
         reliquary.level = 21;
         reliquary.main_prop_id = 10001;
-        reliquary.append_prop_id_list = vec![501204, 501234, 501204];
+        // Crit Rate 3.89, Crit DMG 7.77, Crit Rate 3.89: each its stat's
+        // highest roll (`gi_rolls` "041404").
+        reliquary.append_prop_id_list = vec![501204, 501224, 501204];
         equip.set_reliquary(reliquary);
         artifact.set_equip(equip);
 
@@ -4559,7 +4594,9 @@ mod tests {
         r#""rarity":5,"mainStatKey":"hp","location":"HuTao","lock":true,"#,
         r#""substats":[{"key":"critRate_","value":7.8,"initialValue":3.9},"#,
         r#"{"key":"critDMG_","value":7.8,"initialValue":7.8}],"#,
-        r#""totalRolls":3,"astralMark":false,"elixirCrafted":false,"unactivatedSubstats":[]}],"#,
+        r#""totalRolls":3,"astralMark":false,"elixirCrafted":false,"unactivatedSubstats":[],"#,
+        // Teyvat.me's roll list: in every export, with or without the extras.
+        r#""gi_rolls":"041404"}],"#,
         r#""weapons":[{"key":"StaffOfHoma","level":90,"ascension":6,"refinement":1,"#,
         r#""location":"HuTao","lock":true}],"#,
         r#""materials":{"HerosWit":12},"gi_achievements":[80014],"timestamp":1756000000000}"#,
@@ -7174,10 +7211,7 @@ mod tests {
     fn low_rarity_inventory() -> PlayerData {
         let mut data = PlayerData::new(
             TestGameData {
-                affix_map: r#""501204": {"property": "CritRate", "value": 3.89},
-                              "501234": {"property": "CritDamage", "value": 7.77},
-                              "501024": {"property": "AttackPercent", "value": 5.83},
-                              "501054": {"property": "EnergyRecharge", "value": 6.48}"#,
+                affix_map: roll_affixes(),
                 artifact_map: r#""71510": {"set": "Adventurer", "slot": "Flower", "rarity": 1},
                                  "73510": {"set": "Lucky Dog", "slot": "Flower", "rarity": 2},
                                  "81524": {"set": "Crimson Witch of Flames", "slot": "Flower", "rarity": 5}"#,
@@ -7191,8 +7225,9 @@ mod tests {
         );
         data.process_items(&[
             artifact_item(71510, 1, 1, &[], &[]),
-            artifact_item(73510, 2, 1, &[501204], &[]),
-            artifact_item(81524, 3, 1, &[501204, 501234, 501024], &[501054]),
+            artifact_item(73510, 2, 1, &[201203], &[]),
+            // Crit Rate, Crit DMG, ATK%; Energy Recharge unactivated.
+            artifact_item(81524, 3, 1, &[501204, 501224, 501064], &[501234]),
             weapon_item(11101, 4, 1),
             weapon_item(11201, 5, 1),
             weapon_item(13501, 6, 90),
@@ -7279,6 +7314,276 @@ mod tests {
                 && tracker_settings.include_weapons
                 && tracker_settings.include_materials
         );
+    }
+
+    // -- gi_rolls ----------------------------------------------------------------
+
+    /// One artifact item id per rarity, 1★ to 5★.
+    const ROLL_ARTIFACTS: &str = r#""71510": {"set": "Adventurer", "slot": "Flower", "rarity": 1},
+        "73510": {"set": "Lucky Dog", "slot": "Flower", "rarity": 2},
+        "74510": {"set": "Traveling Doctor", "slot": "Flower", "rarity": 3},
+        "75510": {"set": "Instructor", "slot": "Flower", "rarity": 4},
+        "81524": {"set": "Crimson Witch of Flames", "slot": "Flower", "rarity": 5}"#;
+
+    fn roll_item_id(rarity: u64) -> u32 {
+        match rarity {
+            1 => 71510,
+            2 => 73510,
+            3 => 74510,
+            4 => 75510,
+            _ => 81524,
+        }
+    }
+
+    /// Artifacts over every roll affix of the game, plus `extra_affixes`.
+    fn roll_player_data(extra_affixes: &str) -> PlayerData {
+        let affix_map: &'static str = if extra_affixes.is_empty() {
+            roll_affixes()
+        } else {
+            Box::leak(format!("{}, {extra_affixes}", roll_affixes()).into_boxed_str())
+        };
+        PlayerData::new(
+            TestGameData {
+                affix_map,
+                artifact_map: ROLL_ARTIFACTS,
+                property_map: r#""10001": "Hp""#,
+                ..Default::default()
+            }
+            .build(),
+        )
+    }
+
+    /// The one artifact `data` exports with `settings`, as its file's JSON.
+    fn exported_artifact(data: &PlayerData, settings: &ExportSettings) -> serde_json::Value {
+        let (good, _) = data.export_at(settings, GOLDEN_TIMESTAMP_MS);
+        assert_eq!(good.artifacts.len(), 1);
+        let json = serde_json::to_string(&good.artifacts[0]).unwrap();
+        serde_json::from_str(&json).unwrap()
+    }
+
+    /// Every number as an f64, so `21.0` and `21` compare equal.
+    fn numeric(value: &serde_json::Value) -> serde_json::Value {
+        use serde_json::Value;
+        match value {
+            Value::Number(number) => serde_json::json!(number.as_f64().unwrap()),
+            Value::Array(items) => Value::Array(items.iter().map(numeric).collect()),
+            Value::Object(fields) => Value::Object(
+                fields
+                    .iter()
+                    .map(|(key, value)| (key.clone(), numeric(value)))
+                    .collect(),
+            ),
+            other => other.clone(),
+        }
+    }
+
+    #[test]
+    fn every_contract_case_exports_its_substats_and_its_gi_rolls() {
+        let cases: serde_json::Value =
+            serde_json::from_str(include_str!("../tests/fixtures/gi-rolls-cases.json")).unwrap();
+        assert_eq!(cases["contract"], "gi_rolls");
+        assert_eq!(cases["version"], 1);
+        let valid = cases["valid"].as_array().unwrap();
+        assert!(!valid.is_empty());
+        let ids = |value: &serde_json::Value| -> Vec<u32> {
+            value
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|id| id.as_u64().unwrap() as u32)
+                .collect()
+        };
+        for case in valid {
+            let name = case["name"].as_str().unwrap();
+            let expected = &case["artifact"];
+            let rarity = expected["rarity"].as_u64().unwrap();
+            let level = expected["level"].as_u64().unwrap() as u32;
+
+            let mut data = roll_player_data("");
+            data.process_items(&[artifact_item(
+                roll_item_id(rarity),
+                7,
+                level + 1,
+                &ids(&case["affixIds"]),
+                &ids(&case["unactivatedAffixIds"]),
+            )]);
+            let mut out = exported_artifact(&data, &ExportSettings::for_tracker());
+            // Two starting rolls sit exactly on a display rounding edge: the
+            // writer's unchanged rounding (`Self::round`, half away from
+            // zero on the f32) gives 5.3 and 2.5 where the cases say 5.2 and
+            // 2.4. The contract forbids changing `initialValue`, so these
+            // are pinned here, exactly, for the commander to settle; every
+            // other value must match.
+            for (case, line, writer, contract) in [
+                ("5-star +20, four starting lines, nine rolls", 3, 5.3, 5.2),
+                ("3-star +12", 0, 2.5, 2.4),
+            ] {
+                if name == case {
+                    let initial = &mut out["substats"][line]["initialValue"];
+                    assert_eq!(numeric(initial), serde_json::json!(writer), "{name}");
+                    assert_eq!(
+                        numeric(&expected["substats"][line]["initialValue"]),
+                        serde_json::json!(contract),
+                        "{name}"
+                    );
+                    *initial = serde_json::json!(contract);
+                }
+            }
+            for key in [
+                "rarity",
+                "level",
+                "substats",
+                "totalRolls",
+                "unactivatedSubstats",
+                "gi_rolls",
+            ] {
+                assert_eq!(numeric(&out[key]), numeric(&expected[key]), "{name}: {key}");
+            }
+        }
+    }
+
+    #[test]
+    fn an_unknown_roll_drops_gi_rolls_and_leaves_the_rest_as_it_was() {
+        // 941001 is in the game data but not an artifact roll group.
+        let mut data = roll_player_data(r#""941001": {"property": "CritRate", "value": 2.0}"#);
+        let known = [501204, 501224, 501064, 501204];
+        data.process_items(&[artifact_item(81524, 7, 9, &known, &[])]);
+        let whole = exported_artifact(&data, &ExportSettings::for_tracker());
+        assert_eq!(whole["gi_rolls"], "04142404");
+
+        for unknown in [999_999, 941_001] {
+            for at in [0, 2, 4] {
+                let mut list = known.to_vec();
+                list.insert(at, unknown);
+                data.process_items(&[artifact_item(81524, 7, 9, &list, &[])]);
+                let mut out = exported_artifact(&data, &ExportSettings::for_tracker());
+                assert_eq!(out.get("gi_rolls"), None, "{unknown} at {at}");
+                if unknown == 999_999 {
+                    // Skipped as before: the same substats and roll count.
+                    out["gi_rolls"] = whole["gi_rolls"].clone();
+                    assert_eq!(out, whole, "{unknown} at {at}");
+                }
+            }
+        }
+
+        // No rolls: no key, never an empty string.
+        data.process_items(&[artifact_item(81524, 7, 1, &[], &[])]);
+        let out = exported_artifact(&data, &ExportSettings::for_tracker());
+        assert_eq!(out.get("gi_rolls"), None);
+    }
+
+    #[test]
+    fn a_saved_file_carries_gi_rolls_too() {
+        // The user's Genshin Optimizer settings, not the tracker's.
+        let data = golden_player_data(false);
+        for settings in [ExportSettings::default(), optimizer_settings()] {
+            let out = exported_artifact(&data, &settings);
+            assert_eq!(out["gi_rolls"], "041404");
+        }
+    }
+
+    #[test]
+    fn a_faked_4th_line_drops_gi_rolls_and_only_there() {
+        let mut data = low_rarity_inventory();
+        // A 5★ four-liner the workaround leaves alone.
+        data.process_items(&[artifact_item(
+            81524,
+            8,
+            1,
+            &[501204, 501224, 501064, 501234],
+            &[],
+        )]);
+        let (good, _) = data.export_at(&optimizer_settings(), GOLDEN_TIMESTAMP_MS);
+        assert_eq!(good.artifacts.len(), 2);
+        for artifact in &good.artifacts {
+            if artifact.level == 4 {
+                // Rewritten from +0: its list would not match its substats.
+                assert_eq!(artifact.gi_rolls, None);
+            } else {
+                assert_eq!(artifact.gi_rolls.as_deref(), Some("04142434"));
+            }
+        }
+        // The tracker's export never fakes, so the three-liner keeps its rolls.
+        let (tracker, _) = data.export_at(&ExportSettings::for_tracker(), GOLDEN_TIMESTAMP_MS);
+        let three_liner = tracker
+            .artifacts
+            .iter()
+            .find(|a| a.rarity == 5 && a.unactivated_substats.len() == 1)
+            .unwrap();
+        assert_eq!(three_liner.gi_rolls.as_deref(), Some("041424"));
+    }
+
+    #[test]
+    fn live_sync_adds_sets_and_deletes_gi_rolls() {
+        use crate::delta::{Change, diff};
+
+        let at = |field: &str| -> crate::delta::Path {
+            let mut path = vec!["artifacts".to_string(), "7".to_string()];
+            if !field.is_empty() {
+                path.push(field.to_string());
+            }
+            path
+        };
+        let mut data = roll_player_data("");
+        let (_, _, before) = data.live_export(GOLDEN_TIMESTAMP_MS);
+
+        // A new piece: added whole, its rolls with it.
+        data.process_items(&[artifact_item(81524, 7, 1, &[501204, 501224, 501064], &[])]);
+        let (_, _, added) = data.live_export(GOLDEN_TIMESTAMP_MS);
+        let changes = diff(&before, &added);
+        assert_eq!(changes.len(), 1);
+        let Change::Add(path, item) = &changes[0] else {
+            panic!("{changes:?}");
+        };
+        assert_eq!(path, &at(""));
+        assert_eq!(item["gi_rolls"], "041424");
+
+        // A level-up: one more roll, sent as a changed field.
+        data.process_items(&[artifact_item(
+            81524,
+            7,
+            5,
+            &[501204, 501224, 501064, 501221],
+            &[],
+        )]);
+        let (_, _, levelled) = data.live_export(GOLDEN_TIMESTAMP_MS);
+        let changes = diff(&added, &levelled);
+        assert!(
+            changes.contains(&Change::Set(at("gi_rolls"), serde_json::json!("04142411"))),
+            "{changes:?}"
+        );
+        assert!(changes.contains(&Change::Set(at("level"), serde_json::json!(4))));
+
+        // A roll the data does not know: the key goes, as a delete.
+        data.process_items(&[artifact_item(
+            81524,
+            7,
+            5,
+            &[501204, 501224, 501064, 501221, 999_999],
+            &[],
+        )]);
+        let (_, _, unknown) = data.live_export(GOLDEN_TIMESTAMP_MS);
+        assert_eq!(
+            diff(&levelled, &unknown),
+            vec![Change::Del(at("gi_rolls"), None)]
+        );
+    }
+
+    #[test]
+    fn every_roll_affix_in_the_test_data_ranks_as_its_last_digit() {
+        // The fixture is the pinned table's rows; the game data crate checks
+        // the same against the pinned file itself.
+        let data = roll_player_data("");
+        let rows: serde_json::Value = serde_json::from_str(include_str!(
+            "../tests/fixtures/reliquary-roll-affixes.json"
+        ))
+        .unwrap();
+        let rows = rows.as_object().unwrap();
+        assert_eq!(rows.len(), 170);
+        for id in rows.keys() {
+            let id: u32 = id.parse().unwrap();
+            assert_eq!(data.game_data.roll_tier(id), Some((id % 10) as u8), "{id}");
+        }
     }
 
     #[test]

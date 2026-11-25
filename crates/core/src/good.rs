@@ -33,6 +33,14 @@ pub struct Artifact {
     pub elixir_crafted: bool,
     pub unactivated_substats: Vec<Substat>,
 
+    /// Every substat roll in the game's order (`append_prop_id_list`), two
+    /// digits a roll: the line (index into `substats`) and the tier (1 =
+    /// the stat's lowest roll at this rarity). `None` when any roll's id is
+    /// unknown or the piece has no rolls: a partial list is never written.
+    /// In every export, not only tracker uploads (contract: gi_rolls v1).
+    #[serde(rename = "gi_rolls", skip_serializing_if = "Option::is_none", default)]
+    pub gi_rolls: Option<String>,
+
     /// The game's id of this piece, as a decimal string (a u64 does not fit a
     /// JavaScript number): what live sync names it by (`delta.rs`). Tracker
     /// uploads only (`ExportSettings::item_guids`); omitted elsewhere. Not
@@ -1256,6 +1264,8 @@ pub fn fake_uninitialized_4th_line(artifacts: Vec<Artifact>) -> Vec<Artifact> {
             Artifact {
                 level: 4,
                 total_rolls: 4,
+                // The rewritten piece's rolls no longer match its substats.
+                gi_rolls: None,
                 ..arti
             }
         })
@@ -1308,6 +1318,7 @@ pub(crate) mod tests {
             astral_mark: false,
             elixir_crafted: false,
             unactivated_substats: unactivated,
+            gi_rolls: Some("01".to_string()),
             gi_guid: Some("3488998120056947072".to_string()),
             gi_exp: Some(1_250),
         }
@@ -1325,12 +1336,17 @@ pub(crate) mod tests {
         assert_eq!(faked[0].level, 4);
         assert_eq!(faked[0].total_rolls, 4);
         assert!(faked[0].unactivated_substats.is_empty());
+        // Its rolls no longer match its substats: never written.
+        assert_eq!(faked[0].gi_rolls, None);
 
         // Untouched: nothing to promote, and not a five star.
         assert_eq!(faked[1].substats.len(), 1);
         assert_eq!(faked[1].level, 0);
         assert_eq!(faked[2].substats.len(), 1);
         assert_eq!(faked[2].level, 0);
+        for untouched in &faked[1..] {
+            assert_eq!(untouched.gi_rolls.as_deref(), Some("01"));
+        }
     }
 
     /// An export with every part filled in (placeholder data).
@@ -1735,6 +1751,7 @@ pub(crate) mod tests {
                 "elixirCrafted",
                 "gi_exp",
                 "gi_guid",
+                "gi_rolls",
                 "level",
                 "location",
                 "lock",

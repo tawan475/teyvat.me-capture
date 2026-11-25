@@ -69,7 +69,7 @@ export interface Leyline {
    */
   leyline?: 1
   characters: GoodCharacter[]
-  artifacts: (GoodArtifact & ItemExtras)[]
+  artifacts: (GoodArtifact & ArtifactRolls & ItemExtras)[]
   weapons: (GoodWeapon & ItemExtras)[]
   /** Material GOOD key → count. */
   materials: Record<GoodKey, number>
@@ -179,6 +179,25 @@ export interface GoodArtifact {
   /** GOOD's own spelling. */
   elixirCrafted: boolean
   unactivatedSubstats: GoodSubstat[]
+}
+
+/**
+ * Teyvat.me's roll list on each artifact. Unlike `ItemExtras` it is in every
+ * export: files saved or copied, tracker uploads and live sync (a new artifact
+ * carries it; a levelled one sends it as a changed field).
+ */
+export interface ArtifactRolls {
+  /**
+   * Every substat roll the artifact received, in the game's order: two digits a
+   * roll, the line (0-based index into `substats`, which lists each stat at its
+   * first roll) and the tier (1 = the lowest value that stat rolls at this
+   * rarity, counting up: 1-4 at 3★ to 5★, 1-3 at 2★, 1-2 at 1★). Its length is
+   * 2 × `totalRolls`; unactivated substats have no pair. Absent when any roll is
+   * unknown to the game data the export used (never a partial list), when the
+   * artifact has no rolls, and on a +0 five star that "fake 4th line" rewrote.
+   * Example: "041221331401133402". Contract gi_rolls v1.
+   */
+  gi_rolls?: string
 }
 
 /** Teyvat.me's additions on every weapon and artifact. Tracker uploads only (a GOOD file for Genshin Optimizer has none). */
@@ -669,7 +688,8 @@ export interface DeltaSum {
  *   characters.<key>.level|ascension|constellation    number
  *   characters.<key>.talent.auto|skill|burst          number
  *   weapons.<guid> / artifacts.<guid>                 add a whole item; del (hint {rarity})
- *   weapons.<guid>.<field> / artifacts.<guid>.<field> that field's value (gi_exp included)
+ *   weapons.<guid>.<field> / artifacts.<guid>.<field> that field's value (gi_exp and gi_rolls included);
+ *                                                     del of a field drops it (gi_rolls)
  *   gi_player.<field>                                 that field's value, any GiPlayer field:
  *                                                     nickname, signature and gameData are strings,
  *                                                     profilePicture and birthday objects, the rest
