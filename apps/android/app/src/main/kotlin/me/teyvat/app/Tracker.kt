@@ -557,8 +557,9 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
             batchInFlight = false
             NativeBridge.batchAnswered(status, body)
             val stored = status in 200..299 && runCatching { JSONObject(body).optBoolean("ok") && !JSONObject(body).optBoolean("duplicate") }.getOrDefault(false)
-            if (stored) {
-                val changes = runCatching { JSONObject(delta).optJSONArray("changes")?.length() ?: 0 }.getOrDefault(0)
+            val changes = runCatching { JSONObject(delta).optJSONArray("changes")?.length() ?: 0 }.getOrDefault(0)
+            // A final batch that closed the journal with nothing left to send is silent.
+            if (stored && changes > 0) {
                 liveFlow.value = LiveResult(System.currentTimeMillis(), changes)
                 NativeBridge.note("ok", context.getString(R.string.live_changes_sent, grouped(changes), Links.trackerHost))
             }

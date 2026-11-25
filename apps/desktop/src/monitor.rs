@@ -2806,13 +2806,15 @@ impl Monitor {
                 BatchAnswer::Stored { .. } => {
                     tracing::info!(seq = delta.seq, ?answer, "live sync: batch stored");
                     let changes = delta.changes.len();
-                    let _ = toast_tx.send(
-                        Event::ok(
-                            Topic::Destination,
-                            trf("Live sync · {0} changes sent to {1}", &[&changes, &host]),
-                        )
-                        .routine(),
-                    );
+                    if batch_toasts(changes) {
+                        let _ = toast_tx.send(
+                            Event::ok(
+                                Topic::Destination,
+                                trf("Live sync · {0} changes sent to {1}", &[&changes, &host]),
+                            )
+                            .routine(),
+                        );
+                    }
                 }
                 BatchAnswer::Duplicate => {
                     tracing::info!(seq = delta.seq, ?answer, "live sync: batch stored");
@@ -3426,6 +3428,12 @@ pub(crate) fn final_batches(url: &str) -> bool {
     FINAL_BATCHES
         .lock()
         .is_ok_and(|held| held.contains(&origin))
+}
+
+/// Whether a stored batch of `changes` changes is worth the routine toast:
+/// a final batch that closed a journal with nothing left to send is silent.
+fn batch_toasts(changes: usize) -> bool {
+    changes > 0
 }
 
 /// `--replay-live` can hold uploads plain whatever the tracker says, to
@@ -4159,6 +4167,12 @@ pub(crate) mod tests {
         // The gzip word is learned beside it, on its own.
         note_upload_options(api, r#"{"upload":{"finalBatch":true}}"#);
         assert!(final_batches(api) && !gzip_uploads(api));
+    }
+
+    #[test]
+    fn an_empty_final_batch_is_silent() {
+        assert!(!batch_toasts(0));
+        assert!(batch_toasts(1));
     }
     #[test]
     fn an_import_answer_names_its_account() {

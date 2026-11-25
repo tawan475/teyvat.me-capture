@@ -2575,6 +2575,14 @@ impl PlayerData {
                     .collect::<Vec<_>>(),
                 "account UID for this export (source: login = the token response, items = the item guids)"
             ),
+            // Withheld: the login stated one, the characters name another.
+            None if uid_check.withheld.is_some() => tracing::info!(
+                agreeing = uid_check.agreeing,
+                total = uid_check.total,
+                items = ?uid_check.item_top_halves,
+                avatars = ?uid_check.avatar_top_halves,
+                "no account UID: withheld; the login stated one and the characters' guids name another, with no item vote they back"
+            ),
             None => tracing::info!(
                 agreeing = uid_check.agreeing,
                 total = uid_check.total,
@@ -4574,6 +4582,20 @@ mod tests {
         let (good, _) = data.export_at(&ExportSettings::for_tracker(), 1_700_000_000_000);
         assert_eq!(good.gi_player.and_then(|player| player.uid), None);
         assert_eq!(data.uid_warnings.get(), 1, "still one");
+    }
+
+    #[test]
+    fn exactly_the_fewest_characters_contradict_the_login() {
+        // CHARACTERS_CONTRADICT_MIN characters, no fewer, are enough.
+        let foreign =
+            |n: u64| material_item(105_000 + n as u32, minted_guid(800_000_100 + n % 3, n), 1);
+        let mut data = player_data();
+        data.set_login_uid(Some(812_345_678));
+        data.process_items(&(1..=30).map(foreign).collect::<Vec<_>>());
+        data.process_characters(&characters_of(800_000_001, 3));
+        assert_eq!(data.characters.len(), 3);
+        assert_eq!(data.account_uid(), None, "three characters withhold it");
+        assert!(data.uid_check().withheld.is_some());
     }
 
     #[test]

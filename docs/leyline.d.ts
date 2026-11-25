@@ -618,8 +618,12 @@ export interface GiCapture {
    * `upload.finalBatch` gets a final batch instead (`LeylineDelta.end`); it still gets the logout
    * snapshot when a part no batch carries changed during the login (achievement progress,
    * exploration, the Serenitea Pot, collections other than the quests, the wardrobe other than
-   * the teams, an item without a `gi_guid`, a key no batch path names) or when it refused the final
-   * batch. Every other tracker gets the logout snapshot, as before.
+   * the teams, `gi_player.gameData`, an item without a `gi_guid`, a key no batch path names) or
+   * when it refused the final batch. It also still gets the logout snapshot when Capture cannot
+   * tell what changed (a session resumed from a hand-over without that record), when the final
+   * batch would be too large, when the account UID is unknown, and when endgame records
+   * (`gi_endgame`) were not confirmed stored by an attach. Every other tracker gets the logout
+   * snapshot, as before.
    */
   reason: 'login' | 'world' | 'manual' | 'collapse' | 'logout' | 'resync' | 'change'
   /** This game login's id: 16+ of [A-Za-z0-9_-]. */

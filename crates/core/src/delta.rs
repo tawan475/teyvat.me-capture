@@ -231,12 +231,19 @@ const NOT_COUNTED: &[&str] = &[
     "gi_endgame",
 ];
 
+/// The `gi_player` members the tracker applies from a batch besides numbers
+/// (its `PLAYER_TEXTS` and `PLAYER_GROUPS`); any other member that is not a
+/// number (`gameData`) it drops from a batch.
+const PLAYER_BATCHED: &[&str] = &["nickname", "signature", "profilePicture", "birthday"];
+
 /// Fingerprints of an export's parts that no batch carries, by top-level
 /// key: what a final batch would leave behind
 /// (`crate::live::LiveSync::tick`). `gi_achievement_progress`,
 /// `gi_exploration`, `gi_teapot`, `gi_collections` without its quests (and
 /// with `monstersSeen` as its length, all the tracker keeps), `gi_wardrobe`
-/// without the teams, artifacts and weapons without a `gi_guid`, and any
+/// without the teams, the `gi_player` members a batch cannot set (each as
+/// `gi_player.<member>`: `gameData`, see [`PLAYER_BATCHED`]), artifacts and
+/// weapons without a `gi_guid`, and any
 /// key not listed in [`KEYED_PARTS`] or [`NOT_COUNTED`] (a future key is
 /// unbatched until a layout keys it). A part absent or empty has no entry.
 ///
@@ -253,6 +260,20 @@ impl Unbatched {
         let mut out = BTreeMap::new();
         for (key, value) in good.as_object().into_iter().flatten() {
             let key_str = key.as_str();
+            if key_str == "gi_player" {
+                // Keyed, but a batch's `gi_player.<field>` is applied only as
+                // a number or as one of PLAYER_BATCHED: the rest (`gameData`)
+                // only a snapshot stores.
+                for (field, member) in value.as_object().into_iter().flatten() {
+                    if member.is_number() || PLAYER_BATCHED.contains(&field.as_str()) {
+                        continue;
+                    }
+                    let mut hash = Fnv::new();
+                    hash.value(member);
+                    out.insert(format!("gi_player.{field}"), hash.0);
+                }
+                continue;
+            }
             if KEYED_PARTS.contains(&key_str) || NOT_COUNTED.contains(&key_str) {
                 continue;
             }
@@ -1223,7 +1244,9 @@ mod tests {
             "gi_off": [],
             "leyline": 2,
             "timestamp": 1_700_000_000_000u64,
-            "gi_player": { "uid": 812_345_678 },
+            "gi_player": { "uid": 812_345_678, "nameCard": 210_001, "gameData": "abc",
+                           "nickname": "Player", "signature": "",
+                           "profilePicture": { "id": 1 }, "birthday": { "month": 1, "day": 2 } },
             "gi_someday": { "new": true },
         }))
     }
@@ -1238,6 +1261,7 @@ mod tests {
                 "gi_achievement_progress",
                 "gi_collections",
                 "gi_exploration",
+                "gi_player.gameData",
                 "gi_someday",
                 "gi_teapot",
                 "gi_wardrobe",
@@ -1300,6 +1324,16 @@ mod tests {
                 v["gi_someday"]["new"] = json!(false)
             }),
             ("gi_later", &|v: &mut Value| v["gi_later"] = json!(1)),
+            // The tracker drops a batch's `gi_player.gameData`.
+            ("gi_player.gameData", &|v: &mut Value| {
+                v["gi_player"]["gameData"] = json!("def")
+            }),
+            ("gi_player.gameData", &|v: &mut Value| {
+                v["gi_player"].as_object_mut().unwrap().remove("gameData");
+            }),
+            ("gi_player.someday", &|v: &mut Value| {
+                v["gi_player"]["someday"] = json!("text")
+            }),
             ("gi_teapot", &|v: &mut Value| {
                 v.as_object_mut().unwrap().remove("gi_teapot");
             }),
@@ -1323,6 +1357,11 @@ mod tests {
             &|v: &mut Value| v["gi_capture"]["reason"] = json!("logout"),
             &|v: &mut Value| v["timestamp"] = json!(1_800_000_000_000u64),
             &|v: &mut Value| v["gi_player"]["ar"] = json!(60),
+            &|v: &mut Value| v["gi_player"]["nameCard"] = json!(210_002),
+            &|v: &mut Value| v["gi_player"]["nickname"] = json!("Other"),
+            &|v: &mut Value| v["gi_player"]["signature"] = json!("hi"),
+            &|v: &mut Value| v["gi_player"]["profilePicture"]["id"] = json!(2),
+            &|v: &mut Value| v["gi_player"]["birthday"]["day"] = json!(3),
             &|v: &mut Value| v["materials"]["Mora"] = json!(5),
         ] {
             assert_eq!(changed(edit), Vec::<String>::new());

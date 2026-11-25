@@ -687,9 +687,14 @@ impl Replay {
         // The app writes none while the reader has a reset armed
         // (`write_refusal`), and resumes nothing of one whose data may not
         // be resumed (`player_resumable`): the next run is then a start with
-        // the game already running.
+        // the game already running. Nor before the login's account data
+        // (`exit_handover`): a cut placed there resumes nothing. The app's
+        // last refusal, "the game is not running", has no meaning here: a
+        // recording says nothing of the game's process.
         let refused = if self.sniffer.reset_armed() {
             Err("a new game connection was announced and has not proved itself yet")
+        } else if !self.player_data.login_parts().items {
+            Err("a live game connection but no account data yet")
         } else {
             handover.player_resumable()
         };
@@ -1613,6 +1618,13 @@ mod tests {
         whole.hand_over().unwrap();
         assert_eq!(whole.sniffer.key_state(), KeyState::Session);
         assert_eq!(whole.player_data.uid_check().total, 10);
+
+        // A cut before the login's account data: nothing, as the app.
+        let mut early = replay();
+        early.sniffer = logged_in_sniffer(UID_A);
+        assert!(!early.player_data.login_parts().items);
+        early.hand_over().unwrap();
+        assert_eq!(early.sniffer.key_state(), KeyState::None, "no key");
     }
 
     #[test]
