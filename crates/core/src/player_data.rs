@@ -7494,28 +7494,7 @@ mod tests {
                 &ids(&case["affixIds"]),
                 &ids(&case["unactivatedAffixIds"]),
             )]);
-            let mut out = exported_artifact(&data, &ExportSettings::for_tracker());
-            // Two starting rolls sit exactly on a display rounding edge: the
-            // writer's unchanged rounding (`Self::round`, half away from
-            // zero on the f32) gives 5.3 and 2.5 where the cases say 5.2 and
-            // 2.4. The contract forbids changing `initialValue`, so these
-            // are pinned here, exactly, for the commander to settle; every
-            // other value must match.
-            for (case, line, writer, contract) in [
-                ("5-star +20, four starting lines, nine rolls", 3, 5.3, 5.2),
-                ("3-star +12", 0, 2.5, 2.4),
-            ] {
-                if name == case {
-                    let initial = &mut out["substats"][line]["initialValue"];
-                    assert_eq!(numeric(initial), serde_json::json!(writer), "{name}");
-                    assert_eq!(
-                        numeric(&expected["substats"][line]["initialValue"]),
-                        serde_json::json!(contract),
-                        "{name}"
-                    );
-                    *initial = serde_json::json!(contract);
-                }
-            }
+            let out = exported_artifact(&data, &ExportSettings::for_tracker());
             for key in [
                 "rarity",
                 "level",
