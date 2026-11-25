@@ -2671,7 +2671,8 @@ impl Monitor {
         }
         let now = now_ms();
         let player_data = &self.player_data;
-        let action = self.live.tick(live_enabled(&state), now, || {
+        let final_batch = final_batches(&state.tracker_api_url);
+        let action = self.live.tick(live_enabled(&state), final_batch, now, || {
             let (good, _, keyed) = player_data.live_export(now);
             Some((good, keyed))
         });
@@ -3383,6 +3384,11 @@ pub(crate) fn uploaded_account(api: &str) -> Option<i64> {
 /// tracker reads (a self-hosted or older one may not read gzip).
 static GZIP_UPLOADS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
+/// The trackers (by origin) that said a game login may end its live journal
+/// with a final batch (`upload.finalBatch`), learned like [`GZIP_UPLOADS`]:
+/// until a tracker says so, a login ends on its logout snapshot.
+static FINAL_BATCHES: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
 fn tracker_origin(url: &str) -> Option<String> {
     let url = reqwest::Url::parse(url.trim()).ok()?;
     Some(url.origin().ascii_serialization())
@@ -3394,13 +3400,32 @@ pub(crate) fn note_upload_options(url: &str, body: &str) {
     let Ok(answer) = serde_json::from_str::<serde_json::Value>(body) else {
         return;
     };
-    let (Some(origin), Ok(mut held)) = (tracker_origin(url), GZIP_UPLOADS.lock()) else {
+    let Some(origin) = tracker_origin(url) else {
         return;
     };
-    held.retain(|known| *known != origin);
-    if crate::live::accepts_gzip(&answer) {
-        held.push(origin);
+    for (held, says) in [
+        (&GZIP_UPLOADS, crate::live::accepts_gzip(&answer)),
+        (&FINAL_BATCHES, crate::live::accepts_final_batch(&answer)),
+    ] {
+        let Ok(mut held) = held.lock() else {
+            continue;
+        };
+        held.retain(|known| *known != origin);
+        if says {
+            held.push(origin.clone());
+        }
     }
+}
+
+/// Whether a game login that ends sends the tracker at `url` a final batch
+/// instead of its logout snapshot ([`crate::live::LiveSync::tick`]).
+pub(crate) fn final_batches(url: &str) -> bool {
+    let Some(origin) = tracker_origin(url) else {
+        return false;
+    };
+    FINAL_BATCHES
+        .lock()
+        .is_ok_and(|held| held.contains(&origin))
 }
 
 /// `--replay-live` can hold uploads plain whatever the tracker says, to
@@ -4103,6 +4128,37 @@ pub(crate) mod tests {
         assert!(gzip_uploads(&import));
         note_upload_options(&import, r#"{"snapshot":{"id":1}}"#);
         assert!(!gzip_uploads(&import));
+    }
+
+    #[test]
+    fn final_batches_follow_what_each_tracker_last_said() {
+        let api = "https://final-batch-test.invalid/api";
+        let import = import_url(api);
+        assert!(!final_batches(api), "absent");
+        note_upload_options(
+            &format!("{api}/irminsul/whoami"),
+            r#"{"upload":{"gzip":true,"finalBatch":true}}"#,
+        );
+        assert!(final_batches(api));
+        assert!(final_batches(&import));
+        assert!(!final_batches("https://other-final-test.invalid/api"));
+        // The old backend's wrapper.
+        note_upload_options(
+            api,
+            r#"{"status":200,"data":{"upload":{"finalBatch":true}}}"#,
+        );
+        assert!(final_batches(api));
+        // Not JSON says nothing; `false` or an answer without it takes it back.
+        note_upload_options(api, "<html>");
+        assert!(final_batches(api));
+        note_upload_options(api, r#"{"upload":{"finalBatch":false}}"#);
+        assert!(!final_batches(api));
+        note_upload_options(api, r#"{"upload":{"finalBatch":true}}"#);
+        note_upload_options(&import, r#"{"snapshot":{"id":1}}"#);
+        assert!(!final_batches(api));
+        // The gzip word is learned beside it, on its own.
+        note_upload_options(api, r#"{"upload":{"finalBatch":true}}"#);
+        assert!(final_batches(api) && !gzip_uploads(api));
     }
     #[test]
     fn an_import_answer_names_its_account() {

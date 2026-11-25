@@ -613,6 +613,14 @@ export interface GiFigure {
 
 export interface GiCapture {
   v: 1
+  /**
+   * `logout`: the game login ended with its live journal open. A tracker whose answers carry
+   * `upload.finalBatch` gets a final batch instead (`LeylineDelta.end`); it still gets the logout
+   * snapshot when a part no batch carries changed during the login (achievement progress,
+   * exploration, the Serenitea Pot, collections other than the quests, the wardrobe other than
+   * the teams, an item without a `gi_guid`, a key no batch path names) or when it refused the final
+   * batch. Every other tracker gets the logout snapshot, as before.
+   */
   reason: 'login' | 'world' | 'manual' | 'collapse' | 'logout' | 'resync' | 'change'
   /** This game login's id: 16+ of [A-Za-z0-9_-]. */
   session: string
@@ -666,6 +674,14 @@ export interface LeylineDelta {
   changes: DeltaChange[]
   /** [shipped] The whole account's totals after this delta, for the tracker's charts. */
   sum?: DeltaSum
+  /**
+   * The journal's last batch: the game login it follows ended (the game closed, a relogin, an
+   * alt swap, a reconnect), and this closes the journal in place of the logout snapshot. It holds
+   * what was not sent yet, possibly no change at all. Sent only to a tracker whose answers
+   * (verify-key, whoami, an import's) carry `upload.finalBatch: true`; absent otherwise, never
+   * `false`.
+   */
+  end?: true
 }
 
 /** Counts over the whole account once the delta is applied, like a snapshot's summary. */

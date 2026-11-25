@@ -859,7 +859,7 @@ pub extern "system" fn Java_me_teyvat_app_NativeBridge_liveNextTick(
         .unwrap_or(-1)
 }
 
-/// `NativeBridge.liveTick(live)`: `"S<ticket>\n<GOOD JSON>"` (a snapshot),
+/// `NativeBridge.liveTick(live, finalBatch)`: `"S<ticket>\n<GOOD JSON>"` (a snapshot),
 /// `"B\n<delta JSON>"` (a batch for `/irminsul/changes`), `"A\n<attach JSON>"`
 /// (the endgame parts for `/irminsul/attach`), or null.
 #[unsafe(no_mangle)]
@@ -867,11 +867,14 @@ pub extern "system" fn Java_me_teyvat_app_NativeBridge_liveTick(
     env: JNIEnv,
     _class: JClass,
     live: jboolean,
+    final_batch: jboolean,
 ) -> jstring {
-    let action = decoder::get().live_tick(live != 0).unwrap_or_else(|e| {
-        log::error!("live sync: {e:#}");
-        None
-    });
+    let action = decoder::get()
+        .live_tick(live != 0, final_batch != 0)
+        .unwrap_or_else(|e| {
+            log::error!("live sync: {e:#}");
+            None
+        });
     java_result(&env, action)
 }
 

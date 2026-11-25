@@ -80,7 +80,17 @@ pub fn run(recording: &Path, out: &Path) -> i32 {
 /// snapshot with the batches after it gives each state (plan section 6.4).
 /// Exit code as for [`run`].
 pub fn run_journal(recording: &Path, out: &Path) -> i32 {
-    run_journal_with(recording, out, |_| Ok(Box::new(StoreEverything::default())))
+    run_journal_with(recording, out, |_| {
+        // Debug aid: `TEYVATME_REPLAY_FINAL_BATCH=1` answers as a tracker
+        // that takes final batches (`upload.finalBatch`), so a login that
+        // ends closes its journal with one instead of a logout snapshot.
+        let final_batch = cfg!(debug_assertions)
+            && std::env::var_os("TEYVATME_REPLAY_FINAL_BATCH").is_some_and(|v| v == "1");
+        Ok(Box::new(StoreEverything {
+            final_batch,
+            ..StoreEverything::default()
+        }))
+    })
 }
 
 /// [`run_journal`] against the tracker `tracker` makes (once tracing is up).
@@ -311,6 +321,9 @@ pub(crate) trait StandInTracker {
     fn batch(&mut self, delta: &crate::delta::GoodDelta) -> BatchAnswer;
     /// The endgame parts for this login's snapshot (`/irminsul/attach`).
     fn attach(&mut self, request: &AttachRequest) -> AttachAnswer;
+    /// Whether its answers carry `upload.finalBatch`
+    /// ([`crate::live::accepts_final_batch`]).
+    fn final_batch(&self) -> bool;
 }
 
 /// The stand-in `--replay-journal` uses: every snapshot is stored and gets
@@ -318,6 +331,8 @@ pub(crate) trait StandInTracker {
 #[derive(Default)]
 struct StoreEverything {
     bases: u64,
+    /// Answers as a tracker that takes final batches.
+    final_batch: bool,
 }
 
 impl StandInTracker for StoreEverything {
@@ -339,6 +354,10 @@ impl StandInTracker for StoreEverything {
     fn attach(&mut self, _: &AttachRequest) -> AttachAnswer {
         AttachAnswer::Stored
     }
+
+    fn final_batch(&self) -> bool {
+        self.final_batch
+    }
 }
 
 /// Live sync's sender driven by a replay's clock, against a stand-in tracker.
@@ -354,6 +373,12 @@ struct JournalSim {
     batches: u64,
     changes: u64,
     states: u64,
+    /// Logins that ended on a final batch, and on a logout snapshot.
+    final_batch_ends: u64,
+    logout_snapshots: u64,
+    /// The parts that kept a logout snapshot although the tracker takes
+    /// final batches, with how often (`LiveSync::logout_snapshot_kept`).
+    kept_by: BTreeMap<String, u64>,
     error: Option<anyhow::Error>,
 }
 
@@ -372,6 +397,9 @@ impl JournalSim {
             batches: 0,
             changes: 0,
             states: 0,
+            final_batch_ends: 0,
+            logout_snapshots: 0,
+            kept_by: BTreeMap::new(),
             error: None,
         }
     }
@@ -429,6 +457,12 @@ impl JournalSim {
             at = %when(Some(now.saturating_mul(1_000_000))),
             "snapshot"
         );
+        if reason == Reason::Logout {
+            self.logout_snapshots += 1;
+            for part in self.live.logout_snapshot_kept() {
+                *self.kept_by.entry(part.clone()).or_default() += 1;
+            }
+        }
         let ticket = self.live.snapshot_started(reason, keyed);
         let answer = self.tracker.snapshot(&good);
         // The capture beside the account, not in it: `good` is compared
@@ -456,6 +490,7 @@ impl JournalSim {
                 self.snapshot(reason, player_data);
             }
         }
+        let final_batch = self.tracker.final_batch();
         // A handful at most per frame: each step sends or settles something.
         for _ in 0..16 {
             if !self
@@ -465,7 +500,7 @@ impl JournalSim {
             {
                 break;
             }
-            match self.live.tick(true, now, || {
+            match self.live.tick(true, final_batch, now, || {
                 let (good, _, keyed) = player_data.live_export(now);
                 Some((good, keyed))
             }) {
@@ -473,12 +508,25 @@ impl JournalSim {
                 Action::Snapshot(reason) => self.snapshot(reason, player_data),
                 Action::Batch(delta) => {
                     let answer = self.tracker.batch(&delta);
-                    if matches!(answer, BatchAnswer::Stored { .. } | BatchAnswer::Duplicate) {
+                    let stored =
+                        matches!(answer, BatchAnswer::Stored { .. } | BatchAnswer::Duplicate);
+                    if stored {
                         self.batch(&delta);
                     } else {
                         tracing::warn!(seq = delta.seq, ?answer, "batch not stored");
                     }
                     self.live.batch_answered(answer, now);
+                    if stored && delta.end == Some(true) {
+                        // The journal is closed: the state it ends on, for
+                        // the tracker's live-replay check.
+                        self.final_batch_ends += 1;
+                        let (good, _, _) = player_data.live_export(now);
+                        self.states += 1;
+                        self.line(&serde_json::json!({
+                            "type": "state",
+                            "good": crate::delta::as_uploaded(&good),
+                        }));
+                    }
                 }
                 // The endgame parts for this login's snapshot (the journal
                 // gate's stand-in takes them as stored; --replay-live sends).
@@ -1124,6 +1172,10 @@ impl Replay {
             batches = journal.batches,
             changes = journal.changes,
             states = journal.states,
+            final_batch = journal.tracker.final_batch(),
+            ended_by_final_batch = journal.final_batch_ends,
+            ended_by_logout_snapshot = journal.logout_snapshots,
+            logout_snapshot_kept_by = ?journal.kept_by,
             "journal replay summary"
         );
         Ok(())

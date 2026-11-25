@@ -630,8 +630,9 @@ impl Decoder {
 
     /// What live sync sends now: a snapshot it asked for (`S`, a ticket and
     /// the GOOD JSON), a batch (`B` and the GOOD-X delta JSON) or an attach
-    /// (`A` and the request JSON, for `/irminsul/attach`).
-    pub fn live_tick(&self, live_enabled: bool) -> Result<Option<String>> {
+    /// (`A` and the request JSON, for `/irminsul/attach`). `final_batch`:
+    /// the tracker's answers carry `upload.finalBatch` (`Tracker.kt`).
+    pub fn live_tick(&self, live_enabled: bool, final_batch: bool) -> Result<Option<String>> {
         let mut state = state_ready(&self.state);
         let Some(state) = state.as_mut() else {
             return Ok(None);
@@ -643,7 +644,7 @@ impl Decoder {
         let Some(data) = player_data.as_ref() else {
             return Ok(None);
         };
-        let action = live.tick(live_enabled, now, || {
+        let action = live.tick(live_enabled, final_batch, now, || {
             let (good, _, keyed) = data.live_export(now);
             Some((good, keyed))
         });
