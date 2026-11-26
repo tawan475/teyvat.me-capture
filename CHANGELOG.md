@@ -8,6 +8,20 @@ Each release's section is its GitHub release notes (`.github/workflows/release.y
   the game sends the host's boss list, and it was kept as your own until
   the next login. A list received in another player's world is now left
   out.
+- Every artifact now carries its exact substat rolls, in the order the game
+  made them (`gi_rolls` in every export). teyvat.me shows them as the roll
+  bars; before, the bars were worked out from the totals and were often a
+  guess.
+- The Bilibili server's key is included. It is expected to work there, but
+  nobody has tested it on a real login yet.
+- The UID is read from the login reply itself first. Working it out from
+  the characters and items is now only the fallback.
+- A saved wish history file has an item id for every wish whose name the
+  game data knows; files from older versions could leave it empty, which
+  some tools refuse.
+- A session handed over to a restarted app is taken only when it is safe:
+  not after a refused hand-over, not across two different logins.
+- Fewer check-ins with teyvat.me while nothing changes.
 
 ## 1.18.4
 
