@@ -165,6 +165,10 @@ struct SnapshotFlight {
     ticket: u64,
     reason: Reason,
     keyed: Keyed,
+    /// The endgame change ([`LiveSync::note_endgame_change`]) its export
+    /// holds the state of, or `None` when it may hold an older one: once
+    /// stored, it acknowledges the endgame state only if no change came since.
+    endgame: Option<u64>,
 }
 
 /// A batch in flight.
@@ -427,11 +431,17 @@ pub struct LiveSync {
     attach_wanted: bool,
     /// An attach request in flight.
     attach_flight: bool,
+    /// The endgame change the attach in flight holds the state of.
+    attach_endgame: u64,
+    /// Endgame changes noted so far: an upload acknowledges the endgame
+    /// state only if it held it at or after the last one.
+    endgame_changes: u64,
     /// Not before this (a failed attach backs off like a batch).
     attach_retry_at_ms: u64,
     attach_backoff_ms: u64,
-    /// The endgame parts changed and no attach of them was stored, nor a
-    /// snapshot started since: `gi_endgame` is in no fingerprint and no
+    /// The endgame parts changed and no upload holding them as they are
+    /// now (an attach or a snapshot built after the last change) was
+    /// stored since: `gi_endgame` is in no fingerprint and no
     /// batch, so a login that ends with this set keeps its logout snapshot
     /// (an attach answered Dropped leaves the parts with no one else).
     endgame_unacked: bool,
@@ -506,6 +516,7 @@ impl LiveSync {
     /// login's snapshot reached the tracker only with the next login.
     pub fn note_endgame_change(&mut self) {
         self.endgame_unacked = true;
+        self.endgame_changes += 1;
         if self.login.is_some() {
             self.attach_wanted = true;
         }
@@ -518,8 +529,9 @@ impl LiveSync {
             AttachAnswer::Stored => {
                 self.attach_backoff_ms = 0;
                 self.attach_retry_at_ms = 0;
-                // Unless a newer change waits for its own attach.
-                if !self.attach_wanted {
+                // Unless a newer change came after it was sent (waiting for
+                // its own attach, or with the login ending, for no one).
+                if !self.attach_wanted && self.attach_endgame == self.endgame_changes {
                     self.endgame_unacked = false;
                 }
             }
@@ -780,19 +792,36 @@ impl LiveSync {
     }
 
     /// A snapshot of `keyed` went up for `reason`; the ticket names it in
-    /// [`Self::snapshot_answered`] (a newer snapshot supersedes it).
+    /// [`Self::snapshot_answered`] (a newer snapshot supersedes it). Its
+    /// export was built just now, so it holds the endgame parts as they are.
     pub fn snapshot_started(&mut self, reason: Reason, keyed: Keyed) -> u64 {
+        self.snapshot_started_holding(reason, keyed, true)
+    }
+
+    /// [`Self::snapshot_started`] for an export that may have been built
+    /// earlier (the desktop's upload button sends the JSON its window made):
+    /// `holds_endgame` says whether its `gi_endgame` is the state as it is
+    /// now. Only then does its being stored acknowledge the endgame state.
+    pub fn snapshot_started_holding(
+        &mut self,
+        reason: Reason,
+        keyed: Keyed,
+        holds_endgame: bool,
+    ) -> u64 {
         if self.wanted == Some(reason) || reason == Reason::Manual {
             self.wanted = None;
         }
-        // The export just built holds the endgame parts as they are.
+        // The snapshot carries the endgame parts: no attach of them goes
+        // while it flies, nor after it (a failed one is retried, or the
+        // next snapshot carries them). `endgame_unacked` waits for its
+        // answer: only a stored snapshot acknowledges anything.
         self.attach_wanted = false;
-        self.endgame_unacked = false;
         self.tickets += 1;
         self.snapshot_flight = Some(SnapshotFlight {
             ticket: self.tickets,
             reason,
             keyed,
+            endgame: holds_endgame.then_some(self.endgame_changes),
         });
         self.tickets
     }
@@ -808,11 +837,21 @@ impl LiveSync {
         if self.snapshot_flight.as_ref().map(|flight| flight.ticket) != Some(ticket) {
             return;
         }
-        let Some(SnapshotFlight { reason, keyed, .. }) = self.snapshot_flight.take() else {
+        let Some(SnapshotFlight {
+            reason,
+            keyed,
+            endgame,
+            ..
+        }) = self.snapshot_flight.take()
+        else {
             return;
         };
         match answer {
             Some(answer) => {
+                // It held the endgame state at or after the last change.
+                if endgame == Some(self.endgame_changes) {
+                    self.endgame_unacked = false;
+                }
                 self.backoff_ms = 0;
                 self.retry_at_ms = 0;
                 self.unacked = None;
@@ -962,6 +1001,7 @@ impl LiveSync {
         {
             self.attach_wanted = false;
             self.attach_flight = true;
+            self.attach_endgame = self.endgame_changes;
             return Action::Attach {
                 session: login.session.clone(),
             };
@@ -1083,6 +1123,7 @@ impl LiveSync {
             if self.attach_backoff_ms == 0 && self.attach_retry_at_ms == 0 {
                 self.attach_wanted = false;
                 self.attach_flight = true;
+                self.attach_endgame = self.endgame_changes;
                 return Some(Action::Attach { session });
             }
             // It failed before (or was answered Retry while ending): the
@@ -2983,5 +3024,109 @@ mod tests {
         let mut old = json;
         old.as_object_mut().unwrap().remove("endgame_unacked");
         assert_eq!(end(old), Action::Snapshot(Reason::Logout));
+    }
+
+    /// The login ends and, with the word, the next tick decides: the logout
+    /// snapshot for the endgame state, or the final batch.
+    fn ends_on(live: &mut LiveSync, now_ms: u64) -> Action {
+        live.note_change(1);
+        live.note_connection_ended();
+        live.tick(true, true, now_ms, export(with_materials(6)))
+    }
+
+    fn kept_for_the_endgame(live: &mut LiveSync, now_ms: u64) {
+        assert_eq!(ends_on(live, now_ms), Action::Snapshot(Reason::Logout));
+        assert_eq!(live.logout_snapshot_kept(), ["gi_endgame".to_string()]);
+    }
+
+    #[test]
+    fn a_failed_snapshot_does_not_acknowledge_the_endgame_state() {
+        for reason in [Reason::Collapse, Reason::Manual] {
+            let mut live = with_endgame_change();
+            let ticket = live.snapshot_started(reason, keyed(&with_materials(5)));
+            live.snapshot_answered(ticket, None, 15_200);
+            // After a retry's wait too.
+            kept_for_the_endgame(&mut live, 15_200 + MAX_BACKOFF_MS);
+        }
+    }
+
+    #[test]
+    fn a_stored_snapshot_acknowledges_only_the_endgame_state_it_held() {
+        let stored_snapshot = |live: &mut LiveSync, ticket: u64| {
+            let answer = ImportAnswer {
+                base: Some("k2".into()),
+                watching: false,
+            };
+            live.snapshot_answered(ticket, Some(answer), 15_300);
+        };
+        // The upload button's JSON, made before the change: not held.
+        let mut live = with_endgame_change();
+        let ticket =
+            live.snapshot_started_holding(Reason::Manual, keyed(&with_materials(5)), false);
+        stored_snapshot(&mut live, ticket);
+        kept_for_the_endgame(&mut live, 15_400);
+        // Made after it: held.
+        let mut live = with_endgame_change();
+        let ticket = live.snapshot_started_holding(Reason::Manual, keyed(&with_materials(5)), true);
+        stored_snapshot(&mut live, ticket);
+        assert_eq!(sent(ends_on(&mut live, 15_400)).end, Some(true));
+        // A change while it flew (the login ending, so no attach is owed
+        // for it): not held.
+        let mut live = with_endgame_change();
+        let ticket = live.snapshot_started(Reason::Collapse, keyed(&with_materials(5)));
+        live.note_change(1);
+        live.note_connection_ended();
+        live.note_endgame_change();
+        stored_snapshot(&mut live, ticket);
+        assert_eq!(
+            live.tick(true, true, 15_400, export(with_materials(6))),
+            Action::Snapshot(Reason::Logout)
+        );
+        assert_eq!(live.logout_snapshot_kept(), ["gi_endgame".to_string()]);
+    }
+
+    #[test]
+    fn a_snapshot_in_flight_at_the_hand_over_acknowledges_nothing() {
+        let mut running = with_endgame_change();
+        running.snapshot_started(Reason::Manual, keyed(&with_materials(5)));
+        let json = serde_json::to_value(running.handover().unwrap()).unwrap();
+        assert_eq!(json["endgame_unacked"], serde_json::json!(true), "written");
+        let mut resumed = LiveSync::new();
+        assert!(resumed.resume(serde_json::from_value(json).unwrap()));
+        kept_for_the_endgame(&mut resumed, 16_000);
+    }
+
+    #[test]
+    fn a_stored_attach_does_not_cover_a_newer_change() {
+        let mut live = with_endgame_change();
+        live.note_connection_ended();
+        assert!(matches!(
+            live.tick(true, true, 15_200, export(with_materials(5))),
+            Action::Attach { .. }
+        ));
+        // The login is over: no attach is owed for this one.
+        live.note_endgame_change();
+        live.attach_answered(AttachAnswer::Stored, 15_300);
+        assert_eq!(
+            live.tick(true, true, 15_300, export(with_materials(5))),
+            Action::Snapshot(Reason::Logout)
+        );
+        assert_eq!(live.logout_snapshot_kept(), ["gi_endgame".to_string()]);
+    }
+
+    #[test]
+    fn a_hand_over_with_the_endgame_unacknowledged_keeps_the_logout_snapshot() {
+        let mut running = with_endgame_change();
+        assert!(matches!(
+            running.tick(true, true, 15_200, || None),
+            Action::Attach { .. }
+        ));
+        running.attach_answered(AttachAnswer::Dropped, 15_300);
+        let json = serde_json::to_value(running.handover().unwrap()).unwrap();
+        assert_eq!(json["attach_wanted"], serde_json::json!(false));
+        assert_eq!(json["endgame_unacked"], serde_json::json!(true), "written");
+        let mut resumed = LiveSync::new();
+        assert!(resumed.resume(serde_json::from_value(json).unwrap()));
+        kept_for_the_endgame(&mut resumed, 16_000);
     }
 }

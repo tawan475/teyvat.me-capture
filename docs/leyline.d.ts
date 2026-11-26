@@ -622,8 +622,8 @@ export interface GiCapture {
    * when it refused the final batch. It also still gets the logout snapshot when Capture cannot
    * tell what changed (a session resumed from a hand-over without that record), when the final
    * batch would be too large, when the account UID is unknown, and when endgame records
-   * (`gi_endgame`) were not confirmed stored by an attach. Every other tracker gets the logout
-   * snapshot, as before.
+   * (`gi_endgame`) were not confirmed stored by an upload made after their last change (an attach
+   * or a snapshot). Every other tracker gets the logout snapshot, as before.
    */
   reason: 'login' | 'world' | 'manual' | 'collapse' | 'logout' | 'resync' | 'change'
   /** This game login's id: 16+ of [A-Za-z0-9_-]. */

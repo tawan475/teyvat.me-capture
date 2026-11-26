@@ -2777,7 +2777,12 @@ impl Monitor {
             return (stripped, None);
         };
         let keyed = self.player_data.keyed(&good);
-        let ticket = self.live.snapshot_started(Reason::Manual, keyed);
+        // The window built this JSON earlier: an endgame change since is not
+        // in it, and its being stored must not acknowledge that change.
+        let holds_endgame = self.player_data.holds_endgame_of(&good);
+        let ticket = self
+            .live
+            .snapshot_started_holding(Reason::Manual, keyed, holds_endgame);
         (labelled, Some(ticket))
     }
 

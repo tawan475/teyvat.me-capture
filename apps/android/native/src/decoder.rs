@@ -674,7 +674,16 @@ impl Decoder {
                             session,
                             gi_endgame,
                         };
-                        Some(format!("A\n{}", serde_json::to_string(&request)?))
+                        match serde_json::to_string(&request) {
+                            Ok(json) => Some(format!("A\n{json}")),
+                            Err(error) => {
+                                // `tick` set the attach's flight: answered
+                                // here, or it would never end (and block a
+                                // login's end on a final batch).
+                                live.attach_answered(AttachAnswer::Dropped, now);
+                                return Err(error.into());
+                            }
+                        }
                     }
                     _ => {
                         live.attach_answered(AttachAnswer::Dropped, now);

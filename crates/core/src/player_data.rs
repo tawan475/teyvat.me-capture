@@ -6458,6 +6458,32 @@ mod tests {
     }
 
     #[test]
+    fn an_export_made_before_an_endgame_change_does_not_hold_it() {
+        use teyvatme_protocol::TheaterDetail;
+
+        let mut data = endgame_data();
+        data.process_items(&[material_item(104002, minted_guid(812_345_678, 7), 12)]);
+        // As the upload button sends it: JSON made earlier, read back.
+        let made_now = |data: &PlayerData| -> good::Good {
+            let (good, _) = data.export_at(&ExportSettings::default(), 0);
+            serde_json::from_str(&serde_json::to_string(&good).unwrap()).unwrap()
+        };
+        let before = made_now(&data);
+        assert!(data.holds_endgame_of(&before), "nothing changed");
+        assert!(data.apply_theater(&TheaterDetail {
+            start: 1_793_476_800,
+            end: 1_796_068_799,
+            arcana: None,
+            small: vec![31, 8, 19, 2, 7, 127, 8, 1, 8, 1],
+            lists: vec![vec![1, 2, 3], vec![1, 2], vec![3, 6], vec![1, 2, 3]],
+        }));
+        assert!(!data.holds_endgame_of(&before), "made before the change");
+        let after = made_now(&data);
+        assert!(after.gi_endgame.is_some());
+        assert!(data.holds_endgame_of(&after), "read back equal");
+    }
+
+    #[test]
     fn the_theater_stars_are_read_when_the_starred_acts_can_be_told() {
         use teyvatme_protocol::TheaterDetail;
         let mut data = endgame_data();
