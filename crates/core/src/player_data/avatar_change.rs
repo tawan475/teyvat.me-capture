@@ -382,7 +382,8 @@ impl PlayerData {
         if !flat.maps.is_empty() || flat.varints.len() > 2 {
             return None;
         }
-        let uid = self.account_uid()?;
+        // The guids' own UID: the new character's guid is compared to it.
+        let uid = self.guid_uid()?;
         let avatar = parse_avatar_info(bytes)?;
         if avatar.avatar_type != AVATAR_TYPE_FORMAL
             || avatar.guid >> 32 != u64::from(uid)

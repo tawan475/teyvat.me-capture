@@ -439,6 +439,14 @@ impl PlayerData {
         self.export_endgame()
     }
 
+    /// Whether `good` (an export made earlier, as the desktop's upload
+    /// button sends it) holds the endgame parts as they are now, as far as
+    /// the tracker is concerned: then its being stored acknowledges them
+    /// (`crate::live::LiveSync::snapshot_started_holding`).
+    pub fn holds_endgame_of(&self, good: &good::Good) -> bool {
+        good.gi_endgame == self.gi_endgame()
+    }
+
     /// The UID an attach request names, or `None` when it must stay home
     /// (the account numbers not shared, to one chosen account): the attach
     /// is then dropped, and the endgame parts ride in the next snapshot.

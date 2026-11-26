@@ -160,6 +160,16 @@ pub struct GoodDelta {
     pub changes: Vec<Change>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub sum: Option<Sum>,
+    /// The last batch of its journal: the game login it follows ended
+    /// (`"end": true`). Sent only to a tracker whose answers carry
+    /// `upload.finalBatch`, in place of the logout snapshot; written only
+    /// when true.
+    #[serde(skip_serializing_if = "is_not_true", default)]
+    pub end: Option<bool>,
+}
+
+fn is_not_true(end: &Option<bool>) -> bool {
+    *end != Some(true)
 }
 
 impl GoodDelta {
@@ -174,6 +184,7 @@ impl GoodDelta {
             at,
             changes: Vec::new(),
             sum: None,
+            end: None,
         }
     }
 }
@@ -185,6 +196,215 @@ impl GoodDelta {
 pub struct Keyed {
     pub entries: BTreeMap<Path, Value>,
     pub(crate) hints: BTreeMap<Path, Value>,
+    /// The same export's parts no batch carries, fingerprinted
+    /// ([`Unbatched::of`]); empty for a keyed state not made by
+    /// [`Keyed::of`].
+    pub unbatched: Unbatched,
+}
+
+/// The top-level keys of an export the journal keys ([`Keyed::read`]): every
+/// change to them goes in a batch.
+const KEYED_PARTS: &[&str] = &[
+    "materials",
+    "characters",
+    "gi_player",
+    "gi_characters",
+    "gi_achievements",
+    "gi_achievement_times",
+    "gi_anecdotes",
+    "gi_tasks",
+];
+
+/// The top-level keys no fingerprint counts: the export's own labels and
+/// clock, the parts the tracker drops (`gi_events`, `gi_miliastra`) and the
+/// endgame parts, which the attach carries.
+const NOT_COUNTED: &[&str] = &[
+    "format",
+    "version",
+    "source",
+    "leyline",
+    "timestamp",
+    "gi_capture",
+    "gi_off",
+    "gi_events",
+    "gi_miliastra",
+    "gi_endgame",
+];
+
+/// The `gi_player` members the tracker applies from a batch besides numbers
+/// (its `PLAYER_TEXTS` and `PLAYER_GROUPS`); any other member that is not a
+/// number (`gameData`) it drops from a batch.
+const PLAYER_BATCHED: &[&str] = &["nickname", "signature", "profilePicture", "birthday"];
+
+/// Fingerprints of an export's parts that no batch carries, by top-level
+/// key: what a final batch would leave behind
+/// (`crate::live::LiveSync::tick`). `gi_achievement_progress`,
+/// `gi_exploration`, `gi_teapot`, `gi_collections` without its quests (and
+/// with `monstersSeen` as its length, all the tracker keeps), `gi_wardrobe`
+/// without the teams, the `gi_player` members a batch cannot set (each as
+/// `gi_player.<member>`: `gameData`, see [`PLAYER_BATCHED`]), artifacts and
+/// weapons without a `gi_guid`, and any
+/// key not listed in [`KEYED_PARTS`] or [`NOT_COUNTED`] (a future key is
+/// unbatched until a layout keys it). A part absent or empty has no entry.
+///
+/// Stable across processes (FNV-1a over a canonical form, object keys
+/// sorted): a hand-over carries the base's fingerprints to the next run.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Unbatched(pub BTreeMap<String, u64>);
+
+impl Unbatched {
+    /// The fingerprints of `good`, an export as its upload reads
+    /// ([`as_uploaded`]). Hashed as it is walked: nothing is copied.
+    pub fn of(good: &Value) -> Self {
+        let mut out = BTreeMap::new();
+        for (key, value) in good.as_object().into_iter().flatten() {
+            let key_str = key.as_str();
+            if key_str == "gi_player" {
+                // Keyed, but a batch's `gi_player.<field>` is applied only as
+                // a number or as one of PLAYER_BATCHED: the rest (`gameData`)
+                // only a snapshot stores.
+                for (field, member) in value.as_object().into_iter().flatten() {
+                    if member.is_number() || PLAYER_BATCHED.contains(&field.as_str()) {
+                        continue;
+                    }
+                    let mut hash = Fnv::new();
+                    hash.value(member);
+                    out.insert(format!("gi_player.{field}"), hash.0);
+                }
+                continue;
+            }
+            if KEYED_PARTS.contains(&key_str) || NOT_COUNTED.contains(&key_str) {
+                continue;
+            }
+            let mut hash = Fnv::new();
+            let any = match key_str {
+                "artifacts" | "weapons" => {
+                    // Without a guid an item has no identity: the set of them.
+                    let mut items: Vec<u64> = value
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .filter(|item| item.get("gi_guid").is_none_or(|guid| !guid.is_string()))
+                        .map(|item| {
+                            let mut item_hash = Fnv::new();
+                            item_hash.value(item);
+                            item_hash.0
+                        })
+                        .collect();
+                    items.sort_unstable();
+                    for item in &items {
+                        hash.bytes(&item.to_le_bytes());
+                    }
+                    !items.is_empty()
+                }
+                "gi_collections" => hash.object_except(value, &["quests"], Some("monstersSeen")),
+                "gi_wardrobe" => hash.object_except(value, &["teams", "currentTeam"], None),
+                _ => {
+                    hash.value(value);
+                    !value.is_null() && value.as_object().is_none_or(|map| !map.is_empty())
+                }
+            };
+            if any {
+                out.insert(key.clone(), hash.0);
+            }
+        }
+        Self(out)
+    }
+
+    /// The parts whose fingerprint is not `base`'s (a part on one side
+    /// only included), by key.
+    pub fn changed_since(&self, base: &Unbatched) -> Vec<String> {
+        let mut keys: Vec<&String> = self.0.keys().chain(base.0.keys()).collect();
+        keys.sort();
+        keys.dedup();
+        keys.into_iter()
+            .filter(|key| self.0.get(*key) != base.0.get(*key))
+            .cloned()
+            .collect()
+    }
+}
+
+/// 64-bit FNV-1a over a JSON value's canonical form (object keys sorted,
+/// every string and container length-prefixed, numbers by their exact
+/// bits): fixed, so a fingerprint means the same in every process.
+struct Fnv(u64);
+
+impl Fnv {
+    fn new() -> Self {
+        Self(0xcbf2_9ce4_8422_2325)
+    }
+
+    fn bytes(&mut self, bytes: &[u8]) {
+        for byte in bytes {
+            self.0 = (self.0 ^ u64::from(*byte)).wrapping_mul(0x0000_0100_0000_01b3);
+        }
+    }
+
+    fn tag(&mut self, tag: u8, len: usize) {
+        self.bytes(&[tag]);
+        self.bytes(&(len as u64).to_le_bytes());
+    }
+
+    fn text(&mut self, text: &str) {
+        self.tag(b's', text.len());
+        self.bytes(text.as_bytes());
+    }
+
+    fn value(&mut self, value: &Value) {
+        match value {
+            Value::Null => self.tag(b'n', 0),
+            Value::Bool(flag) => self.tag(b'b', usize::from(*flag)),
+            Value::Number(number) => {
+                if let Some(whole) = number.as_u64() {
+                    self.tag(b'u', 8);
+                    self.bytes(&whole.to_le_bytes());
+                } else if let Some(whole) = number.as_i64() {
+                    self.tag(b'i', 8);
+                    self.bytes(&whole.to_le_bytes());
+                } else {
+                    self.tag(b'f', 8);
+                    self.bytes(&number.as_f64().unwrap_or_default().to_bits().to_le_bytes());
+                }
+            }
+            Value::String(text) => self.text(text),
+            Value::Array(items) => {
+                self.tag(b'a', items.len());
+                for item in items {
+                    self.value(item);
+                }
+            }
+            Value::Object(_) => {
+                self.object_except(value, &[], None);
+            }
+        }
+    }
+
+    /// An object without the members named in `skip`, the member `as_len`
+    /// (an array) counted by its length only. Whether any member was left.
+    fn object_except(&mut self, value: &Value, skip: &[&str], as_len: Option<&str>) -> bool {
+        let Some(map) = value.as_object() else {
+            self.value(value);
+            return !value.is_null();
+        };
+        let mut keys: Vec<&String> = map
+            .keys()
+            .filter(|key| !skip.contains(&key.as_str()))
+            .collect();
+        keys.sort();
+        self.tag(b'o', keys.len());
+        for key in &keys {
+            self.text(key);
+            let member = &map[key.as_str()];
+            if as_len == Some(key.as_str()) {
+                let len = member.as_array().map_or(0, Vec::len);
+                self.tag(b'#', len);
+            } else {
+                self.value(member);
+            }
+        }
+        !keys.is_empty()
+    }
 }
 
 impl Keyed {
@@ -235,7 +455,9 @@ impl Keyed {
     /// substat written as `3.9`, not as its f64 widening).
     pub fn of(good: &Good, weapon_rarity: impl Fn(&str) -> Option<u32>) -> Self {
         let mut keyed = Self::default();
-        keyed.read(&as_uploaded(good), &weapon_rarity);
+        let uploaded = as_uploaded(good);
+        keyed.read(&uploaded, &weapon_rarity);
+        keyed.unbatched = Unbatched::of(&uploaded);
         keyed
     }
 
@@ -979,5 +1201,170 @@ mod tests {
         assert_eq!(Sum::of(&spare).artifact4, 1);
         spare.artifacts[1].lock = true;
         assert_eq!(Sum::of(&spare).artifact4, 0);
+    }
+
+    #[test]
+    fn end_is_written_only_when_true() {
+        let mut batch = GoodDelta::new(812_345_678, "s", 2, "k1", 1);
+        let plain = serde_json::to_value(&batch).unwrap();
+        assert!(plain.get("end").is_none());
+        batch.end = Some(false);
+        assert_eq!(serde_json::to_value(&batch).unwrap(), plain);
+        batch.end = Some(true);
+        let ended = serde_json::to_value(&batch).unwrap();
+        assert_eq!(ended["end"], json!(true));
+        let back: GoodDelta = serde_json::from_value(ended).unwrap();
+        assert_eq!(back.end, Some(true));
+        let back: GoodDelta = serde_json::from_value(plain).unwrap();
+        assert_eq!(back.end, None);
+    }
+
+    /// An export with one of every kind of part (made-up values).
+    fn unbatched_export() -> Value {
+        good(json!({
+            "artifacts": [
+                artifact("17", 20, "", false),
+                { "setKey": "GoldenTroupe", "slotKey": "sands", "level": 0, "rarity": 4,
+                  "mainStatKey": "atk_", "location": "", "lock": false, "substats": [] },
+            ],
+            "weapons": [{ "key": "Dull Blade", "level": 1, "ascension": 0, "refinement": 1,
+                          "location": "", "lock": false }],
+            "gi_achievement_progress": { "84000": { "progress": 1, "total": 10 } },
+            "gi_exploration": { "offerings": { "1": 2 } },
+            "gi_teapot": { "comfort": { "1": { "mansion": 100, "blocks": [] } } },
+            "gi_collections": { "recipes": { "1": 2 }, "monstersSeen": [5, 6, 7],
+                                "quests": { "finished": [1] } },
+            "gi_wardrobe": { "outfits": { "owned": [1], "worn": {} }, "teams": {}, "currentTeam": 1 },
+            "gi_tasks": { "respawns": { "1": [2] } },
+            "gi_events": { "1": { "schedule": 1001, "start": 0, "end": 9 } },
+            "gi_miliastra": { "level": 3 },
+            "gi_endgame": { "abyss": {} },
+            "gi_capture": { "v": 1, "reason": "login", "session": "s", "world": 1,
+                            "journal": { "seq": 0 } },
+            "gi_off": [],
+            "leyline": 2,
+            "timestamp": 1_700_000_000_000u64,
+            "gi_player": { "uid": 812_345_678, "nameCard": 210_001, "gameData": "abc",
+                           "nickname": "Player", "signature": "",
+                           "profilePicture": { "id": 1 }, "birthday": { "month": 1, "day": 2 } },
+            "gi_someday": { "new": true },
+        }))
+    }
+
+    #[test]
+    fn the_unbatched_parts_are_the_ones_no_batch_carries() {
+        let parts = Unbatched::of(&unbatched_export());
+        assert_eq!(
+            parts.0.keys().map(String::as_str).collect::<Vec<_>>(),
+            [
+                "artifacts",
+                "gi_achievement_progress",
+                "gi_collections",
+                "gi_exploration",
+                "gi_player.gameData",
+                "gi_someday",
+                "gi_teapot",
+                "gi_wardrobe",
+                "weapons",
+            ]
+        );
+        // Stable across processes and builds (a hand-over carries them to
+        // the next run): a fixed value, whatever the map's key order.
+        assert_eq!(parts.0["gi_teapot"], 1_880_435_777_474_078_639);
+        let reordered: Value = serde_json::from_str(
+            r#"{"format":"GOOD","gi_teapot":{"comfort":{"1":{"blocks":[],"mansion":100}}}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            Unbatched::of(&reordered).0["gi_teapot"],
+            1_880_435_777_474_078_639
+        );
+        let json = serde_json::to_string(&parts).unwrap();
+        assert_eq!(serde_json::from_str::<Unbatched>(&json).unwrap(), parts);
+    }
+
+    #[test]
+    fn each_unbatched_part_counts_and_the_rest_do_not() {
+        let base = unbatched_export();
+        let fingerprints = Unbatched::of(&base);
+        let changed = |edit: &dyn Fn(&mut Value)| {
+            let mut now = base.clone();
+            edit(&mut now);
+            Unbatched::of(&now).changed_since(&fingerprints)
+        };
+        assert_eq!(changed(&|_| {}), Vec::<String>::new());
+        for (part, edit) in [
+            (
+                "gi_achievement_progress",
+                &(|v: &mut Value| v["gi_achievement_progress"]["84000"]["progress"] = json!(2))
+                    as &dyn Fn(&mut Value),
+            ),
+            ("gi_exploration", &|v: &mut Value| {
+                v["gi_exploration"]["offerings"]["1"] = json!(3)
+            }),
+            ("gi_teapot", &|v: &mut Value| {
+                v["gi_teapot"]["comfort"]["1"]["mansion"] = json!(200)
+            }),
+            ("gi_collections", &|v: &mut Value| {
+                v["gi_collections"]["recipes"]["1"] = json!(3)
+            }),
+            ("gi_collections", &|v: &mut Value| {
+                v["gi_collections"]["monstersSeen"] = json!([5, 6, 7, 8])
+            }),
+            ("gi_wardrobe", &|v: &mut Value| {
+                v["gi_wardrobe"]["outfits"]["owned"] = json!([1, 2])
+            }),
+            ("artifacts", &|v: &mut Value| {
+                v["artifacts"][1]["level"] = json!(4)
+            }),
+            ("weapons", &|v: &mut Value| {
+                v["weapons"][0]["level"] = json!(20)
+            }),
+            ("gi_someday", &|v: &mut Value| {
+                v["gi_someday"]["new"] = json!(false)
+            }),
+            ("gi_later", &|v: &mut Value| v["gi_later"] = json!(1)),
+            // The tracker drops a batch's `gi_player.gameData`.
+            ("gi_player.gameData", &|v: &mut Value| {
+                v["gi_player"]["gameData"] = json!("def")
+            }),
+            ("gi_player.gameData", &|v: &mut Value| {
+                v["gi_player"].as_object_mut().unwrap().remove("gameData");
+            }),
+            ("gi_player.someday", &|v: &mut Value| {
+                v["gi_player"]["someday"] = json!("text")
+            }),
+            ("gi_teapot", &|v: &mut Value| {
+                v.as_object_mut().unwrap().remove("gi_teapot");
+            }),
+        ] {
+            assert_eq!(changed(edit), [part.to_string()], "{part}");
+        }
+        // What batches carry, what the tracker drops, the attach's part and
+        // the export's labels: no fingerprint moves.
+        for edit in [
+            &(|v: &mut Value| v["artifacts"][0]["level"] = json!(16)) as &dyn Fn(&mut Value),
+            &|v: &mut Value| v["gi_collections"]["monstersSeen"] = json!([1, 2, 3]),
+            &|v: &mut Value| v["gi_collections"]["quests"]["finished"] = json!([1, 2]),
+            &|v: &mut Value| v["gi_wardrobe"]["currentTeam"] = json!(2),
+            &|v: &mut Value| {
+                v["gi_wardrobe"]["teams"] = json!({ "1": { "name": "x", "characters": [] } })
+            },
+            &|v: &mut Value| v["gi_tasks"]["respawns"] = json!({}),
+            &|v: &mut Value| v["gi_events"]["1"]["end"] = json!(10),
+            &|v: &mut Value| v["gi_miliastra"]["level"] = json!(4),
+            &|v: &mut Value| v["gi_endgame"] = json!({ "theater": {} }),
+            &|v: &mut Value| v["gi_capture"]["reason"] = json!("logout"),
+            &|v: &mut Value| v["timestamp"] = json!(1_800_000_000_000u64),
+            &|v: &mut Value| v["gi_player"]["ar"] = json!(60),
+            &|v: &mut Value| v["gi_player"]["nameCard"] = json!(210_002),
+            &|v: &mut Value| v["gi_player"]["nickname"] = json!("Other"),
+            &|v: &mut Value| v["gi_player"]["signature"] = json!("hi"),
+            &|v: &mut Value| v["gi_player"]["profilePicture"]["id"] = json!(2),
+            &|v: &mut Value| v["gi_player"]["birthday"]["day"] = json!(3),
+            &|v: &mut Value| v["materials"]["Mora"] = json!(5),
+        ] {
+            assert_eq!(changed(edit), Vec::<String>::new());
+        }
     }
 }

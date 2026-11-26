@@ -14,7 +14,7 @@ use anyhow::{Context, Result, anyhow};
 use base64::prelude::*;
 use chrono::prelude::*;
 use flate2::read::GzDecoder;
-use teyvatme_core::handover::SessionHandover;
+use teyvatme_core::handover::{SessionHandover, write_refusal};
 use teyvatme_game_data::AnimeGameData;
 use teyvatme_protocol::{
     CommandMatch, ConnectionPacket, GameCommand, GamePacket, GameSniffer, KeyState,
@@ -30,8 +30,8 @@ use crate::capture::{self, BackendType, CaptureSource, CapturedFrame, create_cap
 // still reach it through here.
 pub(crate) use crate::decode::{
     AppliedData, DataReplacement, DataVerdict, KeyReport, STATS_INTERVAL, SnifferEvent,
-    SnifferStats, apply_commands, changes_in, classify_commands, decode_one_packet,
-    frame_direction, full_send_in,
+    SnifferStats, adopt_login_uid, apply_commands, changes_in, classify_commands,
+    decode_one_packet, frame_direction, full_send_in,
 };
 use crate::game_watch::{self, GameStatus, GameWatch, SystemProcessDetector};
 use crate::i18n::{tr, trf};
@@ -443,23 +443,173 @@ struct SnifferThread {
     /// When the newest game process started (unix ms; 0 = none running), for
     /// [`GameSniffer::set_game_started_ms`].
     game_started_ms: Arc<AtomicU64>,
-    /// What the sniffer leaves for the next run when the thread ends: the
-    /// running connection ([`GameSniffer::handover`]), or nothing.
-    handover: Arc<Mutex<Option<SnifferHandover>>>,
+    /// What the sniffer leaves for the next run when the thread ends.
+    end: Arc<Mutex<Option<SnifferEnd>>>,
     join: Option<std::thread::JoinHandle<()>>,
 }
 
+/// What the sniffer left when its thread ended.
+#[derive(Debug, Default)]
+struct SnifferEnd {
+    /// The running connection ([`GameSniffer::handover`]), or nothing.
+    handover: Option<SnifferHandover>,
+    /// A reset was armed and not yet concluded
+    /// ([`GameSniffer::reset_armed`]): no hand-over then.
+    reset_armed: bool,
+}
+
 impl SnifferThread {
-    /// End the thread (its sender dropped) and take what it handed over.
-    fn finish(mut self) -> Option<SnifferHandover> {
+    /// End the thread (its sender dropped) and take what it left.
+    fn finish(mut self) -> SnifferEnd {
         drop(self.packet_tx);
         if let Some(join) = self.join.take()
             && join.join().is_err()
         {
             tracing::error!("the packet decoding thread panicked");
         }
-        self.handover.lock().ok()?.take()
+        self.end
+            .lock()
+            .ok()
+            .and_then(|mut slot| slot.take())
+            .unwrap_or_default()
     }
+}
+
+/// Empty what the decoding thread sent after the monitor stopped reading,
+/// and say whether a session reset is in it: a new connection the monitor
+/// never handled (no replacement pending for it, the live journal still
+/// open), so no hand-over may be written ([`write_refusal`]). The packets
+/// themselves are dropped: decoded after the loop ended, they were never
+/// going to be applied.
+fn drain_unhandled_reset(decoded_rx: &mut mpsc::UnboundedReceiver<SnifferEvent>) -> bool {
+    let mut reset = false;
+    while let Ok(event) = decoded_rx.try_recv() {
+        reset |= matches!(event, SnifferEvent::SessionReset);
+    }
+    reset
+}
+
+/// End the decoding thread at a clean exit: what it left, and whether the
+/// tail it decoded after the monitor's loop ended holds a session reset.
+fn end_sniffer(
+    sniffer: SnifferThread,
+    decoded_rx: &mut mpsc::UnboundedReceiver<SnifferEvent>,
+) -> (SnifferEnd, bool) {
+    let end = sniffer.finish();
+    // The thread decoded what was still queued before it ended; events from
+    // that tail were never handled.
+    let unhandled_reset = drain_unhandled_reset(decoded_rx);
+    (end, unhandled_reset)
+}
+
+/// The monitor's state a hand-over is made of, besides the connection.
+struct ExitState<'a> {
+    data_replacement: &'a DataReplacement,
+    player_data: &'a PlayerData,
+    game_running: bool,
+    live: Option<teyvatme_core::live::LiveHandover>,
+    wish: Option<teyvatme_core::wish::hub::WishHandover>,
+    resin_alerted: Option<(crate::good::GiResin, u32)>,
+}
+
+/// The hand-over a clean exit writes ([`Monitor::write_handover`]), or
+/// `None` (logged) when none may be written: no live connection, one of
+/// [`write_refusal`]'s reasons, no account data, or no game.
+fn exit_handover(
+    end: SnifferEnd,
+    unhandled_reset: bool,
+    state: ExitState<'_>,
+    now_ms: u64,
+) -> Option<SessionHandover> {
+    let Some(sniffer_handover) = end.handover else {
+        tracing::info!("no live game connection to hand over");
+        return None;
+    };
+    if let Some(why) = write_refusal(
+        state.data_replacement.is_pending(),
+        unhandled_reset,
+        end.reset_armed,
+    ) {
+        tracing::info!(why, "nothing handed over");
+        return None;
+    }
+    if !state.player_data.login_parts().items {
+        tracing::info!("a live game connection but no account data yet: nothing handed over");
+        return None;
+    }
+    // A key outlives the game: closing Genshin ends the session even
+    // though nothing told the sniffer, and a next start that picked it
+    // up said "Picked the running game session up again" with no game.
+    if !state.game_running {
+        tracing::info!("the game is not running: nothing handed over");
+        return None;
+    }
+    Some(SessionHandover {
+        v: SessionHandover::VERSION,
+        written_ms: now_ms,
+        game_data: embedded_game_data_sha().map(str::to_string),
+        sniffer: sniffer_handover,
+        player: state.player_data.handover(),
+        live: state.live,
+        wish: state.wish,
+        resin_alerted: state.resin_alerted,
+        // Refused above when it would be true.
+        replacement_pending: false,
+    })
+}
+
+/// What a resumed hand-over carries on for the monitor: the wish link's
+/// parts and the resin alert already sent.
+type Resumed = (
+    Option<teyvatme_core::wish::hub::WishHandover>,
+    Option<(crate::good::GiResin, u32)>,
+);
+
+/// Pick up the session the previous run handed over into a fresh `sniffer`,
+/// `player_data` and `live`, at the start ([`Monitor::new`]); `None`
+/// (logged) when nothing of it is taken. Only while the game still runs (it
+/// may have closed during the restart), and only whole: a hand-over whose
+/// data may not be resumed ([`SessionHandover::player_resumable`]) resumes
+/// nothing, not even the key, and the start is a start with the game
+/// already running.
+fn resume_session(
+    handover: SessionHandover,
+    game_running: bool,
+    sniffer: &mut GameSniffer,
+    player_data: &mut PlayerData,
+    live: &mut LiveSync,
+    now_ms: u64,
+) -> Option<Resumed> {
+    if !game_running {
+        tracing::info!("a session hand-over, but the game is not running: not resumed");
+        return None;
+    }
+    if let Err(why) = handover.player_resumable() {
+        tracing::warn!(
+            why,
+            "a session hand-over that may not be resumed: nothing of it is"
+        );
+        return None;
+    }
+    if !sniffer.resume(handover.sniffer) {
+        return None;
+    }
+    let (items, characters) = handover.player.counts();
+    let unreadable = player_data.resume(handover.player);
+    let journal = handover
+        .live
+        .is_some_and(|live_handover| live.resume(live_handover));
+    tracing::info!(
+        items,
+        characters,
+        unreadable,
+        journal,
+        seed = live.needs_seed(),
+        wish = handover.wish.is_some(),
+        age_s = now_ms.saturating_sub(handover.written_ms) / 1_000,
+        "resumed the game session the previous run handed over"
+    );
+    Some((handover.wish, handover.resin_alerted))
 }
 
 /// Move packet decoding off the monitor's `select!` loop.
@@ -479,8 +629,8 @@ fn spawn_sniffer_thread(
     let thread_queued = Arc::clone(&queued);
     let game_started_ms = Arc::new(AtomicU64::new(0));
     let thread_game_started = Arc::clone(&game_started_ms);
-    let handover = Arc::new(Mutex::new(None));
-    let thread_handover = Arc::clone(&handover);
+    let end = Arc::new(Mutex::new(None));
+    let thread_end = Arc::clone(&end);
 
     let join = std::thread::Builder::new()
         .name("teyvatme-sniffer".to_string())
@@ -562,8 +712,11 @@ fn spawn_sniffer_thread(
                     }
                 }
             }
-            if let Ok(mut slot) = thread_handover.lock() {
-                *slot = sniffer.handover();
+            if let Ok(mut slot) = thread_end.lock() {
+                *slot = Some(SnifferEnd {
+                    handover: sniffer.handover(),
+                    reset_armed: sniffer.reset_armed(),
+                });
             }
             tracing::info!("sniffer thread exiting");
         })
@@ -573,7 +726,7 @@ fn spawn_sniffer_thread(
         packet_tx,
         queued,
         game_started_ms,
-        handover,
+        end,
         join: Some(join),
     })
 }
@@ -936,29 +1089,15 @@ impl Monitor {
         // but only while the game is still running (it may have closed
         // during the restart; the file is deleted either way).
         let resumed = crate::session::take(now_ms()).and_then(|handover| {
-            if !game_watch::ProcessDetector::game_running(&mut game_detector) {
-                tracing::info!("a session hand-over, but the game is not running: not resumed");
-                return None;
-            }
-            if !sniffer.resume(handover.sniffer) {
-                return None;
-            }
-            let (items, characters) = handover.player.counts();
-            let unreadable = player_data.resume(handover.player);
-            let journal = handover
-                .live
-                .is_some_and(|live_handover| live.resume(live_handover));
-            tracing::info!(
-                items,
-                characters,
-                unreadable,
-                journal,
-                seed = live.needs_seed(),
-                wish = handover.wish.is_some(),
-                age_s = now_ms().saturating_sub(handover.written_ms) / 1_000,
-                "resumed the game session the previous run handed over"
-            );
-            Some((handover.wish, handover.resin_alerted))
+            let game_running = game_watch::ProcessDetector::game_running(&mut game_detector);
+            resume_session(
+                handover,
+                game_running,
+                &mut sniffer,
+                &mut player_data,
+                &mut live,
+                now_ms(),
+            )
         });
         let (packet_tx, packet_rx) = mpsc::unbounded_channel();
         let (decoded_tx, decoded_rx) = mpsc::unbounded_channel();
@@ -1122,33 +1261,19 @@ impl Monitor {
         let Some(sniffer) = self.sniffer.take() else {
             return;
         };
-        let Some(sniffer_handover) = sniffer.finish() else {
-            tracing::info!("no live game connection to hand over");
-            return;
-        };
-        if !self.player_data.login_parts().items {
-            tracing::info!("a live game connection but no account data yet: nothing handed over");
-            return;
-        }
-        // A key outlives the game: closing Genshin ends the session even
-        // though nothing told the sniffer, and a next start that picked it
-        // up said "Picked the running game session up again" with no game.
-        if !self.game_watch.game_running() {
-            tracing::info!("the game is not running: nothing handed over");
-            return;
-        }
-        let player = self.player_data.handover();
-        let (items, characters) = player.counts();
-        let handover = SessionHandover {
-            v: SessionHandover::VERSION,
-            written_ms: now_ms(),
-            game_data: embedded_game_data_sha().map(str::to_string),
-            sniffer: sniffer_handover,
-            player,
+        let (end, unhandled_reset) = end_sniffer(sniffer, &mut self.decoded_rx);
+        let state = ExitState {
+            data_replacement: &self.data_replacement,
+            player_data: &self.player_data,
+            game_running: self.game_watch.game_running(),
             live: self.live.handover(),
             wish: self.wish_hub.as_ref().and_then(|hub| hub.handover()),
             resin_alerted: self.resin_alerted,
         };
+        let Some(handover) = exit_handover(end, unhandled_reset, state, now_ms()) else {
+            return;
+        };
+        let (items, characters) = handover.player.counts();
         match crate::session::write(&handover) {
             Ok(()) => tracing::info!(
                 items,
@@ -1890,10 +2015,10 @@ impl Monitor {
             return;
         }
 
-        match self
+        let verdict = self
             .data_replacement
-            .verdict_for_batch(key, &mut classified)
-        {
+            .verdict_for_batch(key, &mut classified);
+        match verdict {
             DataVerdict::Apply => {}
             DataVerdict::ReplaceThenApply => {
                 self.replace_captured_data("the new game connection delivered data");
@@ -1907,6 +2032,9 @@ impl Monitor {
                 return;
             }
         }
+        // After the replacement: the login's UID is the new data's, never
+        // the previous account's held data's.
+        adopt_login_uid(&mut self.player_data, &verdict, report);
 
         let full_send = full_send_in(&classified, self.player_data.item_count());
         let noted = changes_in(&classified);
@@ -2543,7 +2671,8 @@ impl Monitor {
         }
         let now = now_ms();
         let player_data = &self.player_data;
-        let action = self.live.tick(live_enabled(&state), now, || {
+        let final_batch = final_batches(&state.tracker_api_url);
+        let action = self.live.tick(live_enabled(&state), final_batch, now, || {
             let (good, _, keyed) = player_data.live_export(now);
             Some((good, keyed))
         });
@@ -2648,7 +2777,12 @@ impl Monitor {
             return (stripped, None);
         };
         let keyed = self.player_data.keyed(&good);
-        let ticket = self.live.snapshot_started(Reason::Manual, keyed);
+        // The window built this JSON earlier: an endgame change since is not
+        // in it, and its being stored must not acknowledge that change.
+        let holds_endgame = self.player_data.holds_endgame_of(&good);
+        let ticket = self
+            .live
+            .snapshot_started_holding(Reason::Manual, keyed, holds_endgame);
         (labelled, Some(ticket))
     }
 
@@ -2677,13 +2811,15 @@ impl Monitor {
                 BatchAnswer::Stored { .. } => {
                     tracing::info!(seq = delta.seq, ?answer, "live sync: batch stored");
                     let changes = delta.changes.len();
-                    let _ = toast_tx.send(
-                        Event::ok(
-                            Topic::Destination,
-                            trf("Live sync · {0} changes sent to {1}", &[&changes, &host]),
-                        )
-                        .routine(),
-                    );
+                    if batch_toasts(changes) {
+                        let _ = toast_tx.send(
+                            Event::ok(
+                                Topic::Destination,
+                                trf("Live sync · {0} changes sent to {1}", &[&changes, &host]),
+                            )
+                            .routine(),
+                        );
+                    }
                 }
                 BatchAnswer::Duplicate => {
                     tracing::info!(seq = delta.seq, ?answer, "live sync: batch stored");
@@ -3255,6 +3391,11 @@ pub(crate) fn uploaded_account(api: &str) -> Option<i64> {
 /// tracker reads (a self-hosted or older one may not read gzip).
 static GZIP_UPLOADS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
+/// The trackers (by origin) that said a game login may end its live journal
+/// with a final batch (`upload.finalBatch`), learned like [`GZIP_UPLOADS`]:
+/// until a tracker says so, a login ends on its logout snapshot.
+static FINAL_BATCHES: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
 fn tracker_origin(url: &str) -> Option<String> {
     let url = reqwest::Url::parse(url.trim()).ok()?;
     Some(url.origin().ascii_serialization())
@@ -3266,13 +3407,38 @@ pub(crate) fn note_upload_options(url: &str, body: &str) {
     let Ok(answer) = serde_json::from_str::<serde_json::Value>(body) else {
         return;
     };
-    let (Some(origin), Ok(mut held)) = (tracker_origin(url), GZIP_UPLOADS.lock()) else {
+    let Some(origin) = tracker_origin(url) else {
         return;
     };
-    held.retain(|known| *known != origin);
-    if crate::live::accepts_gzip(&answer) {
-        held.push(origin);
+    for (held, says) in [
+        (&GZIP_UPLOADS, crate::live::accepts_gzip(&answer)),
+        (&FINAL_BATCHES, crate::live::accepts_final_batch(&answer)),
+    ] {
+        let Ok(mut held) = held.lock() else {
+            continue;
+        };
+        held.retain(|known| *known != origin);
+        if says {
+            held.push(origin.clone());
+        }
     }
+}
+
+/// Whether a game login that ends sends the tracker at `url` a final batch
+/// instead of its logout snapshot ([`crate::live::LiveSync::tick`]).
+pub(crate) fn final_batches(url: &str) -> bool {
+    let Some(origin) = tracker_origin(url) else {
+        return false;
+    };
+    FINAL_BATCHES
+        .lock()
+        .is_ok_and(|held| held.contains(&origin))
+}
+
+/// Whether a stored batch of `changes` changes is worth the routine toast:
+/// a final batch that closed a journal with nothing left to send is silent.
+fn batch_toasts(changes: usize) -> bool {
+    changes > 0
 }
 
 /// `--replay-live` can hold uploads plain whatever the tracker says, to
@@ -3565,6 +3731,376 @@ pub(crate) fn load_keys() -> Result<HashMap<u16, Vec<u8>>> {
 pub(crate) mod tests {
     use super::*;
 
+    /// The protocol crate's `lookup_initial_key` picks a key by the encrypted
+    /// command's first two bytes, big-endian, XOR 0x4567. A plain command
+    /// starts with 0x4567, so those two bytes are the key's own first two:
+    /// a key is found only when they, read big-endian, equal its id. Every
+    /// key must also be the game's full 4,096 bytes.
+    #[test]
+    fn every_dispatch_key_is_found_by_its_own_id() {
+        let keys = load_keys().unwrap();
+        assert!(keys.contains_key(&2701), "the Bilibili server's key");
+        for (id, key) in &keys {
+            assert_eq!(key.len(), 4096, "key {id} length");
+            assert_eq!(
+                u16::from_be_bytes([key[0], key[1]]),
+                *id,
+                "key {id} starts with another id"
+            );
+        }
+    }
+
+    /// Packets still queued when the app quits are decoded by the thread
+    /// after the monitor's loop ended. A reset among them was never
+    /// handled: no hand-over then.
+    #[test]
+    fn a_reset_decoded_after_the_loop_ended_means_no_hand_over() {
+        use teyvatme_core::decode::test_support::{handshake_frame, segment_frame};
+
+        for (frame, reset) in [
+            (handshake_frame(), true),
+            (segment_frame(7, &[0u8; 40]), false),
+        ] {
+            let (decoded_tx, mut decoded_rx) = mpsc::unbounded_channel();
+            let thread = spawn_sniffer_thread(GameSniffer::new(), decoded_tx).unwrap();
+            thread.queued.fetch_add(1, Ordering::Relaxed);
+            thread.packet_tx.send(frame).unwrap();
+            // The monitor's loop is over: nothing reads `decoded_rx` until
+            // the hand-over is decided.
+            assert_eq!(thread.finish().handover, None, "no key, no connection");
+            assert_eq!(drain_unhandled_reset(&mut decoded_rx), reset);
+            assert_eq!(write_refusal(false, reset, false).is_some(), reset);
+            assert!(decoded_rx.try_recv().is_err(), "drained");
+        }
+    }
+
+    /// The hand-over guards where the app runs them: the decoding thread as
+    /// the monitor spawns it, the exit through [`end_sniffer`] and
+    /// [`exit_handover`] (what `write_handover` writes), the start through
+    /// [`resume_session`] (what `Monitor::new` resumes), with real login
+    /// frames (`teyvatme_protocol::test_login`). The data side is what
+    /// `handle_connection_reset` and `handle_game_packet` do with the held
+    /// data: `DataReplacement`, `adopt_login_uid`, `apply_commands`.
+    mod hand_over {
+        use teyvatme_game_data::AnimeGameData;
+        use teyvatme_protocol::r#gen::protos::{Item, Material};
+        use teyvatme_protocol::test_login::{
+            LOGIN_MS, TestLogin, client_draw, handshake_frame, initial_keys,
+        };
+
+        use super::*;
+
+        /// Placeholder UIDs: the held account's and the next login's.
+        const UID_A: u32 = 812_345_678;
+        const UID_B: u32 = 812_345_679;
+        const HOUR_MS: u64 = 3_600_000;
+
+        /// Ten material stacks whose guids carry `uid` in their top half.
+        fn inventory(uid: u32) -> CommandMatch {
+            let items = (1..=10u64)
+                .map(|n| {
+                    let mut item = Item::new();
+                    item.item_id = 100_000 + n as u32;
+                    item.guid = (u64::from(uid) << 32) + n;
+                    item.set_material(Material {
+                        count: 5,
+                        ..Default::default()
+                    });
+                    item
+                })
+                .collect();
+            CommandMatch::Items(items)
+        }
+
+        /// A change that is not a login's data (it never replaces).
+        fn property_update() -> CommandMatch {
+            CommandMatch::PropertyUpdate(HashMap::from([(10016, 5)]))
+        }
+
+        /// The monitor's side of one run.
+        struct Run {
+            thread: Option<SnifferThread>,
+            decoded_rx: mpsc::UnboundedReceiver<SnifferEvent>,
+            replacement: DataReplacement,
+            player_data: PlayerData,
+            live: LiveSync,
+            /// The newest packet's key report.
+            report: Option<KeyReport>,
+        }
+
+        impl Run {
+            fn start(sniffer: GameSniffer) -> Self {
+                let (decoded_tx, decoded_rx) = mpsc::unbounded_channel();
+                Self {
+                    thread: Some(spawn_sniffer_thread(sniffer, decoded_tx).unwrap()),
+                    decoded_rx,
+                    replacement: DataReplacement::default(),
+                    player_data: PlayerData::new(AnimeGameData::new()),
+                    live: LiveSync::new(),
+                    report: None,
+                }
+            }
+
+            /// A fresh start, knowing the fixture's dispatch key.
+            fn fresh() -> Self {
+                Self::start(GameSniffer::new().set_initial_keys(initial_keys()))
+            }
+
+            /// Hand `frames` to the thread as `handle_packet` does and wait
+            /// until it decoded them. The events wait in `decoded_rx`.
+            fn queue(&mut self, frames: Vec<Vec<u8>>) {
+                let thread = self.thread.as_ref().unwrap();
+                for frame in frames {
+                    thread.queued.fetch_add(1, Ordering::Relaxed);
+                    thread.packet_tx.send(frame).unwrap();
+                }
+                let waited = Instant::now();
+                while thread.queued.load(Ordering::Relaxed) > 0 {
+                    assert!(
+                        waited.elapsed() < Duration::from_secs(120),
+                        "the thread decodes"
+                    );
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+            }
+
+            /// [`Self::queue`], then handle every event as the loop does.
+            fn feed(&mut self, frames: Vec<Vec<u8>>) {
+                self.queue(frames);
+                while let Ok(event) = self.decoded_rx.try_recv() {
+                    match event {
+                        SnifferEvent::SessionReset => {
+                            if self.replacement.connection_reset() {
+                                self.live.note_connection_ended();
+                            }
+                        }
+                        SnifferEvent::Packet(_, report) => self.report = Some(report),
+                    }
+                }
+            }
+
+            /// A batch of data under the newest report, as
+            /// `handle_game_packet` takes it.
+            fn data(&mut self, found: CommandMatch) -> DataVerdict {
+                let report = self.report.expect("a packet came");
+                let mut classified = vec![(1, found)];
+                let verdict = self
+                    .replacement
+                    .verdict_for_batch(report.state, &mut classified);
+                match verdict {
+                    DataVerdict::Hold => return verdict,
+                    DataVerdict::ReplaceThenApply => self.player_data.reset(),
+                    DataVerdict::Apply => {}
+                }
+                adopt_login_uid(&mut self.player_data, &verdict, report);
+                apply_commands(&mut self.player_data, classified);
+                verdict
+            }
+
+            /// Quit as `write_handover` does: what it would write.
+            fn quit(mut self) -> Option<SessionHandover> {
+                let (end, unhandled_reset) =
+                    end_sniffer(self.thread.take().unwrap(), &mut self.decoded_rx);
+                exit_handover(end, unhandled_reset, self.exit_state(), now_ms())
+            }
+
+            fn exit_state(&self) -> ExitState<'_> {
+                ExitState {
+                    data_replacement: &self.replacement,
+                    player_data: &self.player_data,
+                    game_running: true,
+                    live: self.live.handover(),
+                    wish: None,
+                    resin_alerted: None,
+                }
+            }
+
+            /// Start a run from `handover` as `Monitor::new` does.
+            fn resumed(handover: SessionHandover) -> (Self, bool) {
+                let mut sniffer = GameSniffer::new().set_initial_keys(initial_keys());
+                let mut player_data = PlayerData::new(AnimeGameData::new());
+                let mut live = LiveSync::new();
+                let resumed = resume_session(
+                    handover,
+                    true,
+                    &mut sniffer,
+                    &mut player_data,
+                    &mut live,
+                    now_ms(),
+                )
+                .is_some();
+                let mut run = Self::start(sniffer);
+                run.player_data = player_data;
+                run.live = live;
+                (run, resumed)
+            }
+
+            fn uid(&self) -> Option<u32> {
+                self.player_data
+                    .export_at(&ExportSettings::for_tracker(), 0)
+                    .0
+                    .gi_player
+                    .and_then(|player| player.uid)
+            }
+        }
+
+        /// Account A logged in and its bag held.
+        fn holding_a() -> Run {
+            let mut run = Run::fresh();
+            let mut login = TestLogin::new(122_486);
+            run.feed(login.log_in(LOGIN_MS, client_draw(LOGIN_MS, 0), 0x1111, Some(UID_A)));
+            assert_eq!(run.report.unwrap().state, KeyState::Session);
+            assert_eq!(run.data(inventory(UID_A)), DataVerdict::ReplaceThenApply);
+            assert_eq!(run.uid(), Some(UID_A));
+            run
+        }
+
+        /// B's whole login on its own connection, after A's in one game.
+        fn b_logs_in() -> Vec<Vec<u8>> {
+            TestLogin::new(122_628).log_in(
+                LOGIN_MS + HOUR_MS,
+                client_draw(LOGIN_MS, 1),
+                0x2222,
+                Some(UID_B),
+            )
+        }
+
+        /// Account A held, B's reply accepted and B's key live, B's first
+        /// data not here yet: the monitor holds A's data for B's (Hold).
+        fn holding_a_for_b() -> Run {
+            let mut run = holding_a();
+            run.feed(b_logs_in());
+            let report = run.report.unwrap();
+            assert_eq!(report.state, KeyState::Session);
+            assert_eq!(report.login_uid, Some(UID_B));
+            assert_eq!(run.data(property_update()), DataVerdict::Hold);
+            assert!(run.replacement.is_pending());
+            run
+        }
+
+        #[test]
+        fn quitting_while_bs_data_is_awaited_writes_nothing() {
+            assert_eq!(holding_a_for_b().quit(), None);
+
+            // Once B's own data replaced A's, the same exit writes B's.
+            let mut run = holding_a_for_b();
+            assert_eq!(run.data(inventory(UID_B)), DataVerdict::ReplaceThenApply);
+            let written = run.quit().expect("a hand-over of B's session");
+            assert_eq!(written.sniffer.login_uid(), Some(UID_B));
+            assert_eq!(written.player.login_uid(), Some(UID_B));
+        }
+
+        #[test]
+        fn a_reset_in_the_tail_decoded_after_the_loop_writes_nothing() {
+            // A held, then the monitor's loop ends with B's whole login still
+            // queued: the thread decodes it, B's key is live, and the
+            // monitor never handled the reset.
+            let mut run = holding_a();
+            run.queue(b_logs_in());
+            let (end, unhandled_reset) =
+                end_sniffer(run.thread.take().unwrap(), &mut run.decoded_rx);
+            let connection = end.handover.as_ref().expect("B's key is live");
+            assert_eq!(connection.login_uid(), Some(UID_B));
+            assert!(!end.reset_armed, "the reset was concluded");
+            assert!(unhandled_reset);
+            assert!(!run.replacement.is_pending(), "never handled");
+            assert_eq!(
+                exit_handover(end, unhandled_reset, run.exit_state(), now_ms()),
+                None
+            );
+        }
+
+        #[test]
+        fn quitting_with_a_reset_armed_writes_nothing() {
+            // A held; a new handshake arrives and the reader holds the reset
+            // back until the new connection proves itself.
+            let mut run = holding_a();
+            run.feed(vec![handshake_frame()]);
+            assert_eq!(run.quit(), None);
+
+            // Without the handshake the same exit writes A's session.
+            let run = holding_a();
+            let written = run.quit().expect("a hand-over of A's session");
+            assert_eq!(written.player.login_uid(), Some(UID_A));
+        }
+
+        /// A sniffer part of B's login, as a run that held B would write it.
+        fn bs_connection() -> teyvatme_protocol::SnifferHandover {
+            let mut sniffer = GameSniffer::new().set_initial_keys(initial_keys());
+            for frame in TestLogin::new(122_628).log_in(
+                LOGIN_MS + HOUR_MS,
+                client_draw(LOGIN_MS + HOUR_MS, 0),
+                0x2222,
+                Some(UID_B),
+            ) {
+                sniffer.receive_packet(frame);
+            }
+            sniffer.handover().expect("B's key is live")
+        }
+
+        /// A hand-over that pairs `sniffer` with A's held data.
+        fn file(
+            sniffer: teyvatme_protocol::SnifferHandover,
+            replacement_pending: bool,
+        ) -> SessionHandover {
+            let mut held = holding_a();
+            held.live.note_full_send();
+            SessionHandover {
+                v: SessionHandover::VERSION,
+                written_ms: now_ms(),
+                game_data: None,
+                sniffer,
+                player: held.player_data.handover(),
+                live: held.live.handover(),
+                wish: None,
+                resin_alerted: None,
+                replacement_pending,
+            }
+        }
+
+        #[test]
+        fn a_refused_hand_over_resumes_nothing() {
+            let a_connection = holding_a().quit().expect("A's session").sniffer;
+            for (shape, handover) in [
+                ("B's connection with A's data", file(bs_connection(), false)),
+                ("a pending replacement", file(a_connection, true)),
+            ] {
+                let (mut run, resumed) = Run::resumed(handover);
+                assert!(!resumed, "{shape}");
+                // No key, no data, no journal: a start with the game running.
+                assert!(
+                    run.player_data.login_parts() == LoginParts::default(),
+                    "{shape}"
+                );
+                assert!(run.live.handover().is_none(), "{shape}");
+                // B's data then is B's alone.
+                run.report = Some(KeyReport {
+                    state: KeyState::Session,
+                    recovery_failed: false,
+                    login_uid: Some(UID_B),
+                });
+                assert_eq!(run.data(inventory(UID_B)), DataVerdict::Apply, "{shape}");
+                assert_eq!(run.uid(), Some(UID_B), "{shape}");
+                assert_eq!(
+                    run.player_data.uid_check().total,
+                    10,
+                    "{shape}: nothing of A's"
+                );
+                let end = run.thread.take().unwrap().finish();
+                assert_eq!(end.handover, None, "{shape}: the key was not resumed");
+            }
+
+            // The same file without the pairing resumes whole.
+            let a_connection = holding_a().quit().expect("A's session").sniffer;
+            let (mut run, resumed) = Run::resumed(file(a_connection, false));
+            assert!(resumed);
+            assert_eq!(run.uid(), Some(UID_A));
+            assert!(run.live.handover().is_some(), "the journal");
+            let end = run.thread.take().unwrap().finish();
+            assert!(end.handover.is_some(), "the key");
+        }
+    }
+
     #[test]
     fn a_snapshot_goes_gzipped_only_when_asked() {
         let json = format!(
@@ -3605,6 +4141,43 @@ pub(crate) mod tests {
         assert!(gzip_uploads(&import));
         note_upload_options(&import, r#"{"snapshot":{"id":1}}"#);
         assert!(!gzip_uploads(&import));
+    }
+
+    #[test]
+    fn final_batches_follow_what_each_tracker_last_said() {
+        let api = "https://final-batch-test.invalid/api";
+        let import = import_url(api);
+        assert!(!final_batches(api), "absent");
+        note_upload_options(
+            &format!("{api}/irminsul/whoami"),
+            r#"{"upload":{"gzip":true,"finalBatch":true}}"#,
+        );
+        assert!(final_batches(api));
+        assert!(final_batches(&import));
+        assert!(!final_batches("https://other-final-test.invalid/api"));
+        // The old backend's wrapper.
+        note_upload_options(
+            api,
+            r#"{"status":200,"data":{"upload":{"finalBatch":true}}}"#,
+        );
+        assert!(final_batches(api));
+        // Not JSON says nothing; `false` or an answer without it takes it back.
+        note_upload_options(api, "<html>");
+        assert!(final_batches(api));
+        note_upload_options(api, r#"{"upload":{"finalBatch":false}}"#);
+        assert!(!final_batches(api));
+        note_upload_options(api, r#"{"upload":{"finalBatch":true}}"#);
+        note_upload_options(&import, r#"{"snapshot":{"id":1}}"#);
+        assert!(!final_batches(api));
+        // The gzip word is learned beside it, on its own.
+        note_upload_options(api, r#"{"upload":{"finalBatch":true}}"#);
+        assert!(final_batches(api) && !gzip_uploads(api));
+    }
+
+    #[test]
+    fn an_empty_final_batch_is_silent() {
+        assert!(!batch_toasts(0));
+        assert!(batch_toasts(1));
     }
     #[test]
     fn an_import_answer_names_its_account() {

@@ -37,6 +37,13 @@ const WIRE_FIXED32: u32 = 5;
 /// The most bytes a varint may take (`protobuf` reads at most ten).
 const MAX_VARINT_BYTES: usize = 10;
 
+/// The most groups nested in one another: what `protobuf` reads (its
+/// recursion limit of 100 lets 101 levels through, counted from a group at
+/// the top of the message). The skip recurses once per level, so without a
+/// limit a reply of tens of thousands of start-group tags overflowed the
+/// stack and ended the process.
+const MAX_GROUP_DEPTH: u32 = 101;
+
 /// Where a value's wire type comes in the order the unknown-field map
 /// yields one tag's values: fixed32s, then fixed64s, varints, and
 /// length-delimited values.
@@ -93,10 +100,12 @@ impl<'a> Reader<'a> {
             .map(|b| u64::from_le_bytes(b.try_into().expect("eight bytes")))
     }
 
-    /// A length-delimited value: a `u32` length (a longer varint is truncated
-    /// to one, as `protobuf` does) and that many bytes.
+    /// A length-delimited value: a `u32` length and that many bytes. A
+    /// length that does not fit a `u32` is refused, as `protobuf` refuses
+    /// it: truncated, it wrapped, and the tolerant walk
+    /// ([`leading_varints`]) carried on misaligned.
     fn length_delimited(&mut self) -> Option<&'a [u8]> {
-        let len = self.varint()? as u32;
+        let len = u32::try_from(self.varint()?).ok()?;
         self.take(len as usize)
     }
 
@@ -112,7 +121,12 @@ impl<'a> Reader<'a> {
 
     /// Skip a group's contents up to and including the next end group tag
     /// (any field's: `protobuf` does not check that it is this group's).
-    fn skip_group(&mut self) -> Option<()> {
+    /// `depth` is this group's nesting level, 1 for a group at the top;
+    /// past [`MAX_GROUP_DEPTH`] the message is refused.
+    fn skip_group(&mut self, depth: u32) -> Option<()> {
+        if depth > MAX_GROUP_DEPTH {
+            return None;
+        }
         loop {
             let (_, wire) = self.tag()?;
             match wire {
@@ -125,7 +139,7 @@ impl<'a> Reader<'a> {
                 WIRE_LENGTH_DELIMITED => {
                     self.length_delimited()?;
                 }
-                WIRE_START_GROUP => self.skip_group()?,
+                WIRE_START_GROUP => self.skip_group(depth + 1)?,
                 WIRE_END_GROUP => return Some(()),
                 WIRE_FIXED32 => {
                     self.fixed32()?;
@@ -134,6 +148,33 @@ impl<'a> Reader<'a> {
             }
         }
     }
+}
+
+/// The top-level varint values of `bytes`, in wire order, read tolerantly:
+/// fixed and length-delimited fields (and groups) are skipped by their
+/// length, and the walk ends at the first field that is malformed or runs
+/// past the end, keeping what came before it. For a payload whose tail is
+/// not protobuf at all (a signature after the fields).
+pub(crate) fn leading_varints(bytes: &[u8]) -> Vec<u64> {
+    let mut reader = Reader { bytes, at: 0 };
+    let mut out = Vec::new();
+    while !reader.done() {
+        let Some((_, wire)) = reader.tag() else {
+            break;
+        };
+        let read = match wire {
+            WIRE_VARINT => reader.varint().map(|value| out.push(value)),
+            WIRE_FIXED64 => reader.fixed64().map(drop),
+            WIRE_LENGTH_DELIMITED => reader.length_delimited().map(drop),
+            WIRE_START_GROUP => reader.skip_group(1),
+            WIRE_FIXED32 => reader.fixed32().map(drop),
+            _ => None,
+        };
+        if read.is_none() {
+            break;
+        }
+    }
+    out
 }
 
 /// Read `bytes` as one message, or `None` if it is not well-formed.
@@ -152,7 +193,7 @@ pub(crate) fn fields(bytes: &[u8]) -> Option<Fields<'_>> {
             // A group is skipped unrecorded; a tag whose only fields were
             // groups is a tag the map never saw.
             WIRE_START_GROUP => {
-                reader.skip_group()?;
+                reader.skip_group(1)?;
                 continue;
             }
             WIRE_END_GROUP => return None,
@@ -368,5 +409,59 @@ mod tests {
         for bytes in cases {
             assert_eq!(ours(bytes), reference(bytes), "bytes {bytes:02x?}");
         }
+    }
+
+    /// `depth` groups nested in one another, closed, then a varint field.
+    fn nested_groups(depth: usize) -> Vec<u8> {
+        let mut bytes = vec![0x0b; depth];
+        bytes.extend(std::iter::repeat_n(0x0c, depth));
+        bytes.extend([0x10, 0x05]);
+        bytes
+    }
+
+    #[test]
+    fn groups_nest_as_deep_as_protobuf_lets_them() {
+        for depth in [1, 99, 100, 101, 102, 150] {
+            let bytes = nested_groups(depth);
+            assert_eq!(ours(&bytes), reference(&bytes), "depth {depth}");
+            assert_eq!(fields(&bytes).is_some(), depth <= 101, "depth {depth}");
+        }
+    }
+
+    #[test]
+    fn a_hundred_thousand_open_groups_end_the_walk_not_the_process() {
+        // A start-group tag and nothing else, 100,000 times; then the same
+        // closed, with a varint after them.
+        let open = vec![0x0b; 100_000];
+        assert_eq!(fields(&open), None);
+        assert_eq!(leading_varints(&open), Vec::<u64>::new());
+        let mut led = vec![0x08, 0x2a];
+        led.extend(nested_groups(100_000));
+        assert_eq!(fields(&led), None);
+        assert_eq!(leading_varints(&led), vec![42], "what came before is kept");
+    }
+
+    #[test]
+    fn a_length_that_does_not_fit_ends_the_walk() {
+        // Field 2, length 2^32 + 2: truncated to 2 it would take the next
+        // two bytes as the value and read the varint after them.
+        let mut bytes = vec![0x08, 0x07, 0x12];
+        varint_bytes((1 << 32) + 2, &mut bytes);
+        bytes.extend([0x18, 0x09, 0x20, 0x0b]);
+        assert_eq!(leading_varints(&bytes), vec![7]);
+        // The same inside a group the walk skips.
+        let mut grouped = vec![0x08, 0x07, 0x1b, 0x12];
+        varint_bytes((1 << 32) + 2, &mut grouped);
+        grouped.extend([0x18, 0x09, 0x1c, 0x20, 0x0b]);
+        assert_eq!(leading_varints(&grouped), vec![7]);
+        // A length that fits still reads on.
+        assert_eq!(
+            leading_varints(&[0x08, 0x07, 0x12, 0x02, 0x18, 0x09, 0x20, 0x0b]),
+            vec![7, 11]
+        );
+        // The full reader refuses it, as `protobuf` does.
+        assert_eq!(ours(&bytes), None);
+        assert_eq!(ours(&bytes), reference(&bytes));
+        assert_eq!(ours(&grouped), reference(&grouped));
     }
 }

@@ -27,6 +27,7 @@ On the developer page: [what a file holds](https://teyvat.me/developers#file) an
 | [`leyline`](https://teyvat.me/developers#file) (the Leyline version, `1`) | yes | yes |
 | `gi_achievements`, `gi_achievement_times`, `gi_player`, `gi_characters`, `gi_anecdotes`, `gi_tasks`, `gi_collections`, `gi_wardrobe`, `gi_exploration`, `gi_achievement_progress`, `gi_events`, `gi_teapot`, `gi_miliastra`, `gi_endgame` | yes | yes |
 | [`gi_guid` and `gi_exp`](https://teyvat.me/developers#gi_guid) on each weapon and artifact | no | yes |
+| `gi_rolls` on each artifact (every substat roll, in order) | yes | yes |
 | `gi_capture` (why the snapshot was taken) | no | yes |
 | `gi_off` (the parts you chose not to share, see below) | no | yes |
 
@@ -59,6 +60,7 @@ Each key links to its entry on the [developer page](https://teyvat.me/developers
 | [`gi_exploration`](https://teyvat.me/developers#gi_exploration) | Statues of The Seven, offerings, the map points and areas you've unlocked, exploration per area, reputation, domains cleared and Natlan's tribal chapters. |
 | [`gi_wardrobe`](https://teyvat.me/developers#gi_wardrobe) | Outfits, wind gliders, weapon skins and sprint trails you own and who wears them, and your saved teams. |
 | [`gi_endgame`](https://teyvat.me/developers#gi_endgame) | The Imaginarium Theater season you're in, the difficulty you picked and the acts you cleared; your Stygian Onslaught records (difficulty, time per boss, your team). |
+| `gi_rolls` | On each artifact: every substat roll in the game's order, two digits a roll: the line (index into `substats`) and the tier (1 = that stat's lowest roll at this rarity). Absent when a roll is unknown to the game data or belongs to another rarity, when the artifact has none, and on the five stars the "fake 4th line" option rewrote (any +0 to +3 one still holding an unactivated substat). In saved files and uploads, and live sync sends its changes. |
 | [`gi_capture`](https://teyvat.me/developers#gi_capture) | Uploads only: why this snapshot was taken, and which game login it belongs to. |
 | `gi_off` | Uploads only: the parts switched off in Settings › Sharing, by name, `[]` when everything is shared (absent from builds before 1.18). A file exported from teyvat.me carries the list too when the capture had parts off; it leaves an empty list out, so there an absent key can also mean everything was shared. The names: `characters`, `weapons`, `artifacts`, `materials`, `gi_player.profile`, `gi_player.numbers`, `gi_achievements` (with its times and progress), `gi_anecdotes`, `gi_tasks`, `gi_endgame`, `gi_exploration`, `gi_collections`, `gi_wardrobe`, `gi_teapot`, `gi_events`, `gi_miliastra`. `characters` covers `gi_characters` too. A part that is off is left out of the upload: its key is absent (for the four GOOD sections too, never an empty list), and live sync sends nothing under it. With `gi_player.numbers` off, `gi_player` still carries `uid` when uploads are placed by UID, `gi_tasks` has no `resin` or `resinSpent`, and `materials` has no `OriginalResin`; with `gi_teapot` off, `gi_tasks` has no `realm` and `materials` has no `RealmCurrency`. |
 

@@ -79,6 +79,8 @@ nothing.
 changes its files, and your data goes nowhere unless you choose a destination.
 Like every tool of this kind, it is used at your own risk.
 
+**Bilibili server:** expected to work, but not yet tested by us.
+
 ## What it does
 
 <picture>

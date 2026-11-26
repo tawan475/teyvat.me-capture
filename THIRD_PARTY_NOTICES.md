@@ -132,7 +132,8 @@ the original authors, Gradle Inc.).
 
 - `apps/desktop/keys/gi.json` and `crates/protocol/keys/*.pem` are the keys the
   game's client uses, carried over from irminsul and auto-artifactarium as they
-  were. They are not licensed by Teyvat.me.
+  were, plus one key added later for the Bilibili server. They are not licensed
+  by Teyvat.me.
 - The game data Teyvat.me downloads at build time comes from Dimbreath's public
   dump; it is not part of this repository.
 

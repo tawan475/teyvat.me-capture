@@ -502,7 +502,7 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
         if (uploadingFlow.value || batchInFlight) return
         val next = NativeBridge.liveNextTick(live)
         if (next < 0 || System.currentTimeMillis() < next) return
-        val action = NativeBridge.liveTick(live) ?: return
+        val action = NativeBridge.liveTick(live, finalBatchApi == Links.trackerApi) ?: return
         when {
             action.startsWith("S") -> {
                 val ticket = action.substring(1).substringBefore('\n').toLongOrNull() ?: return
@@ -557,8 +557,9 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
             batchInFlight = false
             NativeBridge.batchAnswered(status, body)
             val stored = status in 200..299 && runCatching { JSONObject(body).optBoolean("ok") && !JSONObject(body).optBoolean("duplicate") }.getOrDefault(false)
-            if (stored) {
-                val changes = runCatching { JSONObject(delta).optJSONArray("changes")?.length() ?: 0 }.getOrDefault(0)
+            val changes = runCatching { JSONObject(delta).optJSONArray("changes")?.length() ?: 0 }.getOrDefault(0)
+            // A final batch that closed the journal with nothing left to send is silent.
+            if (stored && changes > 0) {
                 liveFlow.value = LiveResult(System.currentTimeMillis(), changes)
                 NativeBridge.note("ok", context.getString(R.string.live_changes_sent, grouped(changes), Links.trackerHost))
             }
@@ -820,9 +821,17 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
     @Volatile
     private var gzipApi: String? = null
 
-    /** Read `upload.gzip` from a verify-key, whoami or import answer; the newest answer decides. */
+    /**
+     * The tracker address that said a game login may end its live journal with a final batch
+     * (`upload.finalBatch`), this run; until then a login ends on its logout snapshot.
+     */
+    @Volatile
+    private var finalBatchApi: String? = null
+
+    /** Read `upload.gzip` and `upload.finalBatch` from a verify-key, whoami or import answer; the newest answer decides. */
     private fun noteUploadOptions(answer: JSONObject) {
         gzipApi = if (acceptsGzip(answer)) Links.trackerApi else null
+        finalBatchApi = if (acceptsFinalBatch(answer)) Links.trackerApi else null
     }
 
     // -- the refresh token, encrypted -----------------------------------------------
@@ -907,9 +916,20 @@ class Tracker(private val context: Context, private val prefs: Prefs, private va
 
 /** The account id an import answer names (`account.id`, the hosted tracker's), if any. */
 /** Whether a tracker answer says snapshot uploads may be gzipped (the desktop's `accepts_gzip`). */
-internal fun acceptsGzip(answer: JSONObject): Boolean =
-    listOfNotNull(answer, answer.optJSONObject("data"))
-        .firstNotNullOfOrNull { it.optJSONObject("upload")?.opt("gzip") as? Boolean } ?: false
+internal fun acceptsGzip(answer: JSONObject): Boolean = uploadOption(answer, "gzip", JSONObject::optJSONObject, JSONObject::opt)
+
+/** Whether a tracker answer says a login may end on a final batch (the desktop's `accepts_final_batch`). */
+internal fun acceptsFinalBatch(answer: JSONObject): Boolean =
+    uploadOption(answer, "finalBatch", JSONObject::optJSONObject, JSONObject::opt)
+
+/**
+ * `upload.<option>` is `true` at the top of [answer] or in the old backend's `data` wrapper.
+ * [child] reads a member that is an object (null otherwise), [member] any member; generic so the
+ * JVM unit tests can read plain maps (org.json is a stub there).
+ */
+internal fun <T : Any> uploadOption(answer: T, option: String, child: (T, String) -> T?, member: (T, String) -> Any?): Boolean =
+    listOfNotNull(answer, child(answer, "data"))
+        .firstNotNullOfOrNull { at -> child(at, "upload")?.let { member(it, option) as? Boolean } } ?: false
 
 /** [text] as a gzip stream, or null if that fails (the plain JSON goes then). */
 internal fun gzipped(text: String): ByteArray? = runCatching {

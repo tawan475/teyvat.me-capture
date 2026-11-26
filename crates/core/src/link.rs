@@ -17,9 +17,14 @@ pub const PRESENCE_PATH: &str = "irminsul/presence";
 
 /// The heartbeat's interval when the answer names none.
 pub const DEFAULT_NEXT_SECS: u64 = 60;
-/// The bounds a tracker's `next` is held to.
+/// The bounds a tracker's `next` is held to. The top leaves the tracker
+/// room for a long idle beat (it answers 600) without another release.
 pub const MIN_NEXT_SECS: u64 = 10;
-pub const MAX_NEXT_SECS: u64 = 300;
+pub const MAX_NEXT_SECS: u64 = 900;
+/// A heartbeat that went unanswered goes again after the tracker's
+/// interval, but never later than this: a long idle beat must not leave a
+/// change of state unheard for a quarter of an hour.
+pub const MAX_RETRY_SECS: u64 = 300;
 
 /// Original Resin's cap: `resinFull` is an alert at this.
 pub const RESIN_CAP: u32 = 200;
@@ -269,7 +274,9 @@ impl Heartbeat {
                 self.next_at = Some(now + self.interval_ms);
             }
             PresenceOutcome::Gone => self.gone = true,
-            PresenceOutcome::Retry => self.next_at = Some(now + self.interval_ms),
+            PresenceOutcome::Retry => {
+                self.next_at = Some(now + self.interval_ms.min(MAX_RETRY_SECS * 1000));
+            }
         }
     }
 
@@ -371,10 +378,49 @@ mod tests {
     #[test]
     fn the_interval_is_held_to_its_bounds_and_defaults() {
         assert_eq!(PresenceAnswer::parse(r#"{"next": 1}"#).next_secs, 10);
-        assert_eq!(PresenceAnswer::parse(r#"{"next": 9000}"#).next_secs, 300);
+        assert_eq!(PresenceAnswer::parse(r#"{"next": 0}"#).next_secs, 10);
+        assert_eq!(PresenceAnswer::parse(r#"{"next": 300}"#).next_secs, 300);
+        assert_eq!(PresenceAnswer::parse(r#"{"next": 600}"#).next_secs, 600);
+        assert_eq!(PresenceAnswer::parse(r#"{"next": 900}"#).next_secs, 900);
+        assert_eq!(PresenceAnswer::parse(r#"{"next": 901}"#).next_secs, 900);
+        assert_eq!(PresenceAnswer::parse(r#"{"next": 9000}"#).next_secs, 900);
         assert_eq!(PresenceAnswer::parse(r#"{"next": "30"}"#).next_secs, 30);
         assert_eq!(PresenceAnswer::parse("{}").next_secs, 60);
         assert_eq!(PresenceAnswer::parse("not json").next_secs, 60);
+        assert_eq!(PresenceAnswer::parse(r#"{"next": "soon"}"#).next_secs, 60);
+        assert_eq!(PresenceAnswer::parse(r#"{"next": -5}"#).next_secs, 60);
+        assert_eq!(PresenceAnswer::parse(r#"{"next": null}"#).next_secs, 60);
+    }
+
+    #[test]
+    fn a_long_interval_spaces_beats_but_not_retries() {
+        let mut beat = Heartbeat::new();
+        let now = 1_000_000;
+        let running = PresenceState::Running;
+        beat.sending(running, None, now);
+        beat.answered(&PresenceOutcome::of(200, r#"{"next": 600}"#), now);
+        assert_eq!(beat.due_at(running, None), Some(now + 600_000));
+
+        // The beat after it fails: again after at most the retry bound.
+        let at = now + 600_000;
+        beat.sending(running, None, at);
+        beat.answered(&PresenceOutcome::Retry, at);
+        assert_eq!(beat.due_at(running, None), Some(at + 300_000));
+
+        // A short interval retries at its own pace, as before.
+        let mut beat = Heartbeat::new();
+        beat.sending(running, None, now);
+        beat.answered(&PresenceOutcome::of(200, r#"{"next": 15}"#), now);
+        beat.sending(running, None, now + 15_000);
+        beat.answered(&PresenceOutcome::of(503, ""), now + 15_000);
+        assert_eq!(beat.due_at(running, None), Some(now + 30_000));
+
+        // At 900, a change of state still goes at once.
+        let mut beat = Heartbeat::new();
+        beat.sending(running, None, now);
+        beat.answered(&PresenceOutcome::of(200, r#"{"next": 900}"#), now);
+        assert_eq!(beat.due_at(running, None), Some(now + 900_000));
+        assert_eq!(beat.due_at(PresenceState::Decoding, None), Some(0));
     }
 
     #[test]

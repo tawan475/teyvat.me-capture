@@ -79,6 +79,19 @@ const UID_MAJORITY: f64 = 0.9;
 /// enough: more than every other top half together.
 const UID_BACKED_MAJORITY: f64 = 0.5;
 
+/// The fewest characters whose guids, agreeing among themselves
+/// ([`UID_MAJORITY`]), are enough to contradict the login's UID by
+/// themselves ([`PlayerData::characters_uid`]).
+const CHARACTERS_CONTRADICT_MIN: usize = 3;
+
+/// [`PlayerData::resolved_uid`]'s answer.
+struct ResolvedUid {
+    uid: Option<u32>,
+    /// `login`, `items`, or `withheld` (no UID although the login stated
+    /// one); `None` with no UID at all.
+    source: Option<&'static str>,
+}
+
 /// `AvatarInfo.avatar_type` of an owned character (0 none, 2 trial, 3 mirror).
 const AVATAR_TYPE_FORMAL: u32 = 1;
 
@@ -748,9 +761,19 @@ pub struct PlayerHandover {
     exploration: exploration::ExplorationState,
     endgame: endgame::EndgameState,
     commission_reward: CommissionReward,
+    /// The login's UID ([`PlayerData::login_uid`]). Absent in a hand-over
+    /// from 1.18.4 and earlier: the item guids' vote answers then.
+    #[serde(default)]
+    login_uid: Option<u32>,
 }
 
 impl PlayerHandover {
+    /// The login UID the account data carries ([`PlayerData::login_uid`]
+    /// when written): the reader compares it with the sniffer's copy.
+    pub fn login_uid(&self) -> Option<u32> {
+        self.login_uid
+    }
+
     /// Items and characters carried (diagnostics).
     pub fn counts(&self) -> (usize, usize) {
         (self.items.len(), self.characters.len())
@@ -845,6 +868,19 @@ pub struct PlayerData {
     /// updates are told apart by the account's guids), and reading it walks
     /// the whole inventory. Cleared wherever `items` is written.
     uid_cache: Cell<Option<Option<u32>>>,
+    /// The UID the held login's token response stated
+    /// ([`set_login_uid`](Self::set_login_uid)): what
+    /// [`account_uid`](Self::account_uid) answers first. Per login: cleared
+    /// by [`reset`](Self::reset).
+    login_uid: Option<u32>,
+    /// The disagreement last warned about: the login's UID, the guids'
+    /// vote and which answer it gave (`login`, `items` or `withheld`), so a
+    /// disagreement is said once, not on every read, and a change of answer
+    /// within one login is said again.
+    uid_disagreement: Cell<Option<(u32, Option<u32>, &'static str)>>,
+    /// The disagreement warnings logged (tests count them).
+    #[cfg(test)]
+    uid_warnings: Cell<usize>,
     properties: HashMap<u32, u64>,
     /// The Travel Accounts book as the game last sent it in full. The game
     /// re-sends the whole book each time it is asked for it, so the newest
@@ -904,6 +940,10 @@ impl PlayerData {
             characters: HashMap::new(),
             items: HashMap::new(),
             uid_cache: Cell::new(None),
+            login_uid: None,
+            uid_disagreement: Cell::new(None),
+            #[cfg(test)]
+            uid_warnings: Cell::new(0),
             properties: HashMap::new(),
             anecdotes: None,
             routine: Routine::default(),
@@ -958,6 +998,8 @@ impl PlayerData {
         self.characters.clear();
         self.items.clear();
         self.uid_cache.set(None);
+        self.login_uid = None;
+        self.uid_disagreement.set(None);
         self.properties.clear();
         self.anecdotes = None;
         self.routine = Routine::default();
@@ -1163,6 +1205,11 @@ impl PlayerData {
             RoutinePart::Home(found) => self.routine.home = Some(found),
             RoutinePart::Welkin(days) => self.routine.welkin = Some(days),
             RoutinePart::WishPath(found) => self.routine.wish_path = Some(found),
+            // In co-op the reply lists the host's bosses: kept, it replaced
+            // every time of the player's own with the host's.
+            RoutinePart::Bosses(_) if self.in_another_world() => {
+                tracing::debug!("bosses of another player's world: not kept");
+            }
             RoutinePart::Bosses(found) => match &mut self.routine.bosses {
                 // A reply in play lists only some of the bosses (on 7.2, the
                 // ones with a single spot): it says nothing of the others,
@@ -1458,12 +1505,13 @@ impl PlayerData {
     ///
     /// The matcher reports *candidates* found by shape, so only items whose
     /// guid's top half is the account's UID (read off the held inventory, see
-    /// [`Self::account_uid`]) are taken; with no inventory held there is no
+    /// `guid_uid`) are taken; with no inventory held there is no
     /// UID and nothing is taken (the login's full send comes first anyway). A
     /// material whose count is now 0 is dropped. Zero means "some other
     /// packet", as for [`Self::remove_items`].
     pub fn change_items(&mut self, items: &[Item]) -> usize {
-        let Some(uid) = self.account_uid() else {
+        // The guids' own UID: what an item's guid is compared against.
+        let Some(uid) = self.guid_uid() else {
             return 0;
         };
         let mine: Vec<Item> = items
@@ -1890,8 +1938,115 @@ impl PlayerData {
         }
     }
 
-    /// The account UID, read off the captured item guids.
+    /// The UID the held login's token response stated, if it was adopted
+    /// (see `crate::decode::adopt_login_uid`).
+    pub fn login_uid(&self) -> Option<u32> {
+        self.login_uid
+    }
+
+    /// Take the held login's UID from its token response (`None`: it stated
+    /// none). Only for the login whose data is held: only
+    /// `crate::decode::adopt_login_uid` calls it, so no app can stamp a UID
+    /// outside that rule.
+    pub(crate) fn set_login_uid(&mut self, uid: Option<u32>) {
+        self.login_uid = uid;
+    }
+
+    /// The account UID, where it comes from (`login`: the token response;
+    /// `items`: the item guids' vote) or that it is withheld, without a word
+    /// logged.
+    ///
+    /// The login's UID, unless the guids' vote names another one and the
+    /// characters back that vote ([`Self::characters_back_uid`]): a
+    /// character is always the account's own, so that is direct evidence of
+    /// whose data is held, and a login UID contradicting it was misread,
+    /// is stale or was forged. With no vote yet (before the bag), a vote the
+    /// characters do not back (a bag heavy with other players' items) or
+    /// agreement, the login's UID answers, as long as the characters by
+    /// themselves do not name another UID ([`Self::characters_uid`]). When
+    /// they do and no vote they back says so too, no UID is believed for now
+    /// (`withheld`): an export without one is refused where one is needed,
+    /// while a confident wrong one would be filed under that account.
+    fn resolved_uid(&self) -> ResolvedUid {
+        let guids = self.guid_uid();
+        let Some(login) = self.login_uid else {
+            return ResolvedUid {
+                uid: guids,
+                source: guids.map(|_| "items"),
+            };
+        };
+        if let Some(guids) = guids
+            && guids != login
+            && self.characters_back_uid(u64::from(guids))
+        {
+            return ResolvedUid {
+                uid: Some(guids),
+                source: Some("items"),
+            };
+        }
+        if self
+            .characters_uid()
+            .is_some_and(|characters| characters != login)
+        {
+            return ResolvedUid {
+                uid: None,
+                source: Some("withheld"),
+            };
+        }
+        ResolvedUid {
+            uid: Some(login),
+            source: Some("login"),
+        }
+    }
+
+    /// The account UID: see [`Self::resolved_uid`]. A disagreement between
+    /// the login's UID and the guids' vote or the characters is warned of
+    /// once per pair and answer.
     pub fn account_uid(&self) -> Option<u32> {
+        let resolved = self.resolved_uid();
+        let Some(login) = self.login_uid else {
+            return resolved.uid;
+        };
+        let guids = self.guid_uid();
+        let disagreement =
+            guids.is_some_and(|guids| guids != login) || resolved.source == Some("withheld");
+        let key = (login, guids, resolved.source.unwrap_or("none"));
+        if disagreement && self.uid_disagreement.get() != Some(key) {
+            self.uid_disagreement.set(Some(key));
+            #[cfg(test)]
+            self.uid_warnings.set(self.uid_warnings.get() + 1);
+            match resolved.source {
+                Some("items") => tracing::warn!(
+                    source = "items",
+                    "the login reply's UID and the item guids' UID differ, and the characters' \
+                     guids back the item guids; using the item guids'"
+                ),
+                Some("withheld") => tracing::warn!(
+                    source = "none",
+                    "the characters' guids name another UID than the login reply's, and no item \
+                     vote they back says which; no UID until one does"
+                ),
+                _ => tracing::warn!(
+                    source = "login",
+                    "the login reply's UID and the item guids' UID differ, and the characters' \
+                     guids do not back the item guids; using the login reply's"
+                ),
+            }
+        }
+        resolved.uid
+    }
+
+    /// Where [`account_uid`](Self::account_uid) comes from: `login` (the
+    /// token response) or `items` (the item guids' vote); `None` with no UID.
+    fn uid_source(&self) -> Option<&'static str> {
+        let resolved = self.resolved_uid();
+        resolved.uid.and(resolved.source)
+    }
+
+    /// The UID the captured item guids vote for: what an item's or a
+    /// character's own guid is compared against (`change_items`,
+    /// `added_avatar`), whatever the login said.
+    fn guid_uid(&self) -> Option<u32> {
         if let Some(uid) = self.uid_cache.get() {
             #[cfg(test)]
             assert_eq!(uid, self.item_uid().0, "the cached UID missed a change");
@@ -1939,6 +2094,26 @@ impl PlayerData {
         total > 0 && (agreeing as f64) >= (total as f64) * UID_MAJORITY
     }
 
+    /// The UID the characters' guids name by themselves: the top half
+    /// [`Self::characters_back_uid`] holds for, among at least
+    /// [`CHARACTERS_CONTRADICT_MIN`] characters. Never the export's UID by
+    /// itself; it only keeps a login UID that contradicts it from being
+    /// believed ([`Self::resolved_uid`]).
+    fn characters_uid(&self) -> Option<u32> {
+        let mut tops: BTreeMap<u64, usize> = BTreeMap::new();
+        for avatar in self.characters.values().filter(|avatar| avatar.guid != 0) {
+            *tops.entry(avatar.guid >> 32).or_default() += 1;
+        }
+        let total: usize = tops.values().sum();
+        if total < CHARACTERS_CONTRADICT_MIN {
+            return None;
+        }
+        tops.into_iter()
+            .filter(|(top, _)| *top != 0)
+            .find(|(top, _)| self.characters_back_uid(*top))
+            .and_then(|(top, _)| u32::try_from(top).ok())
+    }
+
     /// How the account UID is read off the captured item guids, with the
     /// evidence (logged with every export).
     ///
@@ -1950,8 +2125,10 @@ impl PlayerData {
     /// [`UID_MAJORITY`] of the items share, or more than half of them when
     /// the characters' guids back it ([`Self::characters_back_uid`]); a real
     /// split claims nothing. Character guids never name a UID by themselves.
+    /// The check's `uid` is the exported one, which is the login's when its
+    /// token response stated it (`source` says which).
     pub fn uid_check(&self) -> good::UidCheck {
-        let (uid, item_tops) = self.item_uid();
+        let (_, item_tops) = self.item_uid();
         let mut avatar_tops: BTreeMap<u64, usize> = BTreeMap::new();
         for avatar in self.characters.values() {
             *avatar_tops.entry(avatar.guid >> 32).or_default() += 1;
@@ -1970,8 +2147,14 @@ impl PlayerData {
             .max_by_key(|(_, n)| **n)
             .map(|(top, n)| (*top, *n));
         let agreeing = best.map_or(0, |(_, n)| n);
+        // The UID the export carries, and where it came from: the vote's
+        // own result only when the login stated none.
+        let withheld = (self.resolved_uid().source == Some("withheld"))
+            .then(|| "the characters' guids name another UID than the login reply's".to_string());
         good::UidCheck {
-            uid,
+            uid: self.account_uid(),
+            source: self.uid_source().map(str::to_owned),
+            withheld,
             agreeing,
             total,
             item_top_halves: most_first(&item_tops),
@@ -2158,6 +2341,7 @@ impl PlayerData {
             exploration: self.exploration.clone(),
             endgame: self.endgame.clone(),
             commission_reward: self.commission_reward.clone(),
+            login_uid: self.login_uid,
         }
     }
 
@@ -2190,6 +2374,8 @@ impl PlayerData {
             })
             .collect();
         self.uid_cache.set(None);
+        self.login_uid = handover.login_uid;
+        self.uid_disagreement.set(None);
         self.properties = handover.properties;
         self.anecdotes = handover.anecdotes;
         self.routine = handover.routine;
@@ -2370,6 +2556,7 @@ impl PlayerData {
         match uid_check.uid {
             Some(uid) => tracing::info!(
                 uid,
+                source = uid_check.source.as_deref().unwrap_or("?"),
                 agreeing = uid_check.agreeing,
                 total = uid_check.total,
                 items = ?uid_check.item_top_halves,
@@ -2386,14 +2573,22 @@ impl PlayerData {
                         s.top
                     ))
                     .collect::<Vec<_>>(),
-                "account UID read from the item guids"
+                "account UID for this export (source: login = the token response, items = the item guids)"
+            ),
+            // Withheld: the login stated one, the characters name another.
+            None if uid_check.withheld.is_some() => tracing::info!(
+                agreeing = uid_check.agreeing,
+                total = uid_check.total,
+                items = ?uid_check.item_top_halves,
+                avatars = ?uid_check.avatar_top_halves,
+                "no account UID: withheld; the login stated one and the characters' guids name another, with no item vote they back"
             ),
             None => tracing::info!(
                 agreeing = uid_check.agreeing,
                 total = uid_check.total,
                 items = ?uid_check.item_top_halves,
                 avatars = ?uid_check.avatar_top_halves,
-                "no account UID: the item guids' top halves don't agree enough"
+                "no account UID: the login stated none and the item guids' top halves don't agree enough"
             ),
         }
 
@@ -2818,6 +3013,12 @@ impl PlayerData {
                 // Counted here rather than from `append_prop_id_list.len()` so
                 // that `total_rolls` can never contradict `substats`.
                 let mut total_rolls = 0u32;
+                // `gi_rolls`: a (line, tier) digit pair per roll, kept only
+                // while every roll is known (all or nothing: an unknown id
+                // shrinks `total_rolls`, so the length cannot tell).
+                let mut rolls = Some(String::with_capacity(
+                    2 * artifact.append_prop_id_list.len(),
+                ));
                 for substat_id in artifact.append_prop_id_list.iter() {
                     let Ok(substat) = self.game_data.get_affix(*substat_id) else {
                         tracing::warn!(
@@ -2826,14 +3027,31 @@ impl PlayerData {
                             "no game data for artifact affix; the substat is omitted"
                         );
                         report.record_dropped("unknown_affix");
+                        rolls = None;
                         continue;
                     };
                     total_rolls += 1;
+                    let line = substats.get_index_of(&substat.property);
                     let entry = substats
                         .entry(substat.property)
                         .or_insert((0., substat.value as f32));
                     entry.0 += substat.value as f32;
+                    if let Some(text) = &mut rolls {
+                        let line = line.unwrap_or(substats.len() - 1);
+                        // A roll of another rarity's group (`<group>NNT`,
+                        // group 501 for a 5★) is not this artifact's: its
+                        // tier would be ranked on the wrong table.
+                        let own_rarity = *substat_id / 100_000 == artifact_data.rarity;
+                        match self.game_data.roll_tier(*substat_id) {
+                            Some(tier @ 1..=9) if line <= 9 && own_rarity => {
+                                text.push(char::from(b'0' + line as u8));
+                                text.push(char::from(b'0' + tier));
+                            }
+                            _ => rolls = None,
+                        }
+                    }
                 }
+                let gi_rolls = rolls.filter(|text| !text.is_empty());
                 let substats = substats
                     .into_iter()
                     .map(|(property, (value, initial_value))| good::Substat {
@@ -2903,6 +3121,8 @@ impl PlayerData {
                     astral_mark,
                     elixir_crafted,
                     unactivated_substats,
+                    // Every export, not only tracker uploads.
+                    gi_rolls,
                     gi_guid: (settings.item_guids && item.guid != 0).then(|| item.guid.to_string()),
                     // Beside the guid it belongs to.
                     gi_exp: (settings.item_guids && item.guid != 0)
@@ -3322,6 +3542,19 @@ mod tests {
     /// Export settings that filter nothing out: the tracker's.
     fn settings() -> ExportSettings {
         ExportSettings::for_tracker()
+    }
+
+    /// Every artifact roll affix (groups 101 to 501, all tiers of every
+    /// stat) as a `TestGameData::affix_map`: the rows of the pinned
+    /// `game-data/ExcelBinOutput/ReliquaryAffixExcelConfigData.json.gz`
+    /// (public game data) as `fetch_affix_map` stores them. With fewer tiers
+    /// of a stat every roll of it would rank tier 1 and `gi_rolls` would lie.
+    fn roll_affixes() -> &'static str {
+        include_str!("../tests/fixtures/reliquary-roll-affixes.json")
+            .trim()
+            .strip_prefix('{')
+            .and_then(|inside| inside.strip_suffix('}'))
+            .unwrap()
     }
 
     fn character(avatar_id: u32, skill_levels: &[(u32, u32)]) -> AvatarInfo {
@@ -4177,6 +4410,273 @@ mod tests {
     }
 
     #[test]
+    fn the_logins_uid_wins_over_the_guids_vote() {
+        let mut data = player_data();
+        // Before any item or character: the login's UID is already known.
+        data.set_login_uid(Some(812_345_678));
+        assert_eq!(data.account_uid(), Some(812_345_678));
+        assert_eq!(data.gi_player().and_then(|p| p.uid), Some(812_345_678));
+        let check = data.uid_check();
+        assert_eq!(check.uid, Some(812_345_678));
+        assert_eq!(check.source.as_deref(), Some("login"));
+
+        // The guids agreeing changes nothing, and warns of nothing.
+        let own: Vec<_> = (1..=20)
+            .map(|n| material_item(104_000 + n, minted_guid(812_345_678, u64::from(n)), 3))
+            .collect();
+        data.process_items(&own);
+        assert_eq!(data.account_uid(), Some(812_345_678));
+        assert_eq!(data.uid_warnings.get(), 0);
+
+        // Reset: the login's UID goes with the login, the vote answers.
+        data.reset();
+        assert_eq!(data.login_uid(), None);
+        assert_eq!(data.account_uid(), None);
+        data.process_items(&own);
+        assert_eq!(data.account_uid(), Some(812_345_678));
+        assert_eq!(data.uid_check().source.as_deref(), Some("items"));
+        assert_eq!(data.uid_check().uid, Some(812_345_678));
+    }
+
+    #[test]
+    fn a_disagreement_is_warned_of_once_and_the_login_is_believed() {
+        let mut data = player_data();
+        data.process_items(
+            &(1..=20)
+                .map(|n| material_item(104_000 + n, minted_guid(800_000_001, u64::from(n)), 3))
+                .collect::<Vec<_>>(),
+        );
+        data.set_login_uid(Some(812_345_678));
+        for _ in 0..5 {
+            assert_eq!(data.account_uid(), Some(812_345_678));
+        }
+        let (good, _) = data.export_at(&ExportSettings::for_tracker(), 1_700_000_000_000);
+        assert_eq!(good.gi_player.unwrap().uid, Some(812_345_678));
+        assert_eq!(data.uid_warnings.get(), 1, "once per disagreement");
+        // Another disagreement is said again.
+        data.set_login_uid(Some(812_345_679));
+        data.account_uid();
+        data.account_uid();
+        assert_eq!(data.uid_warnings.get(), 2);
+        // The vote itself is unchanged, cache and all.
+        assert_eq!(data.guid_uid(), Some(800_000_001));
+    }
+
+    #[test]
+    fn changed_items_are_checked_against_the_guids_uid_not_the_logins() {
+        let mut data = player_data();
+        data.process_items(
+            &(1..=20)
+                .map(|n| material_item(104_000 + n, minted_guid(800_000_001, u64::from(n)), 3))
+                .collect::<Vec<_>>(),
+        );
+        data.set_login_uid(Some(812_345_678));
+        // An item of the login's number but not the guids' is not taken...
+        assert_eq!(
+            data.change_items(&[material_item(104_001, minted_guid(812_345_678, 1), 9)]),
+            0
+        );
+        // ...one of the guids' number is.
+        assert_eq!(
+            data.change_items(&[material_item(104_001, minted_guid(800_000_001, 1), 9)]),
+            1
+        );
+    }
+
+    #[test]
+    fn a_login_uid_names_a_co_op_heavy_account_before_its_characters_come() {
+        // The 1.18.3 case: most of the bag picked up in other players'
+        // worlds, and the characters not here yet. The vote claims nothing;
+        // the login's UID is known all the same.
+        let own = |n: u64| material_item(104_000 + n as u32, minted_guid(812_345_678, n), 3);
+        let foreign =
+            |n: u64| material_item(105_000 + n as u32, minted_guid(800_000_100 + n % 3, n), 1);
+        let mut data = player_data();
+        data.set_login_uid(Some(812_345_678));
+        data.process_items(&(1..=10).map(own).collect::<Vec<_>>());
+        data.process_items(&(1..=30).map(foreign).collect::<Vec<_>>());
+        assert_eq!(data.guid_uid(), None, "the vote alone claims nothing");
+        assert_eq!(data.account_uid(), Some(812_345_678));
+        assert!(data.characters.is_empty());
+        assert_eq!(
+            data.uid_warnings.get(),
+            0,
+            "no vote, nothing to disagree with"
+        );
+    }
+
+    #[test]
+    fn characters_that_contradict_the_login_uid_win_and_each_answer_is_warned_of() {
+        // The bag and every character say 800000001; the login said
+        // 812345678 (misread, stale or forged): the characters are direct
+        // evidence of whose data this is.
+        let mut data = player_data();
+        data.set_login_uid(Some(812_345_678));
+        data.process_items(
+            &(1..=20)
+                .map(|n| material_item(104_000 + n, minted_guid(800_000_001, u64::from(n)), 3))
+                .collect::<Vec<_>>(),
+        );
+        // Before the characters the login answers (the vote alone is not
+        // enough to overrule it).
+        assert_eq!(data.account_uid(), Some(812_345_678));
+        assert_eq!(data.uid_check().source.as_deref(), Some("login"));
+        assert_eq!(data.uid_warnings.get(), 1);
+
+        let characters: Vec<_> = (0..3u32)
+            .map(|n| {
+                let mut avatar = character(10_000_002 + n, &[]);
+                avatar.guid = minted_guid(800_000_001, 1_000 + u64::from(n));
+                avatar
+            })
+            .collect();
+        data.process_characters(&characters);
+        for _ in 0..3 {
+            assert_eq!(data.account_uid(), Some(800_000_001));
+        }
+        let check = data.uid_check();
+        assert_eq!(check.uid, Some(800_000_001));
+        assert_eq!(check.source.as_deref(), Some("items"));
+        let (good, _) = data.export_at(&ExportSettings::for_tracker(), 1_700_000_000_000);
+        assert_eq!(good.gi_player.unwrap().uid, Some(800_000_001));
+        // The same numbers, but another answer within the login: said
+        // again, once (login used, then items used: two lines).
+        assert_eq!(data.uid_warnings.get(), 2);
+    }
+
+    /// `count` characters whose guids carry `uid`.
+    fn characters_of(uid: u64, count: u32) -> Vec<AvatarInfo> {
+        (0..count)
+            .map(|n| {
+                let mut avatar = character(10_000_002 + n, &[]);
+                avatar.guid = minted_guid(uid, 1_000 + u64::from(n));
+                avatar
+            })
+            .collect()
+    }
+
+    #[test]
+    fn characters_that_contradict_the_login_with_no_vote_leave_no_uid() {
+        // The login said 812345678; the bag is all other players' items
+        // (no vote), and every character says 800000001.
+        let foreign =
+            |n: u64| material_item(105_000 + n as u32, minted_guid(800_000_100 + n % 3, n), 1);
+        let mut data = player_data();
+        data.set_login_uid(Some(812_345_678));
+        data.process_items(&(1..=30).map(foreign).collect::<Vec<_>>());
+        assert_eq!(data.guid_uid(), None, "no vote");
+        // Two characters are not enough to overrule the login.
+        data.process_characters(&characters_of(800_000_001, 2));
+        assert_eq!(data.account_uid(), Some(812_345_678));
+        assert_eq!(data.uid_warnings.get(), 0);
+
+        data.process_characters(&characters_of(800_000_001, 4));
+        for _ in 0..3 {
+            assert_eq!(data.account_uid(), None);
+        }
+        assert_eq!(data.uid_warnings.get(), 1, "one warning");
+        let check = data.uid_check();
+        assert_eq!(check.uid, None);
+        assert_eq!(check.source, None);
+        assert!(check.withheld.is_some(), "the check says why");
+        let (good, _) = data.export_at(&ExportSettings::for_tracker(), 1_700_000_000_000);
+        assert_eq!(good.gi_player.and_then(|player| player.uid), None);
+        assert_eq!(data.uid_warnings.get(), 1, "still one");
+    }
+
+    #[test]
+    fn exactly_the_fewest_characters_contradict_the_login() {
+        // CHARACTERS_CONTRADICT_MIN characters, no fewer, are enough.
+        let foreign =
+            |n: u64| material_item(105_000 + n as u32, minted_guid(800_000_100 + n % 3, n), 1);
+        let mut data = player_data();
+        data.set_login_uid(Some(812_345_678));
+        data.process_items(&(1..=30).map(foreign).collect::<Vec<_>>());
+        data.process_characters(&characters_of(800_000_001, 3));
+        assert_eq!(data.characters.len(), 3);
+        assert_eq!(data.account_uid(), None, "three characters withhold it");
+        assert!(data.uid_check().withheld.is_some());
+    }
+
+    #[test]
+    fn characters_that_contradict_the_login_with_a_backed_vote_give_the_vote() {
+        let mut data = player_data();
+        data.set_login_uid(Some(812_345_678));
+        data.process_items(
+            &(1..=20)
+                .map(|n| material_item(104_000 + n, minted_guid(800_000_001, u64::from(n)), 3))
+                .collect::<Vec<_>>(),
+        );
+        data.process_characters(&characters_of(800_000_001, 5));
+        assert_eq!(data.account_uid(), Some(800_000_001));
+        let check = data.uid_check();
+        assert_eq!(check.source.as_deref(), Some("items"));
+        assert_eq!(check.withheld, None);
+        assert_eq!(data.uid_warnings.get(), 1);
+    }
+
+    #[test]
+    fn characters_agreeing_with_the_login_keep_it_without_a_word() {
+        // The 1.18.3 co-op case with its characters: a bag mostly other
+        // players' (no vote), every character the login's own.
+        let own = |n: u64| material_item(104_000 + n as u32, minted_guid(812_345_678, n), 3);
+        let foreign =
+            |n: u64| material_item(105_000 + n as u32, minted_guid(800_000_100 + n % 3, n), 1);
+        let mut data = player_data();
+        data.set_login_uid(Some(812_345_678));
+        data.process_items(&(1..=10).map(own).collect::<Vec<_>>());
+        data.process_items(&(1..=30).map(foreign).collect::<Vec<_>>());
+        data.process_characters(&characters_of(812_345_678, 6));
+        assert_eq!(data.account_uid(), Some(812_345_678));
+        let check = data.uid_check();
+        assert_eq!(check.source.as_deref(), Some("login"));
+        assert_eq!(check.withheld, None);
+        assert_eq!(data.uid_warnings.get(), 0);
+    }
+
+    #[test]
+    fn the_login_and_the_characters_agreeing_warn_of_nothing() {
+        let mut data = player_data();
+        data.set_login_uid(Some(812_345_678));
+        data.process_items(
+            &(1..=20)
+                .map(|n| material_item(104_000 + n, minted_guid(812_345_678, u64::from(n)), 3))
+                .collect::<Vec<_>>(),
+        );
+        let mut avatar = character(10_000_002, &[]);
+        avatar.guid = minted_guid(812_345_678, 1_000);
+        data.process_characters(&[avatar]);
+        assert_eq!(data.account_uid(), Some(812_345_678));
+        assert_eq!(data.uid_check().source.as_deref(), Some("login"));
+        assert_eq!(data.uid_warnings.get(), 0);
+    }
+
+    #[test]
+    fn a_hand_over_carries_the_login_uid() {
+        let mut data = player_data();
+        data.process_items(&[material_item(104001, minted_guid(812_345_678, 1), 3)]);
+        data.set_login_uid(Some(812_345_678));
+        let handover = data.handover();
+        let json = serde_json::to_vec(&handover).unwrap();
+        let back: PlayerHandover = serde_json::from_slice(&json).unwrap();
+        assert_eq!(back, handover);
+        let mut resumed = player_data();
+        resumed.resume(back);
+        assert_eq!(resumed.login_uid(), Some(812_345_678));
+
+        // A hand-over written by 1.18.4 has no such field: it loads, and the
+        // vote answers as it did there.
+        let mut json: serde_json::Value = serde_json::to_value(&handover).unwrap();
+        json.as_object_mut().unwrap().remove("login_uid");
+        let old: PlayerHandover = serde_json::from_value(json).unwrap();
+        let mut resumed = player_data();
+        resumed.set_login_uid(Some(812_345_679));
+        assert_eq!(resumed.resume(old), 0);
+        assert_eq!(resumed.login_uid(), None, "not a login UID it held before");
+        assert_eq!(resumed.account_uid(), Some(812_345_678));
+    }
+
+    #[test]
     fn guids_that_split_claim_no_uid() {
         let mut data = player_data();
         data.process_items(&[
@@ -4211,8 +4711,7 @@ mod tests {
     /// Teyvat.me adds beside GOOD. The two differ in nothing GOOD can see.
     fn golden_player_data(extras: bool) -> PlayerData {
         let game_data = TestGameData {
-            affix_map: r#""501204": {"property": "CritRate", "value": 3.89},
-                          "501234": {"property": "CritDamage", "value": 7.77}"#,
+            affix_map: roll_affixes(),
             artifact_map: r#""81524": {"set": "Crimson Witch of Flames", "slot": "Flower", "rarity": 5}"#,
             character_map: r#""10000046": "Hu Tao""#,
             material_map: r#""104003": "Hero's Wit""#,
@@ -4253,7 +4752,9 @@ mod tests {
         let mut reliquary = teyvatme_protocol::r#gen::protos::Reliquary::new();
         reliquary.level = 21;
         reliquary.main_prop_id = 10001;
-        reliquary.append_prop_id_list = vec![501204, 501234, 501204];
+        // Crit Rate 3.89, Crit DMG 7.77, Crit Rate 3.89: each its stat's
+        // highest roll (`gi_rolls` "041404").
+        reliquary.append_prop_id_list = vec![501204, 501224, 501204];
         equip.set_reliquary(reliquary);
         artifact.set_equip(equip);
 
@@ -4357,7 +4858,9 @@ mod tests {
         r#""rarity":5,"mainStatKey":"hp","location":"HuTao","lock":true,"#,
         r#""substats":[{"key":"critRate_","value":7.8,"initialValue":3.9},"#,
         r#"{"key":"critDMG_","value":7.8,"initialValue":7.8}],"#,
-        r#""totalRolls":3,"astralMark":false,"elixirCrafted":false,"unactivatedSubstats":[]}],"#,
+        r#""totalRolls":3,"astralMark":false,"elixirCrafted":false,"unactivatedSubstats":[],"#,
+        // Teyvat.me's roll list: in every export, with or without the extras.
+        r#""gi_rolls":"041404"}],"#,
         r#""weapons":[{"key":"StaffOfHoma","level":90,"ascension":6,"refinement":1,"#,
         r#""location":"HuTao","lock":true}],"#,
         r#""materials":{"HerosWit":12},"gi_achievements":[80014],"timestamp":1756000000000}"#,
@@ -5380,6 +5883,50 @@ mod tests {
     }
 
     #[test]
+    fn a_hosts_boss_list_is_not_kept() {
+        use teyvatme_protocol::{BossList, SceneRequest};
+        let mut data = PlayerData::new(
+            TestGameData {
+                exploration: r#""cities": [1], "reputation_cities": [1], "offerings": [1],
+                    "areas": [1], "scene_points": {"3": [7], "5": [1], "6": [2]}"#,
+                ..Default::default()
+            }
+            .build(),
+        );
+        let mut item = Item::new();
+        item.guid = (812_345_678_u64 << 32) | 5;
+        item.item_id = 104_001;
+        item.mut_material().count = 1;
+        data.process_items(&[item]);
+        let ask = |data: &mut PlayerData, owner: u32| {
+            for scene in [3, 5, 6] {
+                data.note_scene_request(1649, SceneRequest { owner, scene });
+            }
+        };
+        let list = |time: u32| {
+            RoutinePart::Bosses(BossList {
+                respawns: BTreeMap::from([(1, vec![time]), (6, vec![time])]),
+                weekly: None,
+            })
+        };
+        let own = BTreeMap::from([(1, vec![10]), (6, vec![10])]);
+        ask(&mut data, 812_345_678);
+        data.process_routine(list(10));
+        assert_eq!(data.routine.bosses.as_ref().unwrap().respawns, own);
+        // Co-op: the reply is the host's.
+        ask(&mut data, 811_111_111);
+        data.process_routine(list(99));
+        assert_eq!(data.routine.bosses.as_ref().unwrap().respawns, own);
+        // Home again.
+        ask(&mut data, 812_345_678);
+        data.process_routine(list(20));
+        assert_eq!(
+            data.routine.bosses.as_ref().unwrap().respawns,
+            BTreeMap::from([(1, vec![20]), (6, vec![20])])
+        );
+    }
+
+    #[test]
     fn another_message_in_the_aranara_shape_does_not_replace_the_list() {
         use teyvatme_protocol::AranaraState::{Collectable, Finished, None as Unmet};
         let real: BTreeMap<u32, BTreeMap<u32, _>> = BTreeMap::from([(
@@ -5908,6 +6455,32 @@ mod tests {
         assert!(data.gi_endgame().is_some() && data.attach_uid().is_some());
         data.set_sharing(share(&[Part::Numbers], false));
         assert!(data.attach_uid().is_none());
+    }
+
+    #[test]
+    fn an_export_made_before_an_endgame_change_does_not_hold_it() {
+        use teyvatme_protocol::TheaterDetail;
+
+        let mut data = endgame_data();
+        data.process_items(&[material_item(104002, minted_guid(812_345_678, 7), 12)]);
+        // As the upload button sends it: JSON made earlier, read back.
+        let made_now = |data: &PlayerData| -> good::Good {
+            let (good, _) = data.export_at(&ExportSettings::default(), 0);
+            serde_json::from_str(&serde_json::to_string(&good).unwrap()).unwrap()
+        };
+        let before = made_now(&data);
+        assert!(data.holds_endgame_of(&before), "nothing changed");
+        assert!(data.apply_theater(&TheaterDetail {
+            start: 1_793_476_800,
+            end: 1_796_068_799,
+            arcana: None,
+            small: vec![31, 8, 19, 2, 7, 127, 8, 1, 8, 1],
+            lists: vec![vec![1, 2, 3], vec![1, 2], vec![3, 6], vec![1, 2, 3]],
+        }));
+        assert!(!data.holds_endgame_of(&before), "made before the change");
+        let after = made_now(&data);
+        assert!(after.gi_endgame.is_some());
+        assert!(data.holds_endgame_of(&after), "read back equal");
     }
 
     #[test]
@@ -6928,10 +7501,7 @@ mod tests {
     fn low_rarity_inventory() -> PlayerData {
         let mut data = PlayerData::new(
             TestGameData {
-                affix_map: r#""501204": {"property": "CritRate", "value": 3.89},
-                              "501234": {"property": "CritDamage", "value": 7.77},
-                              "501024": {"property": "AttackPercent", "value": 5.83},
-                              "501054": {"property": "EnergyRecharge", "value": 6.48}"#,
+                affix_map: roll_affixes(),
                 artifact_map: r#""71510": {"set": "Adventurer", "slot": "Flower", "rarity": 1},
                                  "73510": {"set": "Lucky Dog", "slot": "Flower", "rarity": 2},
                                  "81524": {"set": "Crimson Witch of Flames", "slot": "Flower", "rarity": 5}"#,
@@ -6945,8 +7515,9 @@ mod tests {
         );
         data.process_items(&[
             artifact_item(71510, 1, 1, &[], &[]),
-            artifact_item(73510, 2, 1, &[501204], &[]),
-            artifact_item(81524, 3, 1, &[501204, 501234, 501024], &[501054]),
+            artifact_item(73510, 2, 1, &[201203], &[]),
+            // Crit Rate, Crit DMG, ATK%; Energy Recharge unactivated.
+            artifact_item(81524, 3, 1, &[501204, 501224, 501064], &[501234]),
             weapon_item(11101, 4, 1),
             weapon_item(11201, 5, 1),
             weapon_item(13501, 6, 90),
@@ -7033,6 +7604,289 @@ mod tests {
                 && tracker_settings.include_weapons
                 && tracker_settings.include_materials
         );
+    }
+
+    // -- gi_rolls ----------------------------------------------------------------
+
+    /// One artifact item id per rarity, 1★ to 5★.
+    const ROLL_ARTIFACTS: &str = r#""71510": {"set": "Adventurer", "slot": "Flower", "rarity": 1},
+        "73510": {"set": "Lucky Dog", "slot": "Flower", "rarity": 2},
+        "74510": {"set": "Traveling Doctor", "slot": "Flower", "rarity": 3},
+        "75510": {"set": "Instructor", "slot": "Flower", "rarity": 4},
+        "81524": {"set": "Crimson Witch of Flames", "slot": "Flower", "rarity": 5}"#;
+
+    fn roll_item_id(rarity: u64) -> u32 {
+        match rarity {
+            1 => 71510,
+            2 => 73510,
+            3 => 74510,
+            4 => 75510,
+            _ => 81524,
+        }
+    }
+
+    /// Artifacts over every roll affix of the game, plus `extra_affixes`.
+    fn roll_player_data(extra_affixes: &str) -> PlayerData {
+        let affix_map: &'static str = if extra_affixes.is_empty() {
+            roll_affixes()
+        } else {
+            Box::leak(format!("{}, {extra_affixes}", roll_affixes()).into_boxed_str())
+        };
+        PlayerData::new(
+            TestGameData {
+                affix_map,
+                artifact_map: ROLL_ARTIFACTS,
+                property_map: r#""10001": "Hp""#,
+                ..Default::default()
+            }
+            .build(),
+        )
+    }
+
+    /// The one artifact `data` exports with `settings`, as its file's JSON.
+    fn exported_artifact(data: &PlayerData, settings: &ExportSettings) -> serde_json::Value {
+        let (good, _) = data.export_at(settings, GOLDEN_TIMESTAMP_MS);
+        assert_eq!(good.artifacts.len(), 1);
+        let json = serde_json::to_string(&good.artifacts[0]).unwrap();
+        serde_json::from_str(&json).unwrap()
+    }
+
+    /// Every number as an f64, so `21.0` and `21` compare equal.
+    fn numeric(value: &serde_json::Value) -> serde_json::Value {
+        use serde_json::Value;
+        match value {
+            Value::Number(number) => serde_json::json!(number.as_f64().unwrap()),
+            Value::Array(items) => Value::Array(items.iter().map(numeric).collect()),
+            Value::Object(fields) => Value::Object(
+                fields
+                    .iter()
+                    .map(|(key, value)| (key.clone(), numeric(value)))
+                    .collect(),
+            ),
+            other => other.clone(),
+        }
+    }
+
+    #[test]
+    fn every_contract_case_exports_its_substats_and_its_gi_rolls() {
+        let cases: serde_json::Value =
+            serde_json::from_str(include_str!("../tests/fixtures/gi-rolls-cases.json")).unwrap();
+        assert_eq!(cases["contract"], "gi_rolls");
+        assert_eq!(cases["version"], 1);
+        let valid = cases["valid"].as_array().unwrap();
+        assert!(!valid.is_empty());
+        let ids = |value: &serde_json::Value| -> Vec<u32> {
+            value
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|id| id.as_u64().unwrap() as u32)
+                .collect()
+        };
+        for case in valid {
+            let name = case["name"].as_str().unwrap();
+            let expected = &case["artifact"];
+            let rarity = expected["rarity"].as_u64().unwrap();
+            let level = expected["level"].as_u64().unwrap() as u32;
+
+            let mut data = roll_player_data("");
+            data.process_items(&[artifact_item(
+                roll_item_id(rarity),
+                7,
+                level + 1,
+                &ids(&case["affixIds"]),
+                &ids(&case["unactivatedAffixIds"]),
+            )]);
+            let out = exported_artifact(&data, &ExportSettings::for_tracker());
+            for key in [
+                "rarity",
+                "level",
+                "substats",
+                "totalRolls",
+                "unactivatedSubstats",
+                "gi_rolls",
+            ] {
+                assert_eq!(numeric(&out[key]), numeric(&expected[key]), "{name}: {key}");
+            }
+        }
+    }
+
+    #[test]
+    fn an_unknown_roll_drops_gi_rolls_and_leaves_the_rest_as_it_was() {
+        // 941001 is in the game data but not an artifact roll group.
+        let mut data = roll_player_data(r#""941001": {"property": "CritRate", "value": 2.0}"#);
+        let known = [501204, 501224, 501064, 501204];
+        data.process_items(&[artifact_item(81524, 7, 9, &known, &[])]);
+        let whole = exported_artifact(&data, &ExportSettings::for_tracker());
+        assert_eq!(whole["gi_rolls"], "04142404");
+
+        for unknown in [999_999, 941_001] {
+            for at in [0, 2, 4] {
+                let mut list = known.to_vec();
+                list.insert(at, unknown);
+                data.process_items(&[artifact_item(81524, 7, 9, &list, &[])]);
+                let mut out = exported_artifact(&data, &ExportSettings::for_tracker());
+                assert_eq!(out.get("gi_rolls"), None, "{unknown} at {at}");
+                if unknown == 999_999 {
+                    // Skipped as before: the same substats and roll count.
+                    out["gi_rolls"] = whole["gi_rolls"].clone();
+                    assert_eq!(out, whole, "{unknown} at {at}");
+                }
+            }
+        }
+
+        // No rolls: no key, never an empty string.
+        data.process_items(&[artifact_item(81524, 7, 1, &[], &[])]);
+        let out = exported_artifact(&data, &ExportSettings::for_tracker());
+        assert_eq!(out.get("gi_rolls"), None);
+    }
+
+    #[test]
+    fn a_roll_of_another_rarity_drops_gi_rolls_and_leaves_the_rest() {
+        let mut data = roll_player_data("");
+        // A 5★ whose last roll is a 4★ group's (401204, CRIT Rate 3.11).
+        data.process_items(&[artifact_item(
+            81524,
+            7,
+            9,
+            &[501204, 501224, 501064, 401204],
+            &[],
+        )]);
+        let out = exported_artifact(&data, &ExportSettings::for_tracker());
+        assert_eq!(out.get("gi_rolls"), None);
+        // Everything else is written as before: the roll still counts.
+        assert_eq!(numeric(&out["totalRolls"]), serde_json::json!(4.0));
+        assert_eq!(
+            numeric(&out["substats"]),
+            numeric(&serde_json::json!([
+                {"key": "critRate_", "value": 7.0, "initialValue": 3.9},
+                {"key": "critDMG_", "value": 7.8, "initialValue": 7.8},
+                {"key": "atk_", "value": 5.8, "initialValue": 5.8},
+            ]))
+        );
+
+        // A 4★ (75510) with a 5★ group's roll loses it too; its own keep it.
+        let mut data = roll_player_data("");
+        data.process_items(&[artifact_item(75510, 7, 5, &[401204, 501224], &[])]);
+        let out = exported_artifact(&data, &ExportSettings::for_tracker());
+        assert_eq!(out.get("gi_rolls"), None);
+        data.process_items(&[artifact_item(75510, 7, 5, &[401204, 401224], &[])]);
+        let out = exported_artifact(&data, &ExportSettings::for_tracker());
+        assert_eq!(out["gi_rolls"], "0414");
+    }
+
+    #[test]
+    fn a_saved_file_carries_gi_rolls_too() {
+        // The user's Genshin Optimizer settings, not the tracker's.
+        let data = golden_player_data(false);
+        for settings in [ExportSettings::default(), optimizer_settings()] {
+            let out = exported_artifact(&data, &settings);
+            assert_eq!(out["gi_rolls"], "041404");
+        }
+    }
+
+    #[test]
+    fn a_faked_4th_line_drops_gi_rolls_and_only_there() {
+        let mut data = low_rarity_inventory();
+        // A 5★ four-liner the workaround leaves alone.
+        data.process_items(&[artifact_item(
+            81524,
+            8,
+            1,
+            &[501204, 501224, 501064, 501234],
+            &[],
+        )]);
+        let (good, _) = data.export_at(&optimizer_settings(), GOLDEN_TIMESTAMP_MS);
+        assert_eq!(good.artifacts.len(), 2);
+        for artifact in &good.artifacts {
+            if artifact.level == 4 {
+                // Rewritten from +0: its list would not match its substats.
+                assert_eq!(artifact.gi_rolls, None);
+            } else {
+                assert_eq!(artifact.gi_rolls.as_deref(), Some("04142434"));
+            }
+        }
+        // The tracker's export never fakes, so the three-liner keeps its rolls.
+        let (tracker, _) = data.export_at(&ExportSettings::for_tracker(), GOLDEN_TIMESTAMP_MS);
+        let three_liner = tracker
+            .artifacts
+            .iter()
+            .find(|a| a.rarity == 5 && a.unactivated_substats.len() == 1)
+            .unwrap();
+        assert_eq!(three_liner.gi_rolls.as_deref(), Some("041424"));
+    }
+
+    #[test]
+    fn live_sync_adds_sets_and_deletes_gi_rolls() {
+        use crate::delta::{Change, diff};
+
+        let at = |field: &str| -> crate::delta::Path {
+            let mut path = vec!["artifacts".to_string(), "7".to_string()];
+            if !field.is_empty() {
+                path.push(field.to_string());
+            }
+            path
+        };
+        let mut data = roll_player_data("");
+        let (_, _, before) = data.live_export(GOLDEN_TIMESTAMP_MS);
+
+        // A new piece: added whole, its rolls with it.
+        data.process_items(&[artifact_item(81524, 7, 1, &[501204, 501224, 501064], &[])]);
+        let (_, _, added) = data.live_export(GOLDEN_TIMESTAMP_MS);
+        let changes = diff(&before, &added);
+        assert_eq!(changes.len(), 1);
+        let Change::Add(path, item) = &changes[0] else {
+            panic!("{changes:?}");
+        };
+        assert_eq!(path, &at(""));
+        assert_eq!(item["gi_rolls"], "041424");
+
+        // A level-up: one more roll, sent as a changed field.
+        data.process_items(&[artifact_item(
+            81524,
+            7,
+            5,
+            &[501204, 501224, 501064, 501221],
+            &[],
+        )]);
+        let (_, _, levelled) = data.live_export(GOLDEN_TIMESTAMP_MS);
+        let changes = diff(&added, &levelled);
+        assert!(
+            changes.contains(&Change::Set(at("gi_rolls"), serde_json::json!("04142411"))),
+            "{changes:?}"
+        );
+        assert!(changes.contains(&Change::Set(at("level"), serde_json::json!(4))));
+
+        // A roll the data does not know: the key goes, as a delete.
+        data.process_items(&[artifact_item(
+            81524,
+            7,
+            5,
+            &[501204, 501224, 501064, 501221, 999_999],
+            &[],
+        )]);
+        let (_, _, unknown) = data.live_export(GOLDEN_TIMESTAMP_MS);
+        assert_eq!(
+            diff(&levelled, &unknown),
+            vec![Change::Del(at("gi_rolls"), None)]
+        );
+    }
+
+    #[test]
+    fn every_roll_affix_in_the_test_data_ranks_as_its_last_digit() {
+        // The fixture is the pinned table's rows; the game data crate checks
+        // the same against the pinned file itself.
+        let data = roll_player_data("");
+        let rows: serde_json::Value = serde_json::from_str(include_str!(
+            "../tests/fixtures/reliquary-roll-affixes.json"
+        ))
+        .unwrap();
+        let rows = rows.as_object().unwrap();
+        assert_eq!(rows.len(), 170);
+        for id in rows.keys() {
+            let id: u32 = id.parse().unwrap();
+            assert_eq!(data.game_data.roll_tier(id), Some((id % 10) as u8), "{id}");
+        }
     }
 
     #[test]

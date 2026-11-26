@@ -101,7 +101,7 @@ object NativeBridge {
     external fun liveNextTick(live: Boolean): Long
 
     /** `"S<ticket>\n<GOOD JSON>"` (a snapshot), `"B\n<delta JSON>"` (a batch), `"A\n<attach JSON>"` (the endgame parts), or null. */
-    external fun liveTick(live: Boolean): String?
+    external fun liveTick(live: Boolean, finalBatch: Boolean): String?
 
     /** A snapshot upload finished: the tracker's answer, or null when it failed. */
     external fun snapshotAnswered(ticket: Long, body: String?)

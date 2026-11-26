@@ -393,7 +393,7 @@ impl PlayerData {
 
     /// Whether the scene requests say the player is in another player's
     /// world (co-op).
-    fn in_another_world(&self) -> bool {
+    pub(super) fn in_another_world(&self) -> bool {
         let owner = self.exploration.world.owner;
         owner.is_some_and(|owner| self.account_uid().is_some_and(|uid| uid != owner))
     }

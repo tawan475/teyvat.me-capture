@@ -192,14 +192,35 @@ fn read_and_write(
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
-    let json = uigf::to_uigf(
+    let item_ids = item_ids();
+    let file = uigf::to_uigf(
         &history,
+        &item_ids,
         exported,
         "Teyvat.me Capture",
         env!("CARGO_PKG_VERSION"),
     );
-    std::fs::write(path, json).map_err(|e| failed(trf("couldn't write the file: {0}", &[&e])))?;
+    if file.unknown_items > 0 {
+        tracing::info!(
+            records = file.unknown_items,
+            "wish history: records without an item id (names this build's game data lacks)"
+        );
+    }
+    std::fs::write(path, file.json)
+        .map_err(|e| failed(trf("couldn't write the file: {0}", &[&e])))?;
     Ok(history.records.len())
+}
+
+/// The item ids the file fills in, from the embedded game data (read again
+/// here: the monitor holds its copy, and the file is written once).
+fn item_ids() -> uigf::ItemIds {
+    match crate::monitor::load_game_data() {
+        Ok(data) => uigf::ItemIds::from_game_data(&data),
+        Err(e) => {
+            tracing::warn!("wish history: no game data for the item ids: {e:#}");
+            uigf::ItemIds::default()
+        }
+    }
 }
 
 fn failed(why: String) -> HistoryError {
@@ -209,6 +230,44 @@ fn failed(why: String) -> HistoryError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_embedded_game_data_fills_wish_item_ids() {
+        use teyvatme_core::wish::api::ApiRecord;
+        use teyvatme_core::wish::history::History;
+
+        let record = |item_type: &str, name: &str, id: u64| ApiRecord {
+            uid: "812345678".to_owned(),
+            gacha_type: "301".to_owned(),
+            item_id: String::new(),
+            time: "2026-10-12 21:04:11".to_owned(),
+            name: name.to_owned(),
+            item_type: item_type.to_owned(),
+            rank_type: "5".to_owned(),
+            id: id.to_string(),
+        };
+        let history = History {
+            uid: 812_345_678,
+            region: "os_euro".to_owned(),
+            records: vec![
+                record("Character", "Diluc", 1),
+                record("Character", "Columbina", 2),
+                record("Weapon", "Primordial Jade Cutter", 3),
+                record("Weapon", "Amos' Bow", 4),
+            ],
+        };
+        let file = uigf::to_uigf(&history, &item_ids(), 0, "Teyvat.me Capture", "1.0.0");
+        assert_eq!(file.unknown_items, 0);
+        let json: serde_json::Value = serde_json::from_str(&file.json).unwrap();
+        let ids: Vec<&str> = json["hk4e"][0]["list"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|record| record["item_id"].as_str().unwrap())
+            .collect();
+        // Columbina and the Jade Cutter have later copies in the data.
+        assert_eq!(ids, ["10000016", "10000125", "11505", "15502"]);
+    }
 
     #[test]
     fn the_card_line_says_where_a_save_stands() {

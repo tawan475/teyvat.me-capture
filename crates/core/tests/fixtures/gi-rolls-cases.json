@@ -1,0 +1,1240 @@
+{
+ "contract": "gi_rolls",
+ "version": 1,
+ "about": "Made-up artifacts. affixIds are the game's public roll ids (ReliquaryAffixExcelConfigData), in the order the game lists them. Values keep clear of rounding edges on purpose.",
+ "valid": [
+  {
+   "name": "5-star +20, four starting lines, nine rolls",
+   "affixIds": [
+    501204,
+    501222,
+    501231,
+    501063,
+    501224,
+    501201,
+    501223,
+    501064,
+    501202
+   ],
+   "unactivatedAffixIds": [],
+   "artifact": {
+    "rarity": 5,
+    "level": 20,
+    "substats": [
+     {
+      "key": "critRate_",
+      "value": 9.7,
+      "initialValue": 3.9
+     },
+     {
+      "key": "critDMG_",
+      "value": 21.0,
+      "initialValue": 6.2
+     },
+     {
+      "key": "enerRech_",
+      "value": 4.5,
+      "initialValue": 4.5
+     },
+     {
+      "key": "atk_",
+      "value": 11.1,
+      "initialValue": 5.3
+     }
+    ],
+    "totalRolls": 9,
+    "unactivatedSubstats": [],
+    "gi_rolls": "041221331401133402"
+   },
+   "rolls": [
+    [
+     0,
+     4
+    ],
+    [
+     1,
+     2
+    ],
+    [
+     2,
+     1
+    ],
+    [
+     3,
+     3
+    ],
+    [
+     1,
+     4
+    ],
+    [
+     0,
+     1
+    ],
+    [
+     1,
+     3
+    ],
+    [
+     3,
+     4
+    ],
+    [
+     0,
+     2
+    ]
+   ]
+  },
+  {
+   "name": "5-star +20, three starting lines: the fourth line is the first upgrade",
+   "affixIds": [
+    501022,
+    501203,
+    501224,
+    501081,
+    501221,
+    501224,
+    501204,
+    501023
+   ],
+   "unactivatedAffixIds": [],
+   "artifact": {
+    "rarity": 5,
+    "level": 20,
+    "substats": [
+     {
+      "key": "hp",
+      "value": 508.0,
+      "initialValue": 239.0
+     },
+     {
+      "key": "critRate_",
+      "value": 7.4,
+      "initialValue": 3.5
+     },
+     {
+      "key": "critDMG_",
+      "value": 21.0,
+      "initialValue": 7.8
+     },
+     {
+      "key": "def",
+      "value": 16.0,
+      "initialValue": 16.0
+     }
+    ],
+    "totalRolls": 8,
+    "unactivatedSubstats": [],
+    "gi_rolls": "0213243121241403"
+   },
+   "rolls": [
+    [
+     0,
+     2
+    ],
+    [
+     1,
+     3
+    ],
+    [
+     2,
+     4
+    ],
+    [
+     3,
+     1
+    ],
+    [
+     2,
+     1
+    ],
+    [
+     2,
+     4
+    ],
+    [
+     1,
+     4
+    ],
+    [
+     0,
+     3
+    ]
+   ]
+  },
+  {
+   "name": "5-star +20, every upgrade into one line",
+   "affixIds": [
+    501224,
+    501202,
+    501051,
+    501243,
+    501224,
+    501222,
+    501223,
+    501221,
+    501224
+   ],
+   "unactivatedAffixIds": [],
+   "artifact": {
+    "rarity": 5,
+    "level": 20,
+    "substats": [
+     {
+      "key": "critDMG_",
+      "value": 42.0,
+      "initialValue": 7.8
+     },
+     {
+      "key": "critRate_",
+      "value": 3.1,
+      "initialValue": 3.1
+     },
+     {
+      "key": "atk",
+      "value": 14.0,
+      "initialValue": 14.0
+     },
+     {
+      "key": "eleMas",
+      "value": 21.0,
+      "initialValue": 21.0
+     }
+    ],
+    "totalRolls": 9,
+    "unactivatedSubstats": [],
+    "gi_rolls": "041221330402030104"
+   },
+   "rolls": [
+    [
+     0,
+     4
+    ],
+    [
+     1,
+     2
+    ],
+    [
+     2,
+     1
+    ],
+    [
+     3,
+     3
+    ],
+    [
+     0,
+     4
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     3
+    ],
+    [
+     0,
+     1
+    ],
+    [
+     0,
+     4
+    ]
+   ]
+  },
+  {
+   "name": "5-star +0, four lines, no upgrade",
+   "affixIds": [
+    501031,
+    501094,
+    501232,
+    501243
+   ],
+   "unactivatedAffixIds": [],
+   "artifact": {
+    "rarity": 5,
+    "level": 0,
+    "substats": [
+     {
+      "key": "hp_",
+      "value": 4.1,
+      "initialValue": 4.1
+     },
+     {
+      "key": "def_",
+      "value": 7.3,
+      "initialValue": 7.3
+     },
+     {
+      "key": "enerRech_",
+      "value": 5.2,
+      "initialValue": 5.2
+     },
+     {
+      "key": "eleMas",
+      "value": 21.0,
+      "initialValue": 21.0
+     }
+    ],
+    "totalRolls": 4,
+    "unactivatedSubstats": [],
+    "gi_rolls": "01142233"
+   },
+   "rolls": [
+    [
+     0,
+     1
+    ],
+    [
+     1,
+     4
+    ],
+    [
+     2,
+     2
+    ],
+    [
+     3,
+     3
+    ]
+   ]
+  },
+  {
+   "name": "5-star +0, three lines and one unactivated line (no entry for it)",
+   "affixIds": [
+    501054,
+    501201,
+    501023
+   ],
+   "unactivatedAffixIds": [
+    501222
+   ],
+   "artifact": {
+    "rarity": 5,
+    "level": 0,
+    "substats": [
+     {
+      "key": "atk",
+      "value": 19.0,
+      "initialValue": 19.0
+     },
+     {
+      "key": "critRate_",
+      "value": 2.7,
+      "initialValue": 2.7
+     },
+     {
+      "key": "hp",
+      "value": 269.0,
+      "initialValue": 269.0
+     }
+    ],
+    "totalRolls": 3,
+    "unactivatedSubstats": [
+     {
+      "key": "critDMG_",
+      "value": 6.2,
+      "initialValue": 6.2
+     }
+    ],
+    "gi_rolls": "041123"
+   },
+   "rolls": [
+    [
+     0,
+     4
+    ],
+    [
+     1,
+     1
+    ],
+    [
+     2,
+     3
+    ]
+   ]
+  },
+  {
+   "name": "5-star +8, two upgrades",
+   "affixIds": [
+    501202,
+    501223,
+    501061,
+    501234,
+    501204,
+    501231
+   ],
+   "unactivatedAffixIds": [],
+   "artifact": {
+    "rarity": 5,
+    "level": 8,
+    "substats": [
+     {
+      "key": "critRate_",
+      "value": 7.0,
+      "initialValue": 3.1
+     },
+     {
+      "key": "critDMG_",
+      "value": 7.0,
+      "initialValue": 7.0
+     },
+     {
+      "key": "atk_",
+      "value": 4.1,
+      "initialValue": 4.1
+     },
+     {
+      "key": "enerRech_",
+      "value": 11.0,
+      "initialValue": 6.5
+     }
+    ],
+    "totalRolls": 6,
+    "unactivatedSubstats": [],
+    "gi_rolls": "021321340431"
+   },
+   "rolls": [
+    [
+     0,
+     2
+    ],
+    [
+     1,
+     3
+    ],
+    [
+     2,
+     1
+    ],
+    [
+     3,
+     4
+    ],
+    [
+     0,
+     4
+    ],
+    [
+     3,
+     1
+    ]
+   ]
+  },
+  {
+   "name": "two splits with the same total: 70% + 100%",
+   "affixIds": [
+    501201,
+    501022,
+    501083,
+    501244,
+    501204
+   ],
+   "unactivatedAffixIds": [],
+   "artifact": {
+    "rarity": 5,
+    "level": 4,
+    "substats": [
+     {
+      "key": "critRate_",
+      "value": 6.6,
+      "initialValue": 2.7
+     },
+     {
+      "key": "hp",
+      "value": 239.0,
+      "initialValue": 239.0
+     },
+     {
+      "key": "def",
+      "value": 21.0,
+      "initialValue": 21.0
+     },
+     {
+      "key": "eleMas",
+      "value": 23.0,
+      "initialValue": 23.0
+     }
+    ],
+    "totalRolls": 5,
+    "unactivatedSubstats": [],
+    "gi_rolls": "0112233404"
+   },
+   "rolls": [
+    [
+     0,
+     1
+    ],
+    [
+     1,
+     2
+    ],
+    [
+     2,
+     3
+    ],
+    [
+     3,
+     4
+    ],
+    [
+     0,
+     4
+    ]
+   ],
+   "note": "critRate_ has the same value here and in the next case; only gi_rolls tells them apart"
+  },
+  {
+   "name": "two splits with the same total: 80% + 90%",
+   "affixIds": [
+    501202,
+    501022,
+    501083,
+    501244,
+    501203
+   ],
+   "unactivatedAffixIds": [],
+   "artifact": {
+    "rarity": 5,
+    "level": 4,
+    "substats": [
+     {
+      "key": "critRate_",
+      "value": 6.6,
+      "initialValue": 3.1
+     },
+     {
+      "key": "hp",
+      "value": 239.0,
+      "initialValue": 239.0
+     },
+     {
+      "key": "def",
+      "value": 21.0,
+      "initialValue": 21.0
+     },
+     {
+      "key": "eleMas",
+      "value": 23.0,
+      "initialValue": 23.0
+     }
+    ],
+    "totalRolls": 5,
+    "unactivatedSubstats": [],
+    "gi_rolls": "0212233403"
+   },
+   "rolls": [
+    [
+     0,
+     2
+    ],
+    [
+     1,
+     2
+    ],
+    [
+     2,
+     3
+    ],
+    [
+     3,
+     4
+    ],
+    [
+     0,
+     3
+    ]
+   ]
+  },
+  {
+   "name": "4-star +16, three starting lines",
+   "affixIds": [
+    401064,
+    401222,
+    401081,
+    401223,
+    401061,
+    401084,
+    401224
+   ],
+   "unactivatedAffixIds": [],
+   "artifact": {
+    "rarity": 4,
+    "level": 16,
+    "substats": [
+     {
+      "key": "atk_",
+      "value": 7.9,
+      "initialValue": 4.7
+     },
+     {
+      "key": "critDMG_",
+      "value": 16.8,
+      "initialValue": 5.0
+     },
+     {
+      "key": "def",
+      "value": 31.0,
+      "initialValue": 13.0
+     }
+    ],
+    "totalRolls": 7,
+    "unactivatedSubstats": [],
+    "gi_rolls": "04122113012414"
+   },
+   "rolls": [
+    [
+     0,
+     4
+    ],
+    [
+     1,
+     2
+    ],
+    [
+     2,
+     1
+    ],
+    [
+     1,
+     3
+    ],
+    [
+     0,
+     1
+    ],
+    [
+     2,
+     4
+    ],
+    [
+     1,
+     4
+    ]
+   ]
+  },
+  {
+   "name": "4-star +16, two starting lines",
+   "affixIds": [
+    401233,
+    401021,
+    401204,
+    401052,
+    401202,
+    401234
+   ],
+   "unactivatedAffixIds": [],
+   "artifact": {
+    "rarity": 4,
+    "level": 16,
+    "substats": [
+     {
+      "key": "enerRech_",
+      "value": 9.8,
+      "initialValue": 4.7
+     },
+     {
+      "key": "hp",
+      "value": 167.0,
+      "initialValue": 167.0
+     },
+     {
+      "key": "critRate_",
+      "value": 5.6,
+      "initialValue": 3.1
+     },
+     {
+      "key": "atk",
+      "value": 12.0,
+      "initialValue": 12.0
+     }
+    ],
+    "totalRolls": 6,
+    "unactivatedSubstats": [],
+    "gi_rolls": "031124322204"
+   },
+   "rolls": [
+    [
+     0,
+     3
+    ],
+    [
+     1,
+     1
+    ],
+    [
+     2,
+     4
+    ],
+    [
+     3,
+     2
+    ],
+    [
+     2,
+     2
+    ],
+    [
+     0,
+     4
+    ]
+   ]
+  },
+  {
+   "name": "3-star +12",
+   "affixIds": [
+    301031,
+    301244,
+    301034,
+    301241,
+    301033
+   ],
+   "unactivatedAffixIds": [],
+   "artifact": {
+    "rarity": 3,
+    "level": 12,
+    "substats": [
+     {
+      "key": "hp_",
+      "value": 9.1,
+      "initialValue": 2.5
+     },
+     {
+      "key": "eleMas",
+      "value": 24.0,
+      "initialValue": 14.0
+     }
+    ],
+    "totalRolls": 5,
+    "unactivatedSubstats": [],
+    "gi_rolls": "0114041103"
+   },
+   "rolls": [
+    [
+     0,
+     1
+    ],
+    [
+     1,
+     4
+    ],
+    [
+     0,
+     4
+    ],
+    [
+     1,
+     1
+    ],
+    [
+     0,
+     3
+    ]
+   ]
+  },
+  {
+   "name": "2-star +4, three tiers at this rarity",
+   "affixIds": [
+    201223,
+    201051
+   ],
+   "unactivatedAffixIds": [],
+   "artifact": {
+    "rarity": 2,
+    "level": 4,
+    "substats": [
+     {
+      "key": "critDMG_",
+      "value": 3.1,
+      "initialValue": 3.1
+     },
+     {
+      "key": "atk",
+      "value": 3.0,
+      "initialValue": 3.0
+     }
+    ],
+    "totalRolls": 2,
+    "unactivatedSubstats": [],
+    "gi_rolls": "0311"
+   },
+   "rolls": [
+    [
+     0,
+     3
+    ],
+    [
+     1,
+     1
+    ]
+   ],
+   "note": "tier 3 is the top tier of a 2-star"
+  },
+  {
+   "name": "1-star +4, two tiers at this rarity",
+   "affixIds": [
+    101022
+   ],
+   "unactivatedAffixIds": [],
+   "artifact": {
+    "rarity": 1,
+    "level": 4,
+    "substats": [
+     {
+      "key": "hp",
+      "value": 30.0,
+      "initialValue": 30.0
+     }
+    ],
+    "totalRolls": 1,
+    "unactivatedSubstats": [],
+    "gi_rolls": "02"
+   },
+   "rolls": [
+    [
+     0,
+     2
+    ]
+   ],
+   "note": "tier 2 is the top tier of a 1-star"
+  }
+ ],
+ "invalid": [
+  {
+   "name": "too short",
+   "why": "fewer pairs than totalRolls",
+   "artifact": {
+    "rarity": 5,
+    "level": 20,
+    "substats": [
+     {
+      "key": "critRate_",
+      "value": 9.7,
+      "initialValue": 3.9
+     },
+     {
+      "key": "critDMG_",
+      "value": 21.0,
+      "initialValue": 6.2
+     },
+     {
+      "key": "enerRech_",
+      "value": 4.5,
+      "initialValue": 4.5
+     },
+     {
+      "key": "atk_",
+      "value": 11.1,
+      "initialValue": 5.3
+     }
+    ],
+    "totalRolls": 9,
+    "unactivatedSubstats": [],
+    "gi_rolls": "0412213314011334"
+   }
+  },
+  {
+   "name": "too long",
+   "why": "more pairs than totalRolls",
+   "artifact": {
+    "rarity": 5,
+    "level": 20,
+    "substats": [
+     {
+      "key": "critRate_",
+      "value": 9.7,
+      "initialValue": 3.9
+     },
+     {
+      "key": "critDMG_",
+      "value": 21.0,
+      "initialValue": 6.2
+     },
+     {
+      "key": "enerRech_",
+      "value": 4.5,
+      "initialValue": 4.5
+     },
+     {
+      "key": "atk_",
+      "value": 11.1,
+      "initialValue": 5.3
+     }
+    ],
+    "totalRolls": 9,
+    "unactivatedSubstats": [],
+    "gi_rolls": "04122133140113340204"
+   }
+  },
+  {
+   "name": "odd length",
+   "why": "not whole pairs",
+   "artifact": {
+    "rarity": 5,
+    "level": 20,
+    "substats": [
+     {
+      "key": "critRate_",
+      "value": 9.7,
+      "initialValue": 3.9
+     },
+     {
+      "key": "critDMG_",
+      "value": 21.0,
+      "initialValue": 6.2
+     },
+     {
+      "key": "enerRech_",
+      "value": 4.5,
+      "initialValue": 4.5
+     },
+     {
+      "key": "atk_",
+      "value": 11.1,
+      "initialValue": 5.3
+     }
+    ],
+    "totalRolls": 9,
+    "unactivatedSubstats": [],
+    "gi_rolls": "04122133140113340"
+   }
+  },
+  {
+   "name": "not digits",
+   "why": "a character that is not a digit",
+   "artifact": {
+    "rarity": 5,
+    "level": 20,
+    "substats": [
+     {
+      "key": "critRate_",
+      "value": 9.7,
+      "initialValue": 3.9
+     },
+     {
+      "key": "critDMG_",
+      "value": 21.0,
+      "initialValue": 6.2
+     },
+     {
+      "key": "enerRech_",
+      "value": 4.5,
+      "initialValue": 4.5
+     },
+     {
+      "key": "atk_",
+      "value": 11.1,
+      "initialValue": 5.3
+     }
+    ],
+    "totalRolls": 9,
+    "unactivatedSubstats": [],
+    "gi_rolls": "x41221331401133402"
+   }
+  },
+  {
+   "name": "line out of range",
+   "why": "line 4 of four lines",
+   "artifact": {
+    "rarity": 5,
+    "level": 20,
+    "substats": [
+     {
+      "key": "critRate_",
+      "value": 9.7,
+      "initialValue": 3.9
+     },
+     {
+      "key": "critDMG_",
+      "value": 21.0,
+      "initialValue": 6.2
+     },
+     {
+      "key": "enerRech_",
+      "value": 4.5,
+      "initialValue": 4.5
+     },
+     {
+      "key": "atk_",
+      "value": 11.1,
+      "initialValue": 5.3
+     }
+    ],
+    "totalRolls": 9,
+    "unactivatedSubstats": [],
+    "gi_rolls": "441221331401133402"
+   }
+  },
+  {
+   "name": "tier zero",
+   "why": "tiers start at 1",
+   "artifact": {
+    "rarity": 5,
+    "level": 20,
+    "substats": [
+     {
+      "key": "critRate_",
+      "value": 9.7,
+      "initialValue": 3.9
+     },
+     {
+      "key": "critDMG_",
+      "value": 21.0,
+      "initialValue": 6.2
+     },
+     {
+      "key": "enerRech_",
+      "value": 4.5,
+      "initialValue": 4.5
+     },
+     {
+      "key": "atk_",
+      "value": 11.1,
+      "initialValue": 5.3
+     }
+    ],
+    "totalRolls": 9,
+    "unactivatedSubstats": [],
+    "gi_rolls": "001221331401133402"
+   }
+  },
+  {
+   "name": "tier past this rarity",
+   "why": "tier 5 of four",
+   "artifact": {
+    "rarity": 5,
+    "level": 20,
+    "substats": [
+     {
+      "key": "critRate_",
+      "value": 9.7,
+      "initialValue": 3.9
+     },
+     {
+      "key": "critDMG_",
+      "value": 21.0,
+      "initialValue": 6.2
+     },
+     {
+      "key": "enerRech_",
+      "value": 4.5,
+      "initialValue": 4.5
+     },
+     {
+      "key": "atk_",
+      "value": 11.1,
+      "initialValue": 5.3
+     }
+    ],
+    "totalRolls": 9,
+    "unactivatedSubstats": [],
+    "gi_rolls": "051221331401133402"
+   }
+  },
+  {
+   "name": "first roll does not match initialValue",
+   "why": "line 0 starts with tier 1, its initialValue is the tier 4 value; its total no longer adds up either",
+   "artifact": {
+    "rarity": 5,
+    "level": 20,
+    "substats": [
+     {
+      "key": "critRate_",
+      "value": 9.7,
+      "initialValue": 3.9
+     },
+     {
+      "key": "critDMG_",
+      "value": 21.0,
+      "initialValue": 6.2
+     },
+     {
+      "key": "enerRech_",
+      "value": 4.5,
+      "initialValue": 4.5
+     },
+     {
+      "key": "atk_",
+      "value": 11.1,
+      "initialValue": 5.3
+     }
+    ],
+    "totalRolls": 9,
+    "unactivatedSubstats": [],
+    "gi_rolls": "011221331401133402"
+   }
+  },
+  {
+   "name": "rolls do not add up to the value",
+   "why": "line 1's first upgrade is one tier lower, its value is not",
+   "artifact": {
+    "rarity": 5,
+    "level": 20,
+    "substats": [
+     {
+      "key": "critRate_",
+      "value": 9.7,
+      "initialValue": 3.9
+     },
+     {
+      "key": "critDMG_",
+      "value": 21.0,
+      "initialValue": 6.2
+     },
+     {
+      "key": "enerRech_",
+      "value": 4.5,
+      "initialValue": 4.5
+     },
+     {
+      "key": "atk_",
+      "value": 11.1,
+      "initialValue": 5.3
+     }
+    ],
+    "totalRolls": 9,
+    "unactivatedSubstats": [],
+    "gi_rolls": "041221331301133402"
+   }
+  },
+  {
+   "name": "a line has no roll",
+   "why": "every roll put on line 0",
+   "artifact": {
+    "rarity": 5,
+    "level": 20,
+    "substats": [
+     {
+      "key": "critRate_",
+      "value": 9.7,
+      "initialValue": 3.9
+     },
+     {
+      "key": "critDMG_",
+      "value": 21.0,
+      "initialValue": 6.2
+     },
+     {
+      "key": "enerRech_",
+      "value": 4.5,
+      "initialValue": 4.5
+     },
+     {
+      "key": "atk_",
+      "value": 11.1,
+      "initialValue": 5.3
+     }
+    ],
+    "totalRolls": 9,
+    "unactivatedSubstats": [],
+    "gi_rolls": "040201030401030402"
+   }
+  },
+  {
+   "name": "lines out of first-appearance order",
+   "why": "line 1 rolls before line 0 ever does",
+   "artifact": {
+    "rarity": 5,
+    "level": 20,
+    "substats": [
+     {
+      "key": "critRate_",
+      "value": 9.7,
+      "initialValue": 3.9
+     },
+     {
+      "key": "critDMG_",
+      "value": 21.0,
+      "initialValue": 6.2
+     },
+     {
+      "key": "enerRech_",
+      "value": 4.5,
+      "initialValue": 4.5
+     },
+     {
+      "key": "atk_",
+      "value": 11.1,
+      "initialValue": 5.3
+     }
+    ],
+    "totalRolls": 9,
+    "unactivatedSubstats": [],
+    "gi_rolls": "120421331401133402"
+   }
+  },
+  {
+   "name": "not a string",
+   "why": "a list instead of a string",
+   "artifact": {
+    "rarity": 5,
+    "level": 20,
+    "substats": [
+     {
+      "key": "critRate_",
+      "value": 9.7,
+      "initialValue": 3.9
+     },
+     {
+      "key": "critDMG_",
+      "value": 21.0,
+      "initialValue": 6.2
+     },
+     {
+      "key": "enerRech_",
+      "value": 4.5,
+      "initialValue": 4.5
+     },
+     {
+      "key": "atk_",
+      "value": 11.1,
+      "initialValue": 5.3
+     }
+    ],
+    "totalRolls": 9,
+    "unactivatedSubstats": [],
+    "gi_rolls": [
+     0,
+     4,
+     1,
+     2
+    ]
+   }
+  },
+  {
+   "name": "empty with rolls expected",
+   "why": "empty string, totalRolls 9",
+   "artifact": {
+    "rarity": 5,
+    "level": 20,
+    "substats": [
+     {
+      "key": "critRate_",
+      "value": 9.7,
+      "initialValue": 3.9
+     },
+     {
+      "key": "critDMG_",
+      "value": 21.0,
+      "initialValue": 6.2
+     },
+     {
+      "key": "enerRech_",
+      "value": 4.5,
+      "initialValue": 4.5
+     },
+     {
+      "key": "atk_",
+      "value": 11.1,
+      "initialValue": 5.3
+     }
+    ],
+    "totalRolls": 9,
+    "unactivatedSubstats": [],
+    "gi_rolls": ""
+   }
+  }
+ ]
+}

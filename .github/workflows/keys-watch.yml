@@ -1,0 +1,95 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 tawan475
+
+name: Keys watch
+# A game update can bring a dispatch key id we lack, and a login under it
+# decrypts nothing. Once a day this compares apps/desktop/keys/gi.json with
+# the public list (juliuskreutz/stardb-exporter's keys/gi.json, one read-only
+# GET) and, on a difference, opens ONE issue labelled `dispatch-keys` naming
+# the ids (never key bytes). While such an issue is open it only comments, and
+# only when this report is not already one of its posts. A closed issue that
+# already holds this report was dismissed: nothing is done; a different report
+# opens a new issue. When the list cannot be checked the run fails and opens
+# nothing. The logic and its tests:
+# .github/scripts/keys_watch.py, test_keys_watch.py.
+#
+# Scheduled workflows only run from the default branch, so this starts once it
+# reaches main.
+on:
+  schedule:
+    - cron: "43 4 * * *" # daily, off the hour when scheduled runs pile up
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  contents: read
+
+concurrency:
+  group: keys-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LABEL: dispatch-keys
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Compare our keys with the public list
+        id: compare
+        run: |
+          set +e
+          python .github/scripts/keys_watch.py --report "$RUNNER_TEMP/keys-report.md"
+          code=$?
+          set -e
+          case "$code" in
+            0) echo "differences=false" >> "$GITHUB_OUTPUT" ;;
+            3) echo "differences=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::Could not check the keys (exit $code)"; exit 1 ;;
+          esac
+      - name: Open or update the issue
+        if: steps.compare.outputs.differences == 'true'
+        run: |
+          report="$RUNNER_TEMP/keys-report.md"
+          gh label create "$LABEL" --repo tawan475/teyvat.me-capture --color d93f0b \
+            --description "Dispatch keys differ from the public list" --force
+          # The newest issue with the label, open or closed (newest first).
+          newest=$(gh issue list --repo tawan475/teyvat.me-capture --label "$LABEL" --state all \
+            --limit 1 --json number,state --jq '.[0] | select(.) | "\(.number) \(.state)"')
+          if [ -z "$newest" ]; then
+            gh issue create --repo tawan475/teyvat.me-capture --label "$LABEL" \
+              --title "Dispatch keys differ from the public list" --body-file "$report"
+            exit 0
+          fi
+          number=${newest%% *}
+          state=${newest#* }
+          # Has this report already been posted there, as the body or any
+          # comment (a human's comment in between must not make it repeat)?
+          # Compared with \r removed and trailing whitespace trimmed.
+          gh issue view "$number" --repo tawan475/teyvat.me-capture --json body,comments \
+            > "$RUNNER_TEMP/keys-posts.json"
+          seen=$(jq --rawfile report "$report" '
+            def norm: gsub("\r"; "") | sub("\\s+$"; "");
+            ($report | norm) as $want
+            | [.body, (.comments[]?.body)] | map((. // "") | norm) | any(. == $want)
+          ' "$RUNNER_TEMP/keys-posts.json")
+          if [ "$state" = "OPEN" ]; then
+            if [ "$seen" = "true" ]; then
+              echo "#$number already reports these ids"
+            else
+              gh issue comment "$number" --repo tawan475/teyvat.me-capture --body-file "$report"
+            fi
+          elif [ "$seen" = "true" ]; then
+            # Closed by the maintainer with exactly this report: dismissed.
+            echo "#$number was closed with these ids; nothing to do"
+          else
+            gh issue create --repo tawan475/teyvat.me-capture --label "$LABEL" \
+              --title "Dispatch keys differ from the public list" --body-file "$report"
+          fi

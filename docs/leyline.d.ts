@@ -69,7 +69,7 @@ export interface Leyline {
    */
   leyline?: 1
   characters: GoodCharacter[]
-  artifacts: (GoodArtifact & ItemExtras)[]
+  artifacts: (GoodArtifact & ArtifactRolls & ItemExtras)[]
   weapons: (GoodWeapon & ItemExtras)[]
   /** Material GOOD key → count. */
   materials: Record<GoodKey, number>
@@ -181,6 +181,27 @@ export interface GoodArtifact {
   unactivatedSubstats: GoodSubstat[]
 }
 
+/**
+ * Teyvat.me's roll list on each artifact. Unlike `ItemExtras` it is in every
+ * export: files saved or copied, tracker uploads and live sync (a new artifact
+ * carries it; a levelled one sends it as a changed field).
+ */
+export interface ArtifactRolls {
+  /**
+   * Every substat roll the artifact received, in the game's order: two digits a
+   * roll, the line (0-based index into `substats`, which lists each stat at its
+   * first roll) and the tier (1 = the lowest value that stat rolls at this
+   * rarity, counting up: 1-4 at 3★ to 5★, 1-3 at 2★, 1-2 at 1★). Its length is
+   * 2 × `totalRolls`; unactivated substats have no pair. Absent when any roll is
+   * unknown to the game data the export used or belongs to another rarity
+   * (never a partial list), when the artifact has no rolls, and on every five
+   * star the "fake 4th line" option rewrote (any still holding an unactivated
+   * substat, +0 to +3).
+   * Example: "041221331401133402". Contract gi_rolls v1.
+   */
+  gi_rolls?: string
+}
+
 /** Teyvat.me's additions on every weapon and artifact. Tracker uploads only (a GOOD file for Genshin Optimizer has none). */
 export interface ItemExtras {
   /** [shipped] The game's item id. Live sync names items by it. */
@@ -193,7 +214,7 @@ export interface ItemExtras {
 
 /** The property snapshot the game sends at login (not followed live, except Mora/Primogems via `materials`). */
 export interface GiPlayer {
-  /** From the item guids. (§4.4: a number here, a string in WishImport) */
+  /** As the login's reply states it, else from the item guids. (§4.4: a number here, a string in WishImport) */
   uid?: number
   /** Adventure Rank and its EXP toward the next. */
   ar?: number
@@ -592,6 +613,18 @@ export interface GiFigure {
 
 export interface GiCapture {
   v: 1
+  /**
+   * `logout`: the game login ended with its live journal open. A tracker whose answers carry
+   * `upload.finalBatch` gets a final batch instead (`LeylineDelta.end`); it still gets the logout
+   * snapshot when a part no batch carries changed during the login (achievement progress,
+   * exploration, the Serenitea Pot, collections other than the quests, the wardrobe other than
+   * the teams, `gi_player.gameData`, an item without a `gi_guid`, a key no batch path names) or
+   * when it refused the final batch. It also still gets the logout snapshot when Capture cannot
+   * tell what changed (a session resumed from a hand-over without that record), when the final
+   * batch would be too large, when the account UID is unknown, and when endgame records
+   * (`gi_endgame`) were not confirmed stored by an upload made after their last change (an attach
+   * or a snapshot). Every other tracker gets the logout snapshot, as before.
+   */
   reason: 'login' | 'world' | 'manual' | 'collapse' | 'logout' | 'resync' | 'change'
   /** This game login's id: 16+ of [A-Za-z0-9_-]. */
   session: string
@@ -645,6 +678,14 @@ export interface LeylineDelta {
   changes: DeltaChange[]
   /** [shipped] The whole account's totals after this delta, for the tracker's charts. */
   sum?: DeltaSum
+  /**
+   * The journal's last batch: the game login it follows ended (the game closed, a relogin, an
+   * alt swap, a reconnect), and this closes the journal in place of the logout snapshot. It holds
+   * what was not sent yet, possibly no change at all. Sent only to a tracker whose answers
+   * (verify-key, whoami, an import's) carry `upload.finalBatch: true`; absent otherwise, never
+   * `false`.
+   */
+  end?: true
 }
 
 /** Counts over the whole account once the delta is applied, like a snapshot's summary. */
@@ -669,7 +710,8 @@ export interface DeltaSum {
  *   characters.<key>.level|ascension|constellation    number
  *   characters.<key>.talent.auto|skill|burst          number
  *   weapons.<guid> / artifacts.<guid>                 add a whole item; del (hint {rarity})
- *   weapons.<guid>.<field> / artifacts.<guid>.<field> that field's value (gi_exp included)
+ *   weapons.<guid>.<field> / artifacts.<guid>.<field> that field's value (gi_exp and gi_rolls included);
+ *                                                     del of a field drops it (gi_rolls)
  *   gi_player.<field>                                 that field's value, any GiPlayer field:
  *                                                     nickname, signature and gameData are strings,
  *                                                     profilePicture and birthday objects, the rest

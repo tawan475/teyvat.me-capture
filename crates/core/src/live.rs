@@ -25,7 +25,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::delta::{self, GoodDelta, Keyed, Path, Sum};
+use crate::delta::{self, GoodDelta, Keyed, Path, Sum, Unbatched};
 use crate::good::{GiCapture, GiCaptureJournal, Good};
 
 /// No batch sooner than this after the previous one (except a big one).
@@ -140,6 +140,23 @@ struct Journal {
     /// older Capture, until the first export seeds the sections added since
     /// ([`LiveSync::seed`]).
     layout: u32,
+    /// The base snapshot's fingerprints of the parts no batch carries
+    /// ([`Unbatched`]), from its own export; batches never change them.
+    /// `None`: unknown (a hand-over from an older Capture), taken as changed.
+    unbatched: Option<Unbatched>,
+}
+
+/// How the ended login's journal is being closed, with the tracker's word
+/// for final batches (`upload.finalBatch`): see [`LiveSync::tick`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum Ending {
+    /// Not decided (or no login ending).
+    #[default]
+    Open,
+    /// A final batch closes it.
+    FinalBatch,
+    /// The logout snapshot does, as without the word.
+    Snapshot,
 }
 
 /// A snapshot upload in flight.
@@ -148,6 +165,10 @@ struct SnapshotFlight {
     ticket: u64,
     reason: Reason,
     keyed: Keyed,
+    /// The endgame change ([`LiveSync::note_endgame_change`]) its export
+    /// holds the state of, or `None` when it may hold an older one: once
+    /// stored, it acknowledges the endgame state only if no change came since.
+    endgame: Option<u64>,
 }
 
 /// A batch in flight.
@@ -178,6 +199,12 @@ pub struct LiveHandover {
     /// login).
     #[serde(default)]
     attach_wanted: bool,
+    /// Endgame state the tracker has not acknowledged
+    /// ([`LiveSync::note_endgame_change`]); absent from an older Capture:
+    /// unknown, taken as not acknowledged (the login then ends on a logout
+    /// snapshot, like a journal without fingerprints).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    endgame_unacked: Option<bool>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -190,6 +217,10 @@ struct JournalHandover {
     /// (layout 1 or 2, taken as another one).
     #[serde(default)]
     layout: Option<u32>,
+    /// The base's fingerprints of the parts no batch carries; absent from
+    /// an older Capture (unknown: the login then ends on a logout snapshot).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    unbatched: Option<Unbatched>,
 }
 
 /// What the monitor should do now.
@@ -286,10 +317,23 @@ impl ImportAnswer {
 /// backend's `data` wrapper. A tracker that does not say so gets plain JSON,
 /// as every tracker did before.
 pub fn accepts_gzip(answer: &serde_json::Value) -> bool {
+    upload_option(answer, "gzip")
+}
+
+/// Whether a tracker answer says a game login may end its journal with a
+/// final batch (`"end": true`) instead of a logout snapshot:
+/// `upload.finalBatch`, read like [`accepts_gzip`]. A tracker that does not
+/// say so gets the logout snapshot, as every tracker did before.
+pub fn accepts_final_batch(answer: &serde_json::Value) -> bool {
+    upload_option(answer, "finalBatch")
+}
+
+/// `upload.<option>` is `true` in `answer` or its `data` wrapper.
+fn upload_option(answer: &serde_json::Value, option: &str) -> bool {
     [Some(answer), answer.get("data")]
         .into_iter()
         .flatten()
-        .filter_map(|at| at.get("upload")?.get("gzip")?.as_bool())
+        .filter_map(|at| at.get("upload")?.get(option)?.as_bool())
         .next()
         .unwrap_or(false)
 }
@@ -387,9 +431,20 @@ pub struct LiveSync {
     attach_wanted: bool,
     /// An attach request in flight.
     attach_flight: bool,
+    /// The endgame change the attach in flight holds the state of.
+    attach_endgame: u64,
+    /// Endgame changes noted so far: an upload acknowledges the endgame
+    /// state only if it held it at or after the last one.
+    endgame_changes: u64,
     /// Not before this (a failed attach backs off like a batch).
     attach_retry_at_ms: u64,
     attach_backoff_ms: u64,
+    /// The endgame parts changed and no upload holding them as they are
+    /// now (an attach or a snapshot built after the last change) was
+    /// stored since: `gi_endgame` is in no fingerprint and no
+    /// batch, so a login that ends with this set keeps its logout snapshot
+    /// (an attach answered Dropped leaves the parts with no one else).
+    endgame_unacked: bool,
     /// The parts shared with the tracker last changed then, and the journal
     /// (kept against the old set) has not been replaced yet: see
     /// [`Self::note_sharing_changed`].
@@ -397,6 +452,13 @@ pub struct LiveSync {
     /// When the changes waiting for a batch first and last came
     /// ([`Self::note_change_at`]); `None` with nothing timed waiting.
     changing_ms: Option<(u64, u64)>,
+    /// How the ended login's journal is being closed.
+    ending: Ending,
+    /// The tracker's word for final batches at the last [`Self::tick`].
+    final_word: bool,
+    /// The parts that kept the last logout snapshot from being a final
+    /// batch ([`Self::logout_snapshot_kept`]).
+    kept_parts: Vec<String>,
 }
 
 const DAY_MS: u64 = 86_400_000;
@@ -453,6 +515,8 @@ impl LiveSync {
     /// the first full send). Before 1.17.21, records opened after the
     /// login's snapshot reached the tracker only with the next login.
     pub fn note_endgame_change(&mut self) {
+        self.endgame_unacked = true;
+        self.endgame_changes += 1;
         if self.login.is_some() {
             self.attach_wanted = true;
         }
@@ -465,6 +529,11 @@ impl LiveSync {
             AttachAnswer::Stored => {
                 self.attach_backoff_ms = 0;
                 self.attach_retry_at_ms = 0;
+                // Unless a newer change came after it was sent (waiting for
+                // its own attach, or with the login ending, for no one).
+                if !self.attach_wanted && self.attach_endgame == self.endgame_changes {
+                    self.endgame_unacked = false;
+                }
             }
             AttachAnswer::Retry => {
                 self.attach_wanted = true;
@@ -505,11 +574,13 @@ impl LiveSync {
                 entries: journal.keyed.entries.clone().into_iter().collect(),
                 hints: journal.keyed.hints.clone().into_iter().collect(),
                 layout: Some(delta::LAYOUT),
+                unbatched: journal.unbatched.clone(),
             }),
             pending: self.pending,
             last_sent_ms: self.last_sent_ms,
             watching: self.watching,
             attach_wanted: self.attach_wanted,
+            endgame_unacked: Some(self.endgame_unacked),
         })
     }
 
@@ -530,6 +601,7 @@ impl LiveSync {
             keyed: Keyed {
                 entries: journal.entries.into_iter().collect(),
                 hints: journal.hints.into_iter().collect(),
+                unbatched: Unbatched::default(),
             },
             // Keyed by an older Capture's layout (absent before 1.17.26:
             // layout 1): the sections added since are seeded from the first
@@ -537,11 +609,13 @@ impl LiveSync {
             // as 2,452 added quests, a whole snapshot. A newer layout than
             // ours is left to the diff, as any journal is.
             layout: journal.layout.unwrap_or(1).min(delta::LAYOUT),
+            unbatched: journal.unbatched,
         });
         self.pending = handover.pending;
         self.last_sent_ms = handover.last_sent_ms;
         self.watching = handover.watching;
         self.attach_wanted = handover.attach_wanted;
+        self.endgame_unacked = handover.endgame_unacked.unwrap_or(true);
         true
     }
 
@@ -632,6 +706,8 @@ impl LiveSync {
             let seq = self.journal.as_ref().map_or(0, |journal| journal.seq);
             self.logout_login = Some((login, seq));
             self.wanted = Some(Reason::Logout);
+            self.ending = Ending::Open;
+            self.kept_parts.clear();
         } else {
             // Nothing to send for it, and nothing can journal without a
             // login: the next one opens its own. Kept, it made every later
@@ -656,6 +732,16 @@ impl LiveSync {
         if self.wanted == Some(Reason::Logout) {
             self.wanted = None;
         }
+        self.ending = Ending::Open;
+    }
+
+    /// The parts no batch carries that changed since the journal's base, and
+    /// so kept the last ended login's logout snapshot although the tracker
+    /// takes final batches (`unknown` for a base without fingerprints,
+    /// `too big` / `no UID` for a final batch that could not be one, or the
+    /// tracker's refusal of it). Empty when none was kept.
+    pub fn logout_snapshot_kept(&self) -> &[String] {
+        &self.kept_parts
     }
 
     /// The user changed which parts are shared. The tracker's base for this
@@ -706,18 +792,36 @@ impl LiveSync {
     }
 
     /// A snapshot of `keyed` went up for `reason`; the ticket names it in
-    /// [`Self::snapshot_answered`] (a newer snapshot supersedes it).
+    /// [`Self::snapshot_answered`] (a newer snapshot supersedes it). Its
+    /// export was built just now, so it holds the endgame parts as they are.
     pub fn snapshot_started(&mut self, reason: Reason, keyed: Keyed) -> u64 {
+        self.snapshot_started_holding(reason, keyed, true)
+    }
+
+    /// [`Self::snapshot_started`] for an export that may have been built
+    /// earlier (the desktop's upload button sends the JSON its window made):
+    /// `holds_endgame` says whether its `gi_endgame` is the state as it is
+    /// now. Only then does its being stored acknowledge the endgame state.
+    pub fn snapshot_started_holding(
+        &mut self,
+        reason: Reason,
+        keyed: Keyed,
+        holds_endgame: bool,
+    ) -> u64 {
         if self.wanted == Some(reason) || reason == Reason::Manual {
             self.wanted = None;
         }
-        // The export just built holds the endgame parts as they are.
+        // The snapshot carries the endgame parts: no attach of them goes
+        // while it flies, nor after it (a failed one is retried, or the
+        // next snapshot carries them). `endgame_unacked` waits for its
+        // answer: only a stored snapshot acknowledges anything.
         self.attach_wanted = false;
         self.tickets += 1;
         self.snapshot_flight = Some(SnapshotFlight {
             ticket: self.tickets,
             reason,
             keyed,
+            endgame: holds_endgame.then_some(self.endgame_changes),
         });
         self.tickets
     }
@@ -733,11 +837,21 @@ impl LiveSync {
         if self.snapshot_flight.as_ref().map(|flight| flight.ticket) != Some(ticket) {
             return;
         }
-        let Some(SnapshotFlight { reason, keyed, .. }) = self.snapshot_flight.take() else {
+        let Some(SnapshotFlight {
+            reason,
+            keyed,
+            endgame,
+            ..
+        }) = self.snapshot_flight.take()
+        else {
             return;
         };
         match answer {
             Some(answer) => {
+                // It held the endgame state at or after the last change.
+                if endgame == Some(self.endgame_changes) {
+                    self.endgame_unacked = false;
+                }
                 self.backoff_ms = 0;
                 self.retry_at_ms = 0;
                 self.unacked = None;
@@ -745,13 +859,16 @@ impl LiveSync {
                 self.last_sent_ms = now_ms;
                 if reason == Reason::Logout {
                     self.logout_login = None;
+                    self.ending = Ending::Open;
                 }
                 // What came in while it was in flight is in the next diff.
+                let unbatched = Some(keyed.unbatched.clone());
                 self.journal = answer.base.map(|base| Journal {
                     base,
                     seq: 0,
                     keyed,
                     layout: delta::LAYOUT,
+                    unbatched,
                 });
             }
             None => {
@@ -782,6 +899,14 @@ impl LiveSync {
         }
         if let Some(settles) = self.sharing_settles_ms() {
             return Some(settles.max(now_ms));
+        }
+        // A login ending on a final batch waits for the attach in flight:
+        // its answer (which brings the next tick) decides what follows.
+        if self.attach_flight
+            && self.ending == Ending::FinalBatch
+            && self.wanted == Some(Reason::Logout)
+        {
+            return None;
         }
         if let Some(reason) = self.wanted
             && !reason.debounced()
@@ -818,12 +943,23 @@ impl LiveSync {
     /// Decide what to send now. `export` builds the current state when a
     /// batch may be due: the export (for its `sum` and UID) and its keyed
     /// form.
+    ///
+    /// `final_batch`: the tracker said it takes a final batch
+    /// ([`accepts_final_batch`]). Then a login that ended with its journal
+    /// open closes it with one last batch marked `end` (the ended login's
+    /// session, everything not sent yet, possibly nothing) instead of the
+    /// logout snapshot, unless a part no batch carries changed since the
+    /// journal's base ([`Unbatched`]): that keeps the logout snapshot, as
+    /// does any refusal of the final batch. Without the word, everything
+    /// goes as it always did.
     pub fn tick(
         &mut self,
         live_enabled: bool,
+        final_batch: bool,
         now_ms: u64,
         export: impl FnOnce() -> Option<(Good, Keyed)>,
     ) -> Action {
+        self.final_word = final_batch;
         if self.busy() || now_ms < self.retry_at_ms {
             return Action::Nothing;
         }
@@ -844,6 +980,17 @@ impl LiveSync {
                 }
             }
         }
+        let mut export = Some(export);
+        // Only while batches go at all (the switch on, no daily limit hit).
+        if final_batch
+            && live_enabled
+            && self.is_live(now_ms)
+            && self.wanted == Some(Reason::Logout)
+            && self.ending != Ending::Snapshot
+            && let Some(action) = self.end_with_final_batch(now_ms, &mut export)
+        {
+            return action;
+        }
         if let Some(reason) = self.wanted
             && !reason.debounced()
         {
@@ -854,6 +1001,7 @@ impl LiveSync {
         {
             self.attach_wanted = false;
             self.attach_flight = true;
+            self.attach_endgame = self.endgame_changes;
             return Action::Attach {
                 session: login.session.clone(),
             };
@@ -873,7 +1021,6 @@ impl LiveSync {
         }
         // A hand-over's journal from an older layout: seed what it never
         // keyed from this export before anything is diffed.
-        let mut export = Some(export);
         let mut exported = None;
         if self.needs_seed() {
             let Some(current) = export.take().and_then(|export| export()) else {
@@ -940,6 +1087,114 @@ impl LiveSync {
         Action::Batch(Box::new(batch))
     }
 
+    /// The ended login's journal closes on a final batch: decided once
+    /// (`None` then means the logout snapshot, `self.ending` remembers it),
+    /// then the attach the login still owes, an unacked batch resent
+    /// unchanged, and the final batch itself, one per tick.
+    fn end_with_final_batch<F>(&mut self, now_ms: u64, export: &mut Option<F>) -> Option<Action>
+    where
+        F: FnOnce() -> Option<(Good, Keyed)>,
+    {
+        let journal = self.journal.as_ref()?;
+        let (login, _) = self.logout_login.as_ref()?;
+        let session = login.session.clone();
+        let mut exported = None;
+        if self.ending == Ending::Open {
+            let Some((good, keyed)) = export.take().and_then(|export| export()) else {
+                return Some(Action::Nothing);
+            };
+            let kept = match &journal.unbatched {
+                Some(base) => keyed.unbatched.changed_since(base),
+                None => vec!["unknown".to_string()],
+            };
+            if !kept.is_empty() {
+                return self.keep_logout_snapshot(kept);
+            }
+            self.ending = Ending::FinalBatch;
+            exported = Some((good, keyed));
+        }
+        // The endgame parts the logout snapshot would have carried: never
+        // overtaken by the final batch. One in flight is waited for.
+        if self.attach_flight {
+            return Some(Action::Nothing);
+        }
+        if self.attach_wanted {
+            // Never tried: it goes now, and its answer comes first.
+            if self.attach_backoff_ms == 0 && self.attach_retry_at_ms == 0 {
+                self.attach_wanted = false;
+                self.attach_flight = true;
+                self.attach_endgame = self.endgame_changes;
+                return Some(Action::Attach { session });
+            }
+            // It failed before (or was answered Retry while ending): the
+            // logout snapshot carries the parts instead.
+            return self.keep_logout_snapshot(vec!["attach".to_string()]);
+        }
+        // Dropped by the tracker (or never sent): nothing else carries them.
+        if self.endgame_unacked {
+            return self.keep_logout_snapshot(vec!["gi_endgame".to_string()]);
+        }
+        if let Some(flight) = self.unacked.take() {
+            let delta = flight.delta.clone();
+            self.batch_flight = Some(flight);
+            return Some(Action::Batch(Box::new(delta)));
+        }
+        let Some((good, keyed)) = exported.or_else(|| export.take().and_then(|export| export()))
+        else {
+            return Some(Action::Nothing);
+        };
+        let Some(uid) = good.gi_player.as_ref().and_then(|player| player.uid) else {
+            return self.keep_logout_snapshot(vec!["no UID".to_string()]);
+        };
+        let journal = self.journal.as_ref()?;
+        let mut batch = GoodDelta::new(uid, &session, journal.seq + 1, &journal.base, now_ms);
+        batch.changes = delta::diff(&journal.keyed, &keyed);
+        batch.sum = Some(Sum::of(&good));
+        batch.end = Some(true);
+        if batch.changes.len() > delta::MAX_CHANGES
+            || serde_json::to_vec(&batch).map_or(usize::MAX, |json| json.len()) > delta::MAX_BYTES
+        {
+            return self.keep_logout_snapshot(vec!["too big".to_string()]);
+        }
+        tracing::info!(
+            seq = batch.seq,
+            changes = batch.changes.len(),
+            "live sync: the login ended; its journal closes with a final batch"
+        );
+        self.batch_flight = Some(BatchFlight {
+            delta: batch.clone(),
+            keyed,
+            pending_at_build: self.pending,
+        });
+        Some(Action::Batch(Box::new(batch)))
+    }
+
+    /// The ended login closes on its logout snapshot after all, because of
+    /// `parts`: `None`, so the tick goes on to it.
+    fn keep_logout_snapshot(&mut self, parts: Vec<String>) -> Option<Action> {
+        tracing::info!("live sync: logout snapshot kept: {}", parts.join(", "));
+        self.ending = Ending::Snapshot;
+        self.kept_parts = parts;
+        None
+    }
+
+    /// The final batch was stored: the ended login's journal is closed.
+    fn closed(&mut self, now_ms: u64) {
+        self.journal = None;
+        self.logout_login = None;
+        if self.wanted == Some(Reason::Logout) {
+            self.wanted = None;
+        }
+        self.ending = Ending::Open;
+        self.unacked = None;
+        self.pending = 0;
+        self.changing_ms = None;
+        self.recheck_at_ms = 0;
+        self.last_sent_ms = now_ms;
+        self.backoff_ms = 0;
+        self.retry_at_ms = 0;
+    }
+
     /// The batch request finished with `answer`.
     pub fn batch_answered(&mut self, answer: BatchAnswer, now_ms: u64) {
         let Some(BatchFlight {
@@ -954,10 +1209,39 @@ impl LiveSync {
         if self.journal.as_ref().map(|journal| journal.base.as_str()) != Some(delta.base.as_str()) {
             return;
         }
+        if delta.end == Some(true) {
+            match answer {
+                // Closed: nothing more for that login (a collapse or a tab
+                // watching no longer matters).
+                BatchAnswer::Stored { .. } | BatchAnswer::Duplicate => self.closed(now_ms),
+                BatchAnswer::Retry => {
+                    self.unacked = Some(BatchFlight {
+                        delta,
+                        keyed,
+                        pending_at_build,
+                    });
+                    self.back_off(now_ms);
+                }
+                refused => {
+                    // The logout snapshot at the next tick, as without the word.
+                    if refused == BatchAnswer::DailyLimit {
+                        self.off_day = Some(now_ms / DAY_MS);
+                    }
+                    self.journal = None;
+                    self.backoff_ms = 0;
+                    self.retry_at_ms = 0;
+                    self.ending = Ending::Snapshot;
+                    self.kept_parts = vec![format!("refused ({refused:?})")];
+                    tracing::info!(answer = ?refused, "live sync: the final batch was refused");
+                }
+            }
+            return;
+        }
         match answer {
             BatchAnswer::Stored { collapse, watching } => {
                 self.watching = watching;
-                if collapse {
+                // A login ending on a final batch needs no collapse.
+                if collapse && !(self.final_word && self.logout_login.is_some()) {
                     self.wanted = Some(Reason::Collapse);
                 }
                 self.stored(delta.seq, keyed, pending_at_build, now_ms);
@@ -1121,7 +1405,7 @@ mod tests {
     fn a_handed_over_journal_continues_in_a_fresh_sender() {
         let mut live = live_at(0);
         live.note_change(5);
-        let batch = sent(live.tick(true, 15_000, export(with_materials(5))));
+        let batch = sent(live.tick(true, false, 15_000, export(with_materials(5))));
         assert_eq!(batch.seq, 1);
         live.batch_answered(
             BatchAnswer::Stored {
@@ -1154,17 +1438,17 @@ mod tests {
         assert_eq!(resumed.automation_reason(true, 15_200), None);
         // The pending attach goes first.
         assert!(matches!(
-            resumed.tick(true, 15_200, || panic!("no export for an attach")),
+            resumed.tick(true, false, 15_200, || panic!("no export for an attach")),
             Action::Attach { .. }
         ));
         resumed.attach_answered(AttachAnswer::Stored, 15_300);
         // One small change: due after the lone-change wait, as within a run.
         resumed.note_change(1);
         assert_eq!(
-            resumed.tick(true, 30_200, export(with_materials(6))),
+            resumed.tick(true, false, 30_200, export(with_materials(6))),
             Action::Nothing
         );
-        let batch = sent(resumed.tick(true, 140_000, export(with_materials(6))));
+        let batch = sent(resumed.tick(true, false, 140_000, export(with_materials(6))));
         assert_eq!(batch.seq, 2);
         assert_eq!(batch.base, "k1");
         assert_eq!(batch.changes.len(), 1, "only the one material that moved");
@@ -1178,7 +1462,7 @@ mod tests {
     fn a_journal_keyed_by_an_older_layout_is_seeded_not_collapsed() {
         let mut live = live_at(0);
         live.note_change(5);
-        let batch = sent(live.tick(true, 15_000, export(with_materials(5))));
+        let batch = sent(live.tick(true, false, 15_000, export(with_materials(5))));
         assert_eq!(batch.seq, 1);
         live.batch_answered(
             BatchAnswer::Stored {
@@ -1210,7 +1494,7 @@ mod tests {
             ..Default::default()
         });
         resumed.note_change(1);
-        let batch = sent(resumed.tick(true, 140_000, export(current.clone())));
+        let batch = sent(resumed.tick(true, false, 140_000, export(current.clone())));
         assert_eq!(batch.seq, 2);
         assert_eq!(batch.base, "k1");
         assert_eq!(batch.changes.len(), 1, "the material alone");
@@ -1234,7 +1518,7 @@ mod tests {
         quests.finished.push(10_001);
         quests.active.retain(|id| *id != 10_001);
         resumed.note_change(1);
-        let batch = sent(resumed.tick(true, 160_000, export(later)));
+        let batch = sent(resumed.tick(true, false, 160_000, export(later)));
         assert_eq!(batch.seq, 3);
         assert_eq!(batch.changes.len(), 1, "the one quest that finished");
 
@@ -1257,7 +1541,7 @@ mod tests {
         use std::cell::Cell;
         let mut live = live_at(0);
         live.note_change(5);
-        sent(live.tick(true, 15_000, export(with_materials(5))));
+        sent(live.tick(true, false, 15_000, export(with_materials(5))));
         live.batch_answered(
             BatchAnswer::Stored {
                 collapse: false,
@@ -1274,7 +1558,7 @@ mod tests {
             let now = 15_200 + i * 200;
             good.materials.insert("Mora".to_owned(), 1_000 + i as u32);
             live.note_change(1);
-            let action = live.tick(true, now, || {
+            let action = live.tick(true, false, now, || {
                 builds.set(builds.get() + 1);
                 Some((good.clone(), keyed(&good)))
             });
@@ -1292,7 +1576,7 @@ mod tests {
             builds.get()
         );
         // The lone-change wait is up: one batch with the material as it is.
-        let batch = sent(live.tick(true, 15_100 + LONE_CHANGE_MS, export(good.clone())));
+        let batch = sent(live.tick(true, false, 15_100 + LONE_CHANGE_MS, export(good.clone())));
         assert_eq!(batch.changes.len(), 1);
     }
 
@@ -1310,7 +1594,7 @@ mod tests {
             live.note_change(1);
             let now = 20_000 + i * 3;
             assert_eq!(live.next_tick_ms(true, now), None, "nothing to wake for");
-            let action = live.tick(true, now, || {
+            let action = live.tick(true, false, now, || {
                 builds.set(builds.get() + 1);
                 Some((
                     with_materials(i as usize + 1),
@@ -1329,7 +1613,7 @@ mod tests {
     fn an_open_journal_still_sends_its_logout_snapshot() {
         let mut live = live_at(0);
         live.note_change(5);
-        sent(live.tick(true, 15_000, export(with_materials(5))));
+        sent(live.tick(true, false, 15_000, export(with_materials(5))));
         live.batch_answered(
             BatchAnswer::Stored {
                 collapse: false,
@@ -1339,7 +1623,9 @@ mod tests {
         );
         live.note_connection_ended();
         assert_eq!(
-            live.tick(true, 15_200, || panic!("the snapshot builds its own")),
+            live.tick(true, false, 15_200, || panic!(
+                "the snapshot builds its own"
+            )),
             Action::Snapshot(Reason::Logout)
         );
     }
@@ -1349,7 +1635,7 @@ mod tests {
         let mut live = live_at(0);
         assert_eq!(live.next_tick_ms(true, 1_000), None);
         assert_eq!(
-            live.tick(true, 10_000_000, || panic!("no export")),
+            live.tick(true, false, 10_000_000, || panic!("no export")),
             Action::Nothing
         );
     }
@@ -1360,10 +1646,10 @@ mod tests {
         live.note_change(5);
         assert_eq!(live.next_tick_ms(true, 1_000), Some(BATCH_SPACING_MS));
         assert_eq!(
-            live.tick(true, 14_999, export(with_materials(5))),
+            live.tick(true, false, 14_999, export(with_materials(5))),
             Action::Nothing
         );
-        let batch = sent(live.tick(true, 15_000, export(with_materials(5))));
+        let batch = sent(live.tick(true, false, 15_000, export(with_materials(5))));
         assert_eq!(batch.seq, 1);
         assert_eq!(batch.base, "k1");
         assert_eq!(batch.uid, 812_345_678);
@@ -1384,9 +1670,15 @@ mod tests {
     fn a_few_changes_wait_for_two_minutes() {
         let mut live = live_at(0);
         live.note_change(1);
-        assert_eq!(live.tick(true, 20_000, export(good(101))), Action::Nothing);
-        assert_eq!(live.tick(true, 119_999, export(good(101))), Action::Nothing);
-        let batch = sent(live.tick(true, 120_000, export(good(101))));
+        assert_eq!(
+            live.tick(true, false, 20_000, export(good(101))),
+            Action::Nothing
+        );
+        assert_eq!(
+            live.tick(true, false, 119_999, export(good(101))),
+            Action::Nothing
+        );
+        let batch = sent(live.tick(true, false, 120_000, export(good(101))));
         assert_eq!(batch.changes.len(), 1);
     }
 
@@ -1394,12 +1686,17 @@ mod tests {
     fn an_undue_change_is_looked_at_once_per_spacing() {
         let mut live = live_at(0);
         live.note_change(1);
-        assert_eq!(live.tick(true, 20_000, export(good(101))), Action::Nothing);
+        assert_eq!(
+            live.tick(true, false, 20_000, export(good(101))),
+            Action::Nothing
+        );
         // Not due yet: the next look waits a spacing, instead of the monitor
         // waking at once and rebuilding the export until the change is due.
         assert_eq!(live.next_tick_ms(true, 20_000), Some(35_000));
         assert_eq!(
-            live.tick(true, 25_000, || panic!("no export before the next look")),
+            live.tick(true, false, 25_000, || panic!(
+                "no export before the next look"
+            )),
             Action::Nothing
         );
         // New data waits for that look too: looking means building and
@@ -1409,16 +1706,24 @@ mod tests {
         live.note_change(1);
         assert_eq!(live.next_tick_ms(true, 25_000), Some(35_000));
         assert_eq!(
-            live.tick(true, 25_000, || panic!("no export before the next look")),
+            live.tick(true, false, 25_000, || panic!(
+                "no export before the next look"
+            )),
             Action::Nothing
         );
-        assert_eq!(live.tick(true, 35_000, export(good(101))), Action::Nothing);
+        assert_eq!(
+            live.tick(true, false, 35_000, export(good(101))),
+            Action::Nothing
+        );
         assert_eq!(live.next_tick_ms(true, 35_000), Some(50_000));
         // A character change is looked at as soon as the spacing allows.
         live.note_important_change();
         assert_eq!(live.next_tick_ms(true, 36_000), Some(36_000));
-        assert_eq!(live.tick(true, 36_000, export(good(101))), Action::Nothing);
-        let batch = sent(live.tick(true, 120_000, export(good(101))));
+        assert_eq!(
+            live.tick(true, false, 36_000, export(good(101))),
+            Action::Nothing
+        );
+        let batch = sent(live.tick(true, false, 120_000, export(good(101))));
         assert_eq!(batch.changes.len(), 1);
     }
 
@@ -1436,9 +1741,12 @@ mod tests {
             0,
         );
         live.note_change(1);
-        assert_eq!(live.tick(true, 4_999, export(good(101))), Action::Nothing);
         assert_eq!(
-            sent(live.tick(true, 5_000, export(good(101))))
+            live.tick(true, false, 4_999, export(good(101))),
+            Action::Nothing
+        );
+        assert_eq!(
+            sent(live.tick(true, false, 5_000, export(good(101))))
                 .changes
                 .len(),
             1
@@ -1461,12 +1769,18 @@ mod tests {
         // A reward's packets come over 300 ms, well after the last batch:
         // nothing goes while they do, and one batch goes 1 s after the last.
         live.note_change_at(1, 20_000);
-        assert_eq!(live.tick(true, 20_000, export(good(101))), Action::Nothing);
+        assert_eq!(
+            live.tick(true, false, 20_000, export(good(101))),
+            Action::Nothing
+        );
         assert_eq!(live.next_tick_ms(true, 20_000), Some(21_000));
         live.note_change_at(1, 20_300);
-        assert_eq!(live.tick(true, 21_000, export(good(102))), Action::Nothing);
+        assert_eq!(
+            live.tick(true, false, 21_000, export(good(102))),
+            Action::Nothing
+        );
         assert_eq!(live.next_tick_ms(true, 21_000), Some(21_300));
-        let batch = sent(live.tick(true, 21_300, export(good(102))));
+        let batch = sent(live.tick(true, false, 21_300, export(good(102))));
         assert_eq!(batch.changes.len(), 1);
         live.batch_answered(
             BatchAnswer::Stored {
@@ -1480,10 +1794,10 @@ mod tests {
         let next = live.next_tick_ms(true, 22_000).unwrap();
         assert!((26_300..=26_400).contains(&next), "{next}");
         assert_eq!(
-            live.tick(true, next - 1, export(good(103))),
+            live.tick(true, false, next - 1, export(good(103))),
             Action::Nothing
         );
-        sent(live.tick(true, next, export(good(103))));
+        sent(live.tick(true, false, next, export(good(103))));
         live.batch_answered(
             BatchAnswer::Stored {
                 collapse: false,
@@ -1503,12 +1817,15 @@ mod tests {
         let mut now = 200_000;
         while now < 202_900 {
             live.note_change_at(1, now);
-            assert_eq!(live.tick(true, now, export(good(101))), Action::Nothing);
+            assert_eq!(
+                live.tick(true, false, now, export(good(101))),
+                Action::Nothing
+            );
             now += 200;
         }
         live.note_change_at(5, 202_900);
         assert_eq!(live.next_tick_ms(true, 202_900), Some(203_000));
-        sent(live.tick(true, 203_000, export(good(101))));
+        sent(live.tick(true, false, 203_000, export(good(101))));
     }
 
     #[test]
@@ -1527,7 +1844,7 @@ mod tests {
             },
         });
         live.note_change(1);
-        let batch = sent(live.tick(true, 15_000, export(levelled)));
+        let batch = sent(live.tick(true, false, 15_000, export(levelled)));
         assert!(matches!(batch.changes[0], Change::Add(..)));
     }
 
@@ -1538,7 +1855,7 @@ mod tests {
         assert_eq!(live.next_tick_ms(true, 1_000), Some(1_000));
         // 2,000 distinct changes is a whole snapshot's worth: a collapse.
         assert_eq!(
-            live.tick(true, 1_000, export(with_materials(2_001))),
+            live.tick(true, false, 1_000, export(with_materials(2_001))),
             Action::Snapshot(Reason::Collapse)
         );
     }
@@ -1547,7 +1864,10 @@ mod tests {
     fn nothing_changed_after_all_clears_the_estimate() {
         let mut live = live_at(0);
         live.note_change(3);
-        assert_eq!(live.tick(true, 200_000, export(good(100))), Action::Nothing);
+        assert_eq!(
+            live.tick(true, false, 200_000, export(good(100))),
+            Action::Nothing
+        );
         assert_eq!(live.next_tick_ms(true, 200_000), None);
     }
 
@@ -1555,35 +1875,35 @@ mod tests {
     fn a_failed_batch_is_resent_unchanged_with_backoff() {
         let mut live = live_at(0);
         live.note_change(5);
-        let first = sent(live.tick(true, 15_000, export(with_materials(5))));
+        let first = sent(live.tick(true, false, 15_000, export(with_materials(5))));
         live.batch_answered(BatchAnswer::Retry, 15_000);
         assert_eq!(live.next_tick_ms(true, 15_001), Some(30_000));
         // More changes meanwhile: the retry is still exactly the first batch.
         live.note_change(5);
         assert_eq!(
-            live.tick(true, 29_999, export(with_materials(9))),
+            live.tick(true, false, 29_999, export(with_materials(9))),
             Action::Nothing
         );
-        let again = sent(live.tick(true, 30_000, || panic!("the retry needs no export")));
+        let again = sent(live.tick(true, false, 30_000, || panic!("the retry needs no export")));
         assert_eq!(again, first);
         live.batch_answered(BatchAnswer::Retry, 30_000);
         assert_eq!(live.next_tick_ms(true, 30_000), Some(60_000));
-        sent(live.tick(true, 60_000, || None));
+        sent(live.tick(true, false, 60_000, || None));
         live.batch_answered(BatchAnswer::Retry, 60_000);
         assert_eq!(live.next_tick_ms(true, 60_000), Some(120_000));
-        sent(live.tick(true, 120_000, || None));
+        sent(live.tick(true, false, 120_000, || None));
         live.batch_answered(BatchAnswer::Retry, 120_000);
         // Capped at two minutes.
         assert_eq!(live.next_tick_ms(true, 120_000), Some(240_000));
-        sent(live.tick(true, 240_000, || None));
+        sent(live.tick(true, false, 240_000, || None));
         live.batch_answered(BatchAnswer::Duplicate, 240_000);
         assert_eq!(live.seq(), Some(1));
         // The changes made meanwhile follow as seq 2 (four: a lone-change wait).
         assert_eq!(
-            live.tick(true, 255_000, export(with_materials(9))),
+            live.tick(true, false, 255_000, export(with_materials(9))),
             Action::Nothing
         );
-        let next = sent(live.tick(true, 360_000, export(with_materials(9))));
+        let next = sent(live.tick(true, false, 360_000, export(with_materials(9))));
         assert_eq!(next.seq, 2);
         assert_eq!(next.changes.len(), 4);
     }
@@ -1603,7 +1923,7 @@ mod tests {
         // Meanwhile nothing goes against the old set's journal, however
         // due the batch is, and no export is built for it.
         assert_eq!(
-            live.tick(true, 30_000, || panic!(
+            live.tick(true, false, 30_000, || panic!(
                 "no export while the switches settle"
             )),
             Action::Nothing
@@ -1611,7 +1931,7 @@ mod tests {
         assert!(live.is_live(30_000));
         // Then one full snapshot (it carries the new gi_off), not a batch.
         assert_eq!(
-            live.tick(true, 25_000 + SHARING_QUIET_MS, || None),
+            live.tick(true, false, 25_000 + SHARING_QUIET_MS, || None),
             Action::Snapshot(Reason::Resync)
         );
         assert!(!live.is_live(25_000 + SHARING_QUIET_MS));
@@ -1626,14 +1946,14 @@ mod tests {
         );
         // One new journal, and the change is done with.
         assert!(live.is_live(36_000));
-        assert_eq!(live.tick(true, 36_001, || None), Action::Nothing);
+        assert_eq!(live.tick(true, false, 36_001, || None), Action::Nothing);
 
         // In snapshot mode there is no journal to replace: the next
         // snapshot is whole anyway.
         let mut snapshots = LiveSync::new();
         snapshots.note_sharing_changed(0);
         assert_eq!(
-            snapshots.tick(true, SHARING_QUIET_MS, || None),
+            snapshots.tick(true, false, SHARING_QUIET_MS, || None),
             Action::Nothing
         );
         assert_eq!(snapshots.next_tick_ms(true, SHARING_QUIET_MS + 1), None);
@@ -1644,7 +1964,7 @@ mod tests {
         // collapse: true asks for a snapshot now.
         let mut live = live_at(0);
         live.note_change(5);
-        sent(live.tick(true, 15_000, export(with_materials(5))));
+        sent(live.tick(true, false, 15_000, export(with_materials(5))));
         live.batch_answered(
             BatchAnswer::Stored {
                 collapse: true,
@@ -1653,18 +1973,18 @@ mod tests {
             15_000,
         );
         assert_eq!(
-            live.tick(true, 15_001, || None),
+            live.tick(true, false, 15_001, || None),
             Action::Snapshot(Reason::Collapse)
         );
 
         // resync: a snapshot, and no batches until its answer.
         let mut live = live_at(0);
         live.note_change(5);
-        sent(live.tick(true, 15_000, export(with_materials(5))));
+        sent(live.tick(true, false, 15_000, export(with_materials(5))));
         live.batch_answered(BatchAnswer::Resync, 15_000);
         assert!(!live.is_live(15_000));
         assert_eq!(
-            live.tick(true, 15_001, || None),
+            live.tick(true, false, 15_001, || None),
             Action::Snapshot(Reason::Resync)
         );
         let ticket = live.snapshot_started(Reason::Resync, keyed(&with_materials(5)));
@@ -1681,11 +2001,11 @@ mod tests {
         // live: false means snapshot mode, starting with a snapshot.
         let mut live = live_at(0);
         live.note_change(5);
-        sent(live.tick(true, 15_000, export(with_materials(5))));
+        sent(live.tick(true, false, 15_000, export(with_materials(5))));
         live.batch_answered(BatchAnswer::LiveOff, 15_000);
         assert!(!live.is_live(15_000));
         assert_eq!(
-            live.tick(true, 15_001, || None),
+            live.tick(true, false, 15_001, || None),
             Action::Snapshot(Reason::Change)
         );
         live.snapshot_started(Reason::Change, keyed(&with_materials(5)));
@@ -1694,7 +2014,7 @@ mod tests {
         // The daily limit: snapshot mode for the rest of the UTC day.
         let mut live = live_at(0);
         live.note_change(5);
-        sent(live.tick(true, 15_000, export(with_materials(5))));
+        sent(live.tick(true, false, 15_000, export(with_materials(5))));
         live.batch_answered(BatchAnswer::DailyLimit, 15_000);
         let ticket = live.snapshot_started(Reason::Change, keyed(&with_materials(5)));
         live.snapshot_answered(
@@ -1719,7 +2039,7 @@ mod tests {
         assert!(!live.is_live(0));
         live.note_change(5);
         assert_eq!(
-            live.tick(true, 100_000, || panic!("no batches")),
+            live.tick(true, false, 100_000, || panic!("no batches")),
             Action::Nothing
         );
         assert_eq!(live.automation_reason(true, 100_000), Some(Reason::Change));
@@ -1765,7 +2085,7 @@ mod tests {
         }
         // A batch, then the tracker asks for a collapse.
         live.note_change(5);
-        sent(live.tick(true, 20_000, export(with_materials(5))));
+        sent(live.tick(true, false, 20_000, export(with_materials(5))));
         live.batch_answered(
             BatchAnswer::Stored {
                 collapse: true,
@@ -1774,7 +2094,7 @@ mod tests {
             20_000,
         );
         assert_eq!(
-            live.tick(true, 20_001, || None),
+            live.tick(true, false, 20_001, || None),
             Action::Snapshot(Reason::Collapse)
         );
         let collapse = live.capture(Reason::Collapse).unwrap();
@@ -1795,7 +2115,7 @@ mod tests {
         live.note_change(1);
         live.note_connection_ended();
         assert_eq!(
-            live.tick(true, 21_001, || None),
+            live.tick(true, false, 21_001, || None),
             Action::Snapshot(Reason::Logout)
         );
         let logout = live.capture(Reason::Logout).unwrap();
@@ -1819,7 +2139,7 @@ mod tests {
         live.note_endgame_change();
         assert_eq!(live.next_tick_ms(true, 1), Some(1));
         assert_eq!(
-            live.tick(true, 1, || panic!("no export")),
+            live.tick(true, false, 1, || panic!("no export")),
             Action::Attach {
                 session: session.clone()
             }
@@ -1827,15 +2147,21 @@ mod tests {
         // In flight: nothing more, a batch still goes; stored: done.
         assert_eq!(live.next_tick_ms(true, 2), None);
         live.attach_answered(AttachAnswer::Stored, 2);
-        assert_eq!(live.tick(true, 3, || panic!("no export")), Action::Nothing);
+        assert_eq!(
+            live.tick(true, false, 3, || panic!("no export")),
+            Action::Nothing
+        );
         // A failure is retried after a wait, a refusal dropped.
         live.note_endgame_change();
-        assert!(matches!(live.tick(true, 4, || None), Action::Attach { .. }));
+        assert!(matches!(
+            live.tick(true, false, 4, || None),
+            Action::Attach { .. }
+        ));
         live.attach_answered(AttachAnswer::Retry, 4);
         assert_eq!(live.next_tick_ms(true, 5), Some(4 + FIRST_BACKOFF_MS));
-        assert_eq!(live.tick(true, 5, || None), Action::Nothing);
+        assert_eq!(live.tick(true, false, 5, || None), Action::Nothing);
         assert!(matches!(
-            live.tick(true, 4 + FIRST_BACKOFF_MS, || None),
+            live.tick(true, false, 4 + FIRST_BACKOFF_MS, || None),
             Action::Attach { .. }
         ));
         live.attach_answered(AttachAnswer::Dropped, 100_000);
@@ -1843,14 +2169,14 @@ mod tests {
         // A change while one is in flight sends again after the answer.
         live.note_endgame_change();
         assert!(matches!(
-            live.tick(true, 100_002, || None),
+            live.tick(true, false, 100_002, || None),
             Action::Attach { .. }
         ));
         live.note_endgame_change();
-        assert_eq!(live.tick(true, 100_003, || None), Action::Nothing);
+        assert_eq!(live.tick(true, false, 100_003, || None), Action::Nothing);
         live.attach_answered(AttachAnswer::Stored, 100_004);
         assert!(matches!(
-            live.tick(true, 100_005, || None),
+            live.tick(true, false, 100_005, || None),
             Action::Attach { .. }
         ));
         live.attach_answered(AttachAnswer::Stored, 100_006);
@@ -1861,24 +2187,27 @@ mod tests {
         live.snapshot_answered(ticket, Some(ImportAnswer::default()), 0);
         live.note_endgame_change();
         assert!(matches!(
-            live.tick(false, 1, || None),
+            live.tick(false, false, 1, || None),
             Action::Attach { .. }
         ));
         // A login due carries it: no attach, not after the snapshot either
         // (the export built holds the parts). Before any login: nothing.
         let mut live = LiveSync::new();
         live.note_endgame_change();
-        assert_eq!(live.tick(true, 1, || None), Action::Nothing);
+        assert_eq!(live.tick(true, false, 1, || None), Action::Nothing);
         live.note_full_send();
         live.note_endgame_change();
         assert_eq!(live.automation_reason(true, 1), Some(Reason::Login));
-        assert_eq!(live.tick(true, 1, || None), Action::Nothing);
+        assert_eq!(live.tick(true, false, 1, || None), Action::Nothing);
         let ticket = live.snapshot_started(Reason::Login, keyed(&good(1)));
-        assert_eq!(live.tick(true, 2, || None), Action::Nothing);
+        assert_eq!(live.tick(true, false, 2, || None), Action::Nothing);
         live.snapshot_answered(ticket, Some(ImportAnswer::default()), 3);
-        assert_eq!(live.tick(true, 4, || None), Action::Nothing);
+        assert_eq!(live.tick(true, false, 4, || None), Action::Nothing);
         live.note_endgame_change();
-        assert!(matches!(live.tick(true, 5, || None), Action::Attach { .. }));
+        assert!(matches!(
+            live.tick(true, false, 5, || None),
+            Action::Attach { .. }
+        ));
         assert_eq!(AttachAnswer::of(200), AttachAnswer::Stored);
         assert_eq!(AttachAnswer::of(0), AttachAnswer::Retry);
         assert_eq!(AttachAnswer::of(503), AttachAnswer::Retry);
@@ -1899,7 +2228,7 @@ mod tests {
     fn an_idle_logout_sends_nothing() {
         let mut live = live_at(0);
         live.note_connection_ended();
-        assert_eq!(live.tick(true, 1, || None), Action::Nothing);
+        assert_eq!(live.tick(true, false, 1, || None), Action::Nothing);
     }
 
     #[test]
@@ -1908,15 +2237,15 @@ mod tests {
         live.note_change(1);
         live.note_connection_ended();
         assert_eq!(
-            live.tick(true, 1, || None),
+            live.tick(true, false, 1, || None),
             Action::Snapshot(Reason::Logout)
         );
         let ticket = live.snapshot_started(Reason::Logout, keyed(&good(101)));
         live.snapshot_answered(ticket, None, 1);
-        assert_eq!(live.tick(true, 2, || None), Action::Nothing);
+        assert_eq!(live.tick(true, false, 2, || None), Action::Nothing);
         assert_eq!(live.next_tick_ms(true, 2), Some(1 + FIRST_BACKOFF_MS));
         assert_eq!(
-            live.tick(true, 1 + FIRST_BACKOFF_MS, || None),
+            live.tick(true, false, 1 + FIRST_BACKOFF_MS, || None),
             Action::Snapshot(Reason::Logout)
         );
     }
@@ -1927,7 +2256,7 @@ mod tests {
         live.note_change(5);
         live.note_data_replaced();
         assert!(!live.is_live(0));
-        assert_eq!(live.tick(true, 100_000, || None), Action::Nothing);
+        assert_eq!(live.tick(true, false, 100_000, || None), Action::Nothing);
     }
 
     #[test]
@@ -1999,5 +2328,805 @@ mod tests {
             BatchAnswer::of(401, r#"{"error":{"code":"session_revoked","message":"x"}}"#),
             BatchAnswer::Refused
         );
+    }
+
+    // -- the final batch (`upload.finalBatch`) ------------------------------
+
+    #[test]
+    fn a_final_batch_is_taken_only_from_a_tracker_that_says_so() {
+        let yes = |json: &str| accepts_final_batch(&serde_json::from_str(json).unwrap());
+        assert!(yes(r#"{"upload":{"gzip":true,"finalBatch":true}}"#));
+        assert!(yes(
+            r#"{"status":200,"data":{"upload":{"finalBatch":true}}}"#
+        ));
+        assert!(!yes(r#"{"upload":{"gzip":true}}"#), "absent");
+        assert!(!yes(r#"{"upload":{"finalBatch":false}}"#));
+        assert!(!yes(r#"{"upload":{"finalBatch":"true"}}"#));
+        assert!(!yes("[]"));
+        assert!(serde_json::from_str::<serde_json::Value>("<html>").is_err());
+    }
+
+    /// Logged in on `base` (a snapshot stored with a journal), one batch of
+    /// `then` stored, and the login over.
+    fn ended_after_a_batch(base: Good, then: Good) -> LiveSync {
+        let mut live = LiveSync::new();
+        live.note_full_send();
+        let ticket = live.snapshot_started(Reason::Login, keyed(&base));
+        live.snapshot_answered(
+            ticket,
+            Some(ImportAnswer {
+                base: Some("k1".into()),
+                watching: false,
+            }),
+            0,
+        );
+        let mut batch = then;
+        for i in 0..5 {
+            batch.materials.insert(format!("Thing{i}"), 1);
+        }
+        live.note_change(5);
+        assert_eq!(sent(live.tick(true, true, 15_000, export(batch))).seq, 1);
+        live.batch_answered(
+            BatchAnswer::Stored {
+                collapse: false,
+                watching: false,
+            },
+            15_100,
+        );
+        live.note_connection_ended();
+        live
+    }
+
+    fn stored() -> BatchAnswer {
+        BatchAnswer::Stored {
+            collapse: false,
+            watching: false,
+        }
+    }
+
+    #[test]
+    fn without_the_word_the_login_ends_on_its_logout_snapshot() {
+        let mut live = ended_after_a_batch(good(100), with_materials(5));
+        assert_eq!(
+            live.tick(true, false, 15_200, || panic!(
+                "the snapshot builds its own"
+            )),
+            Action::Snapshot(Reason::Logout)
+        );
+        assert!(live.logout_snapshot_kept().is_empty());
+        // With the word but live sync switched off here: the same.
+        let mut live = ended_after_a_batch(good(100), with_materials(5));
+        assert_eq!(
+            live.tick(false, true, 15_200, || panic!(
+                "the snapshot builds its own"
+            )),
+            Action::Snapshot(Reason::Logout)
+        );
+    }
+
+    #[test]
+    fn with_the_word_the_login_ends_on_a_final_batch_and_nothing_more() {
+        let mut live = ended_after_a_batch(good(100), with_materials(5));
+        let session = live.capture(Reason::Logout).unwrap().session;
+        // Pending changes at the end go in it.
+        let batch = sent(live.tick(true, true, 15_200, export(with_materials(7))));
+        assert_eq!(batch.end, Some(true));
+        assert_eq!(batch.session, session, "the ended login's");
+        assert_eq!(batch.seq, 2);
+        assert_eq!(batch.base, "k1");
+        assert_eq!(
+            batch.changes.len(),
+            2,
+            "the two materials since the last batch"
+        );
+        assert!(batch.sum.is_some());
+        assert_eq!(
+            live.next_tick_ms(true, 15_300),
+            None,
+            "waits for its answer"
+        );
+        live.batch_answered(stored(), 15_400);
+        // Closed: no journal, nothing wanted, nothing more sent.
+        assert!(!live.is_live(15_500));
+        assert!(live.handover().is_none());
+        assert_eq!(live.automation_reason(true, 15_500), Some(Reason::Change));
+        assert_eq!(live.next_tick_ms(true, 15_500), None);
+        assert_eq!(
+            live.tick(true, true, 1_000_000, || panic!("no export")),
+            Action::Nothing
+        );
+        // The next login opens its own journal as always.
+        live.note_full_send();
+        assert_eq!(live.automation_reason(true, 1_000_000), Some(Reason::Login));
+    }
+
+    #[test]
+    fn a_session_whose_batches_sent_everything_still_ends_on_an_empty_final_batch() {
+        let mut live = ended_after_a_batch(good(100), with_materials(5));
+        let batch = sent(live.tick(true, true, 15_200, export(with_materials(5))));
+        assert_eq!(batch.end, Some(true));
+        assert!(batch.changes.is_empty());
+        assert_eq!(batch.seq, 2);
+        live.batch_answered(BatchAnswer::Duplicate, 15_300);
+        assert!(!live.is_live(15_300));
+    }
+
+    #[test]
+    fn a_session_with_nothing_stored_or_pending_sends_nothing_at_the_end() {
+        let mut live = live_at(0);
+        live.note_connection_ended();
+        assert_eq!(live.next_tick_ms(true, 1), None);
+        assert_eq!(live.tick(true, true, 1, || None), Action::Nothing);
+    }
+
+    #[test]
+    fn an_unacked_batch_goes_again_unchanged_before_the_final_batch() {
+        let mut live = live_at(0);
+        live.note_change(5);
+        let first = sent(live.tick(true, true, 15_000, export(with_materials(5))));
+        live.batch_answered(BatchAnswer::Retry, 15_100);
+        live.note_change(1);
+        live.note_connection_ended();
+        // After the batch's backoff: first the unacked batch, as it was.
+        assert_eq!(
+            live.next_tick_ms(true, 15_200),
+            Some(15_100 + FIRST_BACKOFF_MS)
+        );
+        assert_eq!(
+            live.tick(true, true, 15_200, || panic!("not yet")),
+            Action::Nothing
+        );
+        let at = 15_100 + FIRST_BACKOFF_MS;
+        let again = sent(live.tick(true, true, at, export(with_materials(6))));
+        assert_eq!(again, first);
+        live.batch_answered(stored(), at + 1);
+        let last = sent(live.tick(true, true, at + 2, export(with_materials(6))));
+        assert_eq!(last.seq, 2);
+        assert_eq!(last.end, Some(true));
+        assert_eq!(last.changes.len(), 1, "what the resent batch did not carry");
+    }
+
+    #[test]
+    fn a_batch_in_flight_at_the_end_is_answered_before_the_final_batch() {
+        let mut live = live_at(0);
+        live.note_change(5);
+        sent(live.tick(true, true, 15_000, export(with_materials(5))));
+        live.note_connection_ended();
+        assert_eq!(live.next_tick_ms(true, 15_050), None);
+        assert_eq!(
+            live.tick(true, true, 15_050, || panic!("in flight")),
+            Action::Nothing
+        );
+        // Its answer asks for a collapse: no collapse snapshot for a login
+        // that ends on a final batch.
+        live.batch_answered(
+            BatchAnswer::Stored {
+                collapse: true,
+                watching: false,
+            },
+            15_100,
+        );
+        let last = sent(live.tick(true, true, 15_200, export(with_materials(5))));
+        assert_eq!((last.seq, last.end), (2, Some(true)));
+    }
+
+    /// `good(100)` with `edit` applied.
+    fn edited(edit: impl FnOnce(&mut Good)) -> Good {
+        let mut good = good(100);
+        edit(&mut good);
+        good
+    }
+
+    #[test]
+    fn a_part_no_batch_carries_that_changed_keeps_the_logout_snapshot() {
+        use std::collections::BTreeMap;
+
+        use crate::good::{
+            GiAchievementProgress, GiCollections, GiComfort, GiExploration, GiTeapot, GiWardrobe,
+            GiWardrobeKind,
+        };
+
+        let progress = |done| {
+            edited(|good| {
+                good.gi_achievement_progress = Some(BTreeMap::from([(
+                    84_000,
+                    GiAchievementProgress {
+                        progress: done,
+                        total: 10,
+                    },
+                )]))
+            })
+        };
+        let exploration = |level| {
+            edited(|good| {
+                good.gi_exploration = Some(GiExploration {
+                    offerings: Some(BTreeMap::from([(1, level)])),
+                    ..Default::default()
+                })
+            })
+        };
+        let teapot = |mansion| {
+            edited(|good| {
+                good.gi_teapot = Some(GiTeapot {
+                    comfort: Some(BTreeMap::from([(
+                        1,
+                        GiComfort {
+                            mansion,
+                            blocks: vec![],
+                        },
+                    )])),
+                })
+            })
+        };
+        let recipes = |count| {
+            edited(|good| {
+                good.gi_collections = Some(GiCollections {
+                    recipes: Some(BTreeMap::from([(1, count)])),
+                    ..Default::default()
+                })
+            })
+        };
+        let outfits = |id| {
+            edited(|good| {
+                good.gi_wardrobe = Some(GiWardrobe {
+                    outfits: Some(GiWardrobeKind {
+                        owned: vec![id],
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                })
+            })
+        };
+        let guidless = |level: u32| {
+            let mut good = good(100);
+            good.artifacts = serde_json::from_value(serde_json::json!([{
+                "setKey": "GoldenTroupe", "slotKey": "plume", "level": level, "rarity": 5,
+                "mainStatKey": "atk", "location": "", "lock": false,
+                "substats": [], "totalRolls": 4, "astralMark": false, "elixirCrafted": false,
+                "unactivatedSubstats": []
+            }]))
+            .unwrap();
+            good
+        };
+        let cases: [(&str, Good, Good); 6] = [
+            ("gi_achievement_progress", progress(1), progress(2)),
+            ("gi_exploration", exploration(1), exploration(2)),
+            ("gi_teapot", teapot(100), teapot(200)),
+            ("gi_collections", recipes(1), recipes(2)),
+            ("gi_wardrobe", outfits(1), outfits(2)),
+            ("artifacts", guidless(0), guidless(4)),
+        ];
+        for (part, base, now) in cases {
+            let mut live = ended_after_a_batch(base, now.clone());
+            assert_eq!(
+                live.tick(true, true, 15_200, export(now)),
+                Action::Snapshot(Reason::Logout),
+                "{part}"
+            );
+            assert_eq!(live.logout_snapshot_kept(), [part.to_string()], "{part}");
+            // Decided once: the snapshot is retried as today, no export.
+            let ticket = live.snapshot_started(Reason::Logout, keyed(&good(1)));
+            live.snapshot_answered(ticket, None, 15_300);
+            assert_eq!(
+                live.tick(true, true, 15_300 + FIRST_BACKOFF_MS, || panic!("decided")),
+                Action::Snapshot(Reason::Logout),
+                "{part}"
+            );
+        }
+    }
+
+    #[test]
+    fn dropped_parts_and_the_endgame_alone_still_end_on_a_final_batch() {
+        use std::collections::BTreeMap;
+
+        use crate::good::{GiCollections, GiEndgame, GiEvent, GiQuests, GiWardrobe};
+
+        let base = edited(|good| {
+            good.gi_collections = Some(GiCollections {
+                monsters_seen: Some(vec![1, 2]),
+                ..Default::default()
+            });
+            good.gi_wardrobe = Some(GiWardrobe {
+                current_team: Some(1),
+                ..Default::default()
+            });
+        });
+        let now = edited(|good| {
+            good.gi_events = Some(BTreeMap::from([(
+                1,
+                GiEvent {
+                    schedule: 1_001,
+                    start: 0,
+                    end: 9,
+                    progress: None,
+                },
+            )]));
+            good.gi_endgame = Some(GiEndgame::default());
+            // Seen monsters as a count; quests and the team are batched.
+            good.gi_collections = Some(GiCollections {
+                monsters_seen: Some(vec![3, 4]),
+                quests: Some(GiQuests {
+                    finished: vec![7],
+                    active: vec![],
+                }),
+                ..Default::default()
+            });
+            good.gi_wardrobe = Some(GiWardrobe {
+                current_team: Some(2),
+                ..Default::default()
+            });
+        });
+        let mut live = ended_after_a_batch(base, now.clone());
+        let last = sent(live.tick(true, true, 15_200, export(now)));
+        assert_eq!(last.end, Some(true));
+        assert!(live.logout_snapshot_kept().is_empty());
+    }
+
+    #[test]
+    fn a_refused_final_batch_falls_back_to_the_logout_snapshot() {
+        for answer in [
+            BatchAnswer::Resync,
+            BatchAnswer::LiveOff,
+            BatchAnswer::DailyLimit,
+            BatchAnswer::Refused,
+            BatchAnswer::of(413, ""),
+        ] {
+            let mut live = ended_after_a_batch(good(100), with_materials(5));
+            let session = live.capture(Reason::Logout).unwrap().session;
+            sent(live.tick(true, true, 15_200, export(with_materials(6))));
+            live.batch_answered(answer.clone(), 15_300);
+            assert_eq!(live.next_tick_ms(true, 15_300), Some(15_300), "{answer:?}");
+            assert_eq!(
+                live.tick(true, true, 15_300, || panic!("the snapshot builds its own")),
+                Action::Snapshot(Reason::Logout),
+                "{answer:?}"
+            );
+            let capture = live.capture(Reason::Logout).unwrap();
+            assert_eq!(capture.session, session, "{answer:?}");
+            assert_eq!(capture.journal.seq, 1, "{answer:?}");
+        }
+    }
+
+    #[test]
+    fn a_final_batch_that_got_no_answer_goes_again_unchanged() {
+        let mut live = ended_after_a_batch(good(100), with_materials(5));
+        let first = sent(live.tick(true, true, 15_200, export(with_materials(6))));
+        live.batch_answered(BatchAnswer::Retry, 15_300);
+        let at = 15_300 + FIRST_BACKOFF_MS;
+        assert_eq!(live.next_tick_ms(true, 15_400), Some(at));
+        assert_eq!(live.tick(true, true, 15_400, || None), Action::Nothing);
+        let again = sent(live.tick(true, true, at, export(with_materials(9))));
+        assert_eq!(
+            serde_json::to_vec(&again).unwrap(),
+            serde_json::to_vec(&first).unwrap(),
+            "the same bytes"
+        );
+        live.batch_answered(stored(), at + 1);
+        assert!(!live.is_live(at + 1));
+    }
+
+    #[test]
+    fn an_attach_owed_goes_with_the_ended_session_before_the_final_batch() {
+        let mut live = live_at(0);
+        live.note_change(5);
+        sent(live.tick(true, true, 15_000, export(with_materials(5))));
+        live.batch_answered(stored(), 15_100);
+        // A record opened just before the login ended: its attach is owed.
+        live.note_endgame_change();
+        live.note_connection_ended();
+        let session = live.capture(Reason::Logout).unwrap().session;
+        assert_eq!(
+            live.tick(true, true, 15_200, export(with_materials(5))),
+            Action::Attach {
+                session: session.clone()
+            }
+        );
+        // Its answer comes before anything else: no tick while it flies.
+        assert_eq!(live.next_tick_ms(true, 15_201), None);
+        assert_eq!(
+            live.tick(true, true, 15_201, || panic!("decided")),
+            Action::Nothing
+        );
+        live.attach_answered(AttachAnswer::Stored, 15_202);
+        assert_eq!(live.next_tick_ms(true, 15_203), Some(15_203));
+        let last = sent(live.tick(true, true, 15_203, export(with_materials(5))));
+        assert_eq!(last.end, Some(true));
+        assert_eq!(last.session, session);
+        live.batch_answered(stored(), 15_204);
+        assert!(!live.is_live(15_204));
+    }
+
+    /// Logged in with one batch stored and an endgame change noted.
+    fn with_endgame_change() -> LiveSync {
+        let mut live = live_at(0);
+        live.note_change(5);
+        sent(live.tick(true, true, 15_000, export(with_materials(5))));
+        live.batch_answered(stored(), 15_100);
+        live.note_endgame_change();
+        live
+    }
+
+    #[test]
+    fn an_attach_in_its_backoff_at_the_end_keeps_the_logout_snapshot() {
+        // In its backoff, and after it: never overtaken by a final batch.
+        for at in [15_400, 15_300 + FIRST_BACKOFF_MS] {
+            let mut live = with_endgame_change();
+            assert!(matches!(
+                live.tick(true, true, 15_200, || None),
+                Action::Attach { .. }
+            ));
+            live.attach_answered(AttachAnswer::Retry, 15_300);
+            live.note_connection_ended();
+            assert_eq!(
+                live.tick(true, true, at, export(with_materials(5))),
+                Action::Snapshot(Reason::Logout),
+                "{at}"
+            );
+            assert_eq!(live.logout_snapshot_kept(), ["attach".to_string()]);
+        }
+    }
+
+    #[test]
+    fn an_attach_in_flight_at_the_end_is_answered_first() {
+        for (answer, kept) in [
+            (AttachAnswer::Stored, None),
+            (AttachAnswer::Retry, Some("attach")),
+            (AttachAnswer::Dropped, Some("gi_endgame")),
+        ] {
+            let mut live = with_endgame_change();
+            let session = live.capture(Reason::World).unwrap().session;
+            assert_eq!(
+                live.tick(true, true, 15_200, || None),
+                Action::Attach {
+                    session: session.clone()
+                }
+            );
+            live.note_connection_ended();
+            // Decided, then waits for the attach's answer.
+            assert_eq!(live.next_tick_ms(true, 15_250), Some(15_250));
+            assert_eq!(
+                live.tick(true, true, 15_250, export(with_materials(5))),
+                Action::Nothing,
+                "{answer:?}"
+            );
+            assert_eq!(live.next_tick_ms(true, 15_260), None, "{answer:?}");
+            live.attach_answered(answer, 15_300);
+            assert_eq!(live.next_tick_ms(true, 15_300), Some(15_300), "{answer:?}");
+            let action = live.tick(true, true, 15_300, export(with_materials(5)));
+            match kept {
+                None => {
+                    let last = sent(action);
+                    assert_eq!((last.end, last.session), (Some(true), session));
+                }
+                Some(part) => {
+                    assert_eq!(action, Action::Snapshot(Reason::Logout), "{answer:?}");
+                    assert_eq!(live.logout_snapshot_kept(), [part.to_string()]);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn an_attach_sent_at_the_end_and_not_stored_keeps_the_logout_snapshot() {
+        for (answer, part) in [
+            (AttachAnswer::Retry, "attach"),
+            (AttachAnswer::Dropped, "gi_endgame"),
+        ] {
+            let mut live = with_endgame_change();
+            live.note_connection_ended();
+            assert!(matches!(
+                live.tick(true, true, 15_200, export(with_materials(5))),
+                Action::Attach { .. }
+            ));
+            live.attach_answered(answer, 15_300);
+            assert_eq!(
+                live.tick(true, true, 15_300, export(with_materials(5))),
+                Action::Snapshot(Reason::Logout),
+                "{answer:?}"
+            );
+            assert_eq!(live.logout_snapshot_kept(), [part.to_string()]);
+            // The logout snapshot holds the parts: nothing owed after it.
+            let ticket = live.snapshot_started(Reason::Logout, keyed(&with_materials(5)));
+            live.snapshot_answered(ticket, Some(ImportAnswer::default()), 15_400);
+            assert_eq!(live.next_tick_ms(true, 15_500), None);
+        }
+    }
+
+    #[test]
+    fn endgame_state_the_tracker_dropped_keeps_the_logout_snapshot() {
+        // Dropped during the login (404, 409, 400, 413, or no UID here).
+        let dropped = || {
+            let mut live = with_endgame_change();
+            assert!(matches!(
+                live.tick(true, true, 15_200, || None),
+                Action::Attach { .. }
+            ));
+            live.attach_answered(AttachAnswer::Dropped, 15_300);
+            live.note_connection_ended();
+            live
+        };
+        let mut live = dropped();
+        assert_eq!(
+            live.tick(true, true, 15_400, export(with_materials(5))),
+            Action::Snapshot(Reason::Logout)
+        );
+        assert_eq!(live.logout_snapshot_kept(), ["gi_endgame".to_string()]);
+        // Without the word: the logout snapshot as always, nothing named.
+        let mut live = dropped();
+        assert_eq!(
+            live.tick(true, false, 15_400, || panic!(
+                "the snapshot builds its own"
+            )),
+            Action::Snapshot(Reason::Logout)
+        );
+        assert!(live.logout_snapshot_kept().is_empty());
+        // Stored during the login: the final batch.
+        let mut live = with_endgame_change();
+        assert!(matches!(
+            live.tick(true, true, 15_200, || None),
+            Action::Attach { .. }
+        ));
+        live.attach_answered(AttachAnswer::Stored, 15_300);
+        live.note_connection_ended();
+        assert_eq!(
+            sent(live.tick(true, true, 15_400, export(with_materials(5)))).end,
+            Some(true)
+        );
+        // A snapshot since holds the parts: the final batch.
+        let mut live = with_endgame_change();
+        let ticket = live.snapshot_started(Reason::Resync, keyed(&with_materials(5)));
+        live.snapshot_answered(
+            ticket,
+            Some(ImportAnswer {
+                base: Some("k2".into()),
+                watching: false,
+            }),
+            15_200,
+        );
+        live.note_change(1);
+        live.note_connection_ended();
+        assert_eq!(
+            sent(live.tick(true, true, 15_400, export(with_materials(6)))).end,
+            Some(true)
+        );
+        // A newer change while one was in flight: that one's Stored does
+        // not cover the newer change, whose attach is then dropped.
+        let mut live = with_endgame_change();
+        assert!(matches!(
+            live.tick(true, true, 15_200, || None),
+            Action::Attach { .. }
+        ));
+        live.note_endgame_change();
+        live.attach_answered(AttachAnswer::Stored, 15_300);
+        assert!(matches!(
+            live.tick(true, true, 15_400, || None),
+            Action::Attach { .. }
+        ));
+        live.attach_answered(AttachAnswer::Dropped, 15_500);
+        live.note_connection_ended();
+        assert_eq!(
+            live.tick(true, true, 15_600, export(with_materials(5))),
+            Action::Snapshot(Reason::Logout)
+        );
+        assert_eq!(live.logout_snapshot_kept(), ["gi_endgame".to_string()]);
+    }
+
+    #[test]
+    fn a_game_data_change_alone_keeps_the_logout_snapshot() {
+        let on = |sha: &str| {
+            let mut good = good(100);
+            good.gi_player.as_mut().unwrap().game_data = Some(sha.to_string());
+            good
+        };
+        let mut live = ended_after_a_batch(on("a"), on("a"));
+        assert_eq!(
+            sent(live.tick(true, true, 15_200, export(on("a")))).end,
+            Some(true)
+        );
+        let mut live = ended_after_a_batch(on("a"), on("a"));
+        assert_eq!(
+            live.tick(true, true, 15_200, export(on("b"))),
+            Action::Snapshot(Reason::Logout)
+        );
+        assert_eq!(
+            live.logout_snapshot_kept(),
+            ["gi_player.gameData".to_string()]
+        );
+    }
+
+    #[test]
+    fn replaced_data_drops_a_final_batch_or_its_answer() {
+        // Before it went: nothing goes.
+        let mut live = ended_after_a_batch(good(100), with_materials(5));
+        live.note_data_replaced();
+        assert_eq!(live.next_tick_ms(true, 15_200), None);
+        assert_eq!(live.tick(true, true, 15_200, || None), Action::Nothing);
+        // After it went: its answer changes nothing.
+        let mut live = ended_after_a_batch(good(100), with_materials(5));
+        sent(live.tick(true, true, 15_200, export(with_materials(6))));
+        live.note_data_replaced();
+        live.batch_answered(BatchAnswer::Resync, 15_300);
+        assert_eq!(live.next_tick_ms(true, 15_300), None);
+        assert_eq!(live.tick(true, true, 15_300, || None), Action::Nothing);
+    }
+
+    #[test]
+    fn a_hand_over_carries_the_bases_fingerprints() {
+        let base = edited(|good| {
+            good.gi_teapot = Some(crate::good::GiTeapot::default());
+            good.gi_achievement_progress = Some(std::collections::BTreeMap::from([(
+                84_000,
+                crate::good::GiAchievementProgress {
+                    progress: 1,
+                    total: 10,
+                },
+            )]));
+        });
+        // The run that hands over, its login still going.
+        let mut running = LiveSync::new();
+        running.note_full_send();
+        let ticket = running.snapshot_started(Reason::Login, keyed(&base));
+        running.snapshot_answered(
+            ticket,
+            Some(ImportAnswer {
+                base: Some("k1".into()),
+                watching: false,
+            }),
+            0,
+        );
+        let handover = running.handover().unwrap();
+        let json = serde_json::to_value(&handover).unwrap();
+        assert!(json["journal"]["unbatched"].is_object(), "written");
+        let back: LiveHandover = serde_json::from_value(json.clone()).unwrap();
+        assert_eq!(back, handover, "round trip");
+        let mut resumed = LiveSync::new();
+        assert!(resumed.resume(back));
+        resumed.note_change(1);
+        resumed.note_connection_ended();
+        assert_eq!(
+            sent(resumed.tick(true, true, 1_000, export(base.clone()))).end,
+            Some(true)
+        );
+
+        // An older Capture's hand-over has none: the logout snapshot.
+        let mut old = json;
+        old["journal"].as_object_mut().unwrap().remove("unbatched");
+        let mut resumed = LiveSync::new();
+        assert!(resumed.resume(serde_json::from_value(old).unwrap()));
+        resumed.note_change(1);
+        resumed.note_connection_ended();
+        assert_eq!(
+            resumed.tick(true, true, 1_000, export(base)),
+            Action::Snapshot(Reason::Logout)
+        );
+        assert_eq!(resumed.logout_snapshot_kept(), ["unknown".to_string()]);
+    }
+
+    #[test]
+    fn a_hand_over_without_the_endgame_flag_ends_on_the_logout_snapshot() {
+        let mut running = with_endgame_change();
+        assert!(matches!(
+            running.tick(true, true, 15_200, || None),
+            Action::Attach { .. }
+        ));
+        running.attach_answered(AttachAnswer::Stored, 15_300);
+        let json = serde_json::to_value(running.handover().unwrap()).unwrap();
+        assert_eq!(json["endgame_unacked"], serde_json::json!(false), "written");
+        let end = |json: serde_json::Value| {
+            let mut resumed = LiveSync::new();
+            assert!(resumed.resume(serde_json::from_value(json).unwrap()));
+            resumed.note_change(1);
+            resumed.note_connection_ended();
+            resumed.tick(true, true, 16_000, export(with_materials(6)))
+        };
+        assert_eq!(sent(end(json.clone())).end, Some(true));
+        // An older Capture's hand-over has no flag: unknown, kept.
+        let mut old = json;
+        old.as_object_mut().unwrap().remove("endgame_unacked");
+        assert_eq!(end(old), Action::Snapshot(Reason::Logout));
+    }
+
+    /// The login ends and, with the word, the next tick decides: the logout
+    /// snapshot for the endgame state, or the final batch.
+    fn ends_on(live: &mut LiveSync, now_ms: u64) -> Action {
+        live.note_change(1);
+        live.note_connection_ended();
+        live.tick(true, true, now_ms, export(with_materials(6)))
+    }
+
+    fn kept_for_the_endgame(live: &mut LiveSync, now_ms: u64) {
+        assert_eq!(ends_on(live, now_ms), Action::Snapshot(Reason::Logout));
+        assert_eq!(live.logout_snapshot_kept(), ["gi_endgame".to_string()]);
+    }
+
+    #[test]
+    fn a_failed_snapshot_does_not_acknowledge_the_endgame_state() {
+        for reason in [Reason::Collapse, Reason::Manual] {
+            let mut live = with_endgame_change();
+            let ticket = live.snapshot_started(reason, keyed(&with_materials(5)));
+            live.snapshot_answered(ticket, None, 15_200);
+            // After a retry's wait too.
+            kept_for_the_endgame(&mut live, 15_200 + MAX_BACKOFF_MS);
+        }
+    }
+
+    #[test]
+    fn a_stored_snapshot_acknowledges_only_the_endgame_state_it_held() {
+        let stored_snapshot = |live: &mut LiveSync, ticket: u64| {
+            let answer = ImportAnswer {
+                base: Some("k2".into()),
+                watching: false,
+            };
+            live.snapshot_answered(ticket, Some(answer), 15_300);
+        };
+        // The upload button's JSON, made before the change: not held.
+        let mut live = with_endgame_change();
+        let ticket =
+            live.snapshot_started_holding(Reason::Manual, keyed(&with_materials(5)), false);
+        stored_snapshot(&mut live, ticket);
+        kept_for_the_endgame(&mut live, 15_400);
+        // Made after it: held.
+        let mut live = with_endgame_change();
+        let ticket = live.snapshot_started_holding(Reason::Manual, keyed(&with_materials(5)), true);
+        stored_snapshot(&mut live, ticket);
+        assert_eq!(sent(ends_on(&mut live, 15_400)).end, Some(true));
+        // A change while it flew (the login ending, so no attach is owed
+        // for it): not held.
+        let mut live = with_endgame_change();
+        let ticket = live.snapshot_started(Reason::Collapse, keyed(&with_materials(5)));
+        live.note_change(1);
+        live.note_connection_ended();
+        live.note_endgame_change();
+        stored_snapshot(&mut live, ticket);
+        assert_eq!(
+            live.tick(true, true, 15_400, export(with_materials(6))),
+            Action::Snapshot(Reason::Logout)
+        );
+        assert_eq!(live.logout_snapshot_kept(), ["gi_endgame".to_string()]);
+    }
+
+    #[test]
+    fn a_snapshot_in_flight_at_the_hand_over_acknowledges_nothing() {
+        let mut running = with_endgame_change();
+        running.snapshot_started(Reason::Manual, keyed(&with_materials(5)));
+        let json = serde_json::to_value(running.handover().unwrap()).unwrap();
+        assert_eq!(json["endgame_unacked"], serde_json::json!(true), "written");
+        let mut resumed = LiveSync::new();
+        assert!(resumed.resume(serde_json::from_value(json).unwrap()));
+        kept_for_the_endgame(&mut resumed, 16_000);
+    }
+
+    #[test]
+    fn a_stored_attach_does_not_cover_a_newer_change() {
+        let mut live = with_endgame_change();
+        live.note_connection_ended();
+        assert!(matches!(
+            live.tick(true, true, 15_200, export(with_materials(5))),
+            Action::Attach { .. }
+        ));
+        // The login is over: no attach is owed for this one.
+        live.note_endgame_change();
+        live.attach_answered(AttachAnswer::Stored, 15_300);
+        assert_eq!(
+            live.tick(true, true, 15_300, export(with_materials(5))),
+            Action::Snapshot(Reason::Logout)
+        );
+        assert_eq!(live.logout_snapshot_kept(), ["gi_endgame".to_string()]);
+    }
+
+    #[test]
+    fn a_hand_over_with_the_endgame_unacknowledged_keeps_the_logout_snapshot() {
+        let mut running = with_endgame_change();
+        assert!(matches!(
+            running.tick(true, true, 15_200, || None),
+            Action::Attach { .. }
+        ));
+        running.attach_answered(AttachAnswer::Dropped, 15_300);
+        let json = serde_json::to_value(running.handover().unwrap()).unwrap();
+        assert_eq!(json["attach_wanted"], serde_json::json!(false));
+        assert_eq!(json["endgame_unacked"], serde_json::json!(true), "written");
+        let mut resumed = LiveSync::new();
+        assert!(resumed.resume(serde_json::from_value(json).unwrap()));
+        kept_for_the_endgame(&mut resumed, 16_000);
     }
 }

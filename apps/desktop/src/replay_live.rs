@@ -92,7 +92,12 @@ impl LocalTracker {
             Ok((status, _)) => bail!("the local tracker refused the import key: HTTP {status}"),
             Err(e) => bail!("the local tracker did not answer: {e}"),
         }
-        tracing::info!(%api, gzip = monitor::gzip_uploads(&api), "replaying to a local tracker");
+        tracing::info!(
+            %api,
+            gzip = monitor::gzip_uploads(&api),
+            final_batch = monitor::final_batches(&api),
+            "replaying to a local tracker"
+        );
         Ok(Self {
             runtime,
             client,
@@ -170,6 +175,12 @@ impl StandInTracker for LocalTracker {
             &self.key,
             request,
         ))
+    }
+
+    /// What the local tracker's own answers said (its verify-key and each
+    /// import's, through `monitor::note_upload_options`).
+    fn final_batch(&self) -> bool {
+        monitor::final_batches(&self.api)
     }
 }
 

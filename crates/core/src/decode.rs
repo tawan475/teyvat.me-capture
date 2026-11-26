@@ -46,6 +46,12 @@ pub struct KeyReport {
     pub state: KeyState,
     /// The search for the current connection's session key gave up.
     pub recovery_failed: bool,
+    /// The UID the current login's token response stated
+    /// ([`GameSniffer::login_uid`]). It belongs to the login that is
+    /// starting, so it is taken into the captured data only once that
+    /// login's own data has replaced the previous one's
+    /// ([`adopt_login_uid`]).
+    pub login_uid: Option<u32>,
 }
 
 impl KeyReport {
@@ -53,7 +59,32 @@ impl KeyReport {
         Self {
             state: sniffer.key_state(),
             recovery_failed: sniffer.key_recovery_failed(),
+            login_uid: sniffer.login_uid(),
         }
+    }
+}
+
+/// Take the login's UID ([`KeyReport::login_uid`]) into the captured data,
+/// for a batch the [`DataReplacement`] gave `verdict`. Called after the
+/// verdict was acted on (after the reset of [`DataVerdict::ReplaceThenApply`])
+/// and before the batch is applied.
+///
+/// * After a replacement the held data is the new login's: its UID is the
+///   report's (or none).
+/// * On [`DataVerdict::Apply`] the held data is the current connection's
+///   (a pending replacement would have held the batch), so a report's UID
+///   fills in a login UID the data lacks; one already held stays.
+/// * Never on [`DataVerdict::Hold`]: until the new login's data arrives the
+///   previous account's data, and with it its UID, is what is exported.
+pub fn adopt_login_uid(player_data: &mut PlayerData, verdict: &DataVerdict, report: KeyReport) {
+    match verdict {
+        DataVerdict::ReplaceThenApply => player_data.set_login_uid(report.login_uid),
+        DataVerdict::Apply => {
+            if player_data.login_uid().is_none() && report.login_uid.is_some() {
+                player_data.set_login_uid(report.login_uid);
+            }
+        }
+        DataVerdict::Hold => {}
     }
 }
 
@@ -95,6 +126,12 @@ impl DataReplacement {
             self.held_resin.clear();
         }
         news
+    }
+
+    /// A new connection began and its data has not replaced the held data
+    /// yet: what is held is still the previous login's.
+    pub fn is_pending(&self) -> bool {
+        self.pending
     }
 
     /// The user cleared the data, so there is nothing left to replace.
@@ -1385,6 +1422,36 @@ mod tests {
             replacement.verdict(KeyState::Session, true),
             DataVerdict::Apply
         );
+    }
+
+    #[test]
+    fn the_login_uid_is_adopted_only_with_the_logins_own_data() {
+        let report = |uid| KeyReport {
+            state: KeyState::Session,
+            recovery_failed: false,
+            login_uid: uid,
+        };
+        let mut data = PlayerData::new(AnimeGameData::new());
+        // Held back: the previous account's data keeps what it had.
+        adopt_login_uid(&mut data, &DataVerdict::Hold, report(Some(812_345_678)));
+        assert_eq!(data.login_uid(), None);
+        // Data without one fills it in; a later report does not replace it.
+        adopt_login_uid(&mut data, &DataVerdict::Apply, report(Some(812_345_678)));
+        assert_eq!(data.login_uid(), Some(812_345_678));
+        adopt_login_uid(&mut data, &DataVerdict::Apply, report(Some(812_345_679)));
+        adopt_login_uid(&mut data, &DataVerdict::Apply, report(None));
+        assert_eq!(data.login_uid(), Some(812_345_678));
+        // A replacement takes the new login's, none included.
+        data.reset();
+        adopt_login_uid(
+            &mut data,
+            &DataVerdict::ReplaceThenApply,
+            report(Some(812_345_679)),
+        );
+        assert_eq!(data.login_uid(), Some(812_345_679));
+        data.reset();
+        adopt_login_uid(&mut data, &DataVerdict::ReplaceThenApply, report(None));
+        assert_eq!(data.login_uid(), None);
     }
 
     #[test]

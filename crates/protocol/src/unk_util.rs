@@ -138,6 +138,69 @@ pub fn matches_get_player_token_rsp(
     None
 }
 
+/// The range a UID's number lies in (nine and ten digits, within a `u32`).
+const LOGIN_UID_RANGE: RangeInclusive<u64> = 100_000_000..=4_294_967_295;
+
+/// The account's UID, read from a `GetPlayerTokenRsp` payload (the whole
+/// payload, not a cut the seed reader parses: the UID may come after it).
+///
+/// The reply states the UID as a top-level varint, under a field number
+/// that changes between game versions, so it is found by its value: the
+/// one top-level varint from 100,000,000 to `u32::MAX` (on 106 recorded logins of
+/// two versions there was exactly one, and it was the UID). The fields are
+/// walked from the start and the walk ends at the first malformed one (the
+/// signature after the fields). None in range, or two different numbers in
+/// range: no UID from this message.
+pub fn login_reply_uid(data: impl AsRef<[u8]>) -> Option<u32> {
+    match login_reply_uids(data) {
+        LoginReplyUid::One(uid) => Some(uid),
+        LoginReplyUid::None | LoginReplyUid::Several => None,
+    }
+}
+
+/// What a `GetPlayerTokenRsp` payload held in the UID range
+/// ([`login_reply_uid`] answers only [`LoginReplyUid::One`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LoginReplyUid {
+    /// No top-level number in range.
+    None,
+    /// Exactly one number in range (repeats of it included).
+    One(u32),
+    /// Two different numbers in range: no UID is believed.
+    Several,
+}
+
+impl LoginReplyUid {
+    /// "none", "one" or "several", for the log (never the value).
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::One(_) => "one",
+            Self::Several => "several",
+        }
+    }
+}
+
+/// The numbers in the UID range a token response holds; see
+/// [`login_reply_uid`].
+pub fn login_reply_uids(data: impl AsRef<[u8]>) -> LoginReplyUid {
+    let mut found = None;
+    for value in crate::wire::leading_varints(data.as_ref()) {
+        if !LOGIN_UID_RANGE.contains(&value) {
+            continue;
+        }
+        match found {
+            None => found = Some(value),
+            Some(held) if held == value => {}
+            Some(_) => return LoginReplyUid::Several,
+        }
+    }
+    match found.and_then(|uid| u32::try_from(uid).ok()) {
+        Some(uid) => LoginReplyUid::One(uid),
+        None => LoginReplyUid::None,
+    }
+}
+
 /// One achievement, as recovered from an `AchievementAllDataNotify`.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Achievement {
@@ -2043,5 +2106,100 @@ pub(crate) mod tests {
             matches_get_player_token_rsp(data, Vec::<RsaPrivateKey>::new()),
             None
         );
+    }
+
+    /// A token response's other fields, around where a UID may sit: a
+    /// small status, a base64 seed string, a fixed64 and a fixed32.
+    fn token_fields() -> Vec<u8> {
+        let mut out = field_varint(1, 7);
+        out.extend(field_bytes(11, b"QUJDREVGR0hJSktMTU5PUA=="));
+        out.extend(varint((3 << 3) | 1));
+        out.extend(u64::MAX.to_le_bytes());
+        out.extend(varint((4 << 3) | 5));
+        out.extend(u32::MAX.to_le_bytes());
+        out
+    }
+
+    #[test]
+    fn the_login_reply_uid_is_its_one_number_in_the_uid_range() {
+        // Before the other fields, and after them.
+        let mut before = field_varint(9, 812_345_678);
+        before.extend(token_fields());
+        assert_eq!(login_reply_uid(&before), Some(812_345_678));
+        let mut after = token_fields();
+        after.extend(field_varint(14, 812_345_678));
+        assert_eq!(login_reply_uid(&after), Some(812_345_678));
+        // The same number twice is still one.
+        let mut twice = after.clone();
+        twice.extend(field_varint(15, 812_345_678));
+        assert_eq!(login_reply_uid(&twice), Some(812_345_678));
+        // The range's ends are in it.
+        assert_eq!(
+            login_reply_uid(field_varint(2, 100_000_000)),
+            Some(100_000_000)
+        );
+        assert_eq!(
+            login_reply_uid(field_varint(2, 4_294_967_295)),
+            Some(u32::MAX)
+        );
+    }
+
+    #[test]
+    fn a_login_reply_without_one_uid_states_none() {
+        // No number in range.
+        assert_eq!(login_reply_uid(token_fields()), None);
+        assert_eq!(login_reply_uid([]), None);
+        // Two different ones.
+        let mut two = field_varint(9, 812_345_678);
+        two.extend(token_fields());
+        two.extend(field_varint(14, 812_345_679));
+        assert_eq!(login_reply_uid(&two), None);
+        // What the log line names: none, one or several (never the value).
+        assert_eq!(login_reply_uids(token_fields()), LoginReplyUid::None);
+        assert_eq!(login_reply_uids(&two), LoginReplyUid::Several);
+        assert_eq!(
+            login_reply_uids(field_varint(2, 812_345_678)),
+            LoginReplyUid::One(812_345_678)
+        );
+        assert_eq!(
+            [
+                LoginReplyUid::None,
+                LoginReplyUid::One(1),
+                LoginReplyUid::Several
+            ]
+            .map(|r| r.kind()),
+            ["none", "one", "several"]
+        );
+        // Just outside each end of the range.
+        assert_eq!(login_reply_uid(field_varint(2, 99_999_999)), None);
+        assert_eq!(login_reply_uid(field_varint(2, 4_294_967_296)), None);
+        // A number in range inside a nested field is not a top-level one.
+        assert_eq!(
+            login_reply_uid(field_bytes(3, &field_varint(1, 812_345_678))),
+            None
+        );
+    }
+
+    #[test]
+    fn the_login_reply_walk_ends_at_a_malformed_field() {
+        // A UID before binary garbage is read; numbers after it are not.
+        let mut tail = field_varint(9, 812_345_678);
+        tail.extend([0x07, 0xff, 0x01]);
+        tail.extend(field_varint(14, 812_345_679));
+        assert_eq!(login_reply_uid(&tail), Some(812_345_678));
+        // A length past the end ends it too.
+        let mut short = field_varint(9, 812_345_678);
+        short.extend(varint((3 << 3) | 2));
+        short.extend(varint(500));
+        short.extend(field_varint(14, 812_345_679));
+        assert_eq!(login_reply_uid(&short), Some(812_345_678));
+        // As does a truncated varint, and a field number of 0.
+        let mut cut = field_varint(9, 812_345_678);
+        cut.extend([0x70, 0xff]);
+        assert_eq!(login_reply_uid(&cut), Some(812_345_678));
+        let mut zero = field_varint(9, 812_345_678);
+        zero.extend([0x00, 0x01]);
+        zero.extend(field_varint(14, 812_345_679));
+        assert_eq!(login_reply_uid(&zero), Some(812_345_678));
     }
 }

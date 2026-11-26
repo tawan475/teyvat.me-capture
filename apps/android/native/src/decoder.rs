@@ -630,8 +630,9 @@ impl Decoder {
 
     /// What live sync sends now: a snapshot it asked for (`S`, a ticket and
     /// the GOOD JSON), a batch (`B` and the GOOD-X delta JSON) or an attach
-    /// (`A` and the request JSON, for `/irminsul/attach`).
-    pub fn live_tick(&self, live_enabled: bool) -> Result<Option<String>> {
+    /// (`A` and the request JSON, for `/irminsul/attach`). `final_batch`:
+    /// the tracker's answers carry `upload.finalBatch` (`Tracker.kt`).
+    pub fn live_tick(&self, live_enabled: bool, final_batch: bool) -> Result<Option<String>> {
         let mut state = state_ready(&self.state);
         let Some(state) = state.as_mut() else {
             return Ok(None);
@@ -643,7 +644,7 @@ impl Decoder {
         let Some(data) = player_data.as_ref() else {
             return Ok(None);
         };
-        let action = live.tick(live_enabled, now, || {
+        let action = live.tick(live_enabled, final_batch, now, || {
             let (good, _, keyed) = data.live_export(now);
             Some((good, keyed))
         });
@@ -673,7 +674,16 @@ impl Decoder {
                             session,
                             gi_endgame,
                         };
-                        Some(format!("A\n{}", serde_json::to_string(&request)?))
+                        match serde_json::to_string(&request) {
+                            Ok(json) => Some(format!("A\n{json}")),
+                            Err(error) => {
+                                // `tick` set the attach's flight: answered
+                                // here, or it would never end (and block a
+                                // login's end on a final batch).
+                                live.attach_answered(AttachAnswer::Dropped, now);
+                                return Err(error.into());
+                            }
+                        }
                     }
                     _ => {
                         live.attach_answered(AttachAnswer::Dropped, now);
@@ -742,7 +752,7 @@ impl Decoder {
     }
 }
 
-fn load_game_data() -> Result<AnimeGameData> {
+pub(crate) fn load_game_data() -> Result<AnimeGameData> {
     static DATABASE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/game_data.gz"));
     AnimeGameData::new_from_reader(GzDecoder::new(DATABASE))
 }
@@ -911,7 +921,7 @@ fn handle(state: &mut State, event: SnifferEvent, at: u64, hub: &WishHub) {
             if !events.is_empty() {
                 hub.forward(events, state.uid());
             }
-            apply(state, report.state, classified, at, hub);
+            apply(state, report, classified, at, hub);
         }
     }
 }
@@ -946,7 +956,7 @@ fn note_key(state: &mut State, report: KeyReport, at: u64) {
 
 fn apply(
     state: &mut State,
-    key: KeyState,
+    report: KeyReport,
     mut classified: Vec<(u16, teyvatme_protocol::CommandMatch)>,
     at: u64,
     hub: &WishHub,
@@ -954,7 +964,10 @@ fn apply(
     if classified.is_empty() {
         return;
     }
-    match state.replacement.verdict_for_batch(key, &mut classified) {
+    let verdict = state
+        .replacement
+        .verdict_for_batch(report.state, &mut classified);
+    match verdict {
         DataVerdict::Apply => {}
         DataVerdict::ReplaceThenApply => {
             // A new login: its key, if any, is not the old one's.
@@ -973,6 +986,8 @@ fn apply(
     let Some(data) = &mut state.player_data else {
         return;
     };
+    // After the replacement: the login's UID is the new data's.
+    decode::adopt_login_uid(data, &verdict, report);
     let full_send = decode::full_send_in(&classified, data.item_count());
     let noted = decode::changes_in(&classified);
     data.set_clock(
@@ -1128,6 +1143,7 @@ mod tests {
         let report = |state: KeyState| KeyReport {
             state,
             recovery_failed: false,
+            login_uid: None,
         };
         note_key(&mut state, report(KeyState::None), 1);
         assert!(state.events.is_empty(), "connecting is not logging in");

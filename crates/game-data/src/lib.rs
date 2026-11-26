@@ -12,6 +12,7 @@ use std::fs::File;
 use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use std::sync::OnceLock;
 
 use anyhow::{Result, anyhow};
 
@@ -142,10 +143,47 @@ impl Database {
     }
 }
 
+/// The affix groups of artifact substat rolls, one per rarity (1★ to 5★):
+/// `ReliquaryAffixExcelConfigData` ids `<group>NNT`, the group being
+/// `id / 1000`.
+pub const ARTIFACT_ROLL_GROUPS: [u32; 5] = [101, 201, 301, 401, 501];
+
+/// Each artifact roll affix's tier: 1 for the lowest value its stat rolls at
+/// that rarity, counting up. Ranked by value among the affixes of the same
+/// group ([`ARTIFACT_ROLL_GROUPS`]) and the same property, never read off the
+/// id's last digit; affixes of any other group are not in it.
+fn roll_tiers(affix_map: &HashMap<u32, Affix>) -> HashMap<u32, u8> {
+    let mut values: HashMap<(u32, Property), Vec<f64>> = HashMap::new();
+    let rolls = affix_map
+        .iter()
+        .filter(|(id, _)| ARTIFACT_ROLL_GROUPS.contains(&(**id / 1000)));
+    for (id, affix) in rolls.clone() {
+        values
+            .entry((id / 1000, affix.property))
+            .or_default()
+            .push(affix.value);
+    }
+    for list in values.values_mut() {
+        list.sort_by(f64::total_cmp);
+        list.dedup();
+    }
+    rolls
+        .filter_map(|(id, affix)| {
+            let list = &values[&(id / 1000, affix.property)];
+            let rank = list.iter().position(|value| *value == affix.value)?;
+            Some((*id, u8::try_from(rank + 1).ok()?))
+        })
+        .collect()
+}
+
 #[derive(Debug)]
 pub struct AnimeGameData {
     cache_path: Option<PathBuf>,
     db: Option<Database>,
+    /// [`roll_tiers`] of `db`, built on first use ([`Self::roll_tier`]) and
+    /// dropped whenever `db` is replaced: an export asks for every roll of
+    /// every artifact, so the tiers are never ranked per call.
+    roll_tiers: OnceLock<HashMap<u32, u8>>,
 }
 
 impl AnimeGameData {
@@ -153,6 +191,7 @@ impl AnimeGameData {
         Self {
             cache_path: None,
             db: None,
+            roll_tiers: OnceLock::new(),
         }
     }
 
@@ -161,6 +200,7 @@ impl AnimeGameData {
         Ok(Self {
             cache_path: None,
             db,
+            roll_tiers: OnceLock::new(),
         })
     }
 
@@ -174,6 +214,7 @@ impl AnimeGameData {
         Self {
             cache_path: Some(cache_path.to_owned()),
             db,
+            roll_tiers: OnceLock::new(),
         }
     }
 
@@ -193,6 +234,21 @@ impl AnimeGameData {
             .ok_or_else(|| anyhow!("Unable to fetch affix {id}"))
     }
 
+    /// The tier of an artifact substat roll by its affix id: 1 for the lowest
+    /// value that stat rolls at the artifact's rarity, counting up. `None`
+    /// for an id the data lacks or one outside [`ARTIFACT_ROLL_GROUPS`].
+    pub fn roll_tier(&self, affix_id: u32) -> Option<u8> {
+        self.roll_tiers
+            .get_or_init(|| {
+                self.db
+                    .as_ref()
+                    .map(|db| roll_tiers(&db.affix_map))
+                    .unwrap_or_default()
+            })
+            .get(&affix_id)
+            .copied()
+    }
+
     pub fn get_artifact(&self, id: u32) -> Result<&Artifact> {
         self.db()?
             .artifact_map
@@ -205,6 +261,24 @@ impl AnimeGameData {
             .character_map
             .get(&id)
             .ok_or_else(|| anyhow!("Unable to fetch character {id}"))
+    }
+
+    /// Every character the data names, `(avatar id, English name)`, in no
+    /// order; none when no data is loaded.
+    pub fn characters(&self) -> impl Iterator<Item = (u32, &str)> {
+        self.db
+            .iter()
+            .flat_map(|db| db.character_map.iter())
+            .map(|(id, name)| (*id, name.as_str()))
+    }
+
+    /// Every weapon the data names, `(item id, English name)`, in no order;
+    /// none when no data is loaded.
+    pub fn weapons(&self) -> impl Iterator<Item = (u32, &str)> {
+        self.db
+            .iter()
+            .flat_map(|db| db.weapon_map.iter())
+            .map(|(id, weapon)| (*id, weapon.name.as_str()))
     }
 
     pub fn get_material(&self, id: u32) -> Result<&String> {
@@ -388,6 +462,7 @@ impl AnimeGameData {
         db.endgame = Self::fetch_endgame(source, &latest_git_hash).await;
 
         self.db = Some(db);
+        self.roll_tiers = OnceLock::new();
 
         let _ = self.try_save_db();
         Ok(())
@@ -1196,6 +1271,76 @@ mod tests {
             serde_json::from_slice::<serde_json::Value>(&out).unwrap()
         };
         assert_eq!(json(&from_pinned), json(&from_source));
+    }
+
+    /// Game data holding only an affix map.
+    fn with_affixes(affix_map: HashMap<u32, Affix>) -> AnimeGameData {
+        let mut db = Database::new("test");
+        db.affix_map = affix_map;
+        AnimeGameData {
+            cache_path: None,
+            db: Some(db),
+            roll_tiers: OnceLock::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_roll_tier_is_its_rank_by_value_and_equals_the_ids_last_digit() {
+        // The repository's pinned copy of the game's affix table.
+        let pinned = Pinned::open(concat!(env!("CARGO_MANIFEST_DIR"), "/../../game-data")).unwrap();
+        let id = pinned.id().to_string();
+        let affixes = AnimeGameData::fetch_affix_map(&pinned, &id).await.unwrap();
+        let ids: Vec<u32> = affixes.keys().copied().collect();
+        let data = with_affixes(affixes);
+
+        let mut rolls = 0;
+        for id in &ids {
+            let group = id / 1000;
+            if ARTIFACT_ROLL_GROUPS.contains(&group) {
+                rolls += 1;
+                assert_eq!(data.roll_tier(*id), Some((id % 10) as u8), "affix {id}");
+            } else {
+                assert_eq!(data.roll_tier(*id), None, "affix {id}");
+            }
+        }
+        // 1★ two tiers, 2★ three, 3★ to 5★ four, for each of the ten stats.
+        assert_eq!(rolls, 10 * (2 + 3 + 4 + 4 + 4));
+        assert_eq!(data.roll_tier(1), None);
+        // Built once: every later call reads the same map.
+        let built = data.roll_tiers.get().unwrap() as *const _;
+        data.roll_tier(501204);
+        assert_eq!(data.roll_tiers.get().unwrap() as *const _, built);
+    }
+
+    #[test]
+    fn a_roll_tier_ranks_by_value_not_by_the_ids_digit() {
+        let affix = |property, value| Affix { property, value };
+        let data = with_affixes(HashMap::from([
+            // Out of order on purpose: the digit says 1, the value says 2.
+            (501201, affix(Property::CritRate, 3.11)),
+            (501202, affix(Property::CritRate, 2.72)),
+            // Another stat and another rarity rank on their own.
+            (501231, affix(Property::CritDamage, 5.44)),
+            (401201, affix(Property::CritRate, 2.18)),
+            // Not a roll group.
+            (982001, affix(Property::GeoDamage, 0.8)),
+        ]));
+        assert_eq!(data.roll_tier(501201), Some(2));
+        assert_eq!(data.roll_tier(501202), Some(1));
+        assert_eq!(data.roll_tier(501231), Some(1));
+        assert_eq!(data.roll_tier(401201), Some(1));
+        assert_eq!(data.roll_tier(982001), None);
+        assert_eq!(data.roll_tier(501203), None);
+        assert_eq!(AnimeGameData::new().roll_tier(501201), None);
+    }
+
+    #[tokio::test]
+    async fn new_data_drops_the_old_roll_tiers() {
+        let mut data = AnimeGameData::new();
+        assert_eq!(data.roll_tier(501022), None);
+        data.update_impl(&TestDataSource).await.unwrap();
+        // TestDataSource holds one HP roll of group 501: tier 1 of one.
+        assert_eq!(data.roll_tier(501022), Some(1));
     }
 
     #[test]
