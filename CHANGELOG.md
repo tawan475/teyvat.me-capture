@@ -2,6 +2,14 @@
 
 Each release's section is its GitHub release notes (`.github/workflows/release.yaml`).
 
+## 1.18.6
+
+- The namecards you own are now exported (`gi_wardrobe.namecards`), and
+  teyvat.me lists them under Collections → Wardrobe. The game sends the
+  list only when you open the namecard picker, so open it once while
+  Teyvat.me is running: Paimon menu → your profile → edit namecard. The
+  list reaches teyvat.me with the upload at logout.
+
 ## 1.18.5
 
 - Boss respawn times are no longer replaced by another player's. In co-op
