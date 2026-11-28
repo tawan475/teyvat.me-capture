@@ -696,6 +696,11 @@ pub struct GiWardrobe {
     /// The team slot in use.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub current_team: Option<u32>,
+    /// Owned namecards' item ids, ascending. The game sends the list only
+    /// when the player opens the namecard picker, so absent means "not seen
+    /// in this login", never "owns none".
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub namecards: Option<Vec<u32>>,
 }
 
 impl GiWardrobe {

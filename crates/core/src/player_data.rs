@@ -6169,6 +6169,77 @@ mod tests {
     }
 
     #[test]
+    fn owned_namecards_are_the_tables_and_ride_in_the_wardrobe() {
+        let table: Vec<String> = (210_001..=210_020).map(|id: u32| id.to_string()).collect();
+        let id_tables: &'static str =
+            Box::leak(format!(r#""namecards": [{}]"#, table.join(", ")).into_boxed_str());
+        let mut data = PlayerData::new(
+            TestGameData {
+                id_tables,
+                ..Default::default()
+            }
+            .build(),
+        );
+        let lone = |ids: &[u64]| RecordsMessage {
+            lists: BTreeMap::from([(6, ids.to_vec())]),
+            ..Default::default()
+        };
+        let export = |data: &PlayerData| {
+            serde_json::to_value(data.export_at(&settings(), NOW_SECS * 1000).0).unwrap()
+        };
+        // Nothing seen: no key at all.
+        assert!(export(&data)["gi_wardrobe"].get("namecards").is_none());
+        // Outfit ids of characters 100-109 sit in the same block: not namecards.
+        assert_eq!(
+            data.apply_lone_list(&lone(&[210_101, 210_201, 210_301])),
+            None
+        );
+        // Fewer than three, a repeated id, a number beside the list, an id
+        // outside the block: none of them.
+        assert_eq!(data.apply_lone_list(&lone(&[210_001, 210_002])), None);
+        assert_eq!(
+            data.apply_lone_list(&lone(&[210_001, 210_002, 210_002])),
+            None
+        );
+        let mut beside = lone(&[210_001, 210_002, 210_003]);
+        beside.varints.insert(1, 1);
+        assert_eq!(data.apply_lone_list(&beside), None);
+        assert_eq!(
+            data.apply_lone_list(&lone(&[210_001, 210_002, 211_000])),
+            None
+        );
+        // Two unknown ids in five: under nine in ten.
+        assert_eq!(
+            data.apply_lone_list(&lone(&[210_001, 210_002, 210_003, 210_500, 210_501])),
+            None
+        );
+        assert!(export(&data)["gi_wardrobe"].get("namecards").is_none());
+        // The list, unsorted, with one card the pinned table lacks: kept whole.
+        let owned: Vec<u64> = (210_001..=210_010).rev().chain([210_777]).collect();
+        assert_eq!(
+            data.apply_lone_list(&lone(&owned)),
+            Some(LoneList::Namecards)
+        );
+        let mut expected: Vec<u64> = owned.clone();
+        expected.sort_unstable();
+        assert_eq!(
+            export(&data)["gi_wardrobe"]["namecards"],
+            serde_json::json!(expected)
+        );
+        // A later list replaces it; a reset forgets it.
+        assert_eq!(
+            data.apply_lone_list(&lone(&[210_003, 210_001, 210_002])),
+            Some(LoneList::Namecards)
+        );
+        assert_eq!(
+            export(&data)["gi_wardrobe"]["namecards"],
+            serde_json::json!([210_001, 210_002, 210_003])
+        );
+        data.reset();
+        assert!(export(&data)["gi_wardrobe"].get("namecards").is_none());
+    }
+
+    #[test]
     fn id_lists_are_told_apart_by_their_tables() {
         let mut data = PlayerData::new(
             TestGameData {
@@ -6202,6 +6273,8 @@ mod tests {
             data.apply_lone_list(&lone(&[2, 1052, 1054])),
             Some(LoneList::NpcsMet)
         );
+        // No namecard table: a list in the namecard block is nobody's.
+        assert_eq!(data.apply_lone_list(&lone(&[210001, 210002, 210003])), None);
         // Small ids several tables hold, and a short list of set ids: neither.
         assert_eq!(data.apply_lone_list(&lone(&[1, 2, 3])), None);
         assert_eq!(data.apply_lone_list(&lone(&[5, 6, 7, 8])), None);

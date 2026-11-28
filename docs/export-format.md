@@ -58,7 +58,7 @@ Each key links to its entry on the [developer page](https://teyvat.me/developers
 | [`gi_teapot`](https://teyvat.me/developers#gi_teapot) | The Serenitea Pot's comfort per realm. |
 | [`gi_miliastra`](https://teyvat.me/developers#gi_miliastra) | Miliastra Wonderland cosmetics owned. |
 | [`gi_exploration`](https://teyvat.me/developers#gi_exploration) | Statues of The Seven, offerings, the map points and areas you've unlocked, exploration per area, reputation, domains cleared and Natlan's tribal chapters. |
-| [`gi_wardrobe`](https://teyvat.me/developers#gi_wardrobe) | Outfits, wind gliders, weapon skins and sprint trails you own and who wears them, and your saved teams. |
+| [`gi_wardrobe`](https://teyvat.me/developers#gi_wardrobe) | Outfits, wind gliders, weapon skins and sprint trails you own and who wears them, and your saved teams. From 1.18.6 also the namecards you own, once you opened the namecard picker in that login. |
 | [`gi_endgame`](https://teyvat.me/developers#gi_endgame) | The Imaginarium Theater season you're in, the difficulty you picked and the acts you cleared; your Stygian Onslaught records (difficulty, time per boss, your team). |
 | `gi_rolls` | On each artifact: every substat roll in the game's order, two digits a roll: the line (index into `substats`) and the tier (1 = that stat's lowest roll at this rarity). Absent when a roll is unknown to the game data or belongs to another rarity, when the artifact has none, and on the five stars the "fake 4th line" option rewrote (any +0 to +3 one still holding an unactivated substat). In saved files and uploads, and live sync sends its changes. |
 | [`gi_capture`](https://teyvat.me/developers#gi_capture) | Uploads only: why this snapshot was taken, and which game login it belongs to. |

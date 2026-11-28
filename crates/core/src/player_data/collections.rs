@@ -55,7 +55,22 @@ pub(super) struct CollectionsState {
     pub npcs_met: Option<Vec<u32>>,
     /// Natlan's tribal chapters: id → (state 1-4, when it started).
     pub tribal_chapters: Option<BTreeMap<u32, (u32, Option<u32>)>>,
+    /// Owned namecards, ascending: only once the player opened the picker.
+    #[serde(default)]
+    pub namecards: Option<Vec<u32>>,
 }
+
+/// Namecard item ids (7.2: 210 001-210 303). Outfits of characters 100-109
+/// share the block (2CCCnn), so the range alone never decides.
+const NAMECARD_IDS: std::ops::RangeInclusive<u64> = 210_001..=210_999;
+
+/// The fewest namecards believed. An account that owns fewer is left out.
+const MIN_NAMECARDS: usize = 3;
+
+/// The share of the list the namecard table must hold. Lower than the other
+/// lists': on patch day the list has the new version's cards and the pinned
+/// data does not, and those ids are exported all the same.
+const NAMECARD_LIST_SHARE: f64 = 0.9;
 
 /// The share of a lone list's ids one recipe table must hold for the list to
 /// be that table's (a newer game version may add a few the pinned data lacks).
@@ -92,6 +107,7 @@ pub enum LoneList {
     CompanionRewards,
     DomainsCleared,
     NpcsMet,
+    Namecards,
 }
 
 /// The fewest recipes believed (every account starts with a few).
@@ -298,6 +314,25 @@ impl PlayerData {
             out.sort_unstable();
             out
         };
+        // The namecards owned (7.1 `GetAllUnlockNameCardRsp`; sent only when
+        // the player opens the namecard picker): the list alone, every id in
+        // the namecard block and nearly all of them the material table's
+        // namecards. Ids the pinned table lacks are kept.
+        if records.varints.is_empty()
+            && list.len() >= MIN_NAMECARDS
+            && list.iter().all(|v| NAMECARD_IDS.contains(v))
+            && let Ok(tables) = self.game_data.id_tables()
+        {
+            let held = list
+                .iter()
+                .filter(|v| u32::try_from(**v).is_ok_and(|v| tables.namecards.contains(&v)))
+                .count();
+            if held as f64 / list.len() as f64 >= NAMECARD_LIST_SHARE {
+                self.collections.namecards = Some(sorted());
+                return Some(LoneList::Namecards);
+            }
+            return None;
+        }
         let state = &mut self.collections;
         // The client's own ask for defeat counts (`QueryCodexMonsterBeKilledNumReq`)
         // lists exactly the Archive's Living Beings, which arrived before it.
@@ -932,6 +967,7 @@ impl PlayerData {
                     .collect()
             }),
             current_team: wardrobe.and_then(|w| w.current_team),
+            namecards: state.namecards.clone(),
         };
         (!out.is_empty()).then_some(out)
     }

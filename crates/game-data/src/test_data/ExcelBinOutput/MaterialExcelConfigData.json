@@ -98,5 +98,12 @@
     "materialType": "MATERIAL_BGM",
     "nameTextMapHash": 2,
     "rankLevel": 4
+  },
+  {
+    "id": 210001,
+    "itemType": "ITEM_MATERIAL",
+    "materialType": "MATERIAL_NAMECARD",
+    "nameTextMapHash": 3,
+    "rankLevel": 4
   }
 ]

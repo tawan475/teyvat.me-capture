@@ -64,7 +64,7 @@ fn lookup_const_value<T: FromStr>(
     res
 }
 
-const DATABASE_VERSION: u32 = 13;
+const DATABASE_VERSION: u32 = 14;
 
 #[derive(Debug, Deserialize, Serialize)]
 struct Database {
@@ -931,6 +931,11 @@ impl AnimeGameData {
             domains: ids(source, git_ref, "DungeonEntry", "id", all).await,
             npcs_met: ids(source, git_ref, "NpcFirstMet", "id", all).await,
             tribal_chapters: ids(source, git_ref, "TribalQuestChapter", "id", all).await,
+            namecards: ids(source, git_ref, "Material", "id", |row| {
+                row.get("materialType").and_then(serde_json::Value::as_str)
+                    == Some("MATERIAL_NAMECARD")
+            })
+            .await,
         }
     }
 
@@ -1529,6 +1534,8 @@ mod tests {
         assert_eq!(tables.domains, BTreeSet::from([1006, 1112]));
         assert_eq!(tables.npcs_met, BTreeSet::from([2, 1052]));
         assert_eq!(tables.tribal_chapters, BTreeSet::from([1, 18]));
+        // Only the namecard rows of the material table.
+        assert_eq!(tables.namecards, BTreeSet::from([210001]));
     }
 
     #[tokio::test]

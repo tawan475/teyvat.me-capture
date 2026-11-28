@@ -442,6 +442,13 @@ export interface GiWardrobe {
   teams?: Record<IdKey, { name: string; characters: WornBy[] }>
   /** The team slot in use. */
   currentTeam?: GameId
+  /**
+   * [shipped 1.18.6] Owned namecards: item ids (210001...), ascending, unique.
+   * The game sends the list only when the player opens the namecard picker
+   * (Profile, edit namecard), so absent means "not seen in this login", never
+   * "owns none". An account with fewer than 3 cards is left out. Snapshots only.
+   */
+  namecards?: GameId[]
 }
 export interface Wardrobe {
   owned: GameId[]

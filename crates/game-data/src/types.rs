@@ -288,4 +288,6 @@ pub struct IdTables {
     pub npcs_met: BTreeSet<u32>,
     /// `TribalQuestChapterExcelConfigData.id`.
     pub tribal_chapters: BTreeSet<u32>,
+    /// `MaterialExcelConfigData.id` of the `MATERIAL_NAMECARD` rows.
+    pub namecards: BTreeSet<u32>,
 }
